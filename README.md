@@ -2,7 +2,7 @@
 
 Story Analysis, Generation, and Archives
 
-![S.A.G.A. Logo](/B:/Documents/PyCharm/graduationProject/docs/assets/saga-logo.svg)
+![S.A.G.A. Logo](docs/assets/saga-logo.svg)
 
 Production-oriented narrative intelligence system for extracting structured story knowledge from EPUB and PDF books, preserving canon, and preparing grounded inputs for future pre-canon, mid-canon, post-canon, and fanfiction authoring workflows.
 
