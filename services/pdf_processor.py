@@ -29,7 +29,7 @@ class PDFProcessor:
     )
 
     def __init__(self, llm_client: LLMClient = None):
-        self.llm = llm_client or LLMClient(mode="deepseek")
+        self.llm = llm_client or LLMClient(mode=LLMClient.MODE_GPT_OSS)
 
     def process(self, file_path: str) -> List[Dict]:
         doc = self._load_pdf(file_path)

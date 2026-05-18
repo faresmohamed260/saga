@@ -130,3 +130,41 @@ def test_llm_client_modes():
     assert deepseek_client.mode == "deepseek"
     assert gpt_oss_client.mode == "gpt_oss"
     assert local_alias_client.mode == "deepseek"
+
+
+def test_scene_analyzer_tool_mode_builds_schema_from_tool_calls():
+    tool_response = {
+        "tool_calls": [
+            {"tool": "set_scene_summary", "arguments": {"summary": "Feyre watches Tomas Mandray in the market."}},
+            {"tool": "add_canonical_character", "arguments": {"name": "Feyre", "role": "huntress", "is_new_character": False, "names_used": ["Feyre", "the huntress"]}},
+            {"tool": "add_canonical_character", "arguments": {"name": "Tomas Mandray", "role": "", "is_new_character": True, "names_used": ["Tomas Mandray"]}},
+            {"tool": "add_character_mention", "arguments": {"mention_text": "the huntress", "mention_type": "title", "canonical_name": "Feyre", "is_consequential_character": True}},
+            {"tool": "add_event", "arguments": {"description": "Feyre notices Tomas Mandray in the market.", "characters": ["Feyre", "Tomas Mandray"], "type": "discovery"}},
+            {"tool": "add_state_change", "arguments": {"entity_name": "Feyre", "entity_type": "character", "attribute": "knowledge", "previous_state": "", "new_state": "aware of Tomas Mandray", "change_type": "knowledge", "evidence": "Feyre notices Tomas Mandray in the market."}},
+            {"tool": "add_relationship_change", "arguments": {"source_entity": "Feyre", "target_entity": "Tomas Mandray", "relationship": "notices", "change": "first meaningful awareness", "evidence": "Feyre notices Tomas Mandray in the market."}},
+            {"tool": "add_entity", "arguments": {"name": "market", "entity_type": "location"}},
+            {"tool": "set_location", "arguments": {"name": "market", "entity_type": "location", "description": "busy village market"}},
+            {"tool": "add_time_signal", "arguments": {"value": "daytime"}},
+            {"tool": "add_alias_update", "arguments": {"alias": "man", "canonical_name": "Tomas Mandray", "action": "map_alias", "reasoning": "too generic and should be ignored"}},
+            {"tool": "add_event", "arguments": {"description": "", "characters": ["I"], "type": "bad_type"}},
+        ]
+    }
+
+    stub = StubLLMClient([tool_response])
+    analyzer = SceneAnalyzer(llm_client=stub, max_attempts=1)
+    result = analyzer.analyze(
+        build_sample_scene(),
+        local_evidence={"candidate_characters": [{"name": "Tomas Mandray"}]},
+        analysis_mode="tool",
+    )
+
+    assert result["scene_summary"].startswith("Feyre watches")
+    assert any(item["name"] == "Tomas Mandray" for item in result["canonical_characters"])
+    assert result["events"][0]["event_id"] == "evt_1"
+    assert len(result["events"]) == 1
+    assert result["state_changes"][0]["change_type"] == "knowledge"
+    assert result["relationship_changes"][0]["target_entity"] == "Tomas Mandray"
+    assert result["alias_updates"] == []
+    assert result["location"]["name"] == "market"
+    assert result["tool_runtime"]["tool_calls_seen"] >= 1
+    assert result["tool_runtime"]["tool_calls_ignored"] >= 1

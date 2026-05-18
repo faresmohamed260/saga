@@ -1,5 +1,7 @@
 from analysis.scene_extractor import SceneExtractor
+from entities.character_profile_service import CharacterProfileService
 from rag.story_index_service import StoryIndexService
+from timeline.event_ledger_service import EventLedgerService
 from timeline.timeline_service import TimelineService
 from timeline.character_timeline_service import CharacterTimelineService
 
@@ -68,25 +70,35 @@ def build_sample_scene_analyses():
 def test_scene_size_presets():
     chapter = build_sample_chapter()
 
-    chapter_mode = SceneExtractor.from_size_level(0).extract(chapter)
-    medium_mode = SceneExtractor.from_size_level(3).extract(chapter)
+    chapter_mode = SceneExtractor.from_target_words(0).extract(chapter)
+    medium_mode = SceneExtractor.from_target_words(300).extract(chapter)
 
     assert len(chapter_mode) == 1
-    assert chapter_mode[0]["scene_size_level"] == 0
+    assert chapter_mode[0]["target_words"] == 0
     assert len(medium_mode) > 1
-    assert all(item["scene_size_level"] == 3 for item in medium_mode)
+    assert all(item["target_words"] == 300 for item in medium_mode)
 
 
 def test_story_index_search():
     scene_analyses = build_sample_scene_analyses()
     timeline = TimelineService().build_from_scene_analyses(scene_analyses)
     character_timelines = CharacterTimelineService().build(timeline)
+    event_ledger = EventLedgerService().build(scene_analyses, timeline, {})
+    character_profiles = CharacterProfileService().build(
+        character_timelines,
+        entity_registry=[],
+        state_result={"latest_state": []},
+        identity_result={"alias_map": {"Feyre": ["Feyre"], "Tamlin": ["Tamlin"]}},
+        scene_analyses=scene_analyses,
+    )
 
     index = StoryIndexService()
     result = index.build(
         scene_analyses=scene_analyses,
         timeline=timeline,
+        event_ledger=event_ledger,
         character_timelines=character_timelines,
+        character_profiles=character_profiles,
     )
 
     assert result["document_count"] >= 4
@@ -94,3 +106,21 @@ def test_story_index_search():
     matches = index.query("Feyre was going under the mountain to save Tamlin", min_similarity=0.05, max_results=5)
     assert matches
     assert any("Tamlin" in item["summary"] or "Tamlin" in item["text"] for item in matches)
+
+
+def test_event_ledger_and_character_profiles_build():
+    scene_analyses = build_sample_scene_analyses()
+    timeline = TimelineService().build_from_scene_analyses(scene_analyses)
+    character_timelines = CharacterTimelineService().build(timeline)
+
+    event_ledger = EventLedgerService().build(scene_analyses, timeline, {})
+    character_profiles = CharacterProfileService().build(
+        character_timelines,
+        entity_registry=[],
+        state_result={"latest_state": []},
+        identity_result={"alias_map": {"Feyre": ["Feyre", "the huntress"], "Tamlin": ["Tamlin"]}},
+        scene_analyses=scene_analyses,
+    )
+
+    assert event_ledger[0]["ledger_event_id"] == "canon_evt_1"
+    assert any(item["canonical_name"] == "Feyre" for item in character_profiles)

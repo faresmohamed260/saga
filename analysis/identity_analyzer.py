@@ -2,6 +2,8 @@
 
 from typing import Dict, List, Optional
 
+from analysis.evidence_schema import normalize_evidence_bundle
+from analysis.tool_runtime import SceneToolRuntime
 from infrastructure.llm_client import LLMClient
 
 
@@ -39,7 +41,7 @@ class IdentityAnalyzer:
     MENTION_TYPES = {"name", "title", "descriptor", "role"}
 
     def __init__(self, llm_client: Optional[LLMClient] = None, max_attempts: int = 2):
-        self.llm = llm_client or LLMClient(mode="deepseek")
+        self.llm = llm_client or LLMClient(mode=LLMClient.MODE_GPT_OSS)
         self.max_attempts = max_attempts
 
     def analyze(
@@ -48,8 +50,20 @@ class IdentityAnalyzer:
         alias_map: Optional[Dict[str, List[str]]] = None,
         rejected_identities: Optional[List[str]] = None,
         scene_context: str = "",
+        local_evidence: Optional[Dict] = None,
+        analysis_mode: str = "structured",
     ) -> Dict:
         last_response = None
+        evidence_bundle = normalize_evidence_bundle(local_evidence)
+
+        if analysis_mode == "tool":
+            return self._analyze_with_tools(
+                scene=scene,
+                alias_map=alias_map or {},
+                rejected_identities=rejected_identities or [],
+                scene_context=scene_context,
+                local_evidence=evidence_bundle,
+            )
 
         for attempt in range(1, self.max_attempts + 1):
             prompt = self._build_prompt(
@@ -57,6 +71,7 @@ class IdentityAnalyzer:
                 alias_map=alias_map or {},
                 rejected_identities=rejected_identities or [],
                 scene_context=scene_context,
+                local_evidence=evidence_bundle,
                 retry_hint=attempt > 1,
             )
             response = self.llm.generate_json(prompt, strict=True, validator=self._validate_response)
@@ -73,12 +88,48 @@ class IdentityAnalyzer:
             "last_error": last_response.get("last_error") if isinstance(last_response, dict) else "",
         }
 
+    def _analyze_with_tools(
+        self,
+        scene: Dict,
+        alias_map: Dict[str, List[str]],
+        rejected_identities: List[str],
+        scene_context: str,
+        local_evidence: Dict,
+    ) -> Dict:
+        last_response = None
+        runtime = SceneToolRuntime()
+        for attempt in range(1, self.max_attempts + 1):
+            prompt = self._build_tool_prompt(
+                scene_text=scene.get("text", ""),
+                alias_map=alias_map,
+                rejected_identities=rejected_identities,
+                scene_context=scene_context,
+                local_evidence=local_evidence,
+                retry_hint=attempt > 1,
+            )
+            response = self.llm.generate_json(prompt, strict=True, validator=self._validate_tool_response)
+            last_response = response
+            if "error" not in response:
+                tool_result = runtime.apply_tool_calls(response.get("tool_calls") or [])
+                normalized = self._normalize_response(tool_result)
+                normalized["tool_runtime"] = tool_result.get("_tool_runtime", {})
+                return normalized
+        return {
+            "canonical_characters": [],
+            "character_mentions": [],
+            "alias_updates": [],
+            "rejected_identity_candidates": [],
+            "error": last_response.get("error") if isinstance(last_response, dict) else "unknown_error",
+            "last_error": last_response.get("last_error") if isinstance(last_response, dict) else "",
+        }
+
     def _build_prompt(
         self,
         scene_text: str,
         alias_map: Dict[str, List[str]],
         rejected_identities: List[str],
         scene_context: str = "",
+        local_evidence: Optional[Dict] = None,
         retry_hint: bool = False,
     ) -> str:
         retry_line = ""
@@ -95,6 +146,7 @@ class IdentityAnalyzer:
             }
             for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
         ]
+        local_evidence = normalize_evidence_bundle(local_evidence)
 
         return f"""
         Analyze ONLY the character identity layer for this scene.
@@ -103,6 +155,8 @@ class IdentityAnalyzer:
 
         Rules:
         - Use only evidence from the scene and provided context
+        - Treat local evidence as candidate evidence, not truth
+        - Prefer validating or rejecting provided candidates rather than inventing new ones from raw text
         - Do not invent facts, characters, or aliases
         - Preserve known characters from the alias map whenever possible
         - A clear proper name should never be rejected as a non-character
@@ -147,6 +201,69 @@ class IdentityAnalyzer:
 
         Current Alias Map:
         {alias_context}
+
+        Local Evidence Bundle:
+        {local_evidence}
+
+        Rejected Identities So Far:
+        {rejected_identities}
+
+        Recent Context:
+        {scene_context or "No additional context."}
+
+        Scene:
+        {scene_text}
+        """
+
+    def _build_tool_prompt(
+        self,
+        scene_text: str,
+        alias_map: Dict[str, List[str]],
+        rejected_identities: List[str],
+        scene_context: str = "",
+        local_evidence: Optional[Dict] = None,
+        retry_hint: bool = False,
+    ) -> str:
+        retry_line = ""
+        if retry_hint:
+            retry_line = "Your previous tool-call response was invalid. Return only valid JSON with tool_calls.\n"
+
+        alias_context = [
+            {"canonical_name": canonical_name, "aliases": aliases}
+            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+        ]
+        local_evidence = normalize_evidence_bundle(local_evidence)
+
+        return f"""
+        Analyze ONLY the identity layer using tool calls.
+
+        {retry_line}
+
+        Do not return a final schema object. Return:
+        {{
+          "tool_calls": [
+            {{"tool": "add_canonical_character", "arguments": {{"name": "...", "role": "", "is_new_character": false, "names_used": ["..."]}}}}
+          ]
+        }}
+
+        Allowed tools:
+        - add_canonical_character
+        - add_character_mention
+        - add_alias_update
+        - reject_identity_candidate
+
+        Rules:
+        - Use local evidence as candidate evidence
+        - Use filtered candidate_characters and candidate_aliases as your primary working set
+        - Validate, refine, or reject candidates
+        - Never turn pronouns into aliases
+        - Never reject clear proper names as non-characters
+
+        Current Alias Map:
+        {alias_context}
+
+        Local Evidence Bundle:
+        {local_evidence}
 
         Rejected Identities So Far:
         {rejected_identities}
@@ -283,3 +400,6 @@ class IdentityAnalyzer:
             and isinstance(response.get("alias_updates"), list)
             and isinstance(response.get("rejected_identity_candidates"), list)
         )
+
+    def _validate_tool_response(self, response: Dict) -> bool:
+        return isinstance(response, dict) and isinstance(response.get("tool_calls"), list)

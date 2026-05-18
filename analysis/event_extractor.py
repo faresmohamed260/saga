@@ -11,7 +11,7 @@ class EventExtractor:
     VALID_TYPES = {"action", "interaction", "movement", "discovery"}
 
     def __init__(self, llm_client: Optional[LLMClient] = None, max_attempts: int = 2):
-        self.llm = llm_client or LLMClient(mode="deepseek")
+        self.llm = llm_client or LLMClient(mode=LLMClient.MODE_GPT_OSS)
         self.max_attempts = max_attempts
 
     def extract(self, scene: Dict) -> Dict:
