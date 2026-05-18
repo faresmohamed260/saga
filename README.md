@@ -115,12 +115,51 @@ If you want the easiest operator path on Windows, use the batch launchers in:
 
 - [scripts/windows](/B:/Documents/PyCharm/graduationProject/scripts/windows)
 
+## Batch Entrypoints
+
+These are the main Windows entrypoints for running the system without typing the
+full Python commands each time. They are not hard-coded to one book, one task,
+or one prompt. The wrappers pass through the arguments you give them, so you
+choose the books, the corpus, the generation prompt, and the task each time you
+run them.
+
+| Batch file | Purpose | Example |
+| --- | --- | --- |
+| [run_dashboard.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_dashboard.bat) | Start the Streamlit dashboard | `scripts\windows\run_dashboard.bat` |
+| [run_saga_tools.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_saga_tools.bat) | Run any `saga_tools.py` command | `scripts\windows\run_saga_tools.bat inspect-corpus --series-id acotar` |
+| [run_task_menu.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_task_menu.bat) | Interactive menu for choosing a task and entering custom arguments | `scripts\windows\run_task_menu.bat` |
+| [run_encode_store.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_encode_store.bat) | Encode and persist books into Neo4j | `scripts\windows\run_encode_store.bat --book hp1.epub --series-id harry-potter --series-title "Harry Potter" --book-index-base 1` |
+| [run_rebuild_corpus.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_rebuild_corpus.bat) | Repair and rebuild a stored corpus | `scripts\windows\run_rebuild_corpus.bat --series-id acotar --output-dir analysis_outputs\corpus_hardening\acotar_rebuild` |
+| [run_generate_sequel_neo4j.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_generate_sequel_neo4j.bat) | Generate narrative output from persisted Neo4j canon | `scripts\windows\run_generate_sequel_neo4j.bat --series-id acotar --prompt "Continue from A Court of Silver Flames." --output-dir analysis_outputs\generated_narratives\acotar_book6` |
+
+### How The Batch Files Work
+
+- `run_saga_tools.bat` is the most flexible wrapper. It accepts any
+  `saga_tools.py` subcommand plus whatever arguments you want.
+- `run_encode_store.bat`, `run_rebuild_corpus.bat`, and
+  `run_generate_sequel_neo4j.bat` are convenience wrappers that preselect the
+  subcommand, but still pass through your custom arguments.
+- `run_task_menu.bat` is the easiest option if you want a simple interactive
+  prompt instead of writing the command by hand.
+
+Examples of flexible usage:
+
+```powershell
+scripts\windows\run_saga_tools.bat encode-store --book "D:\Books\Ebooks\Sarah J. Maas\A Court of Mist and Fury.epub" --series-id acotar --series-title "A Court of Thorns and Roses" --book-index-base 2
+
+scripts\windows\run_saga_tools.bat generate-sequel-neo4j --series-id acotar --chapters 30 --primary-pov "Elain Archeron" --prompt "Generate a post-canon continuation with political instability and Koschei rising."
+
+scripts\windows\run_saga_tools.bat compare-generation-models --series-id acotar --prompt "Compare output quality for an Elain-focused sequel." --output-dir analysis_outputs\generated_narratives\acotar_compare
+```
+
 Available launchers:
 
 - [run_dashboard.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_dashboard.bat)
   Starts the Streamlit dashboard.
 - [run_saga_tools.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_saga_tools.bat)
   Generic wrapper for any `saga_tools.py` command.
+- [run_task_menu.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_task_menu.bat)
+  Interactive chooser for common tasks plus custom arguments.
 - [run_encode_store.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_encode_store.bat)
   Shortcut for `saga_tools.py encode-store`.
 - [run_rebuild_corpus.bat](/B:/Documents/PyCharm/graduationProject/scripts/windows/run_rebuild_corpus.bat)
