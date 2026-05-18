@@ -59,4 +59,4 @@ The dashboard export produces a single JSON document representing the current S.
 
 - The export intentionally excludes live service objects such as in-memory query/index instances.
 - The export is suitable for saving, sharing, and downstream automation.
-- `target_scene_words = 0` means one full chapter per scene.
+- `target_scene_words = 0` means one full chapter per scene and is the default mode.

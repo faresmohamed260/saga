@@ -19,6 +19,7 @@ The dashboard is no longer just a review tool. It is the primary operational sur
 - Reorder books
 - Select scene analysis model
 - Select identity model
+- Select analysis mode
 - Choose target scene size in words
 - Run pipeline
 - Reset results
@@ -40,7 +41,7 @@ The dashboard is no longer just a review tool. It is the primary operational sur
 - `Chapters`
   Chapter extraction output
 - `Scenes`
-  Per-scene analysis output
+  Per-scene analysis output, local evidence, compare-mode differences, and tool-runtime telemetry
 - `Entity Registry`
   Tracked entities and mention counts
 - `State Transitions`
@@ -50,7 +51,7 @@ The dashboard is no longer just a review tool. It is the primary operational sur
 - `Timeline`
   Ordered event timeline
 - `Character Timelines`
-  Per-character event grouping
+  Per-character event grouping plus character profile inspection
 - `Alias Map`
   Canonicals and aliases
 - `Identity Decisions`
@@ -65,3 +66,10 @@ The dashboard is no longer just a review tool. It is the primary operational sur
 ## Export
 
 Use the `Export JSON Contract` button in the sidebar after the pipeline run completes. The file is meant to be stable enough for handoff to downstream tools and integrations.
+
+## Review Workflow
+
+- Start on `Status` to check run health, warnings, compare-mode divergence, and tool-runtime filtering.
+- Use `Scenes` for flagged-scene review and local-evidence inspection.
+- Use `Character Timelines` for character profiles, alias inspection, and state/history review.
+- Use `Alias Map` and `Identity Decisions` to inspect merge/rejection quality.

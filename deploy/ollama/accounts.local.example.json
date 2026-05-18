@@ -1,0 +1,18 @@
+{
+  "active_index": 0,
+  "accounts": [
+    {
+      "label": "primary",
+      "api_key": "replace-me"
+    },
+    {
+      "label": "backup-1",
+      "api_key": "replace-me"
+    },
+    {
+      "label": "interactive-fallback",
+      "email": "second-account@example.com",
+      "password": "replace-me"
+    }
+  ]
+}

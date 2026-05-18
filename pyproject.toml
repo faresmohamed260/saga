@@ -25,12 +25,21 @@ dependencies = [
 dev = [
   "pytest",
 ]
+nlp = [
+  "spacy",
+  "spacy-transformers",
+  "spacy-experimental",
+]
+graph = [
+  "neo4j",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 namespaces = true
 include = [
   "analysis",
+  "core",
   "entities",
   "infrastructure",
   "prompts",

@@ -1,0 +1,13 @@
+{
+  "public_hostname": "cloud-comfyui.faresuniform.uk",
+  "local_public_hostname": "docker-comfyui.faresuniform.uk",
+  "listen_host": "127.0.0.1",
+  "listen_port": 8031,
+  "local_ui_url": "http://127.0.0.1:8188",
+  "default_backend": "cloud",
+  "app_name": "graduation-comfyui",
+  "monthly_credit_usd": 30.0,
+  "warm_ttl_seconds": 21600,
+  "status_refresh_seconds": 900,
+  "cloudflared_config": "B:\\Documents\\PyCharm\\jarvis\\infra\\cloudflared\\jarvis-phone.yml"
+}

@@ -36,7 +36,7 @@ class SeriesProcessor:
         epub_processor: Optional[EPUBProcessor] = None,
         pdf_processor: Optional[PDFProcessor] = None
     ):
-        shared_llm = llm_client or LLMClient(mode="deepseek")
+        shared_llm = llm_client or LLMClient(mode=LLMClient.MODE_GPT_OSS)
         self.epub_processor = epub_processor or EPUBProcessor(llm_client=shared_llm)
         self.pdf_processor = pdf_processor or PDFProcessor(llm_client=shared_llm)
 

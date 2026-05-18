@@ -1,4 +1,4 @@
-"""Searchable index for scenes and downstream structured story outputs."""
+"""Searchable index for scenes and durable narrative artifacts."""
 
 from typing import Dict, List, Optional
 
@@ -20,19 +20,45 @@ class StoryIndexService:
     def build(
         self,
         *,
+        artifact_bundle: Optional[Dict] = None,
         scene_analyses: Optional[List[Dict]] = None,
         timeline: Optional[List[Dict]] = None,
+        event_ledger: Optional[List[Dict]] = None,
         character_timelines: Optional[List[Dict]] = None,
+        character_profiles: Optional[List[Dict]] = None,
+        relationship_profiles: Optional[List[Dict]] = None,
+        entity_profiles: Optional[List[Dict]] = None,
+        canon_snapshots: Optional[List[Dict]] = None,
         entity_registry: Optional[List[Dict]] = None,
         canon_snapshot: Optional[List[Dict]] = None,
         state_result: Optional[Dict] = None,
         identity_result: Optional[Dict] = None,
         causal_graph_result: Optional[Dict] = None,
     ) -> Dict:
+        artifact_bundle = artifact_bundle or {}
+        raw_outputs = artifact_bundle.get("raw_outputs", {}) if isinstance(artifact_bundle, dict) else {}
+        scene_analyses = scene_analyses if scene_analyses is not None else raw_outputs.get("resolved_scene_analyses")
+        timeline = timeline if timeline is not None else raw_outputs.get("timeline")
+        event_ledger = event_ledger if event_ledger is not None else artifact_bundle.get("event_ledger")
+        character_timelines = character_timelines if character_timelines is not None else raw_outputs.get("character_timelines")
+        character_profiles = character_profiles if character_profiles is not None else artifact_bundle.get("character_profiles")
+        relationship_profiles = relationship_profiles if relationship_profiles is not None else artifact_bundle.get("relationship_profiles")
+        entity_profiles = entity_profiles if entity_profiles is not None else artifact_bundle.get("entity_profiles")
+        canon_snapshots = canon_snapshots if canon_snapshots is not None else artifact_bundle.get("canon_snapshots")
+        entity_registry = entity_registry if entity_registry is not None else raw_outputs.get("entity_registry")
+        state_result = state_result if state_result is not None else raw_outputs.get("state_result")
+        identity_result = identity_result if identity_result is not None else raw_outputs.get("identity_result")
+        causal_graph_result = causal_graph_result if causal_graph_result is not None else raw_outputs.get("causal_graph_result")
+
         documents = []
         documents.extend(self._scene_documents(scene_analyses or []))
         documents.extend(self._timeline_documents(timeline or []))
+        documents.extend(self._event_ledger_documents(event_ledger or []))
         documents.extend(self._character_timeline_documents(character_timelines or []))
+        documents.extend(self._character_profile_documents(character_profiles or []))
+        documents.extend(self._relationship_profile_documents(relationship_profiles or []))
+        documents.extend(self._entity_profile_documents(entity_profiles or []))
+        documents.extend(self._canon_snapshot_documents(canon_snapshots or []))
         documents.extend(self._entity_registry_documents(entity_registry or []))
         documents.extend(self._canon_snapshot_documents(canon_snapshot or []))
         documents.extend(self._state_documents(state_result or {}))
@@ -137,6 +163,125 @@ class StoryIndexService:
             })
         return documents
 
+    def _event_ledger_documents(self, event_ledger: List[Dict]) -> List[Dict]:
+        return [
+            {
+                "item_type": "event_ledger",
+                "summary": item.get("title", ""),
+                "text": item.get("summary", ""),
+                "search_text": " ".join(filter(None, [
+                    item.get("title", ""),
+                    item.get("summary", ""),
+                    " ".join(item.get("participants", [])),
+                    item.get("location", ""),
+                    " ".join(item.get("tags", [])),
+                ])),
+                "metadata": {
+                    "ledger_event_id": item.get("ledger_event_id"),
+                    "time_index": item.get("time_index"),
+                    "book_index": item.get("book_index"),
+                    "chapter_index": item.get("chapter_index"),
+                    "scene_index": item.get("scene_index"),
+                    "participants": item.get("participants", []),
+                    "tags": item.get("tags", []),
+                },
+            }
+            for item in event_ledger
+        ]
+
+    def _character_profile_documents(self, character_profiles: List[Dict]) -> List[Dict]:
+        documents = []
+        for item in character_profiles:
+            searchable_bits = [
+                item.get("canonical_name", ""),
+                " ".join(item.get("aliases", [])),
+                item.get("core_description", ""),
+                " ".join(item.get("traits", [])),
+                " ".join(event.get("summary", "") for event in item.get("important_history", [])),
+                " ".join(f"{key} {value}" for key, value in (item.get("state_at_latest") or {}).items()),
+            ]
+            documents.append({
+                "item_type": "character_profile",
+                "summary": item.get("canonical_name", ""),
+                "text": item.get("core_description", ""),
+                "search_text": " ".join(filter(None, searchable_bits)),
+                "metadata": {
+                    "character_id": item.get("character_id"),
+                    "canonical_name": item.get("canonical_name"),
+                    "aliases": item.get("aliases", []),
+                    "event_count": item.get("event_count", 0),
+                },
+            })
+        return documents
+
+    def _relationship_profile_documents(self, relationship_profiles: List[Dict]) -> List[Dict]:
+        documents = []
+        for item in relationship_profiles:
+            history = " ".join(item.get("shared_history", []))
+            changes = " ".join(
+                " ".join(
+                    filter(
+                        None,
+                        [
+                            row.get("relationship", ""),
+                            row.get("change", ""),
+                            row.get("evidence", ""),
+                        ],
+                    )
+                )
+                for row in item.get("change_log", [])
+            )
+            documents.append({
+                "item_type": "relationship_profile",
+                "summary": f"{item.get('source_character', '')} / {item.get('target_character', '')}",
+                "text": history or changes,
+                "search_text": " ".join(filter(None, [
+                    item.get("relationship_id", ""),
+                    item.get("source_character", ""),
+                    item.get("target_character", ""),
+                    item.get("relationship_type", ""),
+                    item.get("baseline_dynamic", ""),
+                    item.get("trust_level", ""),
+                    item.get("conflict_level", ""),
+                    item.get("romantic_signal", ""),
+                    history,
+                    changes,
+                ])),
+                "metadata": {
+                    "relationship_id": item.get("relationship_id"),
+                    "source_character": item.get("source_character"),
+                    "target_character": item.get("target_character"),
+                    "relationship_type": item.get("relationship_type"),
+                },
+            })
+        return documents
+
+    def _entity_profile_documents(self, entity_profiles: List[Dict]) -> List[Dict]:
+        documents = []
+        for item in entity_profiles:
+            history = " ".join(change.get("evidence", "") for change in item.get("status_history", []))
+            documents.append({
+                "item_type": "entity_profile",
+                "summary": f"{item.get('name', '')} ({item.get('entity_type', '')})",
+                "text": item.get("description", ""),
+                "search_text": " ".join(filter(None, [
+                    item.get("entity_id", ""),
+                    item.get("name", ""),
+                    item.get("entity_type", ""),
+                    item.get("description", ""),
+                    " ".join(item.get("rules_or_constraints", [])),
+                    " ".join(item.get("connected_characters", [])),
+                    history,
+                ])),
+                "metadata": {
+                    "entity_id": item.get("entity_id"),
+                    "name": item.get("name"),
+                    "entity_type": item.get("entity_type"),
+                    "connected_characters": item.get("connected_characters", []),
+                },
+            })
+        return documents
+
     def _entity_registry_documents(self, entity_registry: List[Dict]) -> List[Dict]:
         documents = []
         for item in entity_registry:
@@ -171,17 +316,27 @@ class StoryIndexService:
         documents = []
         for item in canon_snapshot:
             attributes = item.get("attributes", {})
+            if not attributes and item.get("character_states") is not None:
+                attributes = {
+                    "character_states": len(item.get("character_states") or []),
+                    "relationship_states": len(item.get("relationship_states") or []),
+                    "entity_states": len(item.get("entity_states") or []),
+                }
             attribute_text = " ".join(f"{key} {value}" for key, value in attributes.items())
             documents.append({
                 "item_type": "canon_snapshot",
-                "summary": f"{item.get('entity_name', '')} snapshot",
+                "summary": f"{item.get('entity_name', '') or item.get('anchor_event_id', '')} snapshot",
                 "text": attribute_text,
                 "search_text": " ".join(filter(None, [
+                    item.get("snapshot_id", ""),
                     item.get("entity_name", ""),
                     item.get("entity_type", ""),
+                    item.get("anchor_event_id", ""),
                     attribute_text,
                 ])),
                 "metadata": {
+                    "snapshot_id": item.get("snapshot_id"),
+                    "anchor_event_id": item.get("anchor_event_id"),
                     "entity_name": item.get("entity_name"),
                     "entity_type": item.get("entity_type"),
                     "attributes": attributes,

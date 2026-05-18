@@ -27,3 +27,32 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Modal ComfyUI local credentials/state
+modal_comfyui/modal_tokens.json
+modal_comfyui/pool_state.json
+modal_comfyui/outputs/
+modal_comfyui/gateway.log
+modal_comfyui/logs/
+modal_comfyui/*.log
+modal_comfyui/*.lock
+modal_comfyui/__pycache__/
+
+# Local Neo4j deployment state
+deploy/neo4j/.env
+deploy/neo4j/import/*
+!deploy/neo4j/import/.gitkeep
+deploy/neo4j/plugins/*
+!deploy/neo4j/plugins/.gitkeep
+
+# Local Ollama account rotation credentials
+deploy/ollama/accounts.local.json
+
+# Local hybrid retrieval vector indices
+analysis_outputs/vector_indices/
+
+# Local runtime artifacts and generated outputs
+analysis_outputs/
+
+# Local reference repo only
+external/Narraverse/

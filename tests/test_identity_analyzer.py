@@ -69,3 +69,27 @@ def test_identity_analyzer_normalizes_and_retries():
     assert any(item["name"] == "Tomas Mandray" for item in result["canonical_characters"])
     assert result["character_mentions"][0]["canonical_name"] == "Feyre"
     assert result["rejected_identity_candidates"] == ["doe"]
+
+
+def test_identity_analyzer_tool_mode_builds_identity_fields():
+    tool_response = {
+        "tool_calls": [
+            {"tool": "add_canonical_character", "arguments": {"name": "Feyre", "role": "huntress", "is_new_character": False, "names_used": ["Feyre", "the huntress"]}},
+            {"tool": "add_canonical_character", "arguments": {"name": "Tomas Mandray", "role": "", "is_new_character": True, "names_used": ["Tomas Mandray"]}},
+            {"tool": "add_character_mention", "arguments": {"mention_text": "the huntress", "mention_type": "title", "canonical_name": "Feyre", "is_consequential_character": True}},
+            {"tool": "add_alias_update", "arguments": {"alias": "the huntress", "canonical_name": "Feyre", "action": "map_alias", "reasoning": "Scene support is explicit."}},
+        ]
+    }
+
+    stub = StubLLMClient([tool_response])
+    analyzer = IdentityAnalyzer(llm_client=stub, max_attempts=1)
+    result = analyzer.analyze(
+        build_sample_scene(),
+        local_evidence={"candidate_characters": [{"name": "Tomas Mandray"}]},
+        analysis_mode="tool",
+    )
+
+    assert any(item["name"] == "Tomas Mandray" for item in result["canonical_characters"])
+    assert result["character_mentions"][0]["canonical_name"] == "Feyre"
+    assert result["alias_updates"][0]["canonical_name"] == "Feyre"
+    assert result["tool_runtime"]["tool_calls_seen"] >= 1

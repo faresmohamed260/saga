@@ -2,6 +2,8 @@
 
 from typing import Dict, List, Optional
 
+from analysis.evidence_schema import normalize_evidence_bundle
+from analysis.tool_runtime import SceneToolRuntime
 from infrastructure.llm_client import LLMClient
 
 
@@ -57,8 +59,20 @@ class SceneAnalyzer:
         alias_map: Optional[Dict[str, List[str]]] = None,
         rejected_identities: Optional[List[str]] = None,
         scene_context: str = "",
+        local_evidence: Optional[Dict] = None,
+        analysis_mode: str = "structured",
     ) -> Dict:
         last_response = None
+        evidence_bundle = normalize_evidence_bundle(local_evidence)
+
+        if analysis_mode == "tool":
+            return self._analyze_with_tools(
+                scene=scene,
+                alias_map=alias_map or {},
+                rejected_identities=rejected_identities or [],
+                scene_context=scene_context,
+                local_evidence=evidence_bundle,
+            )
 
         for attempt in range(1, self.max_attempts + 1):
             prompt = self._build_prompt(
@@ -66,6 +80,7 @@ class SceneAnalyzer:
                 alias_map=alias_map or {},
                 rejected_identities=rejected_identities or [],
                 scene_context=scene_context,
+                local_evidence=evidence_bundle,
                 retry_hint=attempt > 1,
             )
             response = self.llm.generate_json(prompt, strict=True, validator=self._validate_response)
@@ -73,6 +88,63 @@ class SceneAnalyzer:
 
             if "error" not in response:
                 normalized = self._normalize_response(response)
+                normalized.update({
+                    "book_index": scene.get("book_index"),
+                    "chapter_index": scene.get("chapter_index"),
+                    "scene_index": scene.get("scene_index"),
+                    "length": scene.get("length"),
+                    "text": scene.get("text", ""),
+                })
+                return normalized
+
+        return {
+            "book_index": scene.get("book_index"),
+            "chapter_index": scene.get("chapter_index"),
+            "scene_index": scene.get("scene_index"),
+            "length": scene.get("length"),
+            "text": scene.get("text", ""),
+            "scene_summary": "",
+            "events": [],
+            "entities_present": [],
+            "entity_descriptions": [],
+            "state_changes": [],
+            "relationship_changes": [],
+            "location": {},
+            "time_signals": [],
+            "canonical_characters": [],
+            "character_mentions": [],
+            "alias_updates": [],
+            "rejected_identity_candidates": [],
+            "error": last_response.get("error") if isinstance(last_response, dict) else "unknown_error",
+            "last_error": last_response.get("last_error") if isinstance(last_response, dict) else "",
+        }
+
+    def _analyze_with_tools(
+        self,
+        scene: Dict,
+        alias_map: Dict[str, List[str]],
+        rejected_identities: List[str],
+        scene_context: str,
+        local_evidence: Dict,
+    ) -> Dict:
+        last_response = None
+        runtime = SceneToolRuntime()
+
+        for attempt in range(1, self.max_attempts + 1):
+            prompt = self._build_tool_prompt(
+                scene_text=scene.get("text", ""),
+                alias_map=alias_map,
+                rejected_identities=rejected_identities,
+                scene_context=scene_context,
+                local_evidence=local_evidence,
+                retry_hint=attempt > 1,
+            )
+            response = self.llm.generate_json(prompt, strict=True, validator=self._validate_tool_response)
+            last_response = response
+            if "error" not in response:
+                tool_result = runtime.apply_tool_calls(response.get("tool_calls") or [])
+                normalized = self._normalize_response(tool_result)
+                normalized["tool_runtime"] = tool_result.get("_tool_runtime", {})
                 normalized.update({
                     "book_index": scene.get("book_index"),
                     "chapter_index": scene.get("chapter_index"),
@@ -113,6 +185,7 @@ class SceneAnalyzer:
         alias_map: Dict[str, List[str]],
         rejected_identities: List[str],
         scene_context: str = "",
+        local_evidence: Optional[Dict] = None,
         retry_hint: bool = False,
     ) -> str:
         retry_line = ""
@@ -134,6 +207,7 @@ class SceneAnalyzer:
             for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
             if canonical_name or aliases
         ]
+        local_evidence = normalize_evidence_bundle(local_evidence)
 
         return f"""
         Analyze this story scene and return a compact structured JSON payload.
@@ -142,6 +216,8 @@ class SceneAnalyzer:
 
         Rules:
         - Use only evidence from the scene
+        - Treat local evidence as candidate evidence, not ground truth
+        - Prefer validating, rejecting, or refining the provided candidates over inventing new ones from scratch
         - Keep output concise and grounded
         - Do not invent details
         - Treat the current alias map as ground truth memory for already-known characters
@@ -266,11 +342,92 @@ class SceneAnalyzer:
         Current Alias Map:
         {alias_context}
 
+        Local Evidence Bundle:
+        {local_evidence}
+
         Rejected Identities So Far:
         {rejected_identities}
 
         Known Canonical Characters:
         {known_character_roster}
+
+        Recent Context:
+        {scene_context or "No additional context."}
+
+        Scene:
+        {scene_text}
+        """
+
+    def _build_tool_prompt(
+        self,
+        scene_text: str,
+        alias_map: Dict[str, List[str]],
+        rejected_identities: List[str],
+        scene_context: str = "",
+        local_evidence: Optional[Dict] = None,
+        retry_hint: bool = False,
+    ) -> str:
+        retry_line = ""
+        if retry_hint:
+            retry_line = "Your previous tool-call response was invalid. Return only valid JSON with tool_calls.\n"
+
+        local_evidence = normalize_evidence_bundle(local_evidence)
+        alias_context = [
+            {"canonical_name": canonical_name, "aliases": aliases}
+            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+        ]
+
+        return f"""
+        You are filling a scene-analysis record using tool calls only.
+
+        {retry_line}
+
+        Never return the final scene JSON directly.
+        Return only:
+        {{
+          "tool_calls": [
+            {{"tool": "set_scene_summary", "arguments": {{"summary": "..."}}}},
+            {{"tool": "add_canonical_character", "arguments": {{"name": "...", "role": "", "is_new_character": false, "names_used": ["..."]}}}}
+          ]
+        }}
+
+        Use these tools only:
+        - set_scene_summary
+        - add_canonical_character
+        - add_character_mention
+        - add_event
+        - add_entity
+        - add_entity_description
+        - add_state_change
+        - add_relationship_change
+        - set_location
+        - add_time_signal
+        - add_alias_update
+        - reject_identity_candidate
+
+        Rules:
+        - Use local evidence as candidates to validate or reject
+        - Do not invent unsupported entities or aliases
+        - Use filtered candidate_characters and candidate_entities as your default working set
+        - If a candidate is weak or wrong, ignore or reject it rather than replacing it with speculative new items
+        - Use add_event, add_state_change, and add_relationship_change to populate those sections explicitly
+        - If the scene contains consequential actions, discoveries, state transitions, or relationship shifts, emit those through tools rather than leaving them implicit in the summary
+        - Prefer a small number of strong, well-supported tool calls over broad speculative coverage
+        - Only emit add_state_change when the scene makes a new state true
+        - Only emit add_relationship_change when the scene establishes a meaningful shift rather than mere co-presence
+        - Events must use canonical character names, not raw mention text
+        - Pronouns may appear in raw evidence but must never become aliases
+        - Generic labels like man, woman, boy, girl, person, figure, voice should not be aliases
+        - Only reject candidates that are clearly noise or non-characters
+
+        Current Alias Map:
+        {alias_context}
+
+        Rejected Identities:
+        {rejected_identities}
+
+        Local Evidence Bundle:
+        {local_evidence}
 
         Recent Context:
         {scene_context or "No additional context."}
@@ -614,3 +771,6 @@ class SceneAnalyzer:
             and isinstance(response.get("alias_updates"), list)
             and isinstance(response.get("rejected_identity_candidates"), list)
         )
+
+    def _validate_tool_response(self, response: Dict) -> bool:
+        return isinstance(response, dict) and isinstance(response.get("tool_calls"), list)

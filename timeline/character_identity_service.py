@@ -42,7 +42,7 @@ class CharacterIdentityService:
         merge_confidence_threshold: float = 0.75,
         max_attempts: int = 2,
     ):
-        self.llm = llm_client or LLMClient(mode="deepseek")
+        self.llm = llm_client or LLMClient(mode=LLMClient.MODE_GPT_OSS)
         self.top_k = top_k
         self.min_similarity = min_similarity
         self.weak_event_threshold = weak_event_threshold
