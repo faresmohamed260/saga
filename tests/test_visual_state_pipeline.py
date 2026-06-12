@@ -44,7 +44,27 @@ def test_visual_state_analyzer_normalizes_prompt_families():
                 "outfit": "worn cloak and gloves",
                 "visible_condition": "cold and hungry",
                 "body_language": "trembling hands",
-                "image_prompt": "Feyre in worn hunting clothes, cold winter forest",
+                "persistent_visual_profile": {
+                    "gender_presentation": "young woman",
+                    "species_or_race": "High Fae",
+                    "role_or_archetype": "huntress",
+                    "presence_description": "quiet, wary presence",
+                    "height_description": "average height",
+                    "body_type": "lean, underfed build",
+                    "skin_description": "pale winter-chapped skin",
+                    "hair_description": "long brown hair",
+                    "eye_description": "gray-blue eyes",
+                    "facial_structure": "fine-boned face",
+                    "age_appearance": "late-teen appearance",
+                    "expression": "neutral expression",
+                    "clothing_description": "worn cloak and simple hunting clothes",
+                    "footwear_description": "weathered boots",
+                    "accessories_description": "gloves",
+                    "distinguishing_marks": "",
+                    "fantasy_features": "",
+                    "equipment_or_signature_items": "bow and ash arrow",
+                    "lore_terms": ["High Fae"],
+                },
                 "image_edit_prompt": "",
                 "source_evidence": "worn cloak and trembling hands",
                 "confidence": "high",
@@ -90,6 +110,8 @@ def test_visual_state_analyzer_normalizes_prompt_families():
     result = analyzer.analyze({"book_index": 1, "chapter_index": 1, "scene_index": 1, "text": "Feyre hunts."})
 
     assert result["characters"][0]["entity_name"] == "Feyre"
+    assert "three-view layout" in result["characters"][0]["persistent_visual_prompt"]
+    assert "fantasy humanoid" in result["characters"][0]["persistent_visual_prompt"]
     assert result["objects"][0]["entity_type"] == "object"
     assert result["locations"][0]["entity_type"] == "location"
     assert result["scene_compositions"][0]["scene_prompt"].startswith("Feyre aims")
@@ -197,7 +219,7 @@ def test_encoder_builds_native_visual_prompt_sets():
                     {
                         "entity_name": "Feyre",
                         "visual_role": "initial_character_description",
-                        "image_prompt": "Feyre in worn hunting clothes",
+                        "persistent_visual_prompt": "studio photograph, three-view layout,\nfront view full body,\nfantasy humanoid huntress,\nlong brown hair,\ngray-blue eyes,",
                         "source_evidence": "worn clothes",
                         "confidence": "high",
                     },
@@ -226,3 +248,65 @@ def test_encoder_builds_native_visual_prompt_sets():
     assert len(prompt_sets["locations"]) == 1
     assert len(prompt_sets["scene_compositions"]) == 1
     assert prompt_sets["diagnostics"]["missing_visual_evidence"] == ["doe"]
+
+
+def test_encoder_keeps_strongest_initial_character_prompt_per_name():
+    service = EncoderPersistenceService()
+    scenes = [
+        {
+            "book_index": 1,
+            "chapter_index": 1,
+            "scene_index": 1,
+            "visual_analysis": {
+                "characters": [
+                    {
+                        "entity_name": "Feyre",
+                        "visual_role": "initial_character_description",
+                        "persistent_visual_prompt": "studio photograph, three-view layout,\nfemale human hunter,",
+                        "persistent_visual_profile": {"gender_presentation": "female", "species_or_race": "human"},
+                        "source_evidence": "basic intro",
+                        "confidence": "medium",
+                    }
+                ],
+                "objects": [],
+                "creatures": [],
+                "locations": [],
+                "scene_compositions": [],
+                "diagnostics": {},
+            },
+        },
+        {
+            "book_index": 1,
+            "chapter_index": 2,
+            "scene_index": 1,
+            "visual_analysis": {
+                "characters": [
+                    {
+                        "entity_name": "Feyre",
+                        "visual_role": "initial_character_description",
+                        "persistent_visual_prompt": "studio photograph, three-view layout,\nfemale human hunter,\nslender build,\nlong brown hair,\ngray-blue eyes,\nworn cloak and gloves,",
+                        "persistent_visual_profile": {
+                            "gender_presentation": "female",
+                            "species_or_race": "human",
+                            "body_type": "slender build",
+                            "hair_description": "long brown hair",
+                            "eye_description": "gray-blue eyes",
+                            "clothing_description": "worn cloak and gloves",
+                        },
+                        "source_evidence": "richer intro",
+                        "confidence": "high",
+                    }
+                ],
+                "objects": [],
+                "creatures": [],
+                "locations": [],
+                "scene_compositions": [],
+                "diagnostics": {},
+            },
+        },
+    ]
+
+    prompt_sets = service._build_visual_prompt_sets(scenes)
+
+    assert len(prompt_sets["initial_characters"]) == 1
+    assert "long brown hair" in prompt_sets["initial_characters"][0]["positive_prompt"]

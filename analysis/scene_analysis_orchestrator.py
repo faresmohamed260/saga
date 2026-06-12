@@ -299,6 +299,22 @@ class SceneAnalysisOrchestrator:
                 }
             )
 
+        def profile_baseline(row: Dict[str, Any]) -> str:
+            profile = row.get("persistent_visual_profile") or {}
+            parts = [
+                profile.get("presence_description"),
+                profile.get("height_description"),
+                profile.get("body_type"),
+                profile.get("skin_description"),
+                profile.get("hair_description"),
+                profile.get("eye_description"),
+                profile.get("facial_structure"),
+                profile.get("age_appearance"),
+                profile.get("distinguishing_marks"),
+                profile.get("fantasy_features"),
+            ]
+            return "; ".join(str(part).strip() for part in parts if str(part or "").strip())
+
         for row in visual_result.get("characters") or []:
             if not isinstance(row, dict):
                 continue
@@ -306,8 +322,9 @@ class SceneAnalysisOrchestrator:
             if not name:
                 continue
             add_entity(name, "character")
-            if row.get("physical_description"):
-                add_description(name, "character", row.get("physical_description"), "stable_trait" if row.get("visual_role") == "initial_character_description" else "appearance_note")
+            baseline_text = row.get("physical_description") or (profile_baseline(row) if row.get("visual_role") == "initial_character_description" else "")
+            if baseline_text:
+                add_description(name, "character", baseline_text, "stable_trait" if row.get("visual_role") == "initial_character_description" else "appearance_note")
             if row.get("outfit"):
                 add_description(name, "character", row.get("outfit"), "appearance_note")
             if row.get("visible_condition"):

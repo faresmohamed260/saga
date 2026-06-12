@@ -1059,33 +1059,52 @@ class EncoderPersistenceService:
                 "scene_index": scene.get("scene_index"),
             }
 
+        def prompt_specificity(row: Dict[str, Any], prompt: str) -> int:
+            details = row.get("persistent_visual_profile") or {}
+            score = sum(1 for value in details.values() if value not in ("", [], {}, None))
+            score += min(4, len(str(prompt or "").split()) // 10)
+            return score
+
+        best_initial_by_name: Dict[str, Dict[str, Any]] = {}
+
         def add_prompt(bucket: str, scene: Dict[str, Any], row: Dict[str, Any], prompt_type: str) -> None:
-            prompt = str(row.get("image_prompt") or row.get("image_edit_prompt") or row.get("scene_prompt") or "").strip()
+            prompt = str(
+                row.get("persistent_visual_prompt")
+                or row.get("image_prompt")
+                or row.get("image_edit_prompt")
+                or row.get("scene_prompt")
+                or ""
+            ).strip()
             if not prompt:
                 return
             entity_name = str(row.get("entity_name") or row.get("beat_title") or "").strip()
             key = (entity_name.lower(), prompt_type, prompt.lower())
+            payload = {
+                **provenance(scene),
+                "prompt_type": prompt_type,
+                "entity_name": entity_name,
+                "entity_type": row.get("entity_type") or ("character" if bucket in {"initial_characters", "character_changes"} else ""),
+                "positive_prompt": prompt,
+                "image_edit_prompt": str(row.get("image_edit_prompt") or "").strip(),
+                "source_evidence": str(row.get("source_evidence") or "").strip(),
+                "confidence": str(row.get("confidence") or "medium").strip(),
+                "details": {
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"image_prompt", "image_edit_prompt", "scene_prompt", "source_evidence"}
+                    and value not in (None, "", [], {})
+                },
+            }
+            if bucket == "initial_characters":
+                name_key = entity_name.lower()
+                existing = best_initial_by_name.get(name_key)
+                if existing is None or prompt_specificity(row, prompt) > prompt_specificity(existing.get("details") or {}, existing.get("positive_prompt") or ""):
+                    best_initial_by_name[name_key] = payload
+                return
             if key in seen[bucket]:
                 return
             seen[bucket].add(key)
-            sets[bucket].append(
-                {
-                    **provenance(scene),
-                    "prompt_type": prompt_type,
-                    "entity_name": entity_name,
-                    "entity_type": row.get("entity_type") or ("character" if bucket in {"initial_characters", "character_changes"} else ""),
-                    "positive_prompt": prompt,
-                    "image_edit_prompt": str(row.get("image_edit_prompt") or "").strip(),
-                    "source_evidence": str(row.get("source_evidence") or "").strip(),
-                    "confidence": str(row.get("confidence") or "medium").strip(),
-                    "details": {
-                        key: value
-                        for key, value in row.items()
-                        if key not in {"image_prompt", "image_edit_prompt", "scene_prompt", "source_evidence"}
-                        and value not in (None, "", [], {})
-                    },
-                }
-            )
+            sets[bucket].append(payload)
 
         for scene in scene_analyses or []:
             visual = scene.get("visual_analysis") or {}
@@ -1112,6 +1131,11 @@ class EncoderPersistenceService:
 
         for bucket in ["initial_characters", "character_changes", "objects_creatures", "locations", "scene_compositions"]:
             sets[bucket] = sets[bucket][:500]
+        if best_initial_by_name:
+            sets["initial_characters"] = sorted(
+                best_initial_by_name.values(),
+                key=lambda item: ((item.get("entity_name") or "").lower(), int(item.get("book_index") or 0), int(item.get("chapter_index") or 0)),
+            )[:500]
         for diag_key in ["missing_visual_evidence", "rejected_visual_claims"]:
             values = []
             seen_diag = set()

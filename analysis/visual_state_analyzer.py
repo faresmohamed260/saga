@@ -5,6 +5,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from analysis.evidence_schema import normalize_evidence_bundle
+from analysis.visual_prompt_schema import (
+    compile_character_edit_prompt,
+    compile_character_turnaround_prompt,
+    enrich_persistent_profile_from_legacy_fields,
+    normalize_dynamic_visual_changes,
+    normalize_persistent_profile,
+    profile_specificity_score,
+)
 from infrastructure.llm_client import LLMClient
 
 
@@ -128,6 +136,33 @@ class VisualStateAnalyzer:
         - If a chapter-sized scene contains multiple visual beats, output multiple scene_compositions.
         - If evidence is weak, omit the claim or mark confidence low; never fill blanks with generic fantasy imagery.
         - If an entity has no usable visual detail, include it only in diagnostics.missing_visual_evidence, not as an empty prompt.
+        - For character baseline prompts, focus on persistent traits only, not temporary injuries, dirt, blood, fear, tears, or single-scene outfit swaps.
+        - Translate book-specific lore labels into model-understandable visual language. Example: "Illyrian warrior" should become "winged fantasy humanoid warrior" unless the text supplies better plain visual wording.
+        - Build first-appearance character prompts as reusable neutral studio turnaround references for later image generation.
+        - Track temporary visual changes separately as image-edit updates that preserve the base identity.
+        - If a persistent baseline trait is uncertain, leave the field blank rather than guessing.
+        - Treat character baseline extraction like building a production character sheet for image generation.
+        - For baseline character appearance, actively seek only durable visual identity details:
+          - sex/gender presentation if explicit
+          - species/race translated into plain visual language
+          - build and height impression
+          - skin tone/texture
+          - hair color/style/length
+          - eye color
+          - facial structure
+          - approximate age impression
+          - persistent clothing or signature attire only if clearly recurring or introductory
+          - distinguishing marks, tattoos, scars, wings, ears, horns, or other stable fantasy anatomy
+          - signature equipment only if it functions as a stable identifying item
+        - Do NOT use scene staging as a baseline trait. Examples of forbidden baseline content:
+          - where the character is standing or sitting
+          - what room they are currently in
+          - what they are looking at
+          - action context like carrying a deer, entering a market, arguing, or watching someone
+          - temporary emotional reaction unless it is a stable resting expression repeatedly described
+        - If the text only gives temporary state and no durable physical description, keep the baseline sparse and move the temporary detail into dynamic_visual_changes instead.
+        - Never fill baseline slots with placeholders like "not described", "eyes unseen", "unknown", or scene summaries.
+        - Prefer a sparse but true character sheet over a rich but contaminated one.
 
         Required JSON schema:
         {{
@@ -139,6 +174,43 @@ class VisualStateAnalyzer:
               "outfit": "",
               "visible_condition": "",
               "body_language": "",
+              "persistent_visual_profile": {{
+                "gender_presentation": "",
+                "species_or_race": "",
+                "role_or_archetype": "",
+                "model_safe_identity": "",
+                "presence_description": "",
+                "height_description": "",
+                "body_type": "",
+                "skin_description": "",
+                "hair_description": "",
+                "eye_description": "",
+                "facial_structure": "",
+                "age_appearance": "",
+                "expression": "",
+                "clothing_description": "",
+                "footwear_description": "",
+                "accessories_description": "",
+                "distinguishing_marks": "",
+                "fantasy_features": "",
+                "equipment_or_signature_items": "",
+                "lore_terms": ["Illyrian"]
+              }},
+              "dynamic_visual_changes": [
+                {{
+                  "change_label": "",
+                  "change_summary": "",
+                  "outfit_change": "",
+                  "visible_condition_change": "",
+                  "body_language_change": "",
+                  "fantasy_feature_change": "",
+                  "equipment_change": "",
+                  "scene_context": "",
+                  "source_evidence": "",
+                  "confidence": "high | medium | low"
+                }}
+              ],
+              "persistent_visual_prompt": "",
               "image_prompt": "",
               "image_edit_prompt": "",
               "source_evidence": "",
@@ -210,6 +282,23 @@ class VisualStateAnalyzer:
 
         Scene text:
         {scene_text}
+
+        Extra character-baseline guidance:
+        - When `visual_role` is `initial_character_description`, the baseline should read like a neutral reusable design sheet.
+        - Good baseline examples:
+          - "lean young man with shaggy brown hair and dark eyes"
+          - "tall winged fantasy humanoid male with dark hair, violet eyes, and large dark feathered wings"
+          - "young woman with pale skin, long brown hair, gray-blue eyes, and threadbare winter clothing"
+        - Bad baseline examples:
+          - "standing near the fire with a dead deer"
+          - "watching her sister argue"
+          - "eyes unseen in text"
+          - "in a dim cottage"
+        - Use `dynamic_visual_changes` for:
+          - blood, bruises, exhaustion, dirt, tears
+          - a one-scene outfit or armor variation
+          - carrying a specific object in this moment
+          - posture or facial expression tied to a scene beat
         """
 
     def _validate_response(self, response: Dict[str, Any]) -> bool:
@@ -252,12 +341,59 @@ class VisualStateAnalyzer:
                 "outfit": self._clean(row.get("outfit")),
                 "visible_condition": self._clean(row.get("visible_condition")),
                 "body_language": self._clean(row.get("body_language")),
+                "persistent_visual_profile": normalize_persistent_profile(row.get("persistent_visual_profile") or {}),
+                "dynamic_visual_changes": normalize_dynamic_visual_changes(
+                    row.get("dynamic_visual_changes") or [],
+                    display_name=name,
+                ),
+                "persistent_visual_prompt": self._clean(row.get("persistent_visual_prompt")),
                 "image_prompt": self._clean(row.get("image_prompt")),
                 "image_edit_prompt": self._clean(row.get("image_edit_prompt")),
                 "source_evidence": self._clean(row.get("source_evidence")),
                 "confidence": self._confidence(row.get("confidence")),
             }
-            if not any(values[key] for key in ["physical_description", "outfit", "visible_condition", "body_language", "image_prompt", "image_edit_prompt"]):
+            values["persistent_visual_profile"] = enrich_persistent_profile_from_legacy_fields(
+                values["persistent_visual_profile"],
+                physical_description=values["physical_description"],
+                outfit=values["outfit"],
+                body_language=values["body_language"],
+            )
+            if role == "initial_character_description":
+                existing_prompt = values["persistent_visual_prompt"]
+                prompt_needs_rebuild = (
+                    not existing_prompt
+                    or "three-view layout" not in existing_prompt.lower()
+                    or len(existing_prompt.split()) < 35
+                )
+                if prompt_needs_rebuild:
+                    values["persistent_visual_prompt"] = compile_character_turnaround_prompt(
+                        values["persistent_visual_profile"],
+                        display_name=name,
+                    )
+                if not values["image_prompt"]:
+                    values["image_prompt"] = values["persistent_visual_prompt"]
+                if profile_specificity_score(values["persistent_visual_profile"]) <= 1:
+                    values["confidence"] = "low"
+            else:
+                if not values["image_edit_prompt"] and values["dynamic_visual_changes"]:
+                    values["image_edit_prompt"] = values["dynamic_visual_changes"][0].get("image_edit_prompt", "")
+                if not values["image_edit_prompt"]:
+                    values["image_edit_prompt"] = compile_character_edit_prompt(
+                        display_name=name,
+                        change={
+                            "change_summary": self._join_nonempty(
+                                [
+                                    values["visible_condition"],
+                                    values["outfit"],
+                                    values["body_language"],
+                                ]
+                            ),
+                            "outfit_change": values["outfit"],
+                            "visible_condition_change": values["visible_condition"],
+                            "body_language_change": values["body_language"],
+                        },
+                    )
+            if not any(values[key] for key in ["physical_description", "outfit", "visible_condition", "body_language", "image_prompt", "image_edit_prompt", "persistent_visual_prompt"]) and not values["dynamic_visual_changes"]:
                 continue
             key = (values["entity_name"].lower(), values["visual_role"], values["source_evidence"].lower())
             if key in seen:
@@ -390,3 +526,6 @@ class VisualStateAnalyzer:
     def _clean(self, value: Any) -> str:
         cleaned = " ".join(str(value or "").strip().split())
         return cleaned[:700]
+
+    def _join_nonempty(self, values: List[str]) -> str:
+        return ", ".join(value for value in values if self._clean(value))

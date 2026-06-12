@@ -60,6 +60,12 @@ describe("artifactIndexer", () => {
     expect(classifyArtifactPath("analysis_outputs/dashboard/report.md")).toBe(ARTIFACT_TYPES.REPORT);
   });
 
+  test("does not classify series-level latest_status or helper folders as runs", () => {
+    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/latest_status.json")).not.toBe(ARTIFACT_TYPES.RUN_STATUS);
+    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/resume_checkpoints/latest_status.json")).not.toBe(ARTIFACT_TYPES.RUN_STATUS);
+    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/20260612T123219Z/latest_status.json")).toBe(ARTIFACT_TYPES.RUN_STATUS);
+  });
+
   test("indexes contract and report artifacts from workspace", async () => {
     const contractJson = JSON.stringify({
       metadata: { book_title: "Book One" },

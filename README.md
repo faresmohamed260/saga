@@ -146,6 +146,21 @@ Default local runtime URL:
 
 - `http://127.0.0.1:8675`
 
+Optional background-service path on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\install_saga_dashboard_service.ps1
+```
+
+That installs the local dashboard as the `SagaDashboard` Windows service using NSSM so the UI can stay available without an open terminal.
+
+Fresh-clone local requirements:
+
+- Python 3.10+
+- Node.js + npm
+- a virtual environment at `venv/`
+- local provider/account files under `deploy/` as needed for your chosen model path
+
 ## Common CLI Flow
 
 Production encode runs go through `saga_tools.py`.

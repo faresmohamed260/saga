@@ -135,6 +135,10 @@ function statusTone(status) {
   return "slate";
 }
 
+function isHelperRunPath(path) {
+  return String(path || "").replace(/\\/g, "/").toLowerCase().includes("/resume_checkpoints");
+}
+
 function contractRows(contract) {
   return [
     ["Run status", contract.run_status],
@@ -727,6 +731,10 @@ export default function App() {
   }, [selectedContractPath]);
 
   const artifacts = state?.artifacts || { counts: {}, contracts: [], runs: [], reports: [], visual_states: [], identities: [] };
+  const visibleRuns = useMemo(
+    () => (artifacts.runs || []).filter((run) => !isHelperRunPath(run.path)),
+    [artifacts.runs],
+  );
   const latestJob = state?.jobs?.[0];
   const selectedPrompt = useMemo(
     () => (state?.prompts || []).find((prompt) => prompt.path === selectedPromptPath) || (state?.prompts || [])[0],
@@ -850,7 +858,7 @@ export default function App() {
         {activeTab === "Overview" && (
           <div className="space-y-5">
             <div className="grid gap-3 md:grid-cols-5">
-              <Metric label="Encode runs" value={artifacts.counts.runs || 0} />
+              <Metric label="Encode runs" value={visibleRuns.length || 0} />
               <Metric label="Contracts" value={artifacts.counts.contracts || 0} />
               <Metric label="Total scenes" value={artifacts.counts.total_scenes || 0} />
               <Metric label="Identities" value={artifacts.counts.identities || 0} />
@@ -858,7 +866,7 @@ export default function App() {
             </div>
             <div className="grid gap-4 xl:grid-cols-[1fr,1fr]">
               <Panel title="Latest encode runs" subtitle="Auto-discovered from analysis_outputs/encode_runs.">
-                <RunList runs={artifacts.runs.slice(0, 5)} />
+                <RunList runs={visibleRuns.slice(0, 5)} />
               </Panel>
               <Panel title="Latest contracts" subtitle="Structured contract counts, not raw JSON.">
                 <ContractList contracts={artifacts.contracts.slice(0, 6)} onSelect={(path) => { setSelectedContractPath(path); setActiveTab("Contract Viewer"); }} />
@@ -870,7 +878,7 @@ export default function App() {
         {activeTab === "Encode Runs" && (
           <div className="grid gap-4 xl:grid-cols-[1fr,1fr]">
             <Panel title="Runs" subtitle="One card per local encode run.">
-              <RunList runs={artifacts.runs} />
+              <RunList runs={visibleRuns} />
             </Panel>
             <Panel title={latestJob?.id || "Live job log"} subtitle={latestJob ? latestJob.command : "No dashboard-launched job yet."}>
               {latestJob ? (
@@ -1105,8 +1113,11 @@ function RunList({ runs }) {
           <div className="mt-3 space-y-2">
             {(run.book_rows || []).map((book) => (
               <div key={book.path} className="flex items-center justify-between gap-3 rounded-md bg-[#0b0c10] px-3 py-2 text-sm">
-                <span className="min-w-0 break-words">{book.name}</span>
-                <Badge tone={statusTone(book.run_status)}>{book.scenes} scenes</Badge>
+                <span className="min-w-0 break-words">{book.name || book.title || book.path || "Book"}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={statusTone(book.run_status || book.status)}>{book.run_status || book.status || "unknown"}</Badge>
+                  <Badge tone="blue">{book.scenes ?? book.scenes_processed ?? book.total_scenes ?? 0} scenes</Badge>
+                </div>
               </div>
             ))}
           </div>

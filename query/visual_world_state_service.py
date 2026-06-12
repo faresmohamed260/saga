@@ -5,6 +5,11 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from analysis.visual_prompt_schema import (
+    compile_character_turnaround_prompt,
+    normalize_dynamic_visual_changes,
+    normalize_persistent_profile,
+)
 from core.pipeline_contract import (
     build_entity_registry,
     build_event_ledger,
@@ -245,12 +250,15 @@ class VisualWorldStateService:
                         "display_name": display_name,
                         "state_scope": "",
                         "baseline_description": str(profile.get("core_description") or ""),
+                        "persistent_visual_profile": normalize_persistent_profile({}),
+                        "persistent_visual_prompt": "",
                         "current_appearance": "",
                         "clothing_or_outfit": "",
                         "injuries_or_physical_condition": "",
                         "body_language_or_expression": "",
                         "magical_or_physical_transformations": [],
                         "recent_visual_changes": [],
+                        "dynamic_visual_changes": [],
                         "evidence": [],
                         "confidence": "low",
                         "risk_flags": ["sparse_visual_evidence"],
@@ -263,12 +271,15 @@ class VisualWorldStateService:
                     "display_name": display_name,
                     "state_scope": "",
                     "baseline_description": evidence.get("baseline_description", ""),
+                    "persistent_visual_profile": evidence.get("persistent_visual_profile") or normalize_persistent_profile({}),
+                    "persistent_visual_prompt": evidence.get("persistent_visual_prompt", ""),
                     "current_appearance": evidence.get("current_appearance", ""),
                     "clothing_or_outfit": evidence.get("clothing_or_outfit", ""),
                     "injuries_or_physical_condition": evidence.get("injuries_or_physical_condition", ""),
                     "body_language_or_expression": evidence.get("body_language_or_expression", ""),
                     "magical_or_physical_transformations": evidence.get("magical_or_physical_transformations", []),
                     "recent_visual_changes": evidence.get("recent_visual_changes", []),
+                    "dynamic_visual_changes": evidence.get("dynamic_visual_changes", []),
                     "evidence": evidence.get("evidence", []),
                     "confidence": evidence.get("confidence", "low"),
                     "risk_flags": evidence.get("risk_flags", []),
@@ -293,6 +304,62 @@ class VisualWorldStateService:
         body_candidates: List[Tuple[tuple[int, int, int], str]] = []
         transformation_candidates: List[Tuple[tuple[int, int, int], str]] = []
         visual_changes: List[Tuple[tuple[int, int, int], str]] = []
+        persistent_profile_candidates: List[Tuple[tuple[int, int, int], Dict[str, Any]]] = []
+        dynamic_change_rows: List[Tuple[tuple[int, int, int], Dict[str, Any]]] = []
+
+        for scene in filtered_scenes:
+            ref = _scene_key(scene.get("book_index", 0), scene.get("chapter_index", 0), scene.get("scene_index", 0))
+            visual = scene.get("visual_analysis") or {}
+            for row in visual.get("characters") or []:
+                if not isinstance(row, dict):
+                    continue
+                candidate_name = _norm(row.get("entity_name") or "")
+                if not candidate_name:
+                    continue
+                canonical = alias_index.get(candidate_name, "")
+                if canonical and _norm(canonical) != _norm(display_name):
+                    continue
+                if not canonical and candidate_name != _norm(display_name):
+                    continue
+                source_evidence = str(row.get("source_evidence") or "").strip()
+                if source_evidence:
+                    evidence_rows.append(
+                        {
+                            "book_index": scene.get("book_index"),
+                            "chapter": scene.get("chapter_index"),
+                            "scene_id": f"b{scene.get('book_index')}_c{scene.get('chapter_index')}_s{scene.get('scene_index')}",
+                            "source": "visual_analysis",
+                            "text": source_evidence,
+                        }
+                    )
+                profile = normalize_persistent_profile(row.get("persistent_visual_profile") or {})
+                if row.get("visual_role") == "initial_character_description":
+                    if any(value for key, value in profile.items() if key != "lore_terms") or profile.get("lore_terms"):
+                        persistent_profile_candidates.append((ref, profile))
+                else:
+                    dynamic_change_rows.extend(
+                        (ref, change)
+                        for change in normalize_dynamic_visual_changes(
+                            row.get("dynamic_visual_changes") or [
+                                {
+                                    "change_summary": " ".join(
+                                        part for part in [
+                                            str(row.get("outfit") or "").strip(),
+                                            str(row.get("visible_condition") or "").strip(),
+                                            str(row.get("body_language") or "").strip(),
+                                        ] if part
+                                    ),
+                                    "outfit_change": row.get("outfit"),
+                                    "visible_condition_change": row.get("visible_condition"),
+                                    "body_language_change": row.get("body_language"),
+                                    "source_evidence": row.get("source_evidence"),
+                                    "confidence": row.get("confidence"),
+                                    "image_edit_prompt": row.get("image_edit_prompt"),
+                                }
+                            ],
+                            display_name=display_name,
+                        )
+                    )
 
         for row in registry_entry.get("descriptions") or []:
             text = str(row.get("description") or "").strip()
@@ -368,12 +435,18 @@ class VisualWorldStateService:
                 baseline_candidates.append(text)
 
         baseline = baseline_candidates[0] if baseline_candidates else ""
+        persistent_profile = (
+            sorted(persistent_profile_candidates, key=lambda item: item[0])[0][1]
+            if persistent_profile_candidates
+            else normalize_persistent_profile({})
+        )
         current_appearance = self._latest_text(appearance_candidates)
         clothing = self._latest_text(clothing_candidates)
         injuries = self._latest_text(injury_candidates)
         body = self._latest_text(body_candidates)
         transformations = _dedupe_strings(text for _, text in transformation_candidates)[-6:]
         recent_changes = [text for _, text in sorted(visual_changes, key=lambda item: item[0], reverse=True)[:6]]
+        dynamic_changes = [row for _, row in sorted(dynamic_change_rows, key=lambda item: item[0], reverse=True)[:8]]
 
         risk_flags: List[str] = []
         if not evidence_rows:
@@ -386,12 +459,17 @@ class VisualWorldStateService:
 
         return {
             "baseline_description": baseline,
+            "persistent_visual_profile": persistent_profile,
+            "persistent_visual_prompt": compile_character_turnaround_prompt(persistent_profile, display_name=display_name)
+            if any(value for key, value in persistent_profile.items() if key != "lore_terms") or persistent_profile.get("lore_terms")
+            else "",
             "current_appearance": current_appearance,
             "clothing_or_outfit": clothing,
             "injuries_or_physical_condition": injuries,
             "body_language_or_expression": body,
             "magical_or_physical_transformations": transformations,
             "recent_visual_changes": recent_changes,
+            "dynamic_visual_changes": dynamic_changes,
             "evidence": evidence_rows[:16],
             "confidence": confidence,
             "risk_flags": _dedupe_strings(risk_flags),

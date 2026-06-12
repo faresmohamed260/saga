@@ -55,10 +55,15 @@ export function normalizePath(path) {
   return String(path || "").replace(/\\/g, "/");
 }
 
+function isTimestampLikeRunId(value) {
+  return /^\d{8}t\d{6}z$/i.test(String(value || ""));
+}
+
 export function classifyArtifactPath(path) {
   const normalized = normalizePath(path).toLowerCase();
   const name = normalized.split("/").pop() || "";
-  if (name === "latest_status.json" || normalized.includes("/encode_runs/") && name.endsWith(".status.json")) {
+  const runId = detectRunId(path);
+  if ((name === "latest_status.json" && isTimestampLikeRunId(runId)) || normalized.includes("/encode_runs/") && name.endsWith(".status.json")) {
     return ARTIFACT_TYPES.RUN_STATUS;
   }
   if (name.endsWith(".contract.json")) {
@@ -102,7 +107,7 @@ export function detectSeriesId(path) {
 export function detectRunId(path) {
   const normalized = normalizePath(path);
   const match = normalized.match(/analysis_outputs\/encode_runs\/[^/]+\/([^/]+)/i);
-  return match ? match[1] : "";
+  return match && isTimestampLikeRunId(match[1]) ? match[1] : "";
 }
 
 export function detectBookIndex(path) {

@@ -445,28 +445,39 @@ class ComfyUIPromptPackService:
     def _character_pack_from_row(self, display_name: str, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         evidence_rows = row.get("evidence") or []
         categorized = self._categorize_character_evidence(evidence_rows)
+        persistent_prompt = self._naturalize_visual_field(row.get("persistent_visual_prompt", ""))
+        persistent_profile = row.get("persistent_visual_profile") or {}
         baseline = self._naturalize_visual_field(row.get("baseline_description", ""))
         appearance = self._join_prompt_bits([baseline, *categorized["appearance"][:3]])
         outfit = self._join_prompt_bits(categorized["outfit"][:3])
         injury = self._join_prompt_bits(categorized["injury"][:3])
         expression = self._join_prompt_bits(categorized["expression"][:2])
         magic = self._join_prompt_bits([*categorized["magic"][:3]])
-        if not any([appearance, outfit, injury, expression, magic, evidence_rows]):
+        dynamic_changes = row.get("dynamic_visual_changes") or []
+        if dynamic_changes:
+            first_change = dynamic_changes[0]
+            injury = self._join_prompt_bits([injury, str(first_change.get("visible_condition_change") or "")])
+            outfit = self._join_prompt_bits([outfit, str(first_change.get("outfit_change") or "")])
+            expression = self._join_prompt_bits([expression, str(first_change.get("body_language_change") or "")])
+            magic = self._join_prompt_bits([magic, str(first_change.get("fantasy_feature_change") or "")])
+        if not any([persistent_prompt, appearance, outfit, injury, expression, magic, evidence_rows]):
             return None
-        canonical_prompt = self._join_prompt_bits([display_name, appearance, outfit])
+        canonical_prompt = persistent_prompt or self._join_prompt_bits([display_name, appearance, outfit])
         return {
             "character_id": row.get("character_id") or f"char_{self._slug(display_name)}",
             "display_name": display_name,
             "canonical_prompt": canonical_prompt,
-            "appearance_prompt": appearance,
-            "outfit_prompt": outfit,
+            "appearance_prompt": persistent_prompt or appearance,
+            "outfit_prompt": outfit or self._naturalize_visual_field(persistent_profile.get("clothing_description", "")),
             "injury_condition_prompt": injury,
-            "expression_prompt": expression,
+            "expression_prompt": expression or self._naturalize_visual_field(persistent_profile.get("expression", "")),
             "magic_prompt": magic,
             "negative_prompt": self.GENERIC_NEGATIVE_PROMPTS["character_sheet"],
             "evidence": self._trim_evidence(evidence_rows),
             "confidence": str(row.get("confidence") or "low"),
             "risk_flags": list(row.get("risk_flags") or []),
+            "persistent_visual_profile": persistent_profile,
+            "dynamic_visual_changes": dynamic_changes,
             "comfyui": {
                 "recommended_workflow_type": "character_sheet",
                 "suggested_aspect_ratio": "2:3",

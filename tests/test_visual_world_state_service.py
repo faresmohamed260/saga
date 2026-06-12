@@ -51,6 +51,7 @@ def _scene(
     descriptions: list[dict] | None = None,
     state_changes: list[dict] | None = None,
     location: dict | None = None,
+    visual_analysis: dict | None = None,
 ) -> dict:
     return {
         "book_index": book_index,
@@ -70,6 +71,7 @@ def _scene(
         "character_mentions": [{"mention_text": name, "mention_type": "name", "canonical_name": name, "is_consequential_character": True} for name in characters],
         "alias_updates": [],
         "rejected_identity_candidates": [],
+        "visual_analysis": visual_analysis or {"characters": [], "objects": [], "creatures": [], "locations": [], "scene_compositions": [], "diagnostics": {}},
     }
 
 
@@ -121,6 +123,31 @@ def _contract_paths(tmp_path: Path) -> tuple[list[str], Path]:
                     {"entity_name": "Cauldron", "entity_type": "object", "attribute": "status", "previous_state": "", "new_state": "active", "change_type": "condition", "evidence": "The Cauldron hums with power"},
                 ],
                 location={"name": "House of Wind", "entity_type": "location", "description": "marble townhouse with wards and a rooftop garden"},
+                visual_analysis={
+                    "characters": [
+                        {
+                            "entity_name": "Feyre",
+                            "visual_role": "initial_character_description",
+                            "persistent_visual_profile": {
+                                "gender_presentation": "young woman",
+                                "species_or_race": "High Fae",
+                                "role_or_archetype": "huntress",
+                                "presence_description": "wary but resilient presence",
+                                "hair_description": "long brown hair",
+                                "eye_description": "gray-blue eyes",
+                                "clothing_description": "white wedding gown",
+                            },
+                            "persistent_visual_prompt": "studio photograph, three-view layout,\nfantasy humanoid huntress,\nlong brown hair,\ngray-blue eyes,\nwhite wedding gown,",
+                            "source_evidence": "white wedding gown",
+                            "confidence": "high",
+                        }
+                    ],
+                    "objects": [],
+                    "creatures": [],
+                    "locations": [],
+                    "scene_compositions": [],
+                    "diagnostics": {},
+                },
             )
         ],
     )
@@ -210,6 +237,18 @@ def test_evidence_provenance_is_preserved(tmp_path: Path) -> None:
     assert feyre["evidence"]
     first = feyre["evidence"][0]
     assert {"book_index", "chapter", "scene_id", "source", "text"} <= set(first.keys())
+
+
+def test_visual_world_state_preserves_persistent_character_prompt(tmp_path: Path) -> None:
+    contract_paths, identity_path = _contract_paths(tmp_path)
+    payload = VisualWorldStateService().build_visual_world_state(
+        contract_paths=contract_paths,
+        target_point={"mode": "post_series", "after_book_index": 5},
+        identity_json_path=identity_path,
+    )
+    feyre = next(row for row in payload["character_visual_states"] if row["display_name"] == "Feyre")
+    assert "three-view layout" in feyre["persistent_visual_prompt"]
+    assert feyre["persistent_visual_profile"]["hair_description"] == "long brown hair"
 
 
 def test_sparse_visual_evidence_produces_low_confidence_not_omission(tmp_path: Path) -> None:

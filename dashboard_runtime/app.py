@@ -193,22 +193,52 @@ def contract_summary(path: Path, *, parse_heavy: bool = False) -> dict[str, Any]
 def run_summary(run_dir: Path) -> dict[str, Any]:
     contracts_dir = run_dir / "contracts"
     contracts = [contract_summary(path) for path in contracts_dir.glob("*.contract.json")] if contracts_dir.exists() else []
-    status_payloads = [load_json(path) for path in run_dir.glob("*.json")]
-    statuses = [item for item in status_payloads if isinstance(item, dict)]
+    status_payload = load_json(run_dir / "status.json")
+    latest_status_payload = load_json(run_dir.parent / "latest_status.json")
+    statuses = [item for item in [status_payload, latest_status_payload] if isinstance(item, dict)]
+    run_status = ""
+    if isinstance(status_payload, dict):
+        run_status = str(status_payload.get("status") or "").strip().lower()
+    if not run_status and isinstance(latest_status_payload, dict):
+        run_status = str(latest_status_payload.get("status") or "").strip().lower()
+    active_books = []
+    if isinstance(status_payload, dict):
+        active_books = status_payload.get("books") or []
+    active_scene_total = 0
+    if active_books:
+        for book in active_books:
+            if not isinstance(book, dict):
+                continue
+            active_scene_total += int(book.get("scenes_processed") or book.get("total_scenes") or 0)
     failed_books = sum(1 for row in contracts if str(row.get("run_status")).lower() in {"failed", "partial", "paused"})
+    status_value = "failed" if failed_books else (run_status or ("completed" if contracts else "unknown"))
+    books_count = len(contracts) if contracts else len(active_books)
+    contracts_count = len(contracts)
+    total_scenes = sum(int(row.get("scenes") or 0) for row in contracts if isinstance(row.get("scenes"), int))
+    if not total_scenes and active_scene_total:
+        total_scenes = active_scene_total
     return {
         "path": rel(run_dir),
         "series_id": run_dir.parent.name,
         "run_id": run_dir.name,
         "mtime": run_dir.stat().st_mtime,
-        "status": "failed" if failed_books else ("completed" if contracts else "unknown"),
-        "books": len(contracts),
-        "contracts": len(contracts),
+        "status": status_value,
+        "books": books_count,
+        "contracts": contracts_count,
         "failed_books": failed_books,
-        "total_scenes": sum(int(row.get("scenes") or 0) for row in contracts if isinstance(row.get("scenes"), int)),
-        "book_rows": contracts,
+        "total_scenes": total_scenes,
+        "book_rows": contracts if contracts else active_books,
         "status_payload_count": len(statuses),
     }
+
+
+def is_real_run_dir(path: Path) -> bool:
+    return (
+        path.is_dir()
+        and len(path.name) >= 4
+        and path.name[:4].isdigit()
+        and (path / "status.json").exists()
+    )
 
 
 def scan_artifacts() -> dict[str, Any]:
@@ -226,7 +256,7 @@ def scan_artifacts() -> dict[str, Any]:
             if not series_dir.is_dir():
                 continue
             for run_dir in series_dir.iterdir():
-                if run_dir.is_dir():
+                if is_real_run_dir(run_dir):
                     run_dirs.append(run_dir)
     runs = [run_summary(path) for path in sorted(run_dirs, key=lambda p: p.stat().st_mtime, reverse=True)[:100]]
     reports = [
@@ -409,6 +439,9 @@ def reduce_contract_row(row: Any) -> dict[str, Any]:
         "state_changes",
         "relationship_changes",
         "visual_analysis",
+        "persistent_visual_profile",
+        "dynamic_visual_changes",
+        "persistent_visual_prompt",
         "aliases",
         "roles",
         "affiliations",
@@ -781,10 +814,13 @@ def serve_dashboard(full_path: str = ""):
 
 def main() -> None:
     ensure_dirs()
-    url = "http://127.0.0.1:8675"
+    host = os.environ.get("SAGA_DASHBOARD_HOST", "127.0.0.1")
+    port = int(os.environ.get("SAGA_DASHBOARD_PORT", "8675"))
+    log_level = os.environ.get("SAGA_DASHBOARD_LOG_LEVEL", "info")
+    url = f"http://{host}:{port}"
     if os.environ.get("SAGA_DASHBOARD_NO_BROWSER") != "1":
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host="127.0.0.1", port=8675, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level=log_level)
 
 
 if __name__ == "__main__":
