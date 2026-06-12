@@ -1,3 +1,0 @@
-from deterministic_identity_resolution_experiment import DeterministicIdentityResolver
-
-__all__ = ["DeterministicIdentityResolver"]

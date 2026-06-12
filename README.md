@@ -102,12 +102,14 @@ that was developed in the recent hardening work:
 Ollama API keys and account rotation credentials are stored locally in:
 
 - `deploy/ollama/accounts.local.json`
+- `deploy/openai/accounts.local.json`
 
 That file is git-ignored and should stay local to the machine.
 
 Use this template when setting up a new machine:
 
 - [deploy/ollama/accounts.local.example.json](/B:/Documents/PyCharm/graduationProject/deploy/ollama/accounts.local.example.json)
+- [deploy/openai/accounts.local.example.json](/B:/Documents/PyCharm/graduationProject/deploy/openai/accounts.local.example.json)
 
 ## Quick Start On Windows
 

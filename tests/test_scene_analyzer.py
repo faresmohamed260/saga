@@ -6,9 +6,11 @@ class StubLLMClient:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = 0
+        self.kwargs_seen = []
 
-    def generate_json(self, prompt: str, strict: bool = False, validator=None):
+    def generate_json(self, prompt: str, strict: bool = False, validator=None, **kwargs):
         self.calls += 1
+        self.kwargs_seen.append(kwargs)
         response = self.responses[min(self.calls - 1, len(self.responses) - 1)]
         if validator and isinstance(response, dict) and "error" not in response and not validator(response):
             return {"error": "validation_failed", "raw_output": response}
@@ -115,6 +117,8 @@ def test_scene_analyzer_normalizes_and_retries():
     assert result["character_mentions"][0]["canonical_name"] == "Feyre"
     assert len(result["events"]) == 2
     assert result["events"][0]["event_id"] == "evt_1"
+    assert result["events"][0]["entities_involved"] == ["Feyre"]
+    assert result["events"][1]["entities_involved"] == ["Feyre", "Wolf"]
     assert len(result["entities_present"]) == 2
     assert result["state_changes"][0]["new_state"] == "dead"
     assert result["location"]["entity_type"] == "location"
@@ -168,3 +172,66 @@ def test_scene_analyzer_tool_mode_builds_schema_from_tool_calls():
     assert result["location"]["name"] == "market"
     assert result["tool_runtime"]["tool_calls_seen"] >= 1
     assert result["tool_runtime"]["tool_calls_ignored"] >= 1
+
+
+def test_scene_analyzer_general_compute_structured_uses_json_mode():
+    valid = {
+        "scene_summary": "Feyre hunts in the winter forest and kills a wolf.",
+        "canonical_characters": [],
+        "character_mentions": [],
+        "events": [],
+        "entities_present": [],
+        "entity_descriptions": [],
+        "state_changes": [],
+        "relationship_changes": [],
+        "location": {},
+        "time_signals": [],
+        "alias_updates": [],
+        "rejected_identity_candidates": [],
+    }
+    stub = StubLLMClient([valid])
+    stub.mode = LLMClient.MODE_GENERAL_COMPUTE
+    analyzer = SceneAnalyzer(llm_client=stub, max_attempts=1)
+    analyzer.analyze(build_sample_scene(), analysis_mode="structured")
+    assert stub.kwargs_seen[0]["response_format"] == {"type": "json_object"}
+    assert "max_tokens" not in stub.kwargs_seen[0]
+
+
+def test_scene_analyzer_general_compute_tool_mode_uses_native_tools():
+    tool_response = {"tool_calls": [{"tool": "set_scene_summary", "arguments": {"summary": "ok"}}]}
+    stub = StubLLMClient([tool_response])
+    stub.mode = LLMClient.MODE_GENERAL_COMPUTE
+    analyzer = SceneAnalyzer(llm_client=stub, max_attempts=1)
+    analyzer.analyze(build_sample_scene(), analysis_mode="tool")
+    assert stub.kwargs_seen[0]["tool_choice"] == "required"
+    assert isinstance(stub.kwargs_seen[0]["tools"], list)
+    assert any(item["function"]["name"] == "set_scene_summary" for item in stub.kwargs_seen[0]["tools"])
+
+
+def test_scene_analyzer_backfills_event_type_when_missing():
+    valid = {
+        "scene_summary": "Feyre notices Isaac at the market.",
+        "canonical_characters": [],
+        "character_mentions": [],
+        "events": [
+            {
+                "description": "Feyre notices Isaac in the market square.",
+                "characters": ["Feyre", "Isaac"],
+                "entities_involved": ["Feyre", "Isaac", "market square"],
+                "reason": "",
+                "outcome": "Feyre becomes aware of Isaac's presence.",
+                "type": "",
+            }
+        ],
+        "entities_present": [],
+        "entity_descriptions": [],
+        "state_changes": [],
+        "relationship_changes": [],
+        "location": {},
+        "time_signals": [],
+        "alias_updates": [],
+        "rejected_identity_candidates": [],
+    }
+    analyzer = SceneAnalyzer(llm_client=StubLLMClient([valid]), max_attempts=1)
+    result = analyzer.analyze(build_sample_scene())
+    assert result["events"][0]["type"] == "discovery"

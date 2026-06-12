@@ -14,6 +14,7 @@ def _sample_scene_analyses():
                     "event_id": "evt_1",
                     "description": "Harry and Hermione regroup after the battle.",
                     "characters": ["Harry Potter", "Hermione Granger"],
+                    "type": "interaction",
                 }
             ],
             "relationship_changes": [
@@ -55,6 +56,7 @@ def _sample_scene_analyses():
                     "event_id": "evt_2",
                     "description": "Harry confides in Hermione at Grimmauld Place.",
                     "characters": ["Harry Potter", "Hermione Granger"],
+                    "type": "interaction",
                 }
             ],
             "relationship_changes": [
@@ -91,6 +93,8 @@ def _sample_timeline():
             "time_index": 1,
             "event_id": "evt_1",
             "summary": "Harry and Hermione regroup after the battle.",
+            "event_type": "interaction",
+            "type": "interaction",
             "book_index": 1,
             "chapter_index": 1,
             "scene_index": 1,
@@ -100,6 +104,8 @@ def _sample_timeline():
             "time_index": 2,
             "event_id": "evt_2",
             "summary": "Harry confides in Hermione at Grimmauld Place.",
+            "event_type": "interaction",
+            "type": "interaction",
             "book_index": 1,
             "chapter_index": 2,
             "scene_index": 1,
@@ -279,6 +285,8 @@ def test_artifact_bundle_builds_expected_families():
     assert first_event["direct_consequences"]
     assert first_event["stakes"]
     assert second_event["preconditions"]
+    assert first_event["event_type"] == "interaction"
+    assert second_event["type"] == "interaction"
     assert any("Leads to:" in item for item in first_event["direct_consequences"])
     assert any("Depends on:" in item for item in second_event["preconditions"])
     assert relationship["trust_level"] in {"medium", "high"}

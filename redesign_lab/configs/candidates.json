@@ -1,0 +1,139 @@
+{
+  "chapter_batching": [
+    {
+      "candidate_id": "chapter_full_merge_v1",
+      "component": "deterministic",
+      "target_scene_words": 0
+    },
+    {
+      "candidate_id": "scene_1400_v1",
+      "component": "deterministic",
+      "target_scene_words": 1400
+    },
+    {
+      "candidate_id": "scene_1800_v1",
+      "component": "deterministic",
+      "target_scene_words": 1800
+    }
+  ],
+  "narrative_extraction": [
+    {
+      "candidate_id": "general_compute_deepseek_v31",
+      "component": "llm",
+      "mode": "general_compute",
+      "model_override": "deepseek-v3.1",
+      "analysis_mode": "structured"
+    },
+    {
+      "candidate_id": "gpt_oss_default",
+      "component": "llm",
+      "mode": "gpt_oss",
+      "analysis_mode": "structured"
+    },
+    {
+      "candidate_id": "gemma4_ollama",
+      "component": "llm",
+      "mode": "gpt_oss",
+      "model_override": "gemma4:31b-cloud",
+      "analysis_mode": "structured"
+    }
+  ],
+  "identity_inventory_update": [
+    {
+      "candidate_id": "inventory_update_v1",
+      "component": "deterministic"
+    }
+  ],
+  "identity_consolidation": [
+    {
+      "candidate_id": "deterministic_consolidation_v1",
+      "component": "deterministic"
+    },
+    {
+      "candidate_id": "deterministic_web_hints_v1",
+      "component": "deterministic_web_hints"
+    }
+  ],
+  "stable_state_build": [
+    {
+      "candidate_id": "stable_state_builder_v1",
+      "component": "deterministic"
+    }
+  ],
+  "retrieval_build": [
+    {
+      "candidate_id": "neo4j_context_v1",
+      "component": "deterministic"
+    }
+  ],
+  "decoder_blueprint": [
+    {
+      "candidate_id": "general_compute_deepseek_v31",
+      "component": "llm",
+      "mode": "general_compute",
+      "model_override": "deepseek-v3.1"
+    },
+    {
+      "candidate_id": "gpt_oss_default",
+      "component": "llm",
+      "mode": "gpt_oss"
+    },
+    {
+      "candidate_id": "gemma4_ollama",
+      "component": "llm",
+      "mode": "gpt_oss",
+      "model_override": "gemma4:31b-cloud"
+    }
+  ],
+  "decoder_outline": [
+    {
+      "candidate_id": "general_compute_deepseek_v31",
+      "component": "llm",
+      "mode": "general_compute",
+      "model_override": "deepseek-v3.1"
+    },
+    {
+      "candidate_id": "gpt_oss_default",
+      "component": "llm",
+      "mode": "gpt_oss"
+    },
+    {
+      "candidate_id": "gemma4_ollama",
+      "component": "llm",
+      "mode": "gpt_oss",
+      "model_override": "gemma4:31b-cloud"
+    }
+  ],
+  "decoder_prose": [
+    {
+      "candidate_id": "general_compute_deepseek_v31",
+      "component": "llm",
+      "mode": "general_compute",
+      "model_override": "deepseek-v3.1"
+    },
+    {
+      "candidate_id": "gpt_oss_default",
+      "component": "llm",
+      "mode": "gpt_oss"
+    },
+    {
+      "candidate_id": "gemma4_ollama",
+      "component": "llm",
+      "mode": "gpt_oss",
+      "model_override": "gemma4:31b-cloud"
+    }
+  ],
+  "decoder_repair": [
+    {
+      "candidate_id": "general_compute_deepseek_v31",
+      "component": "llm",
+      "mode": "general_compute",
+      "model_override": "deepseek-v3.1"
+    },
+    {
+      "candidate_id": "gpt_oss_default",
+      "component": "llm",
+      "mode": "gpt_oss"
+    }
+  ]
+}

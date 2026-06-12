@@ -233,3 +233,177 @@ def test_neo4j_narrative_context_service_cleans_alias_pollution_and_uses_latest_
     assert by_name["Feyre Archeron"]["canon_state"] == {"relationship_status": "married to Rhysand"}
     assert all(item["name"] != "Rhysand's House" for item in context["character_states"])
     assert all(item["name"] != "Rhysand For Solstice" for item in context["character_states"])
+
+
+def test_neo4j_narrative_context_service_prefers_clean_canonical_display_names():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    assert service._best_display_name(["Azriel Siphons", "Azriel"]) == "Azriel"
+    assert service._canonicalize_name("Feyre's", alias_lookup={}) == "Feyre"
+    assert service._canonicalize_name("The War", alias_lookup={}) == ""
+
+
+def test_neo4j_narrative_context_service_uses_canon_props_as_series_wide_fallback():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    canon_state = service._derive_stable_canon_state(
+        [{"canon_title": "High Lady of the Night Court", "canon_relationship_status": "married to Rhysand"}],
+        [],
+        descriptions=[],
+        aliases=[],
+        latest_book_index=5,
+        use_props_fallback=False,
+    )
+
+    assert canon_state == {
+        "title": "High Lady of the Night Court",
+        "relationship_status": "married to Rhysand",
+    }
+
+
+def test_neo4j_narrative_context_service_infers_canon_state_from_alias_titles():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    canon_state = service._derive_stable_canon_state(
+        [{}],
+        [],
+        descriptions=[],
+        aliases=["High Lord of Spring", "Tamlin"],
+        latest_book_index=5,
+        use_props_fallback=False,
+    )
+
+    assert canon_state == {
+        "title": "High Lord",
+        "court": "Spring Court",
+    }
+
+
+def test_neo4j_narrative_context_service_sanitizes_output_aliases_and_scopes_recent_transitions_to_latest_book():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    cleaned = service._clean_character_states(
+        [
+            {
+                "name": "Rhysand",
+                "mention_count": 50,
+                "first_seen_chapter": 1,
+                "latest_book_index": 5,
+                "descriptions": [],
+                "aliases": ["Rhys", "Letting Rhys", "Rhysand's", "High Lord of the Night Court"],
+                "state_transitions": [
+                    {
+                        "attribute": "status",
+                        "previous_state": "alive",
+                        "new_state": "dead",
+                        "change_type": "physical_state",
+                        "evidence": "Old battle death",
+                        "chapter": 76,
+                        "book_index": 3,
+                    },
+                    {
+                        "attribute": "status",
+                        "previous_state": "dead",
+                        "new_state": "alive",
+                        "change_type": "physical_state",
+                        "evidence": "Old battle revival",
+                        "chapter": 77,
+                        "book_index": 3,
+                    },
+                    {
+                        "attribute": "communication",
+                        "previous_state": "",
+                        "new_state": "plans war council with Feyre",
+                        "change_type": "knowledge",
+                        "evidence": "Latest-book council planning",
+                        "chapter": 80,
+                        "book_index": 5,
+                    },
+                ],
+                "props": {"entity_type": "character"},
+            }
+        ],
+        alias_lookup={},
+        top_characters=10,
+        use_props_fallback=True,
+        target_recent_book_index=5,
+    )
+
+    assert cleaned[0]["aliases"] == ["Rhys"]
+    assert cleaned[0]["state_transitions"] == [
+        {
+            "attribute": "communication",
+            "previous_state": "",
+            "new_state": "plans war council with Feyre",
+            "change_type": "knowledge",
+            "evidence": "Latest-book council planning",
+            "chapter": 80,
+            "book_index": 5,
+        }
+    ]
+
+
+def test_neo4j_narrative_context_service_prefers_scope_latest_book_for_recent_changes():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    cleaned = service._clean_character_states(
+        [
+            {
+                "name": "Lucien Vanserra",
+                "mention_count": 20,
+                "first_seen_chapter": 1,
+                "latest_book_index": 3,
+                "descriptions": [],
+                "aliases": ["Lucien"],
+                "state_transitions": [
+                    {
+                        "attribute": "status",
+                        "previous_state": "",
+                        "new_state": "alive",
+                        "change_type": "status",
+                        "evidence": "Old-book status",
+                        "chapter": 32,
+                        "book_index": 1,
+                    },
+                    {
+                        "attribute": "status",
+                        "previous_state": "alive",
+                        "new_state": "free to wander with conditions",
+                        "change_type": "status",
+                        "evidence": "Mid-series status",
+                        "chapter": 16,
+                        "book_index": 3,
+                    },
+                ],
+                "props": {"entity_type": "character"},
+            }
+        ],
+        alias_lookup={},
+        top_characters=10,
+        use_props_fallback=True,
+        target_recent_book_index=5,
+    )
+
+    assert cleaned[0]["state_transitions"] == []
+
+
+def test_neo4j_narrative_context_service_drops_generic_family_and_narrator_alias_labels():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    aliases = service._sanitize_output_aliases(
+        canonical_name="Feyre Archeron",
+        aliases=["Father", "My Father", "The Narrator", "Feyre", "Feyre Cursebreaker"],
+    )
+
+    assert aliases == ["Feyre"]
+
+
+def test_neo4j_narrative_context_service_drops_ocr_like_alias_variants_when_clean_short_name_exists():
+    service = Neo4jNarrativeContextService(driver=_FakeDriver())
+
+    aliases = service._sanitize_output_aliases(
+        canonical_name="Feyre Archeron",
+        aliases=["Feyre", "Feyri", "Feyr"],
+    )
+
+    assert aliases == ["Feyre", "Feyr"]

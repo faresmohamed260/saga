@@ -51,6 +51,47 @@ def build_sample_analyzed_scenes():
                 "description": "snowy winter woods",
             },
             "time_signals": ["winter"],
+            "entity_world_state": {
+                "entities": [
+                    {
+                        "entity_name": "Feyre",
+                        "entity_type": "character",
+                        "narrative_role": "protagonist",
+                        "baseline_description": "a huntress in the snow",
+                        "typed_attributes": {
+                            "appearance": ["wind-chapped face"],
+                            "outfit": ["worn cloak"],
+                            "condition": ["hungry"],
+                            "body_language": [],
+                            "possessions": ["ash bow"],
+                            "abilities": [],
+                            "titles_or_roles": ["huntress"],
+                            "affiliations": [],
+                        },
+                        "state_changes": [],
+                        "source_evidence": ["a huntress in the snow"],
+                        "confidence": "high",
+                    },
+                    {
+                        "entity_name": "ash arrow",
+                        "entity_type": "object",
+                        "narrative_role": "weapon",
+                        "baseline_description": "an ash arrow ready to kill a wolf",
+                        "typed_attributes": {
+                            "appearance": ["ash arrow"],
+                            "materials": ["ash wood"],
+                            "abilities": [],
+                            "owner_or_holder": ["Feyre"],
+                            "current_state": ["nocked on the bow"],
+                            "symbolic_role": ["defense"],
+                        },
+                        "state_changes": [],
+                        "source_evidence": ["ash arrow"],
+                        "confidence": "high",
+                    },
+                ],
+                "diagnostics": {},
+            },
         },
         {
             "book_index": 1,
@@ -105,6 +146,30 @@ def build_sample_analyzed_scenes():
                 "description": "Tamlin's estate",
             },
             "time_signals": [],
+            "entity_world_state": {
+                "entities": [
+                    {
+                        "entity_name": "Tamlin",
+                        "entity_type": "character",
+                        "narrative_role": "captor",
+                        "baseline_description": "a powerful fae male wearing a mask",
+                        "typed_attributes": {
+                            "appearance": ["broad-shouldered fae male"],
+                            "outfit": ["wearing a mask"],
+                            "condition": [],
+                            "body_language": [],
+                            "possessions": [],
+                            "abilities": [],
+                            "titles_or_roles": ["High Lord"],
+                            "affiliations": ["Spring Court"],
+                        },
+                        "state_changes": [],
+                        "source_evidence": ["wearing a mask"],
+                        "confidence": "high",
+                    }
+                ],
+                "diagnostics": {},
+            },
         },
     ]
 
@@ -133,6 +198,9 @@ def test_entity_registry_and_state_services():
     assert registry_by_name["Feyre"]["mention_count"] == 2
     assert "Spring Court manor" in registry_by_name
     assert registry_by_name["Spring Court manor"]["entity_type"] == "location"
+    assert "ash arrow" in registry_by_name
+    assert registry_by_name["Feyre"]["typed_attributes"]["outfit"] == ["worn cloak"]
+    assert registry_by_name["Tamlin"]["first_appearance_profile"]["status"] == "captured"
 
     transition_result = StateTransitionService().build(scenes)
     transitions = transition_result["transitions"]

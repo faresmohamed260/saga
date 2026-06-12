@@ -1,0 +1,50 @@
+{
+  "status": "benchmarked",
+  "updated_at_utc": "2026-05-24T12:39:54.019734+00:00",
+  "assignments": {
+    "chapter_batching": {
+      "candidate_id": "chapter_full_merge_v1",
+      "source": "benchmark"
+    },
+    "narrative_extraction": {
+      "candidate_id": "general_compute_deepseek_v31",
+      "source": "benchmark"
+    },
+    "identity_inventory_update": {
+      "candidate_id": "inventory_update_v1",
+      "source": "benchmark"
+    },
+    "identity_consolidation": {
+      "candidate_id": "deterministic_consolidation_v1",
+      "source": "benchmark"
+    },
+    "stable_state_build": {
+      "candidate_id": "stable_state_builder_v1",
+      "source": "benchmark"
+    },
+    "graph_ingest": {
+      "candidate_id": "neo4j_ingest_v1",
+      "source": "provisional_default"
+    },
+    "retrieval_build": {
+      "candidate_id": "neo4j_context_v1",
+      "source": "benchmark"
+    },
+    "decoder_blueprint": {
+      "candidate_id": "general_compute_deepseek_v31",
+      "source": "benchmark"
+    },
+    "decoder_outline": {
+      "candidate_id": "general_compute_deepseek_v31",
+      "source": "benchmark"
+    },
+    "decoder_prose": {
+      "candidate_id": "general_compute_deepseek_v31",
+      "source": "benchmark"
+    },
+    "decoder_repair": {
+      "candidate_id": "general_compute_deepseek_v31",
+      "source": "provisional_default"
+    }
+  }
+}

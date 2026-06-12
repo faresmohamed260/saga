@@ -117,6 +117,18 @@ def test_orchestrator_compare_mode_captures_both_paths():
         scene_semantic_reviewer=StubSceneSemanticReviewer(),
         scene_analyzer=content,
         identity_analyzer=identity,
+        visual_analyzer=StubAnalyzer(
+            {
+                "structured": {"characters": [], "objects": [], "creatures": [], "locations": [], "scene_compositions": [], "diagnostics": {}},
+                "tool": {"characters": [], "objects": [], "creatures": [], "locations": [], "scene_compositions": [], "diagnostics": {}},
+            }
+        ),
+        entity_world_state_analyzer=StubAnalyzer(
+            {
+                "structured": {"entities": [], "diagnostics": {}},
+                "tool": {"entities": [], "diagnostics": {}},
+            }
+        ),
     )
 
     result = orchestrator.analyze_scene(build_scene(), analysis_mode="compare")
@@ -169,6 +181,8 @@ def test_orchestrator_can_skip_identity_pass_and_reuse_scene_identity_fields():
         scene_analyzer=content,
         identity_analyzer=identity,
         identity_pass_enabled=False,
+        visual_analyzer=StubAnalyzer({"structured": {"characters": [], "objects": [], "creatures": [], "locations": [], "scene_compositions": [], "diagnostics": {}}}),
+        entity_world_state_analyzer=StubAnalyzer({"structured": {"entities": [], "diagnostics": {}}}),
     )
 
     result = orchestrator.analyze_scene(build_scene(), analysis_mode="structured")

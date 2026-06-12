@@ -26,24 +26,70 @@ from saga_tools import (
 from tests.test_narrative_context_service import _sample_contract
 
 
+def _write_identity_json(tmp_path):
+    identity_path = tmp_path / "booknlp_identity.json"
+    identity_path.write_text(
+        json.dumps(
+            {
+                "provider": "booknlp_clean",
+                "characters": [
+                    {
+                        "id": "char_harry_potter",
+                        "display_name": "Harry Potter",
+                        "aliases": ["Harry Potter", "Harry"],
+                        "mention_count": 10,
+                        "quote_count": 2,
+                        "first_seen": 1,
+                    },
+                    {
+                        "id": "char_hermione_granger",
+                        "display_name": "Hermione Granger",
+                        "aliases": ["Hermione Granger", "Hermione"],
+                        "mention_count": 8,
+                        "quote_count": 1,
+                        "first_seen": 1,
+                    },
+                ],
+                "alias_index": {
+                    "harry potter": "char_harry_potter",
+                    "harry": "char_harry_potter",
+                    "hermione granger": "char_hermione_granger",
+                    "hermione": "char_hermione_granger",
+                },
+                "reference_entities": [],
+                "narrator": {"id": "narrator_0", "display_name": "[NARRATOR]"},
+                "suppressed_clusters": [],
+                "diagnostics": {},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return identity_path
+
+
 def test_validate_contract_accepts_sample_contract():
     _validate_contract(_sample_contract())
 
 
-def test_cli_parser_accepts_build_sequel_context_command(tmp_path):
+def test_cli_parser_accepts_build_sequel_context_command(tmp_path, monkeypatch):
     contract_path = tmp_path / "contract.json"
     out_path = tmp_path / "sequel_context.json"
+    identity_path = _write_identity_json(tmp_path)
     contract_path.write_text(json.dumps(_sample_contract()), encoding="utf-8")
+    monkeypatch.setattr(saga_tools, "_apply_identity_provider_override", lambda payload, args: payload)
 
     parser = build_parser()
     args = parser.parse_args(
         [
             "build-sequel-context",
-            "--contract",
-            str(contract_path),
-            "--out",
-            str(out_path),
-        ]
+                "--contract",
+                str(contract_path),
+                "--identity-json",
+                str(identity_path),
+                "--out",
+                str(out_path),
+            ]
     )
     build_sequel_context(args)
 
@@ -63,6 +109,75 @@ def test_cli_encode_store_defaults_to_full_chapters():
     )
     assert args.target_scene_words == 0
     assert args.max_parallel_books == 2
+    assert args.identity_provider == "booknlp_clean"
+    assert args.no_progress is False
+
+
+def test_cli_encode_store_preserves_requested_parallelism(monkeypatch, tmp_path):
+    class _DummyLLM:
+        MODE_DEEPSEEK = "deepseek"
+        MODE_GPT_OSS = "gpt_oss"
+        MODE_GENERAL_COMPUTE = "general_compute"
+        MODE_MISTRAL = "mistral"
+        MODE_GEMINI = "gemini"
+
+        def __init__(self, mode=None, **kwargs):
+            self.mode = mode
+
+        def _ollama_model_for_mode(self):
+            return "dummy"
+
+        def _general_compute_model_for_mode(self):
+            return "deepseek-v3.1"
+
+        @classmethod
+        def probe_general_compute_model_access(cls, model_name, api_key=None):
+            return {"status": "ok", "model": model_name}
+
+    class _DummyEncoder:
+        def __init__(self, **kwargs):
+            pass
+
+        def _prepare_book_inputs(self, books):
+            return [{"path": "example.epub", "type": "epub", "title": "example.epub", "book_index": 1, "source_hash_sha256": "hash"}]
+
+        def _series_context(self, prepared_books):
+            return "example", "Example"
+
+        def encode_and_persist(self, *args, **kwargs):
+            raise AssertionError("encode_and_persist should not be reached in this parser/plan test")
+
+    class _DummyNeo4j:
+        def __init__(self, **kwargs):
+            pass
+
+        def register_series(self, *args, **kwargs):
+            return {}
+
+        def plan_ingest(self, *args, **kwargs):
+            return {"books": [{"title": "example.epub", "action": "unchanged"}]}
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(saga_tools, "LLMClient", _DummyLLM)
+    monkeypatch.setattr(saga_tools, "Neo4jIngestionService", _DummyNeo4j)
+    monkeypatch.setattr(encoder_persistence_service, "EncoderPersistenceService", _DummyEncoder)
+    parser = build_parser()
+    args = parser.parse_args([
+        "encode-store",
+        "--book",
+        "example.epub",
+        "--analysis-model",
+        "general_compute",
+        "--identity-model",
+        "general_compute",
+        "--max-parallel-books",
+        "4",
+    ])
+
+    encode_store(args)
+    assert args.max_parallel_books == 4
 
 
 def test_cli_parser_accepts_audit_repair_rebuild_and_compare_commands():
@@ -70,9 +185,13 @@ def test_cli_parser_accepts_audit_repair_rebuild_and_compare_commands():
     audit_args = parser.parse_args(["audit-corpus", "--series-id", "acotar", "--ollama-model", "gemma4:31b-cloud"])
     assert audit_args.series_id == "acotar"
     assert audit_args.ollama_model == "gemma4:31b-cloud"
+    gc_args = parser.parse_args(["generate-sequel-neo4j", "--series-id", "acotar", "--prompt", "Test", "--output-dir", "tmp", "--model-mode", "general_compute"])
+    assert gc_args.model_mode == "general_compute"
     assert parser.parse_args(["repair-corpus", "--series-id", "acotar", "--output-dir", "tmp", "--model-mode", "gpt_oss"]).output_dir == "tmp"
     assert parser.parse_args(["rebuild-corpus", "--series-id", "acotar", "--output-dir", "tmp", "--model-mode", "gpt_oss"]).output_dir == "tmp"
     assert parser.parse_args(["rebuild-corpus", "--series-id", "acotar", "--output-dir", "tmp", "--source-dir", "D:\\Books"]).source_dir == "D:\\Books"
+    assert parser.parse_args(["rebuild-corpus", "--series-id", "acotar", "--output-dir", "tmp", "--no-progress"]).no_progress is True
+    assert parser.parse_args(["encode-store", "--book", "example.epub", "--no-progress"]).no_progress is True
     compare_args = parser.parse_args([
         "compare-generation-models",
         "--series-id",
@@ -85,14 +204,71 @@ def test_cli_parser_accepts_audit_repair_rebuild_and_compare_commands():
     assert compare_args.series_id == "acotar"
 
 
+def test_cli_rebuild_corpus_passes_progress_callback(monkeypatch, tmp_path, capsys):
+    seen = {}
+
+    class _DummyLLM:
+        MODE_DEEPSEEK = "deepseek"
+        MODE_GPT_OSS = "gpt_oss"
+        MODE_GENERAL_COMPUTE = "general_compute"
+        MODE_MISTRAL = "mistral"
+        MODE_GEMINI = "gemini"
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class _DummyNeo4j:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def close(self):
+            return None
+
+    class _DummyHardeningService:
+        def __init__(self, neo4j_service=None, llm_client=None, wiki_hints_enabled=False):
+            self.neo4j = neo4j_service
+            seen["llm_client"] = llm_client
+
+        def rebuild_corpus(self, **kwargs):
+            assert callable(kwargs["progress_callback"])
+            kwargs["progress_callback"]("repair_contracts", {"current": 1, "total": 2, "label": "01_test.contract.json"})
+            kwargs["progress_callback"]("stage", {"status": "Consolidating graph"})
+            kwargs["progress_callback"]("repair_contracts", {"current": 2, "total": 2, "label": "02_test.contract.json", "done": True})
+            seen["kwargs"] = kwargs
+            return {"status": "ok", "series_id": kwargs["series_id"]}
+
+    monkeypatch.setattr(saga_tools, "LLMClient", _DummyLLM)
+    monkeypatch.setattr(saga_tools, "Neo4jIngestionService", _DummyNeo4j)
+    monkeypatch.setattr(saga_tools, "CorpusHardeningService", _DummyHardeningService)
+    monkeypatch.setattr(saga_tools, "_contract_paths_from_args_or_discovery", lambda args: ["c1.json", "c2.json"])
+
+    parser = build_parser()
+    args = parser.parse_args([
+        "rebuild-corpus",
+        "--series-id",
+        "acotar",
+        "--output-dir",
+        str(tmp_path / "out"),
+    ])
+    rebuild_corpus(args)
+
+    output = capsys.readouterr().out
+    assert "[repair_contracts]" in output
+    assert "[stage] Consolidating graph" in output
+    payload = json.loads(output[output.index("{"):])
+    assert payload["status"] == "ok"
+    assert seen["kwargs"]["series_id"] == "acotar"
+
+
 def test_book_checkpoint_path_is_series_scoped():
     path = _book_checkpoint_path("harry-potter", 4, "Goblet of Fire.epub")
     assert "harry-potter" in str(path)
     assert str(path).endswith("04_Goblet of Fire.epub.checkpoint.json")
 
 
-def test_cli_build_sequel_context_prefers_exported_artifact(tmp_path):
+def test_cli_build_sequel_context_prefers_exported_artifact(tmp_path, monkeypatch):
     contract = _sample_contract()
+    identity_path = _write_identity_json(tmp_path)
     exported = {
         "meta": {"book_title": "Cached Contract"},
         "story_ending": {"last_scene": {"summary": "Cached."}, "critical_path_tail": []},
@@ -108,16 +284,19 @@ def test_cli_build_sequel_context_prefers_exported_artifact(tmp_path):
     contract_path = tmp_path / "contract.json"
     out_path = tmp_path / "sequel_context.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    monkeypatch.setattr(saga_tools, "_apply_identity_provider_override", lambda payload, args: payload)
 
     parser = build_parser()
     args = parser.parse_args(
         [
             "build-sequel-context",
-            "--contract",
-            str(contract_path),
-            "--out",
-            str(out_path),
-        ]
+                "--contract",
+                str(contract_path),
+                "--identity-json",
+                str(identity_path),
+                "--out",
+                str(out_path),
+            ]
     )
     build_sequel_context(args)
 
@@ -127,6 +306,7 @@ def test_cli_build_sequel_context_prefers_exported_artifact(tmp_path):
 
 def test_cli_generate_blueprint_prefers_exported_artifact_by_default(tmp_path, monkeypatch):
     contract = _sample_contract()
+    identity_path = _write_identity_json(tmp_path)
     exported_context = {
         "meta": {"book_title": "Cached Contract"},
         "story_ending": {"last_scene": {"summary": "Cached."}, "critical_path_tail": []},
@@ -163,10 +343,12 @@ def test_cli_generate_blueprint_prefers_exported_artifact_by_default(tmp_path, m
     contract_path = tmp_path / "contract.json"
     out_path = tmp_path / "blueprint.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    monkeypatch.setattr(saga_tools, "_apply_identity_provider_override", lambda payload, args: payload)
 
     class _DummyLLM:
         MODE_DEEPSEEK = "deepseek"
         MODE_GPT_OSS = "gpt_oss"
+        MODE_GENERAL_COMPUTE = "general_compute"
         MODE_MISTRAL = "mistral"
         MODE_GEMINI = "gemini"
 
@@ -195,10 +377,12 @@ def test_cli_generate_blueprint_prefers_exported_artifact_by_default(tmp_path, m
     args = parser.parse_args(
         [
             "generate-blueprint",
-            "--contract",
-            str(contract_path),
-            "--prompt",
-            "Use the cached blueprint.",
+                "--contract",
+                str(contract_path),
+                "--identity-json",
+                str(identity_path),
+                "--prompt",
+                "Use the cached blueprint.",
             "--chapters",
             "12",
             "--canon-position",
@@ -223,11 +407,14 @@ def test_cli_generate_blueprint_passes_divergent_controls(tmp_path, monkeypatch)
     contract = _sample_contract()
     contract_path = tmp_path / "contract.json"
     out_path = tmp_path / "blueprint.json"
+    identity_path = _write_identity_json(tmp_path)
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    monkeypatch.setattr(saga_tools, "_apply_identity_provider_override", lambda payload, args: payload)
 
     class _DummyLLM:
         MODE_DEEPSEEK = "deepseek"
         MODE_GPT_OSS = "gpt_oss"
+        MODE_GENERAL_COMPUTE = "general_compute"
         MODE_MISTRAL = "mistral"
         MODE_GEMINI = "gemini"
 
@@ -274,10 +461,12 @@ def test_cli_generate_blueprint_passes_divergent_controls(tmp_path, monkeypatch)
     args = parser.parse_args(
         [
             "generate-blueprint",
-            "--contract",
-            str(contract_path),
-            "--prompt",
-            "Rewrite from the confessional scene onward.",
+                "--contract",
+                str(contract_path),
+                "--identity-json",
+                str(identity_path),
+                "--prompt",
+                "Rewrite from the confessional scene onward.",
             "--chapters",
             "14",
             "--canon-position",
@@ -651,9 +840,102 @@ def test_cli_encode_store_can_run_books_in_parallel(monkeypatch, tmp_path, capsy
     ])
     encode_store(args)
 
-    payload = json.loads(capsys.readouterr().out)
+    output = capsys.readouterr().out
+    payload = json.loads(output[output.index("{"):])
     assert payload["encoded"]["books"] == 2
     assert started["overlap"] is True
+
+
+def test_cli_encode_store_prints_progress(monkeypatch, tmp_path, capsys):
+    sample_contract = _sample_contract()
+    book_path = tmp_path / "book.epub"
+    book_path.write_bytes(b"dummy book")
+
+    class _DummyEncoder:
+        def __init__(self, **kwargs):
+            self.series_id = kwargs["series_id"]
+            self.series_title = kwargs["series_title"]
+            self.book_index_base = kwargs["book_index_base"]
+
+        def _prepare_book_inputs(self, books):
+            return [{
+                **books[0],
+                "book_index": self.book_index_base,
+                "source_hash_sha256": "hash-1",
+                "source_size_bytes": 10,
+                "source_mtime_utc": "2026-01-01T00:00:00+00:00",
+            }]
+
+        def _series_context(self, prepared_books):
+            return self.series_id, self.series_title
+
+        def encode_and_persist(self, books, neo4j_service=None, progress_callback=None, checkpoint_path=None):
+            assert callable(progress_callback)
+            progress_callback("identity", {
+                "chapter_index": 2,
+                "total_chapters": 5,
+                "chapter_title": "A Test Chapter",
+                "book": books[0]["title"],
+            })
+            progress_callback("scene", {
+                "scene_position": 3,
+                "total_scenes": 8,
+                "chapter_index": 2,
+                "scene_index": 1,
+                "book": books[0]["title"],
+            })
+            progress_callback("causal_graph", {
+                "status": "Building causal graph",
+                "book": books[0]["title"],
+            })
+            contract = json.loads(json.dumps(sample_contract))
+            contract["inputs"]["books"][0]["title"] = books[0]["title"]
+            return {
+                "contract": contract,
+                "ingest_result": {"status": "ok", "book": books[0]["title"]},
+            }
+
+    class _DummyNeo4j:
+        def __init__(self, **kwargs):
+            pass
+
+        def register_series(self, series_id, series_title):
+            return {"status": "ok"}
+
+        def plan_ingest(self, series_id, books):
+            return {
+                "series_id": series_id,
+                "books": [{"title": books[0]["title"], "action": "new"}],
+                "summary": {"new": 1, "unchanged": 0, "stale": 0, "conflict": 0},
+            }
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(encoder_persistence_service, "EncoderPersistenceService", _DummyEncoder)
+    monkeypatch.setattr(saga_tools, "Neo4jIngestionService", _DummyNeo4j)
+    monkeypatch.setattr(
+        saga_tools.LLMClient,
+        "probe_ollama_mode_access",
+        classmethod(lambda cls, mode, model_name: {"status": "ok", "mode": mode, "model": model_name}),
+    )
+
+    parser = build_parser()
+    args = parser.parse_args([
+        "encode-store",
+        "--book",
+        str(book_path),
+        "--series-id",
+        "acotar",
+        "--series-title",
+        "ACOTAR",
+    ])
+    encode_store(args)
+
+    output = capsys.readouterr().out
+    assert "[identity]" in output
+    assert "[scene]" in output
+    assert "[causal_graph] book.epub: Building causal graph" in output
 
 
 def test_cli_register_and_inspect_corpus(monkeypatch, capsys):
@@ -764,6 +1046,7 @@ def test_cli_generate_blueprint_neo4j(monkeypatch, tmp_path):
     class _DummyLLM:
         MODE_DEEPSEEK = "deepseek"
         MODE_GPT_OSS = "gpt_oss"
+        MODE_GENERAL_COMPUTE = "general_compute"
         MODE_MISTRAL = "mistral"
         MODE_GEMINI = "gemini"
 
@@ -832,6 +1115,7 @@ def test_cli_generate_sequel_neo4j_passes_ollama_model_override(monkeypatch, tmp
     class _DummyLLM:
         MODE_DEEPSEEK = "deepseek"
         MODE_GPT_OSS = "gpt_oss"
+        MODE_GENERAL_COMPUTE = "general_compute"
         MODE_MISTRAL = "mistral"
         MODE_GEMINI = "gemini"
 

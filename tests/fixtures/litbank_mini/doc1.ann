@@ -1,0 +1,10 @@
+T1	PROP_PER 0 5	Fares
+T2	PROP_PER 14 20	Kareem
+T3	PRON_PER 23 25	He
+T4	PROP_PER 36 42	Kareem
+T5	NOM_PER 48 62	project leader
+T6	Fares-1 0 5	Fares
+T7	Kareem-2 14 20	Kareem
+T8	Fares-1 23 25	He
+T9	Kareem-2 36 42	Kareem
+T10	Fares-1 48 62	project leader

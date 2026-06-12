@@ -216,6 +216,8 @@ class NarrativeGenerationService:
         self,
         *,
         llm_client: Optional[LLMClient] = None,
+        planner_llm_client: Optional[LLMClient] = None,
+        prose_llm_client: Optional[LLMClient] = None,
         hybrid_retriever: Optional[HybridNarrativeRetriever] = None,
         target_chapters: int = 25,
         scene_pause_seconds: float = 0.0,
@@ -225,6 +227,8 @@ class NarrativeGenerationService:
             mode=self.DEFAULT_NARRATIVE_MODEL_MODE,
             ollama_model_override=self.DEFAULT_NARRATIVE_OLLAMA_MODEL,
         )
+        self.planner_llm = planner_llm_client or self.llm
+        self.prose_llm = prose_llm_client or self.llm
         self.target_chapters = max(1, int(target_chapters))
         self.scene_pause_seconds = max(0.0, float(scene_pause_seconds))
         self.chapter_pause_seconds = max(0.0, float(chapter_pause_seconds))
@@ -344,6 +348,9 @@ class NarrativeGenerationService:
         causal_chains = retrieval_json.get("causal_chains", []) or []
         flexible_events = retrieval_json.get("flexible_events", []) or []
         trajectories = retrieval_json.get("character_trajectories", []) or []
+        reference_entities = retrieval_json.get("reference_entities", []) or []
+        narrator = retrieval_json.get("narrator", {}) or {}
+        alias_index = retrieval_json.get("alias_index", {}) or {}
         controls = self.normalize_generation_controls(
             user_prompt=user_prompt,
             generation_controls=generation_controls,
@@ -433,6 +440,16 @@ class NarrativeGenerationService:
                 }
                 for item in trajectories
             ],
+            "reference_entities": [
+                {
+                    "name": item.get("display_name", ""),
+                    "aliases": item.get("aliases", []) or [],
+                    "category": item.get("category", "reference_entity"),
+                }
+                for item in reference_entities[:20]
+            ],
+            "narrator": narrator,
+            "alias_index": alias_index,
             "style_requirements": controls.get("style_requirements", []),
             "consistency_requirements": controls.get("consistency_requirements", []),
         }
@@ -501,6 +518,11 @@ class NarrativeGenerationService:
                 controls=compiled_context.get("generation_controls") or {},
             ),
             stage_name=f"chapter_outline_{chapter_number}",
+            local_repair=lambda raw_output: self._repair_chapter_outline_to_controls(
+                raw_output,
+                chapter_number=chapter_number,
+                controls=compiled_context.get("generation_controls") or {},
+            ),
         )
 
     def generate_scene_prose(
@@ -1029,7 +1051,7 @@ class NarrativeGenerationService:
         attempt_prompt = prompt
         last_error = "unknown_error"
         for attempt in range(1, max_attempts + 1):
-            result = self.llm.generate_json(attempt_prompt, strict=True, validator=validator)
+            result = self.planner_llm.generate_json(attempt_prompt, strict=True, validator=validator)
             if isinstance(result, dict) and "error" not in result:
                 return result
             validation_error = self._extract_validation_error(result, validator)
@@ -1059,13 +1081,28 @@ class NarrativeGenerationService:
     ) -> str:
         attempt_prompt = prompt
         last_error = "unknown_error"
+        prose_llm = self.prose_llm
+        prose_kwargs = self._prose_generation_kwargs(prose_llm)
         for attempt in range(1, max_attempts + 1):
-            prose = self.llm.generate_text(
-                attempt_prompt,
-                system_prompt=PROSE_SYSTEM,
-                temperature=0.85,
-                max_tokens=3000,
-            )
+            try:
+                prose = prose_llm.generate_text(
+                    attempt_prompt,
+                    system_prompt=PROSE_SYSTEM,
+                    temperature=prose_kwargs["temperature"],
+                    max_tokens=prose_kwargs["max_tokens"],
+                )
+            except RuntimeError as exc:
+                if self._should_fallback_from_prose_llm(exc):
+                    prose_llm = self.planner_llm
+                    prose_kwargs = self._prose_generation_kwargs(prose_llm)
+                    prose = prose_llm.generate_text(
+                        attempt_prompt,
+                        system_prompt=PROSE_SYSTEM,
+                        temperature=prose_kwargs["temperature"],
+                        max_tokens=prose_kwargs["max_tokens"],
+                    )
+                else:
+                    raise
             prose = self._normalize_scene_prose_output(prose)
             if validator(prose):
                 return prose
@@ -1079,6 +1116,24 @@ class NarrativeGenerationService:
                 raw_output=prose,
             )
         raise ValueError(f"Decoder {stage_name} generation failed prose validation: {last_error}")
+
+    def _prose_generation_kwargs(self, llm_client: LLMClient) -> Dict[str, Any]:
+        mode = str(getattr(llm_client, "mode", "") or "").strip().lower()
+        if mode == LLMClient.MODE_GENERAL_COMPUTE:
+            return {
+                "temperature": 0.75,
+                "max_tokens": 1400,
+            }
+        return {
+            "temperature": 0.85,
+            "max_tokens": 3000,
+        }
+
+    def _should_fallback_from_prose_llm(self, exc: RuntimeError) -> bool:
+        if self.prose_llm is self.planner_llm:
+            return False
+        message = str(exc or "").lower()
+        return "rate_limited_exhausted" in message or "429" in message
 
     def _build_repair_prompt(
         self,
@@ -1280,25 +1335,37 @@ class NarrativeGenerationService:
         total_chapters = int(blueprint.get("total_chapters") or controls.get("chapter_count") or self.target_chapters)
         required_beats = list(controls.get("required_plot_beats") or [])
         assigned_beats: List[str] = []
-        if required_beats and total_chapters > 0:
-            beat_count = len(required_beats)
-            previous_cut = 0 if chapter_number <= 1 else (((chapter_number - 1) * beat_count) + total_chapters - 1) // total_chapters
-            current_cut = max(1, ((chapter_number * beat_count) + total_chapters - 1) // total_chapters)
-            assigned_beats = required_beats[previous_cut:current_cut]
+        if required_beats and total_chapters > 0 and chapter_number > 0:
+            beat_positions = self._scheduled_plot_beat_positions(
+                total_chapters=total_chapters,
+                beat_count=len(required_beats),
+            )
+            assigned_beats = [
+                beat
+                for beat, assigned_chapter in zip(required_beats, beat_positions)
+                if assigned_chapter == chapter_number
+            ]
         relationship_targets = list((controls.get("relationship_directions") or []))
         relationship_focus: List[Dict[str, Any]] = []
         for item in relationship_targets:
             chars = list(item.get("characters") or [])
             if len(chars) < 2:
                 continue
+            relationship_entry = dict(item)
+            relationship_entry["stage"] = self._relationship_stage_for_chapter(
+                relationship=item,
+                chapter_number=chapter_number,
+                total_chapters=total_chapters,
+                controls=controls,
+            )
             lowered = " ".join(assigned_beats).lower()
             if lowered and any(char.lower() in lowered for char in chars):
-                relationship_focus.append(item)
+                relationship_focus.append(relationship_entry)
                 continue
             if chapter_number <= max(3, total_chapters // 3) and item.get("relationship_type") == "romance":
-                relationship_focus.append(item)
+                relationship_focus.append(relationship_entry)
             elif chapter_number >= max(1, total_chapters - 2):
-                relationship_focus.append(item)
+                relationship_focus.append(relationship_entry)
         return {
             "assigned_plot_beats": assigned_beats[:2],
             "relationship_focus": relationship_focus[:3],
@@ -1306,6 +1373,76 @@ class NarrativeGenerationService:
             "style_focus": list(controls.get("style_requirements") or [])[:4],
             "consistency_focus": list(controls.get("consistency_requirements") or [])[:4],
         }
+
+    def _scheduled_plot_beat_positions(self, *, total_chapters: int, beat_count: int) -> List[int]:
+        if total_chapters <= 0 or beat_count <= 0:
+            return []
+        if beat_count == 1:
+            return [1]
+        if total_chapters == 1:
+            return [1 for _ in range(beat_count)]
+        positions: List[int] = []
+        for index in range(beat_count):
+            chapter_slot = 1 + round(index * (total_chapters - 1) / (beat_count - 1))
+            chapter_slot = max(1, min(total_chapters, int(chapter_slot)))
+            positions.append(chapter_slot)
+        return positions
+
+    def _relationship_stage_for_chapter(
+        self,
+        *,
+        relationship: Dict[str, Any],
+        chapter_number: int,
+        total_chapters: int,
+        controls: Dict[str, Any],
+    ) -> str:
+        desired = str(relationship.get("desired_direction") or "").lower()
+        notes = str(relationship.get("notes") or "").lower()
+        relationship_type = str(relationship.get("relationship_type") or "").lower()
+        payoff_chapter = self._relationship_payoff_chapter(
+            relationship=relationship,
+            total_chapters=total_chapters,
+            controls=controls,
+        )
+        if any(token in desired or token in notes for token in ("release", "releases", "let go", "lets go")):
+            if payoff_chapter and chapter_number < payoff_chapter:
+                return "pressure"
+            if payoff_chapter and chapter_number == payoff_chapter:
+                return "payoff"
+            if payoff_chapter and chapter_number > payoff_chapter:
+                return "aftermath"
+        if relationship_type == "romance":
+            if chapter_number <= max(2, total_chapters // 3):
+                return "slow_burn"
+            if chapter_number >= max(1, total_chapters - 2):
+                return "payoff"
+            return "deepen"
+        return "progress"
+
+    def _relationship_payoff_chapter(
+        self,
+        *,
+        relationship: Dict[str, Any],
+        total_chapters: int,
+        controls: Dict[str, Any],
+    ) -> int:
+        desired = str(relationship.get("desired_direction") or "").strip()
+        if not desired:
+            return 0
+        beats = list(controls.get("required_plot_beats") or [])
+        beat_positions = self._scheduled_plot_beat_positions(
+            total_chapters=total_chapters,
+            beat_count=len(beats),
+        )
+        if "release" in desired.lower():
+            for beat, chapter_slot in zip(beats, beat_positions):
+                beat_lower = str(beat or "").lower()
+                if "release" in beat_lower or "releases" in beat_lower:
+                    return chapter_slot
+        for beat, chapter_slot in zip(beats, beat_positions):
+            if self._texts_loosely_match(beat, desired):
+                return chapter_slot
+        return 0
 
     def _outline_calibration_packet(self, compiled_context: Dict[str, Any], chapter_controls: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -1331,20 +1468,60 @@ class NarrativeGenerationService:
         scene_context_packet: Dict[str, Any],
     ) -> Dict[str, Any]:
         present_names = list(scene_outline.get("characters_present") or [])
+        relationship_execution_notes = self._relationship_execution_notes(
+            chapter_controls=chapter_controls,
+            present_names=present_names,
+        )
+        avoid_notes = [
+            "Do not overuse ornamental clothing or jewelry description unless the scene beat makes it important.",
+            "Do not drift into generic cosmic exposition when the scene is intimate or political.",
+            "Prefer ACOTAR-style emotional subtext, close observation, and court-specific tension over abstract grandeur.",
+            "Keep non-dialogue narration in close third-person unless explicitly instructed otherwise.",
+        ]
+        if any("Lucien" in name for name in present_names) or any(
+            any("Lucien" in str(name) for name in (item.get("characters") or []))
+            for item in (chapter_controls.get("relationship_focus") or [])
+        ):
+            avoid_notes.extend([
+                "Do not flatten Lucien into a coercive villain; keep him loyal, lonely, conflicted, and politically burdened.",
+                "If the bond is strained, portray the pressure as painful and tragic rather than cartoonishly possessive.",
+            ])
         return {
             "style_requirements": list(controls.get("style_requirements") or [])[:6],
             "consistency_requirements": list(controls.get("consistency_requirements") or [])[:6],
             "relationship_focus": chapter_controls.get("relationship_focus") or [],
+            "relationship_execution_notes": relationship_execution_notes,
             "required_plot_beats": chapter_controls.get("assigned_plot_beats") or [],
             "present_characters": present_names,
             "pov_character": (scene_context_packet.get("pov_character_packet") or {}).get("name", ""),
-            "avoid": [
-                "Do not overuse ornamental clothing or jewelry description unless the scene beat makes it important.",
-                "Do not drift into generic cosmic exposition when the scene is intimate or political.",
-                "Prefer ACOTAR-style emotional subtext, close observation, and court-specific tension over abstract grandeur.",
-                "Keep non-dialogue narration in close third-person unless explicitly instructed otherwise.",
-            ],
+            "avoid": avoid_notes,
         }
+
+    def _relationship_execution_notes(
+        self,
+        *,
+        chapter_controls: Dict[str, Any],
+        present_names: List[str],
+    ) -> List[str]:
+        notes: List[str] = []
+        for item in chapter_controls.get("relationship_focus") or []:
+            characters = [str(name or "").strip() for name in (item.get("characters") or []) if str(name or "").strip()]
+            if present_names and not any(name in present_names for name in characters):
+                continue
+            stage = str(item.get("stage") or "").strip().lower()
+            desired = str(item.get("desired_direction") or "").strip()
+            joined = " and ".join(characters[:2]) if characters else "the relationship"
+            if stage == "payoff":
+                notes.append(f"For {joined}, deliver the relationship turning point cleanly and decisively in this chapter.")
+            elif stage == "aftermath":
+                notes.append(f"For {joined}, treat the major relationship shift as already completed and focus on aftermath rather than replaying it.")
+            elif stage == "slow_burn":
+                notes.append(f"For {joined}, keep the relationship in slow-burn territory with restraint, subtext, and unresolved tension.")
+            elif stage == "deepen":
+                notes.append(f"For {joined}, deepen the emotional intimacy without cashing out the full payoff too early.")
+            elif stage == "pressure":
+                notes.append(f"For {joined}, emphasize pressure, grief, and conflict around {desired.lower()} without resolving it yet.")
+        return notes[:5]
 
     def _normalize_canon_elements_to_preserve(self, rows: Any) -> List[Dict[str, Any]]:
         if not isinstance(rows, list):
@@ -1810,6 +1987,50 @@ class NarrativeGenerationService:
         if ranges:
             ranges[-1] = (ranges[-1][0], total_chapters)
         return ranges
+
+    def _repair_chapter_outline_to_controls(
+        self,
+        response: Any,
+        *,
+        chapter_number: int,
+        controls: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(response, dict):
+            return None
+        active_controls = controls or {}
+        repaired = json.loads(json.dumps(response))
+        repaired["chapter_number"] = chapter_number
+        primary_pov = str(active_controls.get("primary_pov_character") or "").strip()
+        if primary_pov:
+            repaired["pov_character"] = primary_pov
+        chapter_controls = self._chapter_controls_for_generation(
+            blueprint={"total_chapters": active_controls.get("chapter_count") or self.target_chapters},
+            controls=active_controls,
+            chapter_number=chapter_number,
+        )
+        assigned_beats = chapter_controls.get("assigned_plot_beats") or []
+        if assigned_beats:
+            repaired_text = json.dumps(repaired, ensure_ascii=False)
+            if not any(self._texts_loosely_match(repaired_text, beat) for beat in assigned_beats):
+                beat = assigned_beats[0]
+                scenes = repaired.get("scenes") or []
+                if scenes and isinstance(scenes[0], dict):
+                    first_scene = scenes[0]
+                    purpose = str(first_scene.get("purpose") or "").strip()
+                    summary = str(first_scene.get("summary") or "").strip()
+                    if purpose:
+                        first_scene["purpose"] = f"{purpose} Advance this required plot beat: {beat}"
+                    elif summary:
+                        first_scene["purpose"] = f"Advance this required plot beat: {beat}"
+                    else:
+                        first_scene["summary"] = beat
+                    repaired["scenes"] = scenes
+                world_state_changes = repaired.get("world_state_changes")
+                if not isinstance(world_state_changes, list):
+                    world_state_changes = []
+                world_state_changes.append(f"Required beat advanced: {beat}")
+                repaired["world_state_changes"] = world_state_changes
+        return repaired
 
     def _scene_prose_validation_error(
         self,

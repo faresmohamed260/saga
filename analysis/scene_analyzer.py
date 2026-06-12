@@ -12,6 +12,8 @@ class SceneAnalyzer:
     Produces a rich, validated scene analysis payload with one LLM call per scene.
     """
 
+    GC_JSON_RESPONSE_FORMAT = {"type": "json_object"}
+
     EVENT_TYPES = {"action", "interaction", "movement", "discovery"}
     ENTITY_TYPES = {"character", "object", "location", "creature"}
     DESCRIPTION_TYPES = {"stable_trait", "temporary_condition", "possession", "appearance_note"}
@@ -83,7 +85,7 @@ class SceneAnalyzer:
                 local_evidence=evidence_bundle,
                 retry_hint=attempt > 1,
             )
-            response = self.llm.generate_json(prompt, strict=True, validator=self._validate_response)
+            response = self._generate_scene_json(prompt, validator=self._validate_response)
             last_response = response
 
             if "error" not in response:
@@ -95,6 +97,7 @@ class SceneAnalyzer:
                     "length": scene.get("length"),
                     "text": scene.get("text", ""),
                 })
+                normalized.update(self._scene_runtime_metadata(attempt_count=attempt, final_status="success"))
                 return normalized
 
         return {
@@ -117,6 +120,12 @@ class SceneAnalyzer:
             "rejected_identity_candidates": [],
             "error": last_response.get("error") if isinstance(last_response, dict) else "unknown_error",
             "last_error": last_response.get("last_error") if isinstance(last_response, dict) else "",
+            **self._scene_runtime_metadata(
+                attempt_count=self.max_attempts,
+                final_status="failed",
+                error=last_response.get("error") if isinstance(last_response, dict) else "unknown_error",
+                last_error=last_response.get("last_error") if isinstance(last_response, dict) else "",
+            ),
         }
 
     def _analyze_with_tools(
@@ -139,7 +148,7 @@ class SceneAnalyzer:
                 local_evidence=local_evidence,
                 retry_hint=attempt > 1,
             )
-            response = self.llm.generate_json(prompt, strict=True, validator=self._validate_tool_response)
+            response = self._generate_scene_tool_calls(prompt, validator=self._validate_tool_response)
             last_response = response
             if "error" not in response:
                 tool_result = runtime.apply_tool_calls(response.get("tool_calls") or [])
@@ -152,6 +161,7 @@ class SceneAnalyzer:
                     "length": scene.get("length"),
                     "text": scene.get("text", ""),
                 })
+                normalized.update(self._scene_runtime_metadata(attempt_count=attempt, final_status="success"))
                 return normalized
 
         return {
@@ -174,10 +184,177 @@ class SceneAnalyzer:
             "rejected_identity_candidates": [],
             "error": last_response.get("error") if isinstance(last_response, dict) else "unknown_error",
             "last_error": last_response.get("last_error") if isinstance(last_response, dict) else "",
+            **self._scene_runtime_metadata(
+                attempt_count=self.max_attempts,
+                final_status="failed",
+                error=last_response.get("error") if isinstance(last_response, dict) else "unknown_error",
+                last_error=last_response.get("last_error") if isinstance(last_response, dict) else "",
+            ),
         }
 
     def analyze_many(self, scenes: List[Dict]) -> List[Dict]:
         return [self.analyze(scene) for scene in scenes]
+
+    def _scene_runtime_metadata(
+        self,
+        *,
+        attempt_count: int,
+        final_status: str,
+        error: str = "",
+        last_error: str = "",
+    ) -> Dict:
+        request_meta = self.llm.last_request_metadata() if hasattr(self.llm, "last_request_metadata") else {}
+        provider = self.llm.provider_name() if hasattr(self.llm, "provider_name") else "test"
+        model = self.llm.resolved_model_name() if hasattr(self.llm, "resolved_model_name") else str(getattr(self.llm, "mode", "test"))
+        return {
+            "provider": provider,
+            "provider_family": request_meta.get("provider_family") or provider,
+            "model": model,
+            "resolved_model": request_meta.get("resolved_model") or model,
+            "provider_account_alias": request_meta.get("provider_account_alias") or "",
+            "rotation_used": bool(request_meta.get("rotation_used")),
+            "rotation_attempt_count": int(request_meta.get("rotation_attempt_count") or 0),
+            "fallback_used": bool(request_meta.get("fallback_used")),
+            "attempt_count": int(attempt_count),
+            "final_status": final_status,
+            "error_category": LLMClient.classify_error(error, last_error),
+            "last_error": last_error or "",
+        }
+
+    def _generate_scene_json(self, prompt: str, *, validator) -> Dict:
+        kwargs = {
+            "strict": True,
+            "validator": validator,
+        }
+        if getattr(self.llm, "mode", "") == LLMClient.MODE_GENERAL_COMPUTE:
+            kwargs["response_format"] = self.GC_JSON_RESPONSE_FORMAT
+        try:
+            return self.llm.generate_json(prompt, **kwargs)
+        except TypeError:
+            kwargs.pop("response_format", None)
+            return self.llm.generate_json(prompt, **kwargs)
+
+    def _generate_scene_tool_calls(self, prompt: str, *, validator) -> Dict:
+        kwargs = {
+            "strict": True,
+            "validator": validator,
+        }
+        if getattr(self.llm, "mode", "") == LLMClient.MODE_GENERAL_COMPUTE:
+            kwargs["tools"] = self._gc_scene_tools()
+            kwargs["tool_choice"] = "required"
+        try:
+            return self.llm.generate_json(prompt, **kwargs)
+        except TypeError:
+            kwargs.pop("tool_choice", None)
+            kwargs.pop("tools", None)
+            return self.llm.generate_json(prompt, **kwargs)
+
+    def _gc_scene_tools(self) -> List[Dict]:
+        return [
+            self._function_tool("set_scene_summary", {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}),
+            self._function_tool("add_canonical_character", {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string"},
+                    "is_new_character": {"type": "boolean"},
+                    "names_used": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["name"],
+            }),
+            self._function_tool("add_character_mention", {
+                "type": "object",
+                "properties": {
+                    "mention_text": {"type": "string"},
+                    "mention_type": {"type": "string"},
+                    "canonical_name": {"type": "string"},
+                    "is_consequential_character": {"type": "boolean"},
+                },
+                "required": ["mention_text", "mention_type"],
+            }),
+            self._function_tool("add_event", {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "characters": {"type": "array", "items": {"type": "string"}},
+                    "entities_involved": {"type": "array", "items": {"type": "string"}},
+                    "reason": {"type": "string"},
+                    "outcome": {"type": "string"},
+                    "type": {"type": "string"},
+                },
+                "required": ["description"],
+            }),
+            self._function_tool("add_entity", {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "entity_type": {"type": "string"}},
+                "required": ["name", "entity_type"],
+            }),
+            self._function_tool("add_entity_description", {
+                "type": "object",
+                "properties": {
+                    "entity_name": {"type": "string"},
+                    "entity_type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "description_type": {"type": "string"},
+                },
+                "required": ["entity_name", "entity_type", "description", "description_type"],
+            }),
+            self._function_tool("add_state_change", {
+                "type": "object",
+                "properties": {
+                    "entity_name": {"type": "string"},
+                    "entity_type": {"type": "string"},
+                    "attribute": {"type": "string"},
+                    "previous_state": {"type": "string"},
+                    "new_state": {"type": "string"},
+                    "change_type": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["entity_name", "entity_type", "attribute", "new_state", "change_type", "evidence"],
+            }),
+            self._function_tool("add_relationship_change", {
+                "type": "object",
+                "properties": {
+                    "source_entity": {"type": "string"},
+                    "target_entity": {"type": "string"},
+                    "relationship": {"type": "string"},
+                    "change": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["source_entity", "target_entity", "relationship", "change", "evidence"],
+            }),
+            self._function_tool("set_location", {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "entity_type": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "entity_type"],
+            }),
+            self._function_tool("add_time_signal", {"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]}),
+            self._function_tool("add_alias_update", {
+                "type": "object",
+                "properties": {
+                    "alias": {"type": "string"},
+                    "canonical_name": {"type": "string"},
+                    "action": {"type": "string"},
+                    "reasoning": {"type": "string"},
+                },
+                "required": ["alias", "canonical_name", "action", "reasoning"],
+            }),
+            self._function_tool("reject_identity_candidate", {"type": "object", "properties": {"candidate": {"type": "string"}}, "required": ["candidate"]}),
+        ]
+
+    def _function_tool(self, name: str, parameters: Dict) -> Dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": f"Populate scene-analysis state via {name}.",
+                "parameters": parameters,
+            },
+        }
 
     def _build_prompt(
         self,
@@ -220,6 +397,8 @@ class SceneAnalyzer:
         - Prefer validating, rejecting, or refining the provided candidates over inventing new ones from scratch
         - Keep output concise and grounded
         - Do not invent details
+        - Do not leave meaningful entities empty: if an entity is consequential enough to include, explain either how it appears, what it is doing, where it is, who uses it, or how it changes
+        - Avoid duplicate entities by normalizing obvious variants within the scene: singular/plural, article variants, capitalization, and aliases already present in the alias map
         - Treat the current alias map as ground truth memory for already-known characters
         - Do not invent characters, aliases, or narrator labels that are not explicitly supported by the text
         - Never create placeholder identities such as "Narrator" unless the text itself clearly uses that identity label
@@ -245,6 +424,15 @@ class SceneAnalyzer:
         - Exclude incidental prey, scenery, generic background groups, and objects with no narrative relevance
         - Separate observations from durable state changes
         - For entity_descriptions:
+          - The first time a character, creature, object, or location appears in this scene, actively look for a concrete physical description near that introduction
+          - Physical description means visible form/material/color/shape/body/face/hair/clothing/armor/condition/setting details directly stated in the scene
+          - Do not label mood, behavior, occupation, plot role, possession, or generic action as physical description
+          - If no physical description is directly present, do not invent one; instead add a concise stable_trait or contextual note that explains why the entity matters
+          - For characters and creatures, prioritize body/face/hair/build/skin/wings/mask/armor/clothing/injuries
+          - For objects, prioritize material, shape, color, size, condition, magical appearance, owner/user, and location
+          - For locations, prioritize architecture, terrain, lighting, atmosphere, sensory details, and state changes
+          - Capture outfit/clothing/armor changes as possession or appearance_note
+          - Capture injuries, visible exhaustion, blood, healing, masking, transformation, or damage as temporary_condition or state_changes
           - stable_trait = durable physical identity details
           - temporary_condition = temporary state such as injured, bloody, tired
           - possession = item carried/worn/owned in this scene
@@ -261,6 +449,20 @@ class SceneAnalyzer:
         - Allowed entity types: character, object, location, creature
         - Allowed description types: stable_trait, temporary_condition, possession, appearance_note
         - Allowed change types: physical_state, status, possession, location, condition, relationship, knowledge
+        - Events must include:
+          - entities_involved: every consequential character/location/object/creature participating in the event
+          - reason: why the event happens if the scene gives a cause or motive; otherwise empty string
+          - outcome: what changes because of the event; otherwise empty string
+          - characters: only canonical character names that actively participate in the event
+          - description: one concrete canon event, not a vague whole-scene recap
+        - Every entity named in events.entities_involved must also appear in entities_present unless it is only an abstract concept
+        - If a character appears in events.characters, also include that character in events.entities_involved
+        - If a scene introduces a consequential entity but you cannot ground its physical appearance yet, still include a concise contextual note explaining what it is or why it matters
+        - Be especially careful in fantasy scenes to capture grounded magical/physical world details:
+          - characters: visible form, face, hair, clothing, armor, wings, tattoos/marks, injuries, blood, exhaustion, transformation
+          - objects/artifacts: material, shape, visible power, glow, damage, owner/holder, activation state, carried/worn status
+          - locations: architecture, terrain, weather, lighting, atmosphere, crowding, damage, magical effects
+          - creatures: anatomy, species/kind, threatening posture, wounds, transformation, unusual physical traits
 
         Return JSON:
         {{
@@ -285,6 +487,9 @@ class SceneAnalyzer:
             {{
               "description": "short event description",
               "characters": ["Feyre"],
+              "entities_involved": ["Feyre", "ash arrow", "wolf"],
+              "reason": "Feyre needs food and sees the wolf threatening the doe",
+              "outcome": "The wolf is killed and becomes a consequential dead creature",
               "type": "action"
             }}
           ],
@@ -411,6 +616,12 @@ class SceneAnalyzer:
         - Use filtered candidate_characters and candidate_entities as your default working set
         - If a candidate is weak or wrong, ignore or reject it rather than replacing it with speculative new items
         - Use add_event, add_state_change, and add_relationship_change to populate those sections explicitly
+        - Event tool calls should include entities_involved, reason, and outcome whenever the scene supports them
+        - If an event mentions an object, location, creature, or character, also add that item through add_entity
+        - If an entity is important enough to add, add at least one physical/contextual description or state change when supported by the text
+        - Actively inspect first appearances for physical description: visible body/form/material/color/clothing/armor/injury/location atmosphere, not generic behavior
+        - Track outfit, injury, condition, object ownership, object location, object damage, and location state changes as descriptions or state changes
+        - When a character is added to an event, include the same canonical name in entities_involved too
         - If the scene contains consequential actions, discoveries, state transitions, or relationship shifts, emit those through tools rather than leaving them implicit in the summary
         - Prefer a small number of strong, well-supported tool calls over broad speculative coverage
         - Only emit add_state_change when the scene makes a new state true
@@ -544,29 +755,81 @@ class SceneAnalyzer:
 
             event_type = (event.get("type") or "").strip().lower()
             if event_type not in self.EVENT_TYPES:
-                event_type = "action"
+                event_type = self._classify_event_type(event)
 
             characters = event.get("characters") or []
             if not isinstance(characters, list):
                 characters = []
+            entities_involved = event.get("entities_involved") or []
+            if not isinstance(entities_involved, list):
+                entities_involved = []
+
+            cleaned_characters = []
+            seen_characters = set()
+            for character in characters:
+                cleaned = str(character).strip()
+                lowered = cleaned.lower()
+                if (
+                    not cleaned
+                    or lowered in seen_characters
+                    or self._is_forbidden_identity(cleaned)
+                    or self._is_generic_alias(cleaned)
+                ):
+                    continue
+                seen_characters.add(lowered)
+                cleaned_characters.append(cleaned)
+
+            cleaned_entities = []
+            seen_entities = set()
+            for entity in entities_involved:
+                cleaned = str(entity).strip()
+                lowered = cleaned.lower()
+                if not cleaned or lowered in seen_entities:
+                    continue
+                seen_entities.add(lowered)
+                cleaned_entities.append(cleaned)
+            for character in cleaned_characters:
+                lowered = character.lower()
+                if lowered not in seen_entities:
+                    seen_entities.add(lowered)
+                    cleaned_entities.append(character)
 
             normalized.append({
                 "event_id": f"evt_{index}",
                 "description": description,
-                "characters": [
-                    str(character).strip()
-                    for character in characters
-                    if str(character).strip()
-                    and not self._is_forbidden_identity(str(character))
-                    and not self._is_generic_alias(str(character))
-                ],
+                "characters": cleaned_characters,
+                "entities_involved": cleaned_entities,
+                "reason": (event.get("reason") or "").strip(),
+                "outcome": (event.get("outcome") or "").strip(),
                 "type": event_type,
             })
         return normalized
 
+    def _classify_event_type(self, event: Dict) -> str:
+        text = " ".join(
+            str(part or "").strip().lower()
+            for part in [
+                event.get("description"),
+                event.get("reason"),
+                event.get("outcome"),
+            ]
+        )
+        movement_markers = {"walk", "walks", "travel", "travels", "ride", "rides", "return", "returns", "leave", "leaves", "enter", "enters", "go", "goes", "carry", "carries"}
+        discovery_markers = {"notice", "notices", "learn", "learns", "realize", "realizes", "discover", "discovers", "find", "finds", "see", "sees", "reveal", "reveals"}
+        interaction_markers = {"say", "says", "tell", "tells", "ask", "asks", "speak", "speaks", "argue", "argues", "promise", "promises", "warn", "warns", "confide", "confides"}
+        if any(marker in text for marker in interaction_markers):
+            return "interaction"
+        if any(marker in text for marker in discovery_markers):
+            return "discovery"
+        if any(marker in text for marker in movement_markers):
+            return "movement"
+        return "action"
+
     def _normalize_entities(self, entities: List[Dict]) -> List[Dict]:
         normalized = []
         seen = set()
+        by_name = {}
+        type_priority = {"character": 0, "creature": 1, "location": 2, "object": 3}
 
         for entity in entities:
             if not isinstance(entity, dict):
@@ -578,10 +841,20 @@ class SceneAnalyzer:
                 continue
 
             key = (name.lower(), entity_type)
+            name_key = " ".join(name.lower().split())
+            existing_index = by_name.get(name_key)
+            if existing_index is not None:
+                existing_type = normalized[existing_index]["entity_type"]
+                if type_priority.get(entity_type, 99) < type_priority.get(existing_type, 99):
+                    old_key = (name_key, existing_type)
+                    seen.discard(old_key)
+                    normalized[existing_index] = {"name": name, "entity_type": entity_type}
+                    seen.add(key)
+                continue
             if key in seen:
                 continue
             seen.add(key)
-
+            by_name[name_key] = len(normalized)
             normalized.append({
                 "name": name,
                 "entity_type": entity_type,
@@ -591,6 +864,7 @@ class SceneAnalyzer:
 
     def _normalize_descriptions(self, descriptions: List[Dict]) -> List[Dict]:
         normalized = []
+        seen = set()
         for item in descriptions:
             if not isinstance(item, dict):
                 continue
@@ -607,6 +881,11 @@ class SceneAnalyzer:
                 or description_type not in self.DESCRIPTION_TYPES
             ):
                 continue
+
+            key = (entity_name.lower(), entity_type, description.lower(), description_type)
+            if key in seen:
+                continue
+            seen.add(key)
 
             normalized.append({
                 "entity_name": entity_name,

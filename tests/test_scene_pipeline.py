@@ -24,6 +24,16 @@ def build_sample_chapter():
     }
 
 
+def build_short_chapter(chapter_index: int, text: str):
+    return {
+        "book_index": 1,
+        "chapter_index": chapter_index,
+        "chapter_title": f"Chapter {chapter_index}",
+        "content": text,
+        "source_file": "sample.epub",
+    }
+
+
 def build_sample_scene_analyses():
     return [
         {
@@ -77,6 +87,20 @@ def test_scene_size_presets():
     assert chapter_mode[0]["target_words"] == 0
     assert len(medium_mode) > 1
     assert all(item["target_words"] == 300 for item in medium_mode)
+
+
+def test_chapter_mode_batches_short_adjacent_chapters():
+    extractor = SceneExtractor.from_target_words(0)
+    chapters = [
+        build_short_chapter(1, "Feyre hunts in snow. " * 40),
+        build_short_chapter(2, "Tamlin waits in silence. " * 35),
+        build_short_chapter(3, "Lucien watches closely. " * 34),
+    ]
+    batched = extractor.extract_many(chapters, allow_cross_chapter=True)
+    assert len(batched) == 1
+    assert batched[0]["source_chapter_indices"] == [1, 2, 3]
+    assert batched[0]["chapter_index"] == 1
+    assert batched[0]["end_chapter_index"] == 3
 
 
 def test_story_index_search():

@@ -1,0 +1,13 @@
+{
+  "name": "retrieval_packet",
+  "required": {
+    "series_id": "string",
+    "meta": "object",
+    "story_ending": "object",
+    "character_states": "array",
+    "relationship_summary": "array",
+    "unresolved_threads": "array",
+    "retrieval_documents": "array"
+  }
+}
+

@@ -92,8 +92,43 @@ def test_canonical_normalizer_strips_contextual_character_suffixes():
     assert service.normalizer.canonicalize_candidate_name("Professor Albus Dumbledore") == "Albus Dumbledore"
     assert service.normalizer.canonicalize_candidate_name("Potions With Snape") == "Snape"
     assert service.normalizer.canonicalize_candidate_name("Death") == ""
+    assert service.normalizer.canonicalize_candidate_name("Feyre's") == "Feyre"
+    assert service.normalizer.canonicalize_candidate_name("The War") == ""
     assert service.normalizer.collapse_ocr_spacing("Feyre'stownhouse Bedroom") == "Feyre's townhouse Bedroom"
     assert service.normalizer.infer_entity_type("Feyre's Townhouse Bedroom", existing_type="character") == "location"
+
+
+def test_corpus_hardening_service_cleans_raw_involved_character_rows():
+    service = CorpusHardeningService()
+
+    cleaned = service._clean_involved_character_rows([
+        {"name": "Harry Seized Hedwig", "involved_events": 62},
+        {"name": "Feyre's", "involved_events": 30},
+        {"name": "The War", "involved_events": 28},
+        {"name": "Azriel Siphons", "involved_events": 12},
+    ])
+
+    assert cleaned == [
+        {"name": "Harry", "involved_events": 62},
+        {"name": "Feyre", "involved_events": 30},
+        {"name": "Azriel", "involved_events": 12},
+    ]
+
+
+def test_corpus_hardening_service_merges_short_involved_names_into_full_canonicals():
+    service = CorpusHardeningService()
+
+    cleaned = service._clean_involved_character_rows([
+        {"name": "Harry Potter", "involved_events": 100},
+        {"name": "Harry", "involved_events": 20},
+        {"name": "Feyre Archeron", "involved_events": 50},
+        {"name": "Feyre", "involved_events": 10},
+    ])
+
+    assert cleaned == [
+        {"name": "Harry Potter", "involved_events": 120},
+        {"name": "Feyre Archeron", "involved_events": 60},
+    ]
 
 
 def test_recover_missing_contracts_uses_source_books_when_contract_index_missing(tmp_path, monkeypatch):

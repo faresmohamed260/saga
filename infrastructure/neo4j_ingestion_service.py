@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from core.canon_normalization import CanonicalEntityContext, CanonicalEntityNormalizer
+from core.stable_character_state import StableCharacterStateBuilder
 
 try:
     from neo4j import GraphDatabase
@@ -85,6 +86,7 @@ class Neo4jIngestionService:
         self.database = database or os.getenv("NEO4J_DATABASE") or local_env.get("NEO4J_DATABASE") or "neo4j"
         self.driver = driver
         self.normalizer = CanonicalEntityNormalizer()
+        self.stable_state_builder = StableCharacterStateBuilder()
 
     def close(self) -> None:
         if self.driver is not None:
@@ -205,6 +207,33 @@ class Neo4jIngestionService:
             book_index = record["book_index"]
             self._remove_book_in_session(session, series_id=series_id, book_title=book_title, book_index=book_index)
         return {"status": "ok", "series_id": series_id, "book_title": book_title, "book_index": book_index}
+
+    def purge_series_residue(self, series_id: str) -> Dict[str, Any]:
+        if not series_id.strip():
+            raise ValueError("series_id is required to purge residual series data.")
+        driver = self._ensure_driver()
+        session_kwargs = {"database": self.database} if self.database else {}
+        self.probe_connection()
+        with driver.session(**session_kwargs) as session:
+            self._run(
+                session,
+                """
+                MATCH (n {series_id: $series_id})
+                WHERE NOT n:Series
+                DETACH DELETE n
+                """,
+                series_id=series_id,
+            )
+            self._run(
+                session,
+                """
+                MATCH (s:Series {series_id: $series_id})
+                SET s.updated_at = datetime($updated_at)
+                """,
+                series_id=series_id,
+                updated_at=self._now_utc(),
+            )
+        return {"status": "ok", "series_id": series_id}
 
     def lookup_book(self, series_id: str, book_title: str, *, session=None) -> Dict[str, Any] | None:
         owns_session = False
@@ -427,7 +456,7 @@ class Neo4jIngestionService:
         book_title = primary_book.get("title") or "Unknown Book"
         generated_at = payload.get("generated_at_utc", "")
         contract_version = payload.get("contract_version", "")
-        outputs = payload.get("outputs", {}) or {}
+        outputs = self._canonicalize_outputs_payload(payload.get("outputs", {}) or {})
         configuration = payload.get("configuration", {}) or {}
         ingest_started_at = self._now_utc()
 
@@ -558,6 +587,7 @@ class Neo4jIngestionService:
             resolved_scenes=outputs.get("resolved_scene_analyses") or outputs.get("scene_analyses") or [],
             context=canonical_context,
         )
+        stable_character_states = self._derive_stable_character_states(outputs, alias_map=alias_map)
         for entity in entity_registry:
             name = self._resolve_entity_name(entity.get("name"), context=canonical_context)
             if not name:
@@ -617,6 +647,19 @@ class Neo4jIngestionService:
                     series_id=series_id,
                     name=name,
                     descs=descriptions,
+                )
+            stable_attrs = stable_character_states.get(name, {}) if entity_type == "character" else {}
+            if stable_attrs:
+                set_clauses = []
+                params = {"series_id": series_id, "name": name}
+                for key, value in stable_attrs.items():
+                    safe = self._safe_key(key)
+                    set_clauses.append(f"e.canon_{safe} = $attr_{safe}")
+                    params[f"attr_{safe}"] = value
+                self._run(
+                    session,
+                    f"MATCH (e:Entity {{series_id: $series_id, name: $name}}) SET {', '.join(set_clauses)}",
+                    **params,
                 )
             for state_change in entity.get("state_changes", []) or []:
                 self._upsert_state_transition(session, series_id, name, state_change)
@@ -1286,6 +1329,142 @@ class Neo4jIngestionService:
             current["state_changes"] = state_changes
         return sorted(merged.values(), key=lambda item: (int((item.get("first_seen") or {}).get("book_index") or 0), item.get("name", "")))
 
+    def _canonicalize_outputs_payload(self, outputs: Dict[str, Any]) -> Dict[str, Any]:
+        payload = json.loads(json.dumps(outputs or {}))
+        identity_result = dict(payload.get("identity_result") or {})
+        raw_alias_map = dict(identity_result.get("alias_map") or {})
+        cleaned_alias_map: Dict[str, List[str]] = {}
+        for canonical, aliases in raw_alias_map.items():
+            canonical_name = self.normalizer.canonicalize_candidate_name(canonical)
+            if not canonical_name:
+                continue
+            bucket = cleaned_alias_map.setdefault(canonical_name, [canonical_name])
+            for alias in aliases or []:
+                alias_name = self.normalizer.canonicalize_candidate_name(alias)
+                if not alias_name or alias_name == canonical_name:
+                    continue
+                if alias_name not in bucket:
+                    bucket.append(alias_name)
+        identity_result["alias_map"] = cleaned_alias_map
+        payload["identity_result"] = identity_result
+
+        names = self.normalizer.collect_named_values(payload)
+        for canonical, aliases in cleaned_alias_map.items():
+            names.append(canonical)
+            names.extend(aliases or [])
+        merge_map, _ = self.normalizer.build_merge_map(names=names, alias_map=cleaned_alias_map)
+        payload = self._remap_named_payload(payload, merge_map)
+        payload["entity_registry"] = self._canonicalize_entity_registry(
+            payload.get("entity_registry") or [],
+            alias_map=((payload.get("identity_result") or {}).get("alias_map") or {}),
+        )
+        self._clean_character_scoped_payloads(payload)
+        return payload
+
+    def _remap_named_payload(self, payload: Any, merge_map: Dict[str, str]) -> Any:
+        if isinstance(payload, list):
+            return [self._remap_named_payload(item, merge_map) for item in payload]
+        if isinstance(payload, dict):
+            repaired: Dict[str, Any] = {}
+            for key, value in payload.items():
+                if key == "alias_map" and isinstance(value, dict):
+                    repaired[key] = self._repair_alias_map(value, merge_map)
+                    continue
+                if key in {"name", "entity_name", "character", "source_entity", "target_entity", "entity_a", "entity_b"} and isinstance(value, str):
+                    repaired[key] = merge_map.get(value, value)
+                    continue
+                if key in {"characters", "canonical_characters"} and isinstance(value, list):
+                    repaired[key] = self._remap_name_list(value, merge_map)
+                    continue
+                repaired[key] = self._remap_named_payload(value, merge_map)
+            return repaired
+        return payload
+
+    def _repair_alias_map(self, alias_map: Dict[str, List[str]], merge_map: Dict[str, str]) -> Dict[str, List[str]]:
+        repaired: Dict[str, List[str]] = {}
+        for canonical, aliases in (alias_map or {}).items():
+            target = merge_map.get(canonical, canonical)
+            target = self.normalizer.canonicalize_candidate_name(target)
+            if not target:
+                continue
+            bucket = repaired.setdefault(target, [target])
+            for alias in aliases or []:
+                resolved_alias = merge_map.get(alias, alias)
+                resolved_alias = self.normalizer.canonicalize_candidate_name(resolved_alias)
+                if not resolved_alias or resolved_alias == target:
+                    continue
+                if resolved_alias not in bucket:
+                    bucket.append(resolved_alias)
+        return repaired
+
+    def _remap_name_list(self, values: List[Any], merge_map: Dict[str, str]) -> List[Any]:
+        repaired = []
+        for item in values or []:
+            if isinstance(item, str):
+                remapped = merge_map.get(item, item)
+                remapped = self.normalizer.canonicalize_candidate_name(remapped)
+                if remapped and not self.normalizer.is_bad_alias_like_name(remapped):
+                    repaired.append(remapped)
+            elif isinstance(item, dict):
+                remapped = dict(item)
+                if "name" in remapped:
+                    remapped_name = merge_map.get(str(remapped.get("name") or ""), str(remapped.get("name") or ""))
+                    remapped_name = self.normalizer.canonicalize_candidate_name(remapped_name)
+                    if remapped_name and not self.normalizer.is_bad_alias_like_name(remapped_name):
+                        remapped["name"] = remapped_name
+                        repaired.append(remapped)
+                else:
+                    repaired.append(remapped)
+            else:
+                repaired.append(item)
+        return repaired
+
+    def _clean_character_scoped_payloads(self, outputs: Dict[str, Any]) -> None:
+        alias_map = ((outputs.get("identity_result") or {}).get("alias_map") or {})
+        context = self.normalizer.build_context(
+            entity_registry=outputs.get("entity_registry") or [],
+            alias_map=alias_map,
+        )
+        allowed_characters = set(context.known_characters.values())
+
+        def _clean_character_list(values: List[Any]) -> List[Any]:
+            cleaned: List[Any] = []
+            seen = set()
+            for item in values or []:
+                if isinstance(item, dict):
+                    resolved = self.normalizer.resolve_name(item.get("name", ""), context=context, expect_character=True)
+                    if not resolved or resolved not in allowed_characters or resolved in seen:
+                        continue
+                    remapped = dict(item)
+                    remapped["name"] = resolved
+                    cleaned.append(remapped)
+                    seen.add(resolved)
+                    continue
+                resolved = self.normalizer.resolve_name(str(item or ""), context=context, expect_character=True)
+                if not resolved or resolved not in allowed_characters or resolved in seen:
+                    continue
+                cleaned.append(resolved)
+                seen.add(resolved)
+            return cleaned
+
+        for timeline_row in outputs.get("timeline", []) or []:
+            timeline_row["characters"] = _clean_character_list(timeline_row.get("characters") or [])
+        for row in outputs.get("character_timelines", []) or []:
+            row["character"] = self.normalizer.resolve_name(row.get("character", ""), context=context, expect_character=True)
+        outputs["character_timelines"] = [row for row in (outputs.get("character_timelines") or []) if row.get("character")]
+        for row in outputs.get("stable_character_states", []) or []:
+            row["entity_name"] = self.normalizer.resolve_name(row.get("entity_name", ""), context=context, expect_character=True)
+        outputs["stable_character_states"] = [
+            row for row in (outputs.get("stable_character_states") or []) if row.get("entity_name")
+        ]
+        for scene_bucket in ("resolved_scene_analyses", "scene_analyses"):
+            for scene in outputs.get(scene_bucket, []) or []:
+                scene["canonical_characters"] = _clean_character_list(scene.get("canonical_characters") or [])
+                for event in scene.get("events", []) or []:
+                    event["characters"] = _clean_character_list(event.get("characters") or [])
+        for event in (((outputs.get("causal_graph_result") or {}).get("graph") or {}).get("events") or []):
+            event["characters"] = _clean_character_list(event.get("characters") or [])
+
     def _resolve_entity_name(
         self,
         raw_name: Any,
@@ -1334,6 +1513,40 @@ class Neo4jIngestionService:
             if isinstance(value, str) and value.strip():
                 stable[key] = value.strip()
         return stable
+
+    def _derive_stable_character_states(self, outputs: Dict[str, Any], *, alias_map: Dict[str, List[str]]) -> Dict[str, Dict[str, str]]:
+        provided = outputs.get("stable_character_states") or []
+        if provided:
+            rows = provided
+        else:
+            rows = self.stable_state_builder.build(
+                character_profiles=outputs.get("character_profiles") or [],
+                identity_result=outputs.get("identity_result") or {"alias_map": alias_map},
+                canon_snapshot=outputs.get("canon_snapshot") or [],
+                state_result=outputs.get("state_result") or {},
+            )
+        by_name: Dict[str, Dict[str, str]] = {}
+        for row in rows or []:
+            entity_name = str(row.get("entity_name") or "").strip()
+            resolved_name = self._resolve_alias_name(entity_name, alias_map)
+            if not resolved_name:
+                continue
+            attrs = self._stable_canon_snapshot_attributes(row.get("attributes") or {})
+            if attrs:
+                existing = by_name.setdefault(resolved_name, {})
+                existing.update(attrs)
+        return by_name
+
+    def _resolve_alias_name(self, name: str, alias_map: Dict[str, List[str]]) -> str:
+        if not name:
+            return ""
+        lowered = name.lower()
+        for canonical, aliases in (alias_map or {}).items():
+            names = [canonical, *(aliases or [])]
+            if lowered in {str(item or "").strip().lower() for item in names}:
+                return canonical
+        canonical = self.normalizer.canonicalize_candidate_name(name)
+        return canonical or name
 
     def _safe_key(self, value: str) -> str:
         return str(value or "").strip().replace(" ", "_").replace("-", "_").replace("/", "_")

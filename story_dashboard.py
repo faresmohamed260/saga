@@ -16,13 +16,45 @@ import streamlit as st
 
 from analysis.scene_analysis_orchestrator import SceneAnalysisOrchestrator
 from analysis.scene_extractor import SceneExtractor
+from core.pipeline_contract import (
+    apply_identity_updates as contract_apply_identity_updates,
+    build_scene_context as contract_build_scene_context,
+    canonical_lookup as contract_canonical_lookup,
+    canonicalize_name as contract_canonicalize_name,
+    is_forbidden_identity as contract_is_forbidden_identity,
+    looks_like_proper_name as contract_looks_like_proper_name,
+    normalize_identity_key as contract_normalize_identity_key,
+    provider_canonicalize_name as contract_provider_canonicalize_name,
+    provider_identity_locked as contract_provider_identity_locked,
+    rebuild_resolved_scene_analyses as contract_rebuild_resolved_scene_analyses,
+    resolve_existing_canonical_name as contract_resolve_existing_canonical_name,
+    resolve_scene_analysis as contract_resolve_scene_analysis,
+    sanitize_alias_map as contract_sanitize_alias_map,
+)
 from entities.character_profile_service import CharacterProfileService
 from entities.entity_registry_service import EntityRegistryService
 from infrastructure.llm_client import LLMClient
 from query.story_query_service import StoryQueryService
 from rag.story_index_service import StoryIndexService
+from redesign_lab.identity.identity_provider import (
+    DEFAULT_BOOKNLP_PIPELINE_IDENTITY_JSON,
+    resolve_identity_provider_input,
+)
 from services.narrative_generation_service import NarrativeGenerationService
 from services.series_processor import SeriesProcessor
+from services.dashboard_artifact_service import (
+    build_contract_summary,
+    discover_contract_files,
+    discover_encode_runs,
+    discover_identity_files,
+    discover_prompt_pack_files,
+    discover_report_files,
+    discover_retrieval_context_files,
+    discover_state_snapshot_files,
+    discover_visual_world_state_files,
+    read_json_file,
+    read_text_file,
+)
 from state.canon_state_service import CanonStateService
 from state.state_transition_service import StateTransitionService
 from timeline.character_normalizer import CharacterNormalizer
@@ -35,7 +67,7 @@ from timeline.timeline_service import TimelineService
 UPLOAD_DIR = Path(r"B:\Documents\PyCharm\graduationProject\uploads")
 DEFAULT_SCENE_TARGET_WORDS = 0
 SCENE_FALLBACK_TARGETS = [2400, 1800, 1400, 1100, 900, 700, 500, 350, 250]
-MODEL_OPTIONS = ["gpt_oss", "deepseek", "mistral", "gemini"]
+MODEL_OPTIONS = ["gpt_oss", "deepseek", "general_compute", "mistral", "gemini"]
 LIVE_RENDER_INTERVAL_SECONDS = 2.0
 EXPORT_CONTRACT_VERSION = "1.0.0"
 FORBIDDEN_IDENTITY_LABELS = {
@@ -61,6 +93,32 @@ FORBIDDEN_IDENTITY_LABELS = {
     "character",
 }
 GENERIC_ALIAS_LABELS = {"man", "woman", "boy", "girl", "person", "figure", "voice"}
+MOCK_NEO4J_COUNTS = {
+    "Book": 5,
+    "Chapter": 249,
+    "Scene": 249,
+    "Character": 46,
+    "Event": 1244,
+    "Location": 95,
+    "Entity": 237,
+    "Relationship": 312,
+}
+MOCK_CONFIG_PRESETS = [
+    {
+        "name": "Full ACOTAR BookNLP Clean",
+        "analysis_model": "gpt_oss",
+        "identity_provider": "booknlp_clean",
+        "provider_mode": "same_provider_rotating",
+        "scene_failure_policy": "fail_fast",
+    },
+    {
+        "name": "Fast Smoke Validation",
+        "analysis_model": "mistral",
+        "identity_provider": "booknlp_clean",
+        "provider_mode": "single_provider",
+        "scene_failure_policy": "tolerate_with_report",
+    },
+]
 
 st.set_page_config(page_title="S.A.G.A.", layout="wide")
 
@@ -152,6 +210,8 @@ def init_state():
         "causal_graph_result": {"graph": {"events": [], "critical_path": [], "flexible_events": [], "causal_chains": [], "divergence_points": []}, "metrics": {}},
         "analysis_model": "gpt_oss",
         "identity_model": "gpt_oss",
+        "identity_provider": "booknlp_clean",
+        "identity_json_path": str(DEFAULT_BOOKNLP_PIPELINE_IDENTITY_JSON),
         "analysis_mode": "structured",
         "sequel_model": NarrativeGenerationService.DEFAULT_NARRATIVE_MODEL_MODE,
         "sequel_prompt": "Focus on the strongest unresolved emotional arc while preserving canon consequences.",
@@ -277,35 +337,12 @@ def build_chapters(book_inputs: List[Dict], model_mode: str) -> List[Dict]:
 
 
 def run_identity_resolution(book_inputs: List[Dict]) -> Dict:
-    """Run deterministic identity resolution over all selected books."""
-    from entities.deterministic_identity_resolver import DeterministicIdentityResolver
-
-    resolver = DeterministicIdentityResolver()
-    for book in book_inputs:
-        book_path = Path(book["path"])
-        if not book_path.exists():
-            logging.warning("Identity resolver: book not found at %s", book_path)
-            continue
-        logging.info("Identity resolution started | book=%s", book_path.name)
-        def progress_cb(chapter_index, total_chapters, chapter_title):
-            label = chapter_title or f"Chapter {chapter_index}"
-            st.session_state["latest_status"] = (
-                f"Resolving identities: {label} ({chapter_index}/{total_chapters})"
-            )
-        try:
-            resolver.process_epub(book_path, progress_callback=progress_cb)
-        except Exception as exc:
-            logging.error(
-                "Identity resolution failed | book=%s | error=%s",
-                book_path.name,
-                repr(exc),
-            )
-    logging.info(
-        "Identity resolution completed | canonicals=%s | temporaries=%s",
-        len(resolver.memory.canonical_characters),
-        len(resolver.memory.temporary_person_candidates),
+    """Run identity resolution over all selected books."""
+    provider = resolve_identity_provider_input(
+        provider_mode="booknlp_clean",
+        input_json=st.session_state.get("identity_json_path") or None,
     )
-    return resolver.build_identity_result()
+    return provider.build_identity_result_compat()
 
 
 def format_duration(seconds: float) -> str:
@@ -509,7 +546,7 @@ def render_all_throttled(
 
 
 def normalize_identity_key(name: str) -> str:
-    return " ".join((name or "").strip().lower().split())
+    return contract_normalize_identity_key(name)
 
 
 def article_insensitive_key(name: str) -> str:
@@ -521,8 +558,7 @@ def article_insensitive_key(name: str) -> str:
 
 
 def is_forbidden_identity(name: str) -> bool:
-    normalized = normalize_identity_key(name)
-    return not normalized or len(normalized) <= 1 or normalized in FORBIDDEN_IDENTITY_LABELS
+    return contract_is_forbidden_identity(name)
 
 
 def is_generic_alias(name: str) -> bool:
@@ -530,383 +566,47 @@ def is_generic_alias(name: str) -> bool:
 
 
 def looks_like_proper_name(name: str) -> bool:
-    cleaned = (name or "").strip()
-    if not cleaned:
-        return False
-
-    tokens = [token for token in cleaned.replace("-", " ").split() if token]
-    if not tokens:
-        return False
-
-    alpha_tokens = []
-    for token in tokens:
-        letters = "".join(ch for ch in token if ch.isalpha() or ch in {"'", "-"})
-        if not letters:
-            return False
-        alpha_tokens.append(letters)
-
-    if len(alpha_tokens) >= 2:
-        return all(token[:1].isupper() and token[1:].islower() for token in alpha_tokens if len(token) > 1)
-
-    token = alpha_tokens[0]
-    return len(token) >= 4 and token[:1].isupper() and token[1:].islower()
+    return contract_looks_like_proper_name(name)
 
 
 def canonical_lookup(alias_map: Dict[str, List[str]]) -> Dict[str, str]:
-    lookup = {}
-    for canonical_name, aliases in alias_map.items():
-        lookup[canonical_name.lower()] = canonical_name
-        for alias in aliases:
-            lookup[alias.lower()] = canonical_name
-    return lookup
+    return contract_canonical_lookup(alias_map)
 
 
 def resolve_existing_canonical_name(name: str, alias_map: Dict[str, List[str]]) -> str:
-    if not name:
-        return ""
-
-    normalized = normalize_identity_key(name)
-    article_free = article_insensitive_key(name)
-    candidates = []
-
-    for canonical_name, aliases in alias_map.items():
-        known_names = [canonical_name, *aliases]
-        for known_name in known_names:
-            if normalize_identity_key(known_name) == normalized:
-                return canonical_name
-            if article_insensitive_key(known_name) == article_free:
-                return canonical_name
-            candidates.append((canonical_name, known_name))
-
-    token = normalized
-    if " " not in token and len(token) >= 4:
-        matches = set()
-        for canonical_name, known_name in candidates:
-            known_token = normalize_identity_key(known_name)
-            if " " in known_token:
-                continue
-            short, long_name = sorted([token, known_token], key=len)
-            if len(long_name) - len(short) >= 2 and long_name.startswith(short):
-                matches.add(canonical_name)
-        if len(matches) == 1:
-            return next(iter(matches))
-
-    return ""
+    return contract_resolve_existing_canonical_name(name, alias_map)
 
 
 def sanitize_alias_map(alias_map: Dict[str, List[str]]) -> Dict[str, List[str]]:
-    cleaned = {}
-    for canonical_name, aliases in (alias_map or {}).items():
-        canonical = (canonical_name or "").strip()
-        if is_forbidden_identity(canonical):
-            continue
-
-        valid_aliases = {canonical}
-        for alias in aliases or []:
-            cleaned_alias = (alias or "").strip()
-            if not cleaned_alias:
-                continue
-            if is_forbidden_identity(cleaned_alias):
-                continue
-            valid_aliases.add(cleaned_alias)
-
-        if valid_aliases:
-            cleaned[canonical] = sorted(valid_aliases, key=str.lower)
-
-    return cleaned
+    return contract_sanitize_alias_map(alias_map)
 
 
 def canonicalize_name(name: str, alias_map: Dict[str, List[str]], rejected: List[str]) -> str:
-    cleaned = (name or "").strip()
-    if not cleaned:
-        return ""
-    if cleaned.lower() in {item.lower() for item in rejected}:
-        return ""
-    lookup = canonical_lookup(alias_map)
-    if cleaned.lower() in lookup:
-        return lookup[cleaned.lower()]
-    resolved = resolve_existing_canonical_name(cleaned, alias_map)
-    return resolved or cleaned
+    return contract_canonicalize_name(name, alias_map, rejected)
+
+
+def provider_identity_locked(identity_result: Dict) -> bool:
+    return contract_provider_identity_locked(identity_result)
+
+
+def provider_canonicalize_name(name: str, alias_map: Dict[str, List[str]], rejected: List[str]) -> str:
+    return contract_provider_canonicalize_name(name, alias_map, rejected)
 
 
 def build_scene_context(scene_text: str, resolved_scene_analyses: List[Dict], state_result: Dict, identity_result: Dict, window: int = 6) -> str:
-    parts = []
-    alias_map = identity_result.get("alias_map") or {}
-    if alias_map:
-        parts.append("Known canonical characters: " + ", ".join(sorted(alias_map.keys(), key=str.lower)[:20]))
-
-    recent_summaries = []
-    for scene in resolved_scene_analyses[-window:]:
-        summary = (scene.get("scene_summary") or "").strip()
-        if summary:
-            recent_summaries.append(
-                f"- Book {scene.get('book_index')} Chapter {scene.get('chapter_index')} Scene {scene.get('scene_index')}: {summary}"
-            )
-    if recent_summaries:
-        parts.append("Recent scene summaries:")
-        parts.extend(recent_summaries)
-
-    latest_state = (state_result or {}).get("latest_state") or []
-    scene_text_lower = (scene_text or "").lower()
-    relevant_state = []
-    for item in latest_state:
-        entity_name = (item.get("entity_name") or "").strip()
-        if not entity_name or entity_name.lower() not in scene_text_lower:
-            continue
-        attr_text = ", ".join(f"{key}={value}" for key, value in (item.get("attributes") or {}).items())
-        if attr_text:
-            relevant_state.append(f"- {entity_name}: {attr_text}")
-    if relevant_state:
-        parts.append("Relevant latest known state:")
-        parts.extend(relevant_state[:8])
-
-    return "\n".join(parts).strip()
+    return contract_build_scene_context(scene_text, resolved_scene_analyses, state_result, identity_result, window=window)
 
 
-def resolve_scene_analysis(scene_analysis: Dict, alias_map: Dict[str, List[str]], rejected: List[str]) -> Dict:
-    resolved = dict(scene_analysis)
-    lookup = canonical_lookup(alias_map)
-
-    valid_character_names = set()
-    for character in scene_analysis.get("canonical_characters", []):
-        raw_name = (character.get("name") or "").strip()
-        canonical = canonicalize_name(raw_name, alias_map, rejected)
-        if canonical:
-            valid_character_names.add(canonical)
-        if raw_name:
-            valid_character_names.add(raw_name)
-
-    for mention in scene_analysis.get("character_mentions", []):
-        canonical = canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)
-        if canonical:
-            valid_character_names.add(canonical)
-
-    resolved_canonicals = []
-    seen_canonicals = set()
-    for character in scene_analysis.get("canonical_characters", []):
-        canonical_name = canonicalize_name(character.get("name", ""), alias_map, rejected)
-        if not canonical_name:
-            continue
-        lowered = canonical_name.lower()
-        if lowered in seen_canonicals:
-            continue
-        seen_canonicals.add(lowered)
-        names_used = []
-        names_seen = set()
-        for alias in character.get("names_used", []):
-            cleaned = str(alias).strip()
-            if not cleaned:
-                continue
-            lowered_alias = cleaned.lower()
-            if lowered_alias in names_seen:
-                continue
-            names_seen.add(lowered_alias)
-            names_used.append(cleaned)
-        if lowered not in names_seen:
-            names_used.insert(0, canonical_name)
-        resolved_canonicals.append({
-            **character,
-            "name": canonical_name,
-            "names_used": names_used,
-        })
-    resolved["canonical_characters"] = resolved_canonicals
-
-    resolved_mentions = []
-    for mention in scene_analysis.get("character_mentions", []):
-        resolved_mentions.append({
-            **mention,
-            "canonical_name": canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected),
-        })
-    resolved["character_mentions"] = resolved_mentions
-
-    resolved_events = []
-    for event in scene_analysis.get("events", []):
-        characters = []
-        for character in event.get("characters", []):
-            canonical = canonicalize_name(character, alias_map, rejected)
-            lowered = (character or "").strip().lower()
-            is_known_alias = lowered in lookup
-            if canonical and (canonical in valid_character_names or is_known_alias) and canonical not in characters:
-                characters.append(canonical)
-        resolved_events.append({**event, "characters": characters})
-    resolved["events"] = resolved_events
-
-    resolved_entities = []
-    seen_entities = set()
-    character_entities = [
-        {"name": item["name"], "entity_type": "character"}
-        for item in resolved_canonicals
-    ]
-    entity_source = character_entities + list(scene_analysis.get("entities_present", []))
-    for entity in entity_source:
-        name = canonicalize_name(entity.get("name", ""), alias_map, rejected) if entity.get("entity_type") == "character" else (entity.get("name") or "").strip()
-        if not name:
-            continue
-        key = (name.lower(), entity.get("entity_type"))
-        if key in seen_entities:
-            continue
-        seen_entities.add(key)
-        resolved_entities.append({"name": name, "entity_type": entity.get("entity_type")})
-    resolved["entities_present"] = resolved_entities
-
-    resolved_descriptions = []
-    for item in scene_analysis.get("entity_descriptions", []):
-        entity_name = canonicalize_name(item.get("entity_name", ""), alias_map, rejected) if item.get("entity_type") == "character" else item.get("entity_name", "")
-        if not entity_name:
-            continue
-        resolved_descriptions.append({**item, "entity_name": entity_name})
-    resolved["entity_descriptions"] = resolved_descriptions
-
-    resolved_state_changes = []
-    for item in scene_analysis.get("state_changes", []):
-        entity_name = canonicalize_name(item.get("entity_name", ""), alias_map, rejected) if item.get("entity_type") == "character" else item.get("entity_name", "")
-        if not entity_name:
-            continue
-        resolved_state_changes.append({**item, "entity_name": entity_name})
-    resolved["state_changes"] = resolved_state_changes
-
-    resolved_relationship_changes = []
-    for item in scene_analysis.get("relationship_changes", []):
-        source_entity = canonicalize_name(item.get("source_entity", ""), alias_map, rejected)
-        target_entity = canonicalize_name(item.get("target_entity", ""), alias_map, rejected)
-        if not source_entity or not target_entity:
-            continue
-        resolved_relationship_changes.append({**item, "source_entity": source_entity, "target_entity": target_entity})
-    resolved["relationship_changes"] = resolved_relationship_changes
-
-    return resolved
+def resolve_scene_analysis(scene_analysis: Dict, identity_result: Dict) -> Dict:
+    return contract_resolve_scene_analysis(scene_analysis, identity_result)
 
 
 def rebuild_resolved_scene_analyses(scene_analyses: List[Dict], identity_result: Dict) -> List[Dict]:
-    alias_map = identity_result.get("alias_map", {})
-    rejected = identity_result.get("rejected_non_characters", [])
-    return [
-        resolve_scene_analysis(scene_analysis, alias_map, rejected)
-        for scene_analysis in scene_analyses
-    ]
+    return contract_rebuild_resolved_scene_analyses(scene_analyses, identity_result)
 
 
 def apply_identity_updates(scene_analysis: Dict, alias_result: Dict):
-    alias_map = alias_result["alias_map"]
-    rejected = alias_result["rejected_non_characters"]
-    decisions = alias_result["decisions"]
-    alias_history = alias_result["alias_history"]
-
-    scene_ref = {
-        "book_index": scene_analysis.get("book_index"),
-        "chapter_index": scene_analysis.get("chapter_index"),
-        "scene_index": scene_analysis.get("scene_index"),
-    }
-
-    rejected_lower = {item.lower() for item in rejected}
-    for name in scene_analysis.get("rejected_identity_candidates", []):
-        if not name or not name.strip():
-            continue
-        if looks_like_proper_name(name):
-            alias_map.setdefault(name, [name])
-            known_canonicals = set(alias_map.keys())
-            known_canonicals.add(name)
-            decisions.append({
-                "decision_type": "inline_name_promoted",
-                "character": name,
-                "canonical_name": name,
-                "same_character": True,
-                "confidence": 1.0,
-                "reasoning": "Promoted from rejection list because it matches a proper-name pattern.",
-                "scene_ref": scene_ref,
-            })
-            alias_history.append({
-                "canonical_name": name,
-                "alias_name": name,
-                "scene_ref": scene_ref,
-            })
-            continue
-        if name.lower() not in rejected_lower:
-            rejected.append(name)
-            rejected_lower.add(name.lower())
-            decisions.append({
-                "decision_type": "inline_rejection",
-                "character": name,
-                "same_character": False,
-                "confidence": 1.0,
-                "reasoning": "Rejected during scene analysis as clearly non-character or incidental.",
-                "scene_ref": scene_ref,
-            })
-
-    known_canonicals = set(alias_map.keys())
-    for character in scene_analysis.get("canonical_characters", []):
-        canonical_name = (character.get("name") or "").strip()
-        if not canonical_name or is_forbidden_identity(canonical_name):
-            continue
-        alias_map.setdefault(canonical_name, [canonical_name])
-        merged = {
-            alias
-            for alias in {canonical_name, *character.get("names_used", [])}
-            if alias and not is_forbidden_identity(alias)
-        }
-        alias_map[canonical_name] = sorted(merged, key=str.lower)
-        known_canonicals.add(canonical_name)
-
-    for mention in scene_analysis.get("character_mentions", []):
-        alias = (mention.get("mention_text") or "").strip()
-        canonical_name = (mention.get("canonical_name") or "").strip()
-        if not alias or not canonical_name or not mention.get("is_consequential_character", False):
-            continue
-        if is_forbidden_identity(alias) or alias.lower() in rejected_lower:
-            continue
-        resolved_canonical = resolve_existing_canonical_name(canonical_name, alias_map) or canonical_name
-        alias_map.setdefault(resolved_canonical, [resolved_canonical])
-        alias_map[resolved_canonical] = sorted(
-            {resolved_canonical, alias, *alias_map[resolved_canonical]},
-            key=str.lower,
-        )
-        known_canonicals.add(resolved_canonical)
-
-    for update in scene_analysis.get("alias_updates", []):
-        alias = update["alias"].strip()
-        canonical_name = update["canonical_name"].strip()
-        action = update["action"]
-
-        if not alias or not canonical_name:
-            continue
-        if is_forbidden_identity(alias) or is_forbidden_identity(canonical_name):
-            if alias.lower() not in rejected_lower:
-                rejected.append(alias)
-                rejected_lower.add(alias.lower())
-            continue
-        if alias.lower() in rejected_lower:
-            continue
-
-        resolved_canonical = (
-            resolve_existing_canonical_name(canonical_name, alias_map)
-            or resolve_existing_canonical_name(alias, alias_map)
-            or canonical_name
-        )
-
-        if action == "new_canonical" and resolved_canonical != canonical_name:
-            action = "map_alias"
-
-        alias_map.setdefault(resolved_canonical, [resolved_canonical])
-        merged = {resolved_canonical, alias, *alias_map[resolved_canonical]}
-        alias_map[resolved_canonical] = sorted(merged, key=str.lower)
-        known_canonicals.add(resolved_canonical)
-
-        decisions.append({
-            "decision_type": "inline_alias_update",
-            "character": alias,
-            "canonical_name": resolved_canonical,
-            "same_character": True,
-            "confidence": 1.0,
-            "reasoning": update["reasoning"],
-            "scene_ref": scene_ref,
-        })
-        alias_history.append({
-            "canonical_name": resolved_canonical,
-            "alias_name": alias,
-            "scene_ref": scene_ref,
-        })
-
-    alias_result["alias_map"] = sanitize_alias_map(alias_map)
+    contract_apply_identity_updates(scene_analysis, alias_result)
 
 
 def build_entity_registry(scene_analyses: List[Dict]) -> List[Dict]:
@@ -945,6 +645,8 @@ def build_formal_character_profiles(
 
 def normalize_character_timelines(character_timelines: List[Dict], identity_result: Dict) -> List[Dict]:
     normalized = CharacterNormalizer().normalize(character_timelines)
+    if provider_identity_locked(identity_result):
+        return normalized.get("character_timelines", character_timelines)
     existing_alias_map = identity_result.setdefault("alias_map", {})
 
     for canonical_name, aliases in normalized.get("alias_map", {}).items():
@@ -2056,6 +1758,16 @@ def render_status(container, compact: bool):
         metric_cols[4].metric("Elapsed", format_duration(float(st.session_state.get("elapsed_seconds") or 0.0)))
         metric_cols[5].metric("Last Scene", format_duration(float(st.session_state.get("last_scene_seconds") or 0.0)))
 
+        identity_result = st.session_state.get("identity_result") or {}
+        if identity_result.get("identity_provider") == "booknlp_clean":
+            narrator = identity_result.get("narrator") or {}
+            reference_entities = identity_result.get("reference_entities") or []
+            provider_cols = st.columns(4)
+            provider_cols[0].metric("Identity Source", "BookNLP clean")
+            provider_cols[1].metric("Stable Characters", len(identity_result.get("alias_map") or {}))
+            provider_cols[2].metric("Reference Entities", len(reference_entities))
+            provider_cols[3].metric("Narrator", narrator.get("display_name") or "none")
+
         info_cols = st.columns(2)
         with info_cols[0]:
             st.caption("Current Scene")
@@ -2119,7 +1831,518 @@ def render_status(container, compact: bool):
             st.caption("Live mode: deterministic downstream modules are rebuilt after each analyzed scene.")
 
 
+def load_selected_json_artifact(artifacts: List[Dict], label: str, key: str) -> Tuple[Dict, Dict] | Tuple[None, None]:
+    if not artifacts:
+        st.info(f"No {label.lower()} found yet.")
+        return None, None
+    options = {f"{item['name']}  |  {item['display_path']}": item for item in artifacts}
+    selected_label = st.selectbox(label, list(options.keys()), key=key)
+    selected = options[selected_label]
+    return selected, read_json_file(selected["path"])
+
+
+def render_artifact_downloads(path: Path, key_prefix: str):
+    if path.suffix.lower() == ".json":
+        st.download_button(
+            "Download JSON",
+            data=path.read_text(encoding="utf-8"),
+            file_name=path.name,
+            mime="application/json",
+            key=f"{key_prefix}_download_json",
+        )
+    else:
+        st.download_button(
+            "Download file",
+            data=path.read_text(encoding="utf-8", errors="replace"),
+            file_name=path.name,
+            mime="text/plain",
+            key=f"{key_prefix}_download_file",
+        )
+
+
+def render_operations_overview(container: st.delta_generator.DeltaGenerator, compact: bool):
+    with container.container():
+        runs = discover_encode_runs()
+        contracts = discover_contract_files()
+        reports = discover_report_files()
+        state_snapshots = discover_state_snapshot_files()
+        visual_states = discover_visual_world_state_files()
+        prompt_packs = discover_prompt_pack_files()
+        retrieval_contexts = discover_retrieval_context_files()
+        latest_run = runs[0] if runs else None
+
+        st.subheader("Operations Overview")
+        cols = st.columns(5)
+        cols[0].metric("Encode runs", len(runs), latest_run["status"] if latest_run else "none")
+        cols[1].metric("Contracts", len(contracts), "file-backed")
+        cols[2].metric("Reports", len(reports), "audits + markdown")
+        cols[3].metric("State snapshots", len(state_snapshots), "target-aware")
+        cols[4].metric("Prompt packs", len(prompt_packs), "ComfyUI-ready")
+
+        cols = st.columns(4)
+        cols[0].metric("Visual world states", len(visual_states), "real artifacts")
+        cols[1].metric("Retrieval contexts", len(retrieval_contexts), "validation")
+        cols[2].metric("Current pipeline status", st.session_state.get("latest_status") or "Idle")
+        cols[3].metric("Neo4j status", "Planned", "viewer mock wired")
+
+        if latest_run:
+            render_chip_row([
+                (f"Latest series: {latest_run['series_id']}", "good"),
+                (f"Run: {latest_run['run_id']}", "good"),
+                (f"Contracts: {latest_run['contract_count']}", "good"),
+                (f"Reports: {latest_run['report_count']}", "warn" if latest_run["report_count"] == 0 else "good"),
+            ])
+            st.dataframe(
+                [{
+                    "series": latest_run["series_id"],
+                    "run_id": latest_run["run_id"],
+                    "status": latest_run["status"],
+                    "books": latest_run["book_count"],
+                    "completed": latest_run["completed_books"],
+                    "failed": latest_run["failed_books"],
+                    "started_at": latest_run["started_at"],
+                    "updated_at": latest_run["updated_at"],
+                }],
+                width="stretch",
+            )
+        else:
+            st.info("No persisted encode runs found under analysis_outputs/encode_runs yet.")
+
+        st.caption("Operational milestone status")
+        st.dataframe(
+            [
+                {"section": "Overview", "status": "real data"},
+                {"section": "Encode Runs", "status": "real data"},
+                {"section": "Book Analysis Viewer", "status": "real data"},
+                {"section": "Identity Viewer", "status": "real data"},
+                {"section": "Character States", "status": "real data"},
+                {"section": "Visual World State", "status": "real data"},
+                {"section": "ComfyUI Prompt Packs", "status": "real data"},
+                {"section": "Retrieval Context", "status": "real data"},
+                {"section": "Neo4j Ops", "status": "mock / backend hooks next"},
+                {"section": "Analysis Config", "status": "current controls + preset mock"},
+                {"section": "Decoder Workspace", "status": "current blueprint hooks"},
+                {"section": "Reports", "status": "real data"},
+            ],
+            width="stretch",
+        )
+
+        if compact:
+            st.caption("The operational tabs stay readable during live pipeline runs, while the legacy tabs keep the scene-level debug detail.")
+
+
+def render_encode_runs_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Encode Runs")
+        runs = discover_encode_runs()
+        if not runs:
+            st.info("No encode runs found under analysis_outputs/encode_runs.")
+            return
+
+        series_filter = st.selectbox(
+            "Series filter",
+            ["All"] + sorted({run["series_id"] for run in runs}),
+            key="ops_encode_series_filter",
+        )
+        status_filter = st.selectbox(
+            "Status filter",
+            ["All"] + sorted({run["status"] for run in runs}),
+            key="ops_encode_status_filter",
+        )
+        filtered = [
+            run for run in runs
+            if (series_filter == "All" or run["series_id"] == series_filter)
+            and (status_filter == "All" or run["status"] == status_filter)
+        ]
+        st.dataframe(
+            [
+                {
+                    "series": run["series_id"],
+                    "run_id": run["run_id"],
+                    "status": run["status"],
+                    "books": run["book_count"],
+                    "completed": run["completed_books"],
+                    "failed": run["failed_books"],
+                    "contracts": run["contract_count"],
+                    "reports": run["report_count"],
+                    "started_at": run["started_at"],
+                }
+                for run in filtered
+            ],
+            width="stretch",
+        )
+        if not filtered:
+            st.warning("No runs match the current filters.")
+            return
+
+        option_map = {f"{run['series_id']} / {run['run_id']}": run for run in filtered}
+        selected = option_map[st.selectbox("Open run", list(option_map.keys()), key="ops_encode_selected_run")]
+        cols = st.columns(4)
+        cols[0].metric("Requested books", selected["total_requested"])
+        cols[1].metric("Contracts", selected["contract_count"])
+        cols[2].metric("Reports", selected["report_count"])
+        cols[3].metric("Remaining", selected["remaining_books"])
+        st.caption(selected["display_path"])
+        st.json(selected["latest_status"] or selected["status_data"])
+        st.dataframe(selected["status_data"].get("books") or [], width="stretch")
+
+
+def render_book_analysis_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Book Analysis Viewer")
+        selected, contract = load_selected_json_artifact(discover_contract_files(), "Contract", "ops_contract_select")
+        if not selected:
+            return
+        summary = build_contract_summary(contract)
+        cols = st.columns(5)
+        cols[0].metric("Chapters", summary["chapter_count"])
+        cols[1].metric("Scenes", summary["scene_count"])
+        cols[2].metric("Timeline", summary["timeline_count"])
+        cols[3].metric("Profiles", summary["character_profile_count"])
+        cols[4].metric("Aliases", summary["alias_count"])
+        st.caption(selected["display_path"])
+        render_artifact_downloads(selected["path"], "contract_viewer")
+
+        outputs = contract.get("outputs") or {}
+        query = (st.text_input("Search character/entity/location/event", key="ops_contract_search") or "").strip().lower()
+        scenes = outputs.get("scene_analyses") or outputs.get("scenes") or []
+        profiles = outputs.get("character_profiles") or []
+        timeline_rows = outputs.get("timeline") or []
+        diagnostics = contract.get("diagnostics") or {}
+
+        scene_rows = [
+            {
+                "scene_id": scene.get("scene_id", ""),
+                "chapter": scene.get("chapter_index", ""),
+                "summary": scene.get("scene_summary", ""),
+                "entities": ", ".join(scene.get("entities_present") or []),
+                "events": len(scene.get("events") or []),
+                "state_changes": len(scene.get("state_changes") or []),
+            }
+            for scene in scenes
+            if not query or query in json.dumps(scene, ensure_ascii=False).lower()
+        ]
+        profile_rows = [
+            {
+                "character": profile.get("character") or profile.get("display_name") or "",
+                "aliases": ", ".join(profile.get("aliases") or []),
+                "event_count": len(profile.get("events") or profile.get("recent_key_events") or []),
+                "state": json.dumps(profile.get("latest_state") or profile.get("canon_state") or {}, ensure_ascii=False),
+            }
+            for profile in profiles
+            if not query or query in json.dumps(profile, ensure_ascii=False).lower()
+        ]
+        timeline_filtered = [
+            row for row in timeline_rows
+            if not query or query in json.dumps(row, ensure_ascii=False).lower()
+        ]
+
+        scene_tab, profile_tab, timeline_tab, diagnostic_tab, raw_tab = st.tabs(
+            ["Scenes", "Profiles", "Timeline", "Diagnostics", "Raw JSON"]
+        )
+        with scene_tab:
+            st.dataframe(scene_rows[:200], width="stretch")
+        with profile_tab:
+            st.dataframe(profile_rows[:200], width="stretch")
+        with timeline_tab:
+            st.dataframe(timeline_filtered[:200], width="stretch")
+        with diagnostic_tab:
+            st.json(diagnostics)
+        with raw_tab:
+            st.json(contract)
+
+
+def render_identity_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Identity Viewer")
+        selected, identity = load_selected_json_artifact(discover_identity_files(), "Identity JSON", "ops_identity_select")
+        if not selected:
+            return
+
+        compare_artifacts = discover_identity_files()
+        compare_options = {"None": None}
+        for item in compare_artifacts:
+            if item["path"] != selected["path"]:
+                compare_options[f"{item['name']}  |  {item['display_path']}"] = item
+        compare_choice = st.selectbox("Compare against", list(compare_options.keys()), key="ops_identity_compare")
+        compare_data = read_json_file(compare_options[compare_choice]["path"]) if compare_options[compare_choice] else None
+
+        alias_index = identity.get("alias_index") or identity.get("alias_map") or {}
+        narrator = identity.get("narrator") or {}
+        risky_aliases = identity.get("risky_aliases") or identity.get("diagnostics", {}).get("risky_aliases") or []
+        suppressed = identity.get("suppressed_clusters") or identity.get("diagnostics", {}).get("suppressed_clusters") or []
+
+        cols = st.columns(4)
+        cols[0].metric("Alias entries", len(alias_index))
+        cols[1].metric("Risky aliases", len(risky_aliases))
+        cols[2].metric("Suppressed clusters", len(suppressed))
+        cols[3].metric("Narrator confidence", narrator.get("confidence", "n/a"))
+        st.caption(selected["display_path"])
+        if compare_data:
+            st.info(
+                f"Comparison loaded: alias entries {len(alias_index)} vs {len(compare_data.get('alias_index') or compare_data.get('alias_map') or {})}"
+            )
+        st.json({"narrator": narrator, "alias_index_sample": dict(list(alias_index.items())[:50])})
+        if risky_aliases:
+            st.dataframe(risky_aliases[:100], width="stretch")
+        else:
+            st.caption("No explicit risky aliases field found in this identity artifact.")
+
+
+def render_character_state_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Character State Viewer")
+        selected, snapshot = load_selected_json_artifact(
+            discover_state_snapshot_files(),
+            "State snapshot",
+            "ops_state_snapshot_select",
+        )
+        if not selected:
+            return
+        states = snapshot.get("character_states") or []
+        target = snapshot.get("target_point") or {}
+        cols = st.columns(4)
+        cols[0].metric("Characters", len(states))
+        cols[1].metric("Target mode", target.get("mode", "n/a"))
+        cols[2].metric("After book", target.get("after_book_index", "n/a"))
+        cols[3].metric("Future facts", str(target.get("include_future_facts", False)))
+        st.caption(selected["display_path"])
+        search = (st.text_input("Filter characters", key="ops_state_filter") or "").strip().lower()
+        filtered = [item for item in states if not search or search in json.dumps(item, ensure_ascii=False).lower()]
+        if not filtered:
+            st.warning("No character states match the current filter.")
+            return
+        state_map = {item.get("display_name") or item.get("character_id") or f"character_{idx}": item for idx, item in enumerate(filtered)}
+        selected_name = st.selectbox("Character", list(state_map.keys()), key="ops_state_character_select")
+        selected_state = state_map[selected_name]
+        st.json(selected_state)
+        render_artifact_downloads(selected["path"], "state_snapshot")
+
+
+def render_visual_world_state_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Visual World-State Viewer")
+        selected, visual_state = load_selected_json_artifact(
+            discover_visual_world_state_files(),
+            "Visual world-state JSON",
+            "ops_visual_state_select",
+        )
+        if not selected:
+            return
+        diagnostics = visual_state.get("diagnostics") or {}
+        cols = st.columns(4)
+        cols[0].metric("Character states", len(visual_state.get("character_visual_states") or []))
+        cols[1].metric("Entity states", len(visual_state.get("entity_visual_states") or []))
+        cols[2].metric("Location states", len(visual_state.get("location_visual_states") or []))
+        cols[3].metric("Noisy entries", len(diagnostics.get("noisy_entries_flagged") or []))
+        search = (st.text_input("Filter visual entries", key="ops_visual_filter") or "").strip().lower()
+        confidence_filter = st.selectbox("Confidence", ["All", "high", "medium", "low"], key="ops_visual_confidence")
+        category = st.selectbox(
+            "Category",
+            ["character_visual_states", "entity_visual_states", "location_visual_states"],
+            key="ops_visual_category",
+        )
+        rows = []
+        for item in visual_state.get(category) or []:
+            confidence = item.get("confidence", "low")
+            if confidence_filter != "All" and confidence != confidence_filter:
+                continue
+            if search and search not in json.dumps(item, ensure_ascii=False).lower():
+                continue
+            rows.append(item)
+        st.dataframe(
+            [{
+                "name": item.get("display_name") or item.get("character_id") or item.get("entity_id") or item.get("location_id"),
+                "confidence": item.get("confidence", ""),
+                "risk_flags": ", ".join(item.get("risk_flags") or []),
+            } for item in rows[:200]],
+            width="stretch",
+        )
+        if rows:
+            choice_map = {
+                (item.get("display_name") or item.get("character_id") or item.get("entity_id") or item.get("location_id")): item
+                for item in rows
+            }
+            selected_name = st.selectbox("Open visual entry", list(choice_map.keys()), key="ops_visual_entry_select")
+            st.json(choice_map[selected_name])
+        render_artifact_downloads(selected["path"], "visual_world_state")
+
+
+def render_prompt_pack_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("ComfyUI Prompt Pack Viewer")
+        selected, prompt_pack = load_selected_json_artifact(
+            discover_prompt_pack_files(),
+            "Prompt pack JSON",
+            "ops_prompt_pack_select",
+        )
+        if not selected:
+            return
+        prompts = prompt_pack.get("prompt_packs") or {}
+        category = st.selectbox(
+            "Prompt category",
+            ["characters", "locations", "objects", "scenes"],
+            key="ops_prompt_category",
+        )
+        items = prompts.get(category) or []
+        cols = st.columns(4)
+        cols[0].metric("Characters", len(prompts.get("characters") or []))
+        cols[1].metric("Locations", len(prompts.get("locations") or []))
+        cols[2].metric("Objects", len(prompts.get("objects") or []))
+        cols[3].metric("Scenes", len(prompts.get("scenes") or []))
+        confidence_filter = st.selectbox("Confidence", ["All", "high", "medium", "low"], key="ops_prompt_confidence")
+        filtered = [
+            item for item in items
+            if confidence_filter == "All" or item.get("confidence", "high") == confidence_filter
+        ]
+        if not filtered:
+            st.warning("No prompts match the current category/confidence filter.")
+            return
+        item_map = {
+            item.get("display_name") or item.get("title") or item.get("character_id") or item.get("scene_key") or f"item_{idx}": item
+            for idx, item in enumerate(filtered)
+        }
+        selected_name = st.selectbox("Open prompt", list(item_map.keys()), key="ops_prompt_item_select")
+        selected_item = item_map[selected_name]
+        st.json(selected_item)
+        render_artifact_downloads(selected["path"], "prompt_pack")
+
+
+def render_retrieval_context_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Retrieval Context Viewer")
+        selected, retrieval = load_selected_json_artifact(
+            discover_retrieval_context_files(),
+            "Retrieval / generation context JSON",
+            "ops_retrieval_context_select",
+        )
+        if not selected:
+            return
+        meta = retrieval.get("context_meta") or {}
+        compiled = retrieval.get("compiled_context") or {}
+        cols = st.columns(4)
+        cols[0].metric("Retrieval type", meta.get("retrieval_type", "n/a"))
+        cols[1].metric("Book set", len(meta.get("book_titles") or []))
+        cols[2].metric("Characters", len(compiled.get("characters") or []))
+        cols[3].metric("Reference entities", len(compiled.get("reference_entities") or []))
+        st.caption(selected["display_path"])
+        st.text_area("User prompt", compiled.get("user_prompt", ""), height=90, key="ops_retrieval_user_prompt")
+        st.json({"context_meta": meta, "story_ending": compiled.get("story_ending") or {}, "narrator": compiled.get("narrator") or {}})
+        render_artifact_downloads(selected["path"], "retrieval_context")
+
+
+def render_neo4j_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Neo4j Browser / Ingest Manager")
+        st.info("This tab is the first operational scaffold. Neo4j browsing and deletion confirmation are intentionally not wired yet.")
+        cols = st.columns(4)
+        for idx, (label, value) in enumerate(MOCK_NEO4J_COUNTS.items()):
+            cols[idx % 4].metric(label, value)
+        st.dataframe(
+            [
+                {"operation": "Connection check", "status": "planned"},
+                {"operation": "Series/book listing", "status": "planned"},
+                {"operation": "Graph summary", "status": "planned"},
+                {"operation": "Dry-run delete", "status": "must require confirmation"},
+                {"operation": "Confirm delete", "status": "blocked until dry-run payload + typed ID"},
+            ],
+            width="stretch",
+        )
+        st.code(
+            "Dry-run delete rules:\n"
+            "- show exact series/book ID\n"
+            "- show node counts to remove\n"
+            "- require typed confirmation before real delete\n"
+            "- never delete local contracts unless selected separately"
+        )
+
+
+def render_analysis_config_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Analysis Configuration")
+        preset = st.selectbox(
+            "Preset mock",
+            [item["name"] for item in MOCK_CONFIG_PRESETS],
+            key="ops_config_preset_select",
+        )
+        st.caption(f"Selected preset: {preset}")
+        config_snapshot = {
+            "analysis_model": st.session_state.get("analysis_model"),
+            "identity_model": st.session_state.get("identity_model"),
+            "identity_provider": st.session_state.get("identity_provider"),
+            "identity_strategy": "booknlp_clean",
+            "analysis_mode": st.session_state.get("analysis_mode"),
+            "target_scene_words": st.session_state.get("target_scene_words"),
+            "scene_failure_policy": "fail_fast",
+            "max_failed_scenes_absolute": 3,
+            "max_failed_scene_ratio": 0.1,
+            "min_nonempty_scene_ratio": 0.8,
+            "max_parallel_books": 1,
+            "skip_ingest": True,
+        }
+        st.json(config_snapshot)
+        st.caption("Preset save/load APIs are not wired yet. The current sidebar still acts as the live source of truth.")
+
+
+def render_decoder_workspace_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Decoder / Generation Workspace")
+        contracts = discover_contract_files()
+        selected_contracts = st.multiselect(
+            "Selected contracts",
+            [item["name"] for item in contracts[:20]],
+            default=[item["name"] for item in contracts[:1]],
+            key="ops_decoder_contracts",
+        )
+        st.dataframe(
+            [
+                {"field": "Target mode", "value": st.session_state.get("sequel_canon_position")},
+                {"field": "Generation model", "value": st.session_state.get("sequel_model")},
+                {"field": "Target scene words", "value": st.session_state.get("target_scene_words")},
+                {"field": "Selected contracts", "value": len(selected_contracts)},
+            ],
+            width="stretch",
+        )
+        st.text_area("Generation prompt", st.session_state.get("sequel_prompt") or "", height=120, key="ops_decoder_prompt")
+        if st.session_state.get("sequel_blueprint_result"):
+            st.success("Narrative blueprint available from the current contract.")
+            st.json(st.session_state["sequel_blueprint_result"])
+        else:
+            st.info("Long-form decoder runs are intentionally not first in scope. The current dashboard already exposes blueprint generation as the first backend hook.")
+
+
+def render_reports_dashboard(container: st.delta_generator.DeltaGenerator):
+    with container.container():
+        st.subheader("Reports")
+        reports = discover_report_files()
+        if not reports:
+            st.info("No reports found yet.")
+            return
+        options = {f"{item['name']}  |  {item['display_path']}": item for item in reports}
+        selected = options[st.selectbox("Report", list(options.keys()), key="ops_report_select")]
+        st.caption(selected["display_path"])
+        render_artifact_downloads(selected["path"], "report_viewer")
+        if selected["path"].suffix.lower() == ".md":
+            st.markdown(read_text_file(selected["path"]))
+        elif selected["path"].suffix.lower() == ".json":
+            st.json(read_json_file(selected["path"]))
+        else:
+            st.text(read_text_file(selected["path"]))
+
+
 def render_all(placeholders: Dict[str, st.delta_generator.DeltaGenerator], compact: bool):
+    render_operations_overview(placeholders["overview"], compact)
+    render_encode_runs_dashboard(placeholders["encode_runs"])
+    render_book_analysis_dashboard(placeholders["analysis_viewer"])
+    render_identity_dashboard(placeholders["identity_viewer"])
+    render_character_state_dashboard(placeholders["character_states_viewer"])
+    render_visual_world_state_dashboard(placeholders["visual_world_state_viewer"])
+    render_prompt_pack_dashboard(placeholders["prompt_pack_viewer"])
+    render_retrieval_context_dashboard(placeholders["retrieval_context_viewer"])
+    render_neo4j_dashboard(placeholders["neo4j_viewer"])
+    render_analysis_config_dashboard(placeholders["analysis_config_viewer"])
+    render_decoder_workspace_dashboard(placeholders["decoder_workspace_viewer"])
+    render_reports_dashboard(placeholders["reports_viewer"])
     render_status(placeholders["status"], compact)
     render_books(placeholders["books"], st.session_state.get("book_inputs") or [])
     render_chapters(placeholders["chapters"], st.session_state.get("chapters") or [], compact)
@@ -2144,11 +2367,52 @@ if st.session_state.get("post_run_refresh_pending"):
 inject_dashboard_styles()
 st.title("S.A.G.A.")
 st.caption("Story Analysis, Generation, and Archives")
-st.caption("Run the full one-pass pipeline with live downstream updates after each analyzed scene.")
-status_tab, books_tab, chapters_tab, scenes_tab, entities_tab, state_tab, snapshot_tab, timeline_tab, event_ledger_tab, characters_tab, aliases_tab, decisions_tab, causal_graph_tab, causal_metrics_tab, search_tab, sequel_tab = st.tabs(
-    ["Status", "Books", "Chapters", "Scenes", "Entity Registry", "State Transitions", "Canon Snapshot", "Timeline", "Event Ledger", "Character Timelines", "Alias Map", "Identity Decisions", "Causal Graph", "Causal Metrics", "Story Search", "Narrative"]
+st.caption("Operational dashboard first, scene-level debugging second. Live downstream modules still refresh as each scene finishes.")
+overview_tab, encode_runs_tab, analysis_viewer_tab, identity_viewer_tab, character_states_viewer_tab, visual_world_state_viewer_tab, prompt_pack_viewer_tab, retrieval_context_viewer_tab, neo4j_viewer_tab, analysis_config_viewer_tab, decoder_workspace_viewer_tab, reports_viewer_tab, status_tab, books_tab, chapters_tab, scenes_tab, entities_tab, state_tab, snapshot_tab, timeline_tab, event_ledger_tab, characters_tab, aliases_tab, decisions_tab, causal_graph_tab, causal_metrics_tab, search_tab, sequel_tab = st.tabs(
+    [
+        "Overview",
+        "Encode Runs",
+        "Book Analysis",
+        "Identity Viewer",
+        "Character States",
+        "Visual World State",
+        "Prompt Packs",
+        "Retrieval Context",
+        "Neo4j Ops",
+        "Analysis Config",
+        "Decoder Workspace",
+        "Reports",
+        "Status",
+        "Books",
+        "Chapters",
+        "Scenes",
+        "Entity Registry",
+        "State Transitions",
+        "Canon Snapshot",
+        "Timeline",
+        "Event Ledger",
+        "Character Timelines",
+        "Alias Map",
+        "Identity Decisions",
+        "Causal Graph",
+        "Causal Metrics",
+        "Story Search",
+        "Narrative",
+    ]
 )
 placeholders = {
+    "overview": overview_tab.empty(),
+    "encode_runs": encode_runs_tab.empty(),
+    "analysis_viewer": analysis_viewer_tab.empty(),
+    "identity_viewer": identity_viewer_tab.empty(),
+    "character_states_viewer": character_states_viewer_tab.empty(),
+    "visual_world_state_viewer": visual_world_state_viewer_tab.empty(),
+    "prompt_pack_viewer": prompt_pack_viewer_tab.empty(),
+    "retrieval_context_viewer": retrieval_context_viewer_tab.empty(),
+    "neo4j_viewer": neo4j_viewer_tab.empty(),
+    "analysis_config_viewer": analysis_config_viewer_tab.empty(),
+    "decoder_workspace_viewer": decoder_workspace_viewer_tab.empty(),
+    "reports_viewer": reports_viewer_tab.empty(),
     "status": status_tab.empty(),
     "books": books_tab.empty(),
     "chapters": chapters_tab.empty(),
@@ -2190,6 +2454,9 @@ with st.sidebar:
 
     st.selectbox("Scene analysis model", MODEL_OPTIONS, key="analysis_model")
     st.selectbox("Identity model", MODEL_OPTIONS, key="identity_model")
+    st.selectbox("Identity source", ["booknlp_clean"], key="identity_provider")
+    st.text_input("Identity JSON path", key="identity_json_path")
+    st.caption("Production mode: BookNLP-clean identity is the active source of truth.")
     st.selectbox("Analysis mode", ["structured", "tool", "compare"], key="analysis_mode")
     st.selectbox("Generation model", MODEL_OPTIONS, key="sequel_model")
     st.text_area(

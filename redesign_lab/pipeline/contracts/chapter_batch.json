@@ -1,0 +1,16 @@
+{
+  "name": "chapter_batch",
+  "required": {
+    "batch_id": "string",
+    "series_id": "string",
+    "series_title": "string",
+    "book_index": "integer",
+    "chapter_indices": "array",
+    "chapter_titles": "array",
+    "source_files": "array",
+    "text": "string",
+    "word_count": "integer",
+    "stage": "string"
+  }
+}
+

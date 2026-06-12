@@ -527,6 +527,160 @@ def test_narrative_generation_service_does_not_duplicate_required_plot_beats_acr
     assert error == ""
 
 
+def test_narrative_generation_service_balances_required_plot_beats_without_frontloading_first_chapter():
+    service = NarrativeGenerationService(llm_client=_StubLLMClient())
+
+    chapter_1_controls = service._chapter_controls_for_generation(
+        blueprint={"total_chapters": 10},
+        controls={
+            "chapter_count": 10,
+            "required_plot_beats": [
+                "Beat 1",
+                "Beat 2",
+                "Beat 3",
+                "Beat 4",
+                "Beat 5",
+                "Beat 6",
+                "Beat 7",
+                "Beat 8",
+                "Beat 9",
+                "Beat 10",
+                "Beat 11",
+            ],
+            "relationship_directions": [],
+        },
+        chapter_number=1,
+    )
+    chapter_2_controls = service._chapter_controls_for_generation(
+        blueprint={"total_chapters": 10},
+        controls={
+            "chapter_count": 10,
+            "required_plot_beats": [
+                "Beat 1",
+                "Beat 2",
+                "Beat 3",
+                "Beat 4",
+                "Beat 5",
+                "Beat 6",
+                "Beat 7",
+                "Beat 8",
+                "Beat 9",
+                "Beat 10",
+                "Beat 11",
+            ],
+            "relationship_directions": [],
+        },
+        chapter_number=2,
+    )
+
+    assert chapter_1_controls["assigned_plot_beats"] == ["Beat 1"]
+    assert chapter_2_controls["assigned_plot_beats"] == ["Beat 2"]
+
+
+def test_narrative_generation_service_repairs_outline_to_include_missing_required_plot_beat():
+    service = NarrativeGenerationService(llm_client=_StubLLMClient())
+
+    repaired = service._repair_chapter_outline_to_controls(
+        {
+            "chapter_number": 10,
+            "chapter_title": "Quiet Interlude",
+            "pov_character": "Elain Archeron",
+            "location": "Velaris",
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "summary": "Elain retreats to the garden and tries to calm herself.",
+                    "characters_present": ["Elain Archeron"],
+                    "purpose": "Show emotional aftermath from the earlier vision.",
+                    "ends_on": "She steadies herself enough to face the others.",
+                }
+            ],
+            "arc_progress": {"Elain": "She regains some control after the first shock."},
+            "world_state_changes": [],
+            "chapter_closes_on": "She leaves the garden with reluctant resolve.",
+        },
+        chapter_number=10,
+        controls={
+            "chapter_count": 10,
+            "primary_pov_character": "Elain Archeron",
+            "required_plot_beats": [
+                "Elain begins experiencing increasingly violent prophetic visions connected to Koschei.",
+                "Strange magical activity emerges near the human lands.",
+                "Azriel investigates Koschei-related threats while growing closer to Elain.",
+            ],
+            "relationship_directions": [],
+        },
+    )
+
+    assert repaired is not None
+    assert "Azriel investigates Koschei-related threats while growing closer to Elain." in repaired["scenes"][0]["purpose"]
+
+
+def test_narrative_generation_service_marks_lucien_release_as_payoff_then_aftermath():
+    service = NarrativeGenerationService(llm_client=_StubLLMClient())
+    controls = {
+        "chapter_count": 10,
+        "required_plot_beats": [
+            "Elain begins experiencing increasingly violent prophetic visions connected to Koschei.",
+            "Strange magical activity emerges near the human lands.",
+            "Azriel investigates Koschei-related threats while growing closer to Elain.",
+            "The mating bond between Lucien and Elain becomes emotionally and magically unstable.",
+            "Nesta, Gwyn, and the Valkyries uncover ancient information about Made Seers and hidden gates between worlds.",
+            "Political conflict grows in the Autumn Court and Day Court.",
+            "Koschei attempts to use Elain’s powers to locate or open interworld gateways.",
+            "Azriel is captured during the conflict.",
+            "Elain fully embraces her Seer abilities and plays a major role in the final battle.",
+            "Lucien ultimately releases Elain from the emotional expectation of the mating bond.",
+            "The story ends with hints of larger crossover-level threats connected to other worlds and ancient fae history.",
+        ],
+        "relationship_directions": [
+            {
+                "characters": ["Elain Archeron", "Lucien Vanserra"],
+                "relationship_type": "other",
+                "desired_direction": "the bond becomes unstable and Lucien ultimately releases Elain from its emotional expectation",
+                "notes": "politically and emotionally consequential",
+            }
+        ],
+    }
+
+    chapter_9 = service._chapter_controls_for_generation(
+        blueprint={"total_chapters": 10},
+        controls=controls,
+        chapter_number=9,
+    )
+    chapter_10 = service._chapter_controls_for_generation(
+        blueprint={"total_chapters": 10},
+        controls=controls,
+        chapter_number=10,
+    )
+
+    assert chapter_9["relationship_focus"][0]["stage"] == "payoff"
+    assert chapter_10["relationship_focus"][0]["stage"] == "aftermath"
+
+
+def test_narrative_generation_service_adds_lucien_characterization_guardrails_to_prose_calibration():
+    service = NarrativeGenerationService(llm_client=_StubLLMClient())
+    packet = service._prose_calibration_packet(
+        controls={},
+        chapter_controls={
+            "relationship_focus": [
+                {
+                    "characters": ["Elain Archeron", "Lucien Vanserra"],
+                    "relationship_type": "other",
+                    "desired_direction": "release bond expectations",
+                    "stage": "aftermath",
+                }
+            ],
+            "assigned_plot_beats": [],
+        },
+        scene_outline={"characters_present": ["Elain Archeron", "Lucien Vanserra"]},
+        scene_context_packet={"pov_character_packet": {"name": "Elain Archeron"}},
+    )
+
+    assert any("Lucien" in note for note in packet["avoid"])
+    assert any("already completed" in note for note in packet["relationship_execution_notes"])
+
+
 def test_narrative_generation_service_rejects_blueprint_with_act_ranges_beyond_total_chapters():
     service = NarrativeGenerationService(llm_client=_StubLLMClient())
     blueprint = _blueprint(

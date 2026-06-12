@@ -117,7 +117,7 @@ class OllamaAccountRotator:
     def _load_data(self) -> Dict[str, Any]:
         if not self.config_path.exists():
             return {"active_index": 0, "accounts": []}
-        return json.loads(self.config_path.read_text(encoding="utf-8"))
+        return json.loads(self.config_path.read_text(encoding="utf-8-sig"))
 
     def _save_data(self, payload: Dict[str, Any]) -> None:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)

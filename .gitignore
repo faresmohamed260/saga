@@ -26,6 +26,7 @@ htmlcov/
 # Build and packaging artifacts
 build/
 dist/
+node_modules/
 *.egg-info/
 
 # Modal ComfyUI local credentials/state
@@ -48,6 +49,9 @@ deploy/neo4j/plugins/*
 # Local Ollama account rotation credentials
 deploy/ollama/accounts.local.json
 
+# Local General Compute key rotation credentials
+deploy/general_compute/accounts.local.json
+
 # Local hybrid retrieval vector indices
 analysis_outputs/vector_indices/
 
@@ -56,3 +60,14 @@ analysis_outputs/
 
 # Local reference repo only
 external/Narraverse/
+external/litbank/
+
+# Local dashboard/runtime workspace files
+dashboard_app/node_modules/
+dashboard_app/dist/
+book.epub
+
+# Local redesign lab artifacts and model weights
+redesign_lab/models/
+redesign_lab/reports/
+redesign_lab/training_data/

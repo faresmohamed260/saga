@@ -62,6 +62,8 @@ class CanonicalEntityNormalizer:
         "of",
         "as",
         "along",
+        "letting",
+        "without",
     }
     TITLE_PREFIXES = {
         "high lord",
@@ -126,14 +128,48 @@ class CanonicalEntityNormalizer:
         "followed",
         "watching",
         "called",
+        "as",
+        "once",
+        "though",
+        "neither",
+        "welcome",
+        "tell",
         "with",
+        "without",
         "near",
         "over",
         "under",
         "inside",
         "outside",
+        "at",
+    }
+    GENERIC_TITLE_MODIFIERS = {
+        "mortal",
+        "ancient",
+        "young",
+        "old",
+        "masked",
+        "golden",
+        "red-haired",
+        "fox-masked",
+        "unnamed",
+        "mysterious",
     }
     NON_CHARACTER_SINGLE_TOKENS = {
+        "war",
+        "army",
+        "apartment",
+        "arrow",
+        "asshole",
+        "blacksmith",
+        "blank",
+        "blanket",
+        "bow",
+        "cabin",
+        "camp",
+        "cavern",
+        "chill",
+        "clearing",
         "death",
         "darkness",
         "middle",
@@ -157,6 +193,7 @@ class CanonicalEntityNormalizer:
         "river",
         "forest",
         "garden",
+        "lands",
         "arena",
         "cell",
         "bedroom",
@@ -173,6 +210,10 @@ class CanonicalEntityNormalizer:
         "winter",
         "autumn",
         "potions",
+        "siphons",
+        "solstice",
+        "cursebreaker",
+        "darkbringers",
         "charms",
         "chapter",
         "support",
@@ -195,6 +236,7 @@ class CanonicalEntityNormalizer:
         "river",
         "forest",
         "woods",
+        "lands",
         "garden",
         "hall",
         "bedroom",
@@ -216,18 +258,22 @@ class CanonicalEntityNormalizer:
         "sea",
         "shore",
     }
+    _ADDRESS_DETERMINERS = frozenset({
+        "their", "your", "his", "her", "our", "my", "its",
+    })
+    _NUMBER_WORDS = frozenset({
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+        "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+        "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh",
+        "eighth", "ninth", "tenth",
+    })
     NON_CHARACTER_TYPES = {"location", "object", "artifact", "creature", "place"}
     KNOWN_CHARACTER_TYPES = {"character", "person", "human", "fae", "high_fae"}
 
     def normalized_entity_key(self, value: str) -> str:
-        text = str(value or "").strip().lower()
-        text = re.sub(r"[^a-z0-9\s'-]", " ", text)
-        text = re.sub(r"\s+", " ", text).strip()
-        for prefix in sorted(self.TITLE_PREFIXES, key=len, reverse=True):
-            if text.startswith(prefix + " "):
-                text = text[len(prefix):].strip()
-                break
-        return text.replace(" ", "")
+        stripped = self.strip_title_prefix(str(value or "").strip())
+        return re.sub(r"[^a-z0-9]", "", (stripped or value or "").lower())
 
     def title_case_like(self, value: str) -> str:
         parts: List[str] = []
@@ -247,7 +293,8 @@ class CanonicalEntityNormalizer:
 
     def strip_title_prefix(self, value: str) -> str:
         text = str(value or "").strip()
-        lowered = text.lower().strip(".")
+        lowered = re.sub(r"[^a-z0-9\s'-]", "", text.lower())
+        lowered = re.sub(r"\s+", " ", lowered).strip()
         for prefix in sorted(self.TITLE_PREFIXES, key=len, reverse=True):
             if lowered.startswith(prefix + " "):
                 return text[len(prefix):].strip()
@@ -287,11 +334,23 @@ class CanonicalEntityNormalizer:
         text = str(value or "").strip()
         if not text or self.is_bad_alias_like_name(text) or self.looks_like_location_name(text):
             return False
+        if text.lower() in self.TITLE_PREFIXES:
+            return False
         tokens = text.split()
         if len(tokens) > 4:
             return False
         lowered_tokens = [token.strip(" ,.'\"").lower() for token in tokens]
+        if lowered_tokens and lowered_tokens[0] in self._ADDRESS_DETERMINERS:
+            return False
+        if len(lowered_tokens) >= 2 and lowered_tokens[-1] in self._NUMBER_WORDS:
+            return False
         if len(tokens) == 1 and lowered_tokens[0] in self.NON_CHARACTER_SINGLE_TOKENS:
+            return False
+        if (
+            len(tokens) == 2
+            and lowered_tokens[0] in self.GENERIC_TITLE_MODIFIERS
+            and lowered_tokens[1] in {"queen", "king", "lord", "lady", "priestess", "warrior", "blacksmith"}
+        ):
             return False
         if len(tokens) > 1 and any(token in self.CONTEXTUAL_TOKENS for token in lowered_tokens[1:]):
             return False
@@ -327,14 +386,34 @@ class CanonicalEntityNormalizer:
         name = self.collapse_ocr_spacing(raw)
         if not name:
             return ""
+        if re.match(r"^[Ii][A-Z][A-Za-z'`.-]+$", name):
+            name = name[:1] + " " + name[1:]
         name = str(name).strip(" \t\r\n\"'“”‘’.,;:!?()[]{}")
+        if len(name.split()) == 1 and name.endswith("'s"):
+            possessive_root = name[:-2].strip()
+            if possessive_root:
+                name = possessive_root
         if "," in name:
             name = name.split(",", 1)[0].strip()
         raw_tokens = [token.strip(" \t\r\n\"'.,;:!?()[]{}") for token in name.split() if token.strip(" \t\r\n\"'.,;:!?()[]{}")]
+        if (
+            len(raw_tokens) >= 2
+            and raw_tokens[0] in {"I", "i"}
+            and raw_tokens[1][:1].isupper()
+            and raw_tokens[1].lower() not in self.PRONOUN_LIKE
+        ):
+            raw_tokens = raw_tokens[1:]
+            name = " ".join(raw_tokens)
         lowered_tokens = [token.lower() for token in raw_tokens]
+        if len(raw_tokens) == 2 and lowered_tokens[0] in {"the", "a", "an"} and lowered_tokens[1] in self.NON_CHARACTER_SINGLE_TOKENS:
+            return ""
         if len(raw_tokens) >= 2 and any(token in self.CONTEXTUAL_TOKENS for token in lowered_tokens):
             proper_tokens = [token for token in raw_tokens if token[:1].isupper()]
-            if (
+            if lowered_tokens[0] in {"welcome", "marked", "called", "asked", "begged", "once", "though", "neither", "tell"} and proper_tokens:
+                name = proper_tokens[-1]
+            elif "as" in lowered_tokens and proper_tokens:
+                name = proper_tokens[-1]
+            elif (
                 raw_tokens[0][:1].isupper()
                 and lowered_tokens[0] not in self.CONTEXTUAL_TOKENS
                 and lowered_tokens[0] not in self.NON_CHARACTER_SINGLE_TOKENS
@@ -379,12 +458,14 @@ class CanonicalEntityNormalizer:
             candidate_tokens = [token.lower() for token in candidate.split()]
             if normalized in {self.normalized_entity_key(token) for token in candidate_tokens}:
                 matches.append(candidate)
-            elif self.normalized_entity_key(candidate).startswith(normalized):
+            elif " " in candidate and self.normalized_entity_key(candidate).startswith(normalized):
                 matches.append(candidate)
+            elif len(normalized) >= 3:
+                candidate_norm = self.normalized_entity_key(candidate)
+                if candidate_norm.startswith(normalized) and len(candidate_norm) > len(normalized) + 1:
+                    matches.append(candidate)
         unique = sorted(set(matches), key=lambda item: (len(item.split()), len(item)), reverse=True)
         if len(unique) == 1:
-            return unique[0]
-        if unique and len(name) <= 5:
             return unique[0]
         return ""
 

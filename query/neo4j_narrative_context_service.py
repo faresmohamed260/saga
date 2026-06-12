@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
+from difflib import SequenceMatcher
 from typing import Any, Dict, List
 
 from core.canon_normalization import CanonicalEntityNormalizer
@@ -13,6 +14,19 @@ from infrastructure.neo4j_ingestion_service import Neo4jIngestionService
 
 class Neo4jNarrativeContextService(Neo4jIngestionService):
     """Query Neo4j for decoder-ready narrative context."""
+
+    GENERIC_ALIAS_LABELS = {
+        "father",
+        "mother",
+        "my father",
+        "my mother",
+        "my brother",
+        "my sister",
+        "the narrator",
+        "narrator",
+        "the male",
+        "the female",
+    }
 
     STABLE_CANON_ATTRIBUTES = {
         "bond",
@@ -77,6 +91,7 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
                     alias_lookup=alias_lookup,
                     top_characters=top_characters,
                     use_props_fallback=len(scope.get("matched_titles", [])) <= 1,
+                    target_recent_book_index=max(scope.get("matched_book_indices", []) or [0]) or None,
                 )
                 relationship_summary = self._clean_relationship_summary(
                     self._relationship_summary(session, series_id=series_id, book_titles=requested_titles),
@@ -183,7 +198,7 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         rows = [
             row.data()
             for row in session.run(
-                f"MATCH (b:Book) WHERE {where} RETURN b.title AS title, b.series_id AS series_id ORDER BY b.book_index ASC",
+                f"MATCH (b:Book) WHERE {where} RETURN b.title AS title, b.series_id AS series_id, b.book_index AS book_index ORDER BY b.book_index ASC",
                 **params,
             )
         ]
@@ -198,6 +213,7 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         return {
             "matched_titles": [row.get("title", "") for row in rows],
             "matched_series_ids": matched_series_ids,
+            "matched_book_indices": [row.get("book_index") for row in rows if row.get("book_index") is not None],
         }
 
     def _sanity_warnings(
@@ -725,8 +741,8 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         lookup: Dict[str, str] = {}
         choices: Dict[str, List[tuple[str, int]]] = defaultdict(list)
         for data in rows:
-            canonical = self._clean_name(data.get("canonical_name", ""))
-            alias = self._clean_name(data.get("alias_text", ""))
+            canonical = self.normalizer.canonicalize_candidate_name(self._clean_name(data.get("canonical_name", "")))
+            alias = self.normalizer.canonicalize_candidate_name(self._clean_name(data.get("alias_text", "")))
             if not canonical or not alias:
                 continue
             mention_count = int(data.get("mention_count") or 0)
@@ -766,6 +782,7 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         alias_lookup: Dict[str, str],
         top_characters: int,
         use_props_fallback: bool,
+        target_recent_book_index: Any,
     ) -> List[Dict[str, Any]]:
         merged: Dict[str, Dict[str, Any]] = {}
         for row in rows:
@@ -775,7 +792,7 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
                 aliases=row.get("aliases") or [],
                 alias_lookup=alias_lookup,
             )
-            if not canonical_name or self.normalizer.is_bad_alias_like_name(canonical_name):
+            if not self._is_viable_character_name(canonical_name):
                 continue
             props = row.get("props") or {}
             raw_type = str(props.get("entity_type") or row.get("entity_type") or "").strip().lower()
@@ -823,12 +840,23 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
 
         cleaned_rows: List[Dict[str, Any]] = []
         for entry in merged.values():
-            entry["state_transitions"] = self._dedupe_transitions(entry.get("state_transitions", []))
+            raw_transitions = list(entry.get("state_transitions", []))
             entry["canon_state"] = self._derive_stable_canon_state(
                 entry.get("_props", []),
-                entry.get("state_transitions", []),
+                raw_transitions,
+                descriptions=entry.get("descriptions", []),
+                aliases=entry.get("aliases", []),
                 latest_book_index=entry.get("latest_book_index"),
                 use_props_fallback=use_props_fallback,
+            )
+            entry["aliases"] = self._sanitize_output_aliases(
+                canonical_name=entry.get("name", ""),
+                aliases=entry.get("aliases", []),
+            )
+            entry["state_transitions"] = self._transitions_for_output(
+                raw_transitions,
+                latest_book_index=entry.get("latest_book_index"),
+                target_book_index=target_recent_book_index,
             )
             entry.pop("_props", None)
             cleaned_rows.append(entry)
@@ -872,12 +900,7 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         seen = set()
         for row in rows:
             character = self._canonicalize_name(row.get("character", ""), alias_lookup=alias_lookup)
-            if (
-                not character
-                or character in seen
-                or self.normalizer.is_bad_alias_like_name(character)
-                or not self.normalizer.looks_like_character_name(character)
-            ):
+            if not self._is_viable_character_name(character) or character in seen:
                 continue
             seen.add(character)
             cleaned.append({
@@ -936,7 +959,14 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         return self.normalizer.normalized_entity_key(value)
 
     def _best_display_name(self, names: List[str]) -> str:
-        candidates = [self._clean_name(name) for name in names if self._clean_name(name)]
+        candidates: List[str] = []
+        for name in names:
+            cleaned = self._clean_name(name)
+            if not cleaned:
+                continue
+            canonical = self.normalizer.canonicalize_candidate_name(cleaned)
+            if canonical:
+                candidates.append(canonical)
         if not candidates:
             return ""
         unique = []
@@ -948,6 +978,16 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
             unique.append(name)
             seen.add(key)
         return max(unique, key=self._name_rank)
+
+    def _is_viable_character_name(self, name: str) -> bool:
+        if not name:
+            return False
+        if self.normalizer.is_bad_alias_like_name(name):
+            return False
+        if not self.normalizer.looks_like_character_name(name):
+            return False
+        canonical = self.normalizer.canonicalize_candidate_name(name)
+        return bool(canonical and self.normalizer.looks_like_character_name(canonical))
 
     def _name_rank(self, name: str) -> tuple[int, int, int, int]:
         cleaned = self._clean_name(name)
@@ -996,11 +1036,79 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
         cleaned.sort(key=lambda item: ((item.get("chapter") or 0), item.get("attribute", "")))
         return cleaned[-12:]
 
+    def _sanitize_output_aliases(self, *, canonical_name: str, aliases: List[str]) -> List[str]:
+        canonical_tokens = [
+            self._clean_name(token)
+            for token in str(canonical_name or "").split()
+            if self._clean_name(token)
+        ]
+        canonical_key = self._normalized_entity_key(canonical_name)
+        cleaned_aliases: List[str] = []
+        seen = set()
+        for alias in aliases or []:
+            cleaned = self._clean_name(alias)
+            if not cleaned or self.normalizer.is_bad_alias_like_name(cleaned):
+                continue
+            if self.normalizer.looks_like_location_name(cleaned):
+                continue
+            normalized_alias = self.normalizer.canonicalize_candidate_name(cleaned)
+            if not normalized_alias or not self.normalizer.looks_like_character_name(normalized_alias):
+                continue
+            if self._is_generic_alias_label(cleaned) or self._is_generic_alias_label(normalized_alias):
+                continue
+            normalized_key = self._normalized_entity_key(normalized_alias)
+            if not normalized_key or normalized_key == canonical_key:
+                continue
+            resembles_canonical = any(
+                SequenceMatcher(None, normalized_alias.lower(), token.lower()).ratio() >= 0.8
+                for token in canonical_tokens
+            ) or any(
+                token.lower() in normalized_alias.lower() or normalized_alias.lower() in token.lower()
+                for token in canonical_tokens
+            )
+            if not resembles_canonical:
+                continue
+            if len(normalized_alias.split()) == 1 and any(
+                SequenceMatcher(None, normalized_alias.lower(), token.lower()).ratio() >= 0.8
+                and normalized_alias.lower() != token.lower()
+                and normalized_alias.lower() not in token.lower()
+                and token.lower() not in normalized_alias.lower()
+                for token in canonical_tokens
+            ):
+                continue
+            if normalized_key in seen:
+                continue
+            cleaned_aliases.append(normalized_alias)
+            seen.add(normalized_key)
+        return cleaned_aliases[:5]
+
+    def _is_generic_alias_label(self, value: str) -> bool:
+        lowered = self._clean_name(value).lower()
+        return lowered in self.GENERIC_ALIAS_LABELS
+
+    def _transitions_for_output(self, rows: List[Dict[str, Any]], *, latest_book_index: Any, target_book_index: Any) -> List[Dict[str, Any]]:
+        scope_latest_rows = [
+            row for row in rows
+            if target_book_index is not None and row.get("book_index") == target_book_index
+        ]
+        if scope_latest_rows:
+            return self._dedupe_transitions(scope_latest_rows)[-6:]
+        if target_book_index is not None:
+            return []
+        latest_rows = [
+            row for row in rows
+            if latest_book_index is not None and row.get("book_index") == latest_book_index
+        ]
+        scoped_rows = latest_rows if latest_rows else rows
+        return self._dedupe_transitions(scoped_rows)[-6:]
+
     def _derive_stable_canon_state(
         self,
         props_rows: List[Dict[str, Any]],
         transitions: List[Dict[str, Any]],
         *,
+        descriptions: List[str],
+        aliases: List[str],
         latest_book_index: Any,
         use_props_fallback: bool,
     ) -> Dict[str, Any]:
@@ -1015,8 +1123,32 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
             latest_by_attr[attr] = row
         for attr, row in latest_by_attr.items():
             canon_state[attr] = row.get("new_state", "")
-        if canon_state or not use_props_fallback:
+        if canon_state:
             return canon_state
+
+        props_fallback = self._derive_canon_state_from_props(props_rows)
+        if props_fallback and use_props_fallback:
+            canon_state.update(props_fallback)
+
+        if not canon_state and props_fallback:
+            # Series-wide retrieval is noisier, but a blank canon packet is worse than a
+            # conservative stable-facts fallback from explicitly stored canon_* props.
+            canon_state.update(props_fallback)
+        if canon_state:
+            return canon_state
+
+        alias_inferred = self._infer_canon_state_from_aliases(aliases or [])
+        if alias_inferred:
+            canon_state.update(alias_inferred)
+        if canon_state:
+            return canon_state
+
+        inferred = self._infer_canon_state_from_descriptions(descriptions or [])
+        canon_state.update(inferred)
+        return canon_state
+
+    def _derive_canon_state_from_props(self, props_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        canon_state: Dict[str, Any] = {}
         for props in props_rows:
             for key, value in (props or {}).items():
                 if not key.startswith("canon_"):
@@ -1024,6 +1156,55 @@ class Neo4jNarrativeContextService(Neo4jIngestionService):
                 attr = key[len("canon_"):]
                 if self._keep_canon_attribute(attr, value):
                     canon_state[attr] = value
+        return canon_state
+
+    def _infer_canon_state_from_aliases(self, aliases: List[str]) -> Dict[str, str]:
+        text = " ".join(str(item or "") for item in aliases if str(item or "").strip())
+        if not text:
+            return {}
+        lowered = text.lower()
+        canon_state: Dict[str, str] = {}
+        if "high lord of spring" in lowered:
+            canon_state["title"] = "High Lord"
+            canon_state["court"] = "Spring Court"
+        elif "high lady of the night court" in lowered:
+            canon_state["title"] = "High Lady"
+            canon_state["court"] = "Night Court"
+        elif "high lord" in lowered and "night" in lowered:
+            canon_state["title"] = "High Lord"
+            canon_state["court"] = "Night Court"
+        elif "lady" in lowered and "night" in lowered:
+            canon_state["title"] = "Lady"
+            canon_state["court"] = "Night Court"
+        return canon_state
+
+    def _infer_canon_state_from_descriptions(self, descriptions: List[str]) -> Dict[str, str]:
+        text = " ".join(str(item or "") for item in descriptions if str(item or "").strip())
+        if not text:
+            return {}
+        lowered = text.lower()
+        canon_state: Dict[str, str] = {}
+        title_match = re.search(r"\b(high lord|high lady|lord|lady|general|spymaster|queen|king|priestess)\b", lowered)
+        if title_match:
+            title = title_match.group(1)
+            if title in {"high lord", "high lady", "lord", "lady", "queen", "king"}:
+                canon_state["title"] = title.title()
+            else:
+                canon_state["role"] = title
+        role_match = re.search(r"\b(spymaster|general|priestess|blacksmith|healer|warrior)\b", lowered)
+        if role_match and "role" not in canon_state:
+            canon_state["role"] = role_match.group(1)
+        court_match = re.search(r"\b(night|day|dawn|spring|summer|autumn|winter|dusk)\s+court\b", lowered)
+        if court_match:
+            canon_state["court"] = f"{court_match.group(1).title()} Court"
+        if "mate" in lowered:
+            canon_state.setdefault("mate_status", "mated or mate-bonded")
+        family_match = re.search(r"\b(sister|brother|mother|father|daughter|son)\b", lowered)
+        if family_match:
+            canon_state.setdefault("family_role", family_match.group(1))
+        allegiance_match = re.search(r"\b(loyal to|allied with)\s+([A-Z][A-Za-z'\\-]+(?:\s+[A-Z][A-Za-z'\\-]+){0,2})", text)
+        if allegiance_match:
+            canon_state.setdefault("allegiance", allegiance_match.group(2))
         return canon_state
 
     def _keep_canon_attribute(self, attr: str, value: Any) -> bool:

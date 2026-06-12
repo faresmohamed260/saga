@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
   "beautifulsoup4",
   "ebooklib",
+  "fastapi",
   "google-genai",
   "mistralai",
   "pypdf",
@@ -19,6 +20,7 @@ dependencies = [
   "scikit-learn",
   "streamlit",
   "trafilatura",
+  "uvicorn",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +42,7 @@ namespaces = true
 include = [
   "analysis",
   "core",
+  "dashboard_api",
   "entities",
   "infrastructure",
   "prompts",

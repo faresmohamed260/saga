@@ -1,0 +1,9 @@
+{
+  "active_index": 0,
+  "accounts": [
+    {
+      "label": "codex-1",
+      "api_key": "sk-your-openai-key"
+    }
+  ]
+}

@@ -36,7 +36,12 @@ class TimelineService:
                     "scene_index": scene["scene_index"],
                     "event_id": event["event_id"],
                     "summary": event["description"],
-                    "characters": event.get("characters", [])
+                    "event_type": event.get("event_type") or event.get("type", ""),
+                    "type": event.get("event_type") or event.get("type", ""),
+                    "characters": event.get("characters", []),
+                    "entities_involved": event.get("entities_involved", []),
+                    "reason": event.get("reason", ""),
+                    "outcome": event.get("outcome", ""),
                 })
                 time_index += 1
 
@@ -64,7 +69,12 @@ class TimelineService:
                     "scene_index": scene["scene_index"],
                     "event_id": event["event_id"],
                     "summary": event["description"],
+                    "event_type": event.get("event_type") or event.get("type", ""),
+                    "type": event.get("event_type") or event.get("type", ""),
                     "characters": event.get("characters", []),
+                    "entities_involved": event.get("entities_involved", []),
+                    "reason": event.get("reason", ""),
+                    "outcome": event.get("outcome", ""),
                 })
                 time_index += 1
 

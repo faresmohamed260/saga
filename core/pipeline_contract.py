@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
+from analysis.scene_contract_reconciler import reconcile_scene_contract
 from entities.character_profile_service import CharacterProfileService
 from entities.entity_registry_service import EntityRegistryService
 from rag.story_index_service import StoryIndexService
@@ -128,6 +129,22 @@ def canonicalize_name(name: str, alias_map: Dict[str, List[str]], rejected: List
     return resolved or cleaned
 
 
+def provider_identity_locked(identity_result: Dict) -> bool:
+    return bool(identity_result.get("provider_locked")) or str(identity_result.get("identity_provider") or "").strip().lower() == "booknlp_clean"
+
+
+def provider_canonicalize_name(name: str, alias_map: Dict[str, List[str]], rejected: List[str]) -> str:
+    cleaned = (name or "").strip()
+    if not cleaned:
+        return ""
+    if cleaned.lower() in {item.lower() for item in rejected}:
+        return ""
+    lookup = canonical_lookup(alias_map)
+    if cleaned.lower() in lookup:
+        return lookup[cleaned.lower()]
+    return resolve_existing_canonical_name(cleaned, alias_map)
+
+
 def build_scene_context(
     scene_text: str,
     resolved_scene_analyses: List[Dict],
@@ -166,25 +183,40 @@ def build_scene_context(
     return "\n".join(parts).strip()
 
 
-def resolve_scene_analysis(scene_analysis: Dict, alias_map: Dict[str, List[str]], rejected: List[str]) -> Dict:
+def resolve_scene_analysis(scene_analysis: Dict, identity_result: Dict) -> Dict:
+    alias_map = identity_result.get("alias_map", {})
+    rejected = identity_result.get("rejected_non_characters", [])
+    provider_locked = provider_identity_locked(identity_result)
     resolved = dict(scene_analysis)
     lookup = canonical_lookup(alias_map)
     valid_character_names = set()
     for character in scene_analysis.get("canonical_characters", []):
         raw_name = (character.get("name") or "").strip()
-        canonical = canonicalize_name(raw_name, alias_map, rejected)
+        canonical = (
+            provider_canonicalize_name(raw_name, alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(raw_name, alias_map, rejected)
+        )
         if canonical:
             valid_character_names.add(canonical)
-        if raw_name:
+        if raw_name and not provider_locked:
             valid_character_names.add(raw_name)
     for mention in scene_analysis.get("character_mentions", []):
-        canonical = canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)
+        canonical = (
+            provider_canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)
+        )
         if canonical:
             valid_character_names.add(canonical)
     resolved_canonicals = []
     seen_canonicals = set()
     for character in scene_analysis.get("canonical_characters", []):
-        canonical_name = canonicalize_name(character.get("name", ""), alias_map, rejected)
+        canonical_name = (
+            provider_canonicalize_name(character.get("name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(character.get("name", ""), alias_map, rejected)
+        )
         if not canonical_name:
             continue
         lowered = canonical_name.lower()
@@ -206,20 +238,49 @@ def resolve_scene_analysis(scene_analysis: Dict, alias_map: Dict[str, List[str]]
             names_used.insert(0, canonical_name)
         resolved_canonicals.append({**character, "name": canonical_name, "names_used": names_used})
     resolved["canonical_characters"] = resolved_canonicals
-    resolved["character_mentions"] = [
-        {**mention, "canonical_name": canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)}
-        for mention in scene_analysis.get("character_mentions", [])
-    ]
+    resolved_mentions = []
+    for mention in scene_analysis.get("character_mentions", []):
+        canonical_name = (
+            provider_canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(mention.get("canonical_name", ""), alias_map, rejected)
+        )
+        if provider_locked and not canonical_name:
+            continue
+        resolved_mentions.append({**mention, "canonical_name": canonical_name})
+    resolved["character_mentions"] = resolved_mentions
     resolved_events = []
     for event in scene_analysis.get("events", []):
         characters = []
         for character in event.get("characters", []):
-            canonical = canonicalize_name(character, alias_map, rejected)
+            canonical = (
+                provider_canonicalize_name(character, alias_map, rejected)
+                if provider_locked
+                else canonicalize_name(character, alias_map, rejected)
+            )
             lowered = (character or "").strip().lower()
             is_known_alias = lowered in lookup
             if canonical and (canonical in valid_character_names or is_known_alias) and canonical not in characters:
                 characters.append(canonical)
-        resolved_events.append({**event, "characters": characters})
+        entities_involved = []
+        entities_seen = set()
+        for entity_name in event.get("entities_involved", []):
+            cleaned_name = (entity_name or "").strip()
+            if not cleaned_name:
+                continue
+            canonical_entity_name = (
+                provider_canonicalize_name(cleaned_name, alias_map, rejected)
+                if provider_locked
+                else canonicalize_name(cleaned_name, alias_map, rejected)
+            )
+            if canonical_entity_name and canonical_entity_name.lower() in lookup:
+                cleaned_name = canonical_entity_name
+            lowered_name = cleaned_name.lower()
+            if lowered_name in entities_seen:
+                continue
+            entities_seen.add(lowered_name)
+            entities_involved.append(cleaned_name)
+        resolved_events.append({**event, "characters": characters, "entities_involved": entities_involved})
     resolved["events"] = resolved_events
     resolved_entities = []
     seen_entities = set()
@@ -228,7 +289,11 @@ def resolve_scene_analysis(scene_analysis: Dict, alias_map: Dict[str, List[str]]
     )
     for entity in entity_source:
         name = (
-            canonicalize_name(entity.get("name", ""), alias_map, rejected)
+            (
+                provider_canonicalize_name(entity.get("name", ""), alias_map, rejected)
+                if provider_locked
+                else canonicalize_name(entity.get("name", ""), alias_map, rejected)
+            )
             if entity.get("entity_type") == "character"
             else (entity.get("name") or "").strip()
         )
@@ -241,33 +306,84 @@ def resolve_scene_analysis(scene_analysis: Dict, alias_map: Dict[str, List[str]]
         resolved_entities.append({"name": name, "entity_type": entity.get("entity_type")})
     resolved["entities_present"] = resolved_entities
     resolved["entity_descriptions"] = [
-        {**item, "entity_name": canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        {**item, "entity_name": (
+            provider_canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        )
          if item.get("entity_type") == "character" else item.get("entity_name", "")}
         for item in scene_analysis.get("entity_descriptions", [])
-        if (canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        if ((
+            provider_canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        )
             if item.get("entity_type") == "character" else item.get("entity_name", ""))
     ]
     resolved["state_changes"] = [
-        {**item, "entity_name": canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        {**item, "entity_name": (
+            provider_canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        )
          if item.get("entity_type") == "character" else item.get("entity_name", "")}
         for item in scene_analysis.get("state_changes", [])
-        if (canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        if ((
+            provider_canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(item.get("entity_name", ""), alias_map, rejected)
+        )
             if item.get("entity_type") == "character" else item.get("entity_name", ""))
     ]
     relationship_changes = []
     for item in scene_analysis.get("relationship_changes", []):
-        source_entity = canonicalize_name(item.get("source_entity", ""), alias_map, rejected)
-        target_entity = canonicalize_name(item.get("target_entity", ""), alias_map, rejected)
+        source_entity = (
+            provider_canonicalize_name(item.get("source_entity", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(item.get("source_entity", ""), alias_map, rejected)
+        )
+        target_entity = (
+            provider_canonicalize_name(item.get("target_entity", ""), alias_map, rejected)
+            if provider_locked
+            else canonicalize_name(item.get("target_entity", ""), alias_map, rejected)
+        )
         if source_entity and target_entity:
             relationship_changes.append({**item, "source_entity": source_entity, "target_entity": target_entity})
     resolved["relationship_changes"] = relationship_changes
-    return resolved
+    world_state_entities = []
+    world_state_seen = set()
+    for item in (scene_analysis.get("entity_world_state") or {}).get("entities", []):
+        if not isinstance(item, dict):
+            continue
+        entity_type = str(item.get("entity_type") or "").strip().lower()
+        raw_name = item.get("entity_name", "")
+        name = (
+            provider_canonicalize_name(raw_name, alias_map, rejected)
+            if provider_locked and entity_type == "character"
+            else canonicalize_name(raw_name, alias_map, rejected)
+            if entity_type == "character"
+            else (raw_name or "").strip()
+        )
+        if provider_locked and entity_type == "character" and not name:
+            continue
+        name = (name or "").strip()
+        if not name:
+            continue
+        key = (name.lower(), entity_type)
+        if key in world_state_seen:
+            continue
+        world_state_seen.add(key)
+        world_state_entities.append({**item, "entity_name": name})
+    if scene_analysis.get("entity_world_state"):
+        resolved["entity_world_state"] = {
+            **(scene_analysis.get("entity_world_state") or {}),
+            "entities": world_state_entities,
+        }
+    return reconcile_scene_contract(resolved)
 
 
 def rebuild_resolved_scene_analyses(scene_analyses: List[Dict], identity_result: Dict) -> List[Dict]:
-    alias_map = identity_result.get("alias_map", {})
-    rejected = identity_result.get("rejected_non_characters", [])
-    return [resolve_scene_analysis(scene_analysis, alias_map, rejected) for scene_analysis in scene_analyses]
+    return [resolve_scene_analysis(scene_analysis, identity_result) for scene_analysis in scene_analyses]
 
 
 def apply_identity_updates(scene_analysis: Dict, alias_result: Dict) -> None:
@@ -275,6 +391,8 @@ def apply_identity_updates(scene_analysis: Dict, alias_result: Dict) -> None:
     rejected = alias_result["rejected_non_characters"]
     decisions = alias_result["decisions"]
     alias_history = alias_result["alias_history"]
+    unresolved = alias_result.setdefault("unresolved_identity_candidates", [])
+    provider_locked = provider_identity_locked(alias_result)
     scene_ref = {
         "book_index": scene_analysis.get("book_index"),
         "chapter_index": scene_analysis.get("chapter_index"),
@@ -283,6 +401,13 @@ def apply_identity_updates(scene_analysis: Dict, alias_result: Dict) -> None:
     rejected_lower = {item.lower() for item in rejected}
     for name in scene_analysis.get("rejected_identity_candidates", []):
         if not name or not name.strip():
+            continue
+        if provider_locked:
+            unresolved.append({
+                "name": name,
+                "reason": "scene_rejected_candidate",
+                "scene_ref": scene_ref,
+            })
             continue
         if looks_like_proper_name(name):
             alias_map.setdefault(name, [name])
@@ -312,6 +437,15 @@ def apply_identity_updates(scene_analysis: Dict, alias_result: Dict) -> None:
         canonical_name = (character.get("name") or "").strip()
         if not canonical_name or is_forbidden_identity(canonical_name):
             continue
+        if provider_locked:
+            resolved_canonical = provider_canonicalize_name(canonical_name, alias_map, rejected)
+            if not resolved_canonical:
+                unresolved.append({
+                    "name": canonical_name,
+                    "reason": "unknown_scene_canonical",
+                    "scene_ref": scene_ref,
+                })
+            continue
         alias_map.setdefault(canonical_name, [canonical_name])
         merged = {alias for alias in {canonical_name, *character.get("names_used", [])} if alias and not is_forbidden_identity(alias)}
         alias_map[canonical_name] = sorted(merged, key=str.lower)
@@ -319,6 +453,16 @@ def apply_identity_updates(scene_analysis: Dict, alias_result: Dict) -> None:
         alias = (mention.get("mention_text") or "").strip()
         canonical_name = (mention.get("canonical_name") or "").strip()
         if not alias or not canonical_name or not mention.get("is_consequential_character", False):
+            continue
+        if provider_locked:
+            resolved_canonical = provider_canonicalize_name(canonical_name, alias_map, rejected)
+            if not resolved_canonical:
+                unresolved.append({
+                    "name": canonical_name,
+                    "alias": alias,
+                    "reason": "unknown_scene_mention",
+                    "scene_ref": scene_ref,
+                })
             continue
         if is_forbidden_identity(alias) or alias.lower() in rejected_lower:
             continue
@@ -330,6 +474,16 @@ def apply_identity_updates(scene_analysis: Dict, alias_result: Dict) -> None:
         canonical_name = update["canonical_name"].strip()
         action = update["action"]
         if not alias or not canonical_name:
+            continue
+        if provider_locked:
+            resolved_canonical = provider_canonicalize_name(canonical_name, alias_map, rejected)
+            if not resolved_canonical:
+                unresolved.append({
+                    "name": canonical_name,
+                    "alias": alias,
+                    "reason": "unknown_alias_update",
+                    "scene_ref": scene_ref,
+                })
             continue
         if is_forbidden_identity(alias) or is_forbidden_identity(canonical_name):
             if alias.lower() not in rejected_lower:
@@ -398,6 +552,8 @@ def build_formal_character_profiles(
 
 def normalize_character_timelines(character_timelines: List[Dict], identity_result: Dict) -> List[Dict]:
     normalized = CharacterNormalizer().normalize(character_timelines)
+    if provider_identity_locked(identity_result):
+        return normalized.get("character_timelines", character_timelines)
     existing_alias_map = identity_result.setdefault("alias_map", {})
     for canonical_name, aliases in normalized.get("alias_map", {}).items():
         merged = set(existing_alias_map.get(canonical_name, []))

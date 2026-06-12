@@ -1,0 +1,136 @@
+{
+  "narrative_extraction": [
+    {
+      "case_id": "acotar_book1_ch1",
+      "book_index": 1,
+      "chapter_indices": [
+        1
+      ],
+      "expected_character_anchors": [
+        "Feyre"
+      ],
+      "expected_location_keywords": [
+        "forest",
+        "woods",
+        "snow"
+      ],
+      "expected_event_keywords": [
+        "wolf",
+        "hunt",
+        "arrow"
+      ]
+    },
+    {
+      "case_id": "acotar_book1_ch6",
+      "book_index": 1,
+      "chapter_indices": [
+        6
+      ],
+      "expected_character_anchors": [
+        "Feyre",
+        "Tamlin",
+        "Lucien"
+      ],
+      "expected_location_keywords": [
+        "house",
+        "manor",
+        "estate"
+      ],
+      "expected_event_keywords": [
+        "dinner",
+        "table",
+        "eat"
+      ]
+    }
+  ],
+  "identity_inventory": [
+    {
+      "case_id": "acotar_book1_early_cast",
+      "book_index": 1,
+      "chapter_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "expected_canonicals": [
+        "Feyre",
+        "Tamlin",
+        "Lucien"
+      ]
+    }
+  ],
+  "stable_state": [
+    {
+      "case_id": "acotar_stable_state_early",
+      "expected_character_names": [
+        "Feyre",
+        "Tamlin",
+        "Lucien"
+      ]
+    }
+  ],
+  "retrieval_packet": [
+    {
+      "case_id": "acotar_retrieval_minimum",
+      "expected_character_anchors": [
+        "Feyre",
+        "Tamlin",
+        "Lucien"
+      ],
+      "expected_thread_keywords": [
+        "wolf",
+        "hunt",
+        "curse"
+      ]
+    }
+  ],
+  "decoder_blueprint": [
+    {
+      "case_id": "acotar_post_acosf_blueprint",
+      "prompt": "Generate an original sequel to A Court of Silver Flames as a Book 6 continuing the established canon storyline of the ACOTAR series with Elain Archeron as primary POV.",
+      "expected_character_anchors": [
+        "Elain",
+        "Azriel",
+        "Lucien",
+        "Nesta",
+        "Cassian",
+        "Feyre",
+        "Rhysand"
+      ],
+      "expected_thread_keywords": [
+        "Koschei",
+        "human lands",
+        "Seer",
+        "bond"
+      ]
+    }
+  ],
+  "decoder_outline": [
+    {
+      "case_id": "acotar_post_acosf_outline",
+      "chapter_number": 1,
+      "expected_pov": "Elain Archeron",
+      "expected_keywords": [
+        "Elain",
+        "human lands",
+        "vision"
+      ]
+    }
+  ],
+  "decoder_prose": [
+    {
+      "case_id": "acotar_post_acosf_prose",
+      "expected_keywords": [
+        "Elain",
+        "vision",
+        "garden"
+      ],
+      "forbidden_keywords": [
+        "I, Elain"
+      ]
+    }
+  ]
+}

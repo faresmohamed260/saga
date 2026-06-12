@@ -63,10 +63,7 @@ class SceneExtractor:
 
     def extract_many(self, chapters: List[Dict], allow_cross_chapter: bool = True) -> List[Dict]:
         if self.target_words == 0:
-            scenes: List[Dict] = []
-            for chapter in chapters:
-                scenes.extend(self.extract(chapter))
-            return scenes
+            return self._extract_chapter_batches(chapters)
 
         paragraph_records: List[Dict] = []
         for chapter in chapters:
@@ -108,6 +105,51 @@ class SceneExtractor:
             item["end_chapter_index"] = scene.get("end_chapter_index", scene["chapter_index"])
             item["source_files"] = source_files
         return split_records
+
+    def _extract_chapter_batches(self, chapters: List[Dict]) -> List[Dict]:
+        batches: List[Dict] = []
+        current_batch: List[Dict] = []
+        current_words = 0
+
+        for chapter in chapters:
+            chapter_scene = self.extract(chapter)
+            if not chapter_scene:
+                continue
+            chapter_record = chapter_scene[0]
+            chapter_words = int(chapter_record.get("length") or 0)
+            if not current_batch:
+                current_batch = [chapter_record]
+                current_words = chapter_words
+                continue
+
+            same_book = current_batch[-1]["book_index"] == chapter_record["book_index"]
+            if same_book and current_words < self.CHAPTER_BATCH_MIN_WORDS:
+                current_batch.append(chapter_record)
+                current_words += chapter_words
+                continue
+
+            batches.append(self._combine_chapter_batch(current_batch))
+            current_batch = [chapter_record]
+            current_words = chapter_words
+
+        if current_batch:
+            if batches and current_words < self.CHAPTER_BATCH_MIN_WORDS and batches[-1]["book_index"] == current_batch[0]["book_index"]:
+                combined = self._combine_chapter_batch(current_batch)
+                batches[-1] = self._combine_scenes(batches[-1], combined)
+            else:
+                batches.append(self._combine_chapter_batch(current_batch))
+
+        return self._reindex_scenes(batches)
+
+    def _combine_chapter_batch(self, records: List[Dict]) -> Dict:
+        if len(records) == 1:
+            return dict(records[0])
+        combined = dict(records[0])
+        for record in records[1:]:
+            combined = self._combine_scenes(combined, record)
+        combined["chapter_title"] = records[0].get("chapter_title", "")
+        combined["chapter_index"] = records[0]["chapter_index"]
+        return combined
 
     def _build_scene_records(self, paragraph_records: List[Dict], allow_cross_chapter: bool) -> List[Dict]:
         if not paragraph_records:
@@ -229,3 +271,4 @@ class SceneExtractor:
         text = re.sub(r"\r\n|\r", "\n", text or "")
         text = re.sub(r"[ \t]+", " ", text)
         return text.strip()
+    CHAPTER_BATCH_MIN_WORDS = 1600

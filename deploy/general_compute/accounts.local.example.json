@@ -1,0 +1,26 @@
+{
+  "active_index": 0,
+  "last_request_index": -1,
+  "accounts": [
+    {
+      "label": "gc-primary",
+      "api_key": "gc_your_key_here",
+      "limits": {
+        "requests_per_minute": 30,
+        "tokens_per_minute": 10000,
+        "requests_per_day": 1000,
+        "tokens_per_day": 500000
+      }
+    },
+    {
+      "label": "gc-backup",
+      "api_key": "gc_your_second_key_here",
+      "limits": {
+        "requests_per_minute": 30,
+        "tokens_per_minute": 10000,
+        "requests_per_day": 1000,
+        "tokens_per_day": 500000
+      }
+    }
+  ]
+}

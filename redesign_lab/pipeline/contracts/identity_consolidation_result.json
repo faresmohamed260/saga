@@ -1,0 +1,11 @@
+{
+  "name": "identity_consolidation_result",
+  "required": {
+    "series_id": "string",
+    "canonical_characters": "array",
+    "alias_map": "object",
+    "rejected_non_characters": "array",
+    "unresolved_mentions": "object"
+  }
+}
+

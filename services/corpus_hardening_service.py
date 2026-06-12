@@ -9,8 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import requests
-
 from core.canon_normalization import CanonicalEntityNormalizer
 from core.pipeline_contract import (
     build_canon_snapshot,
@@ -25,6 +23,7 @@ from infrastructure.neo4j_ingestion_service import Neo4jIngestionService
 from query.neo4j_narrative_context_service import Neo4jNarrativeContextService
 from rag.hybrid_embedding_index_service import HybridEmbeddingIndexService
 from services.encoder_persistence_service import EncoderPersistenceService
+from services.web_entity_hint_service import WebEntityHintService
 
 
 class CorpusHardeningService:
@@ -99,6 +98,7 @@ class CorpusHardeningService:
         self.wiki_hints_enabled = wiki_hints_enabled
         self.vector_index_service = vector_index_service or HybridEmbeddingIndexService()
         self.normalizer = CanonicalEntityNormalizer()
+        self.web_entity_hint_service = WebEntityHintService()
 
     def discover_latest_contracts(self, series_id: str) -> List[Path]:
         root = Path("analysis_outputs") / "encode_runs" / series_id
@@ -154,6 +154,7 @@ class CorpusHardeningService:
         contract_paths: Optional[List[str | Path]] = None,
         output_dir: str | Path,
         dry_run: bool = False,
+        progress_callback=None,
     ) -> Dict[str, Any]:
         target_dir = Path(output_dir)
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -161,7 +162,15 @@ class CorpusHardeningService:
             stale.unlink()
         reports: List[Dict[str, Any]] = []
         repaired_paths: List[str] = []
-        for path in contract_paths or [str(item) for item in self.discover_latest_contracts(series_id)]:
+        selected_paths = [str(path) for path in (contract_paths or [str(item) for item in self.discover_latest_contracts(series_id)])]
+        if progress_callback:
+            progress_callback("repair_contracts", {
+                "current": 0,
+                "total": len(selected_paths),
+                "status": f"Repairing {len(selected_paths)} contract(s)",
+                "done": len(selected_paths) == 0,
+            })
+        for index, path in enumerate(selected_paths, start=1):
             payload = json.loads(Path(path).read_text(encoding="utf-8"))
             repaired, report = self.repair_contract(payload, dry_run=dry_run)
             report["source_contract"] = str(path)
@@ -171,6 +180,14 @@ class CorpusHardeningService:
                 repaired_paths.append(str(out_path))
                 report["repaired_contract"] = str(out_path)
             reports.append(report)
+            if progress_callback:
+                progress_callback("repair_contracts", {
+                    "current": index,
+                    "total": len(selected_paths),
+                    "label": Path(path).name,
+                    "status": f"Repaired {Path(path).name}",
+                    "done": index == len(selected_paths),
+                })
         summary = self._summarise_reports(reports)
         artifact = {
             "series_id": series_id,
@@ -190,15 +207,20 @@ class CorpusHardeningService:
         output_dir: str | Path,
         dry_run: bool = False,
         source_dir: str | Path | None = None,
+        progress_callback=None,
     ) -> Dict[str, Any]:
         output_root = Path(output_dir)
         output_root.mkdir(parents=True, exist_ok=True)
         repair_dir = output_root / "repaired_contracts"
+        selected_contracts = [str(path) for path in (contract_paths or [str(item) for item in self.discover_latest_contracts(series_id)])]
+        if progress_callback:
+            progress_callback("stage", {"status": f"Preparing rebuild for '{series_id}'", "done": False})
         repair_report = self.repair_contracts(
             series_id=series_id,
-            contract_paths=contract_paths,
+            contract_paths=selected_contracts,
             output_dir=repair_dir,
             dry_run=dry_run,
+            progress_callback=progress_callback,
         )
         if dry_run:
             return {
@@ -209,8 +231,27 @@ class CorpusHardeningService:
 
         existing = self.neo4j.inspect_series(series_id)
         removed = []
-        for book in existing.get("books", []):
+        existing_books = list(existing.get("books", []))
+        if progress_callback:
+            progress_callback("remove_books", {
+                "current": 0,
+                "total": len(existing_books),
+                "status": f"Removing {len(existing_books)} existing book(s)",
+                "done": len(existing_books) == 0,
+            })
+        for index, book in enumerate(existing_books, start=1):
             removed.append(self.neo4j.remove_book(series_id, book.get("title", "")))
+            if progress_callback:
+                progress_callback("remove_books", {
+                    "current": index,
+                    "total": len(existing_books),
+                    "label": book.get("title", ""),
+                    "status": f"Removed {book.get('title', '')}",
+                    "done": index == len(existing_books),
+                })
+        if progress_callback:
+            progress_callback("stage", {"status": "Purging residual series nodes", "done": False})
+        purge_report = self.neo4j.purge_series_residue(series_id)
 
         ingested = []
         repair_sources: List[Dict[str, Any]] = []
@@ -220,9 +261,17 @@ class CorpusHardeningService:
             repair_dir=repair_dir,
             repaired_files=repaired_files,
             source_dir=source_dir,
+            progress_callback=progress_callback,
         ) if not dry_run else []
         repaired_files = sorted(repair_dir.glob("*.contract.json"))
-        for path in repaired_files:
+        if progress_callback:
+            progress_callback("ingest_contracts", {
+                "current": 0,
+                "total": len(repaired_files),
+                "status": f"Ingesting {len(repaired_files)} repaired contract(s)",
+                "done": len(repaired_files) == 0,
+            })
+        for index, path in enumerate(repaired_files, start=1):
             payload = json.loads(path.read_text(encoding="utf-8"))
             books = (((payload.get("inputs") or {}).get("books")) or [{}])
             first = books[0] if books else {}
@@ -233,6 +282,16 @@ class CorpusHardeningService:
                 "path": str(path),
             })
             ingested.append(self.neo4j.ingest_contract(payload, replace_existing=False))
+            if progress_callback:
+                progress_callback("ingest_contracts", {
+                    "current": index,
+                    "total": len(repaired_files),
+                    "label": Path(path).name,
+                    "status": f"Ingested {Path(path).name}",
+                    "done": index == len(repaired_files),
+                })
+        if progress_callback:
+            progress_callback("stage", {"status": "Consolidating graph", "done": False})
         consolidation_report = self.consolidate_graph(series_id=series_id)
 
         context_service = Neo4jNarrativeContextService(
@@ -242,21 +301,28 @@ class CorpusHardeningService:
             database=self.neo4j.database,
         )
         try:
+            if progress_callback:
+                progress_callback("stage", {"status": "Refreshing retrieval context", "done": False})
             retrieval = context_service.build_from_graph(series_id=series_id)
         finally:
             context_service.close()
 
+        if progress_callback:
+            progress_callback("stage", {"status": "Rebuilding hybrid vector index", "done": False})
         index_payload = self.vector_index_service.ensure_index(
             series_id=series_id,
             scope_key="series-rebuild",
             documents=list(retrieval.get("retrieval_documents") or []),
         )
+        if progress_callback:
+            progress_callback("stage", {"status": "Running post-rebuild audit", "done": False})
         post_audit = self._audit_graph(series_id=series_id)
         result = {
             "series_id": series_id,
             "status": "ok",
             "rebuilt_at_utc": self._now_utc(),
             "removed_books": removed,
+            "purge_report": purge_report,
             "repaired_contracts": [str(path) for path in repaired_files],
             "rebuild_sources": repair_sources,
             "ingested_contracts": ingested,
@@ -271,6 +337,8 @@ class CorpusHardeningService:
             "repair_report": repair_report,
         }
         (output_root / "rebuild_report.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        if progress_callback:
+            progress_callback("stage", {"status": f"Rebuild completed for '{series_id}'", "done": True})
         return result
 
     def _recover_missing_contracts(
@@ -280,6 +348,7 @@ class CorpusHardeningService:
         repair_dir: Path,
         repaired_files: List[Path],
         source_dir: str | Path | None,
+        progress_callback=None,
     ) -> List[str]:
         source_books = self._source_books_for_series(series_id=series_id, source_dir=source_dir)
         if not source_books:
@@ -290,7 +359,15 @@ class CorpusHardeningService:
             if match:
                 present.add(int(match.group(1)))
         recovered: List[str] = []
-        for book in source_books:
+        missing_books = [book for book in source_books if book["book_index"] not in present]
+        if progress_callback:
+            progress_callback("recover_books", {
+                "current": 0,
+                "total": len(missing_books),
+                "status": f"Recovering {len(missing_books)} missing contract(s) from source",
+                "done": len(missing_books) == 0,
+            })
+        for index, book in enumerate(missing_books, start=1):
             if book["book_index"] in present:
                 continue
             contract = self._recover_contract_from_source(
@@ -298,10 +375,19 @@ class CorpusHardeningService:
                 book_path=book["path"],
                 book_title=book["title"],
                 book_index=book["book_index"],
+                progress_callback=progress_callback,
             )
             out_path = repair_dir / f"{book['book_index']:02d}_{book['title']}.contract.json"
             out_path.write_text(json.dumps(contract, ensure_ascii=False, indent=2), encoding="utf-8")
             recovered.append(str(out_path))
+            if progress_callback:
+                progress_callback("recover_books", {
+                    "current": index,
+                    "total": len(missing_books),
+                    "label": book["title"],
+                    "status": f"Recovered {book['title']}",
+                    "done": index == len(missing_books),
+                })
         return recovered
 
     def _source_books_for_series(self, *, series_id: str, source_dir: str | Path | None) -> List[Dict[str, Any]]:
@@ -327,6 +413,7 @@ class CorpusHardeningService:
         book_path: Path,
         book_title: str,
         book_index: int,
+        progress_callback=None,
     ) -> Dict[str, Any]:
         encoder = EncoderPersistenceService(
             analysis_model=LLMClient.MODE_GPT_OSS,
@@ -337,7 +424,15 @@ class CorpusHardeningService:
             series_title=book_title.rsplit(".", 1)[0],
             book_index_base=book_index,
         )
-        return encoder.encode_books([{"path": str(book_path), "title": book_title}])
+        def _relay(phase: str, payload: Dict[str, Any]) -> None:
+            if progress_callback:
+                progress_callback("recover_book_phase", {
+                    "book_title": book_title,
+                    "phase": phase,
+                    **(payload or {}),
+                })
+
+        return encoder.encode_books([{"path": str(book_path), "title": book_title}], progress_callback=_relay)
 
     def _contract_quality_score(self, path: Path) -> int:
         try:
@@ -391,6 +486,7 @@ class CorpusHardeningService:
         outputs["canon_snapshot"] = self._repair_canon_snapshot(outputs.get("canon_snapshot") or [], merge_map)
         outputs["timeline"] = self._repair_timeline(outputs.get("timeline") or [], merge_map)
         outputs["character_timelines"] = self._repair_character_timelines(outputs.get("character_timelines") or [], merge_map)
+        outputs["stable_character_states"] = self._repair_stable_character_states(outputs.get("stable_character_states") or [], merge_map)
         outputs["resolved_scene_analyses"] = self._repair_scene_analyses(outputs.get("resolved_scene_analyses") or [], merge_map)
         if outputs.get("scene_analyses"):
             outputs["scene_analyses"] = self._repair_scene_analyses(outputs.get("scene_analyses") or [], merge_map)
@@ -508,7 +604,7 @@ class CorpusHardeningService:
             "malformed_entities": malformed[:50],
             "missing_type_entities": missing_type[:50],
             "wrong_type_entities": wrong_types[:50],
-            "top_involved_characters": involved_rows,
+            "top_involved_characters": self._clean_involved_character_rows(involved_rows),
             "retrieval_preview": {
                 "book_title": ((retrieval.get("meta") or {}).get("book_title") or ""),
                 "top_characters": [
@@ -524,27 +620,35 @@ class CorpusHardeningService:
             },
         }
 
+    def _clean_involved_character_rows(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        aggregated: Dict[str, int] = defaultdict(int)
+        for row in rows:
+            canonical = self.normalizer.canonicalize_candidate_name(str(row.get("name") or "").strip())
+            if not canonical or not self.normalizer.looks_like_character_name(canonical):
+                continue
+            aggregated[canonical] += int(row.get("involved_events") or 0)
+        expanded: Dict[str, int] = defaultdict(int)
+        candidate_names = list(aggregated.keys())
+        for name, count in aggregated.items():
+            target = self.normalizer.expand_short_character_name(name, candidate_names) or name
+            expanded[target] += count
+        cleaned = [
+            {"name": name, "involved_events": count}
+            for name, count in expanded.items()
+        ]
+        cleaned.sort(key=lambda item: (-int(item.get("involved_events") or 0), item.get("name", "")))
+        return cleaned[:20]
+
     def _load_web_hints(self, payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         series_id = str((((payload.get("inputs") or {}).get("series") or {}).get("series_id")) or "").strip()
-        book_title = self._contract_book_title(payload)
-        if not series_id or series_id not in self.WEB_HINT_SEARCH:
+        if not series_id:
             return {}
-        keywords = {self._normalized_entity_key(item.get("name", "")) for item in (payload.get("outputs", {}).get("entity_registry") or [])[:40]}
-        hints: Dict[str, Dict[str, Any]] = {}
-        search_root = self.WEB_HINT_SEARCH[series_id]
-        try:
-            response = requests.get(search_root, timeout=15)
-            response.raise_for_status()
-            page_text = response.text.lower()
-        except Exception:
-            return {}
-        for keyword in keywords:
-            if not keyword:
-                continue
-            simple = keyword.replace("-", " ")
-            if simple and simple in page_text:
-                hints[keyword] = {"matched_on_page": book_title}
-        return hints
+        names = [
+            str(item.get("name") or "").strip()
+            for item in (payload.get("outputs", {}).get("entity_registry") or [])[:40]
+            if str(item.get("name") or "").strip()
+        ]
+        return self.web_entity_hint_service.load_series_hints(series_id, names)
 
     def _build_merge_map(
         self,
@@ -910,6 +1014,11 @@ class CorpusHardeningService:
         for row in outputs.get("character_timelines", []) or []:
             row["character"] = self.normalizer.resolve_name(row.get("character", ""), context=context, expect_character=True)
         outputs["character_timelines"] = [row for row in (outputs.get("character_timelines") or []) if row.get("character")]
+        for row in outputs.get("stable_character_states", []) or []:
+            row["entity_name"] = self.normalizer.resolve_name(row.get("entity_name", ""), context=context, expect_character=True)
+        outputs["stable_character_states"] = [
+            row for row in (outputs.get("stable_character_states") or []) if row.get("entity_name")
+        ]
         for scene_bucket in ("resolved_scene_analyses", "scene_analyses"):
             for scene in outputs.get(scene_bucket, []) or []:
                 scene["canonical_characters"] = _clean_character_list(scene.get("canonical_characters") or [])
@@ -917,6 +1026,9 @@ class CorpusHardeningService:
                     event["characters"] = _clean_character_list(event.get("characters") or [])
         for event in (((outputs.get("causal_graph_result") or {}).get("graph") or {}).get("events") or []):
             event["characters"] = _clean_character_list(event.get("characters") or [])
+
+    def _repair_stable_character_states(self, rows: List[Dict[str, Any]], merge_map: Dict[str, str]) -> List[Dict[str, Any]]:
+        return self._remap_named_payload(rows or [], merge_map)
 
     def consolidate_graph(self, *, series_id: str) -> Dict[str, Any]:
         driver = self.neo4j._ensure_driver()
@@ -947,6 +1059,8 @@ class CorpusHardeningService:
                 names=[str(row.get("name") or "").strip() for row in entity_rows],
                 alias_map=alias_map,
             )
+            overlap_merge_map = self._overlap_merge_candidates(entity_rows)
+            merge_map.update(overlap_merge_map)
             merged = 0
             corrected = 0
             removed = 0
@@ -1044,6 +1158,46 @@ class CorpusHardeningService:
             "entity_type_corrections": corrected,
             "llm_merge_decisions": llm_merge_decisions,
         }
+
+    def _overlap_merge_candidates(self, entity_rows: List[Dict[str, Any]]) -> Dict[str, str]:
+        alias_names: Dict[str, List[str]] = defaultdict(list)
+        type_by_name: Dict[str, str] = {}
+        for row in entity_rows:
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            type_by_name[name] = str(row.get("entity_type") or "").strip().lower()
+            for alias in [str(item).strip() for item in (row.get("aliases") or []) if str(item).strip()]:
+                alias_names[self._normalized_entity_key(alias)].append(name)
+        merge_map: Dict[str, str] = {}
+        for row in entity_rows:
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            targets = sorted(set(alias_names.get(self._normalized_entity_key(name)) or []))
+            if not targets or name in targets:
+                continue
+            preferred = self._preferred_overlap_target(name, targets, type_by_name.get(name, ""))
+            if preferred and preferred != name:
+                merge_map[name] = preferred
+        return merge_map
+
+    def _preferred_overlap_target(self, name: str, targets: List[str], entity_type: str) -> str:
+        if not targets:
+            return ""
+        if self.normalizer.is_bad_alias_like_name(name):
+            return max(targets, key=lambda item: (len(item.split()), len(item)))
+        if name.endswith("'s"):
+            base = self.normalizer.canonicalize_candidate_name(name)
+            for target in targets:
+                if self._normalized_entity_key(target) == self._normalized_entity_key(base):
+                    return target
+        if not self.normalizer.looks_like_character_name(name) or entity_type not in {"character", ""}:
+            return max(targets, key=lambda item: (len(item.split()), len(item)))
+        expanded = self.normalizer.expand_short_character_name(name, targets)
+        if expanded:
+            return expanded
+        return max(targets, key=lambda item: (len(item.split()), len(item)))
 
     def _merge_graph_entity(self, session, *, series_id: str, source: str, target: str) -> None:
         self.neo4j._run(

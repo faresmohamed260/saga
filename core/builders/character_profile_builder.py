@@ -42,20 +42,37 @@ class CharacterProfileBuilder:
             descriptions = registry_entry.get("descriptions") or []
             stable_traits = [row.get("description") for row in descriptions if row.get("description_type") == "stable_trait" and row.get("description")]
             appearance_notes = [row.get("description") for row in descriptions if row.get("description_type") == "appearance_note" and row.get("description")]
+            typed_attributes = registry_entry.get("typed_attributes") or {}
             history = item.get("events") or []
+            first_appearance_profile = registry_entry.get("first_appearance_profile") or {}
+            baseline_description = str(first_appearance_profile.get("baseline_description") or "").strip()
             output.append({
                 "character_id": stable_slug("char", canonical_name),
                 "canonical_name": canonical_name,
                 "aliases": dedupe_strings(alias_map.get(canonical_name, [canonical_name])),
-                "core_description": stable_traits[0] if stable_traits else (appearance_notes[0] if appearance_notes else ""),
+                "core_description": baseline_description or (stable_traits[0] if stable_traits else (appearance_notes[0] if appearance_notes else "")),
                 "traits": dedupe_strings(stable_traits[:8]),
                 "personality": [],
                 "speech_style": [],
                 "goals": [],
                 "fears": [],
-                "loyalties": [],
-                "abilities": [],
-                "constraints": [],
+                "loyalties": dedupe_strings((typed_attributes.get("affiliations") or [])[:8]),
+                "abilities": dedupe_strings((typed_attributes.get("abilities") or [])[:8]),
+                "constraints": dedupe_strings((typed_attributes.get("condition") or [])[:8]),
+                "visual_profile": {
+                    "first_appearance": first_appearance_profile,
+                    "appearance": typed_attributes.get("appearance") or [],
+                    "outfit": typed_attributes.get("outfit") or [],
+                    "condition": typed_attributes.get("condition") or [],
+                    "body_language": typed_attributes.get("body_language") or [],
+                },
+                "world_state_profile": {
+                    "possessions": typed_attributes.get("possessions") or [],
+                    "abilities": typed_attributes.get("abilities") or [],
+                    "titles_or_roles": typed_attributes.get("titles_or_roles") or [],
+                    "affiliations": typed_attributes.get("affiliations") or [],
+                    "latest_world_state": registry_entry.get("latest_world_state") or {},
+                },
                 "important_history": history[:12],
                 "relationship_refs": relationships_by_name.get(normalized, []),
                 "state_history": registry_entry.get("state_changes") or [],

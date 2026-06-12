@@ -1,0 +1,32 @@
+{
+  "series_id": "acotar",
+  "series_title": "A Court of Thorns and Roses",
+  "books": [
+    {
+      "path": "D:\\Books\\Ebooks\\Sarah J. Maas\\A Court of Thorns and Roses\\A Court of Thorns and Roses.epub",
+      "title": "A Court of Thorns and Roses.epub",
+      "type": "epub"
+    },
+    {
+      "path": "D:\\Books\\Ebooks\\Sarah J. Maas\\A Court of Mist and Fury\\A Court of Mist and Fury.epub",
+      "title": "A Court of Mist and Fury.epub",
+      "type": "epub"
+    },
+    {
+      "path": "D:\\Books\\Ebooks\\Sarah J. Maas\\A Court of Wings and Ruin\\A Court of Wings and Ruin.epub",
+      "title": "A Court of Wings and Ruin.epub",
+      "type": "epub"
+    },
+    {
+      "path": "D:\\Books\\Ebooks\\Sarah J. Maas\\A Court of Frost and Starlight\\A Court of Frost and Starlight.epub",
+      "title": "A Court of Frost and Starlight.epub",
+      "type": "epub"
+    },
+    {
+      "path": "D:\\Books\\Ebooks\\Sarah J. Maas\\A Court of Silver Flames\\A Court of Silver Flames.epub",
+      "title": "A Court of Silver Flames.epub",
+      "type": "epub"
+    }
+  ]
+}
+
