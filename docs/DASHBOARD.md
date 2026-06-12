@@ -1,75 +1,125 @@
 # S.A.G.A. Dashboard Guide
 
-The main UI is [story_dashboard.py](/B:/Documents/PyCharm/graduationProject/story_dashboard.py).
+## Current Dashboard Surface
+
+The current local dashboard stack is:
+
+- frontend: [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app)
+- runtime: [dashboard_runtime/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_runtime/app.py)
+- optional local API/backend helpers: [dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_api/app.py)
+
+The older Streamlit dashboard in [story_dashboard.py](/B:/Documents/PyCharm/graduationProject/story_dashboard.py) still exists, but it is no longer the only UI surface in the repo.
+
+## Recommended Launch Path
+
+Windows:
+
+```powershell
+scripts\windows\run_dashboard.bat
+```
+
+This launcher:
+
+1. installs frontend dependencies if needed
+2. builds the React dashboard
+3. starts the local runtime
+
+Default local URL:
+
+- `http://127.0.0.1:8675`
 
 ## Purpose
 
-The dashboard is no longer just a review tool. It is the primary operational surface for:
+The dashboard is intended to help with:
 
-- ingesting books
-- running the pipeline
-- observing progress
-- reviewing outputs
-- exporting the current run
-- querying indexed story data
+- browsing encode runs and contracts
+- validating contract artifacts
+- inspecting identity artifacts
+- reviewing character states
+- reviewing visual world state
+- reviewing ComfyUI prompt packs
+- inspecting retrieval context
+- inspecting Neo4j-backed outputs where configured
 
-## Main Controls
+## Main Views
 
-- Upload books
-- Reorder books
-- Select scene analysis model
-- Select identity model
-- Select analysis mode
-- Choose target scene size in words
-- Run pipeline
-- Reset results
-- Export JSON contract
+Typical main tabs or sections include:
 
-## Scene Sizing
+- `Overview`
+- `Encode Runs`
+- `Contract Viewer`
+- `Identity Viewer`
+- `Character States`
+- `Visual World State`
+- `ComfyUI Prompts`
+- `Retrieval Context`
+- `Neo4j`
+- `Prompt Inspector`
+- `Providers`
+- `Reports`
 
-- `0` means one full chapter per scene
-- any value above `0` is treated as a target word count
-- nonzero target sizes can produce chunks that span chapter boundaries
-- chunks still respect paragraph boundaries and do not break mid-paragraph or mid-sentence
+Exact tab composition may vary as the frontend evolves.
 
-## Key Tabs
+## Contract Viewer
 
-- `Status`
-  Run progress and execution timing
-- `Books`
-  Current ordered inputs
-- `Chapters`
-  Chapter extraction output
-- `Scenes`
-  Per-scene analysis output, local evidence, compare-mode differences, and tool-runtime telemetry
-- `Entity Registry`
-  Tracked entities and mention counts
-- `State Transitions`
-  State change log and latest state
-- `Canon Snapshot`
-  State at the current point in reading order
-- `Timeline`
-  Ordered event timeline
-- `Character Timelines`
-  Per-character event grouping plus character profile inspection
-- `Alias Map`
-  Canonicals and aliases
-- `Identity Decisions`
-  Identity reasoning outcomes
-- `Causal Graph`
-  Causal events and links
-- `Causal Metrics`
-  Graph-level summary metrics
-- `Story Search`
-  Search over indexed outputs
+The contract viewer is meant to render structured sections instead of raw JSON-first inspection.
 
-## Export
+Main contract-oriented sections include:
 
-Use the `Export JSON Contract` button in the sidebar after the pipeline run completes. The file is meant to be stable enough for handoff to downstream tools and integrations.
+- scenes
+- events
+- entities
+- timeline
+- profiles
+- relationships
+- states
+- identity
 
-## Review Workflow
+## Visual World State
 
-- Start on `Status` to check run health, warnings, compare-mode divergence, and tool-runtime filtering.
-- Use `Scenes` for flagged-scene review and local-evidence inspection.
-- Use `Character Timelines` for character profiles, alias inspection, and state/history review.
-- Use `Alias Map` and `Identity Decisions` to inspect merge/rejection quality.
+The visual world state view is intended to surface structured cards for:
+
+- character visual baselines
+- clothing and condition changes
+- object and creature state
+- location atmosphere and physical state
+- target-aware later-state inspection
+
+Main supporting service:
+
+- [query/visual_world_state_service.py](/B:/Documents/PyCharm/graduationProject/query/visual_world_state_service.py)
+
+## Prompt And Visual Export Support
+
+The dashboard can inspect or generate ComfyUI prompt-pack artifacts via:
+
+- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
+
+This is intended for:
+
+- character sheets
+- location concept prompts
+- object/artifact prompts
+- scene prompts
+- curated prompt exports
+
+## Run Inspection
+
+The dashboard is also meant to help inspect:
+
+- run status
+- per-book progress
+- contract presence
+- scene counts
+- failure reports
+- validation outputs
+
+The main artifact discovery logic lives in:
+
+- [services/dashboard_artifact_service.py](/B:/Documents/PyCharm/graduationProject/services/dashboard_artifact_service.py)
+
+## Notes
+
+- generated artifacts still live in `analysis_outputs/`
+- the dashboard is a local operator tool, not a hosted multi-user service
+- some backend-assisted dashboard paths still exist in the repo, but the runtime remains local-first

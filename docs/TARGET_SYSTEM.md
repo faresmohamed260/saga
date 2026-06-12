@@ -229,6 +229,7 @@ This section should be updated as implementation advances.
 
 - scene summaries
 - event ledger
+- event preconditions / consequences / stakes scaffolding
 - canonical characters
 - character mentions
 - alias updates and alias map
@@ -241,6 +242,10 @@ This section should be updated as implementation advances.
 - timeline
 - character timelines
 - character profiles
+- provider-backed BookNLP-clean identity integration
+- per-book and series identity adapter support
+- visual world-state extraction
+- target-aware character state retrieval
 - causal graph
 - search index
 - dashboard review
@@ -251,18 +256,20 @@ This section should be updated as implementation advances.
 
 ### Partially Present Today
 
-- event ledger richness
-  - a formal ledger artifact now exists, but preconditions, consequences, stakes, and richer dependency semantics are still incomplete
 - character profile richness
-  - a formal profile artifact now exists, but personality, goals, fears, loyalties, and event-anchored state are still incomplete
+  - a formal profile artifact now exists, but deeper personality, goals, fears, and richer durable state remain incomplete
 - relationship profiles
-  - relationship changes exist, but not yet as stable profiles
+  - stable profile builders exist, but relationship typing/evolution still needs depth and stricter consistency
 - entity/location profiles
-  - entity registry exists, but not yet with full rule/status/query semantics
+  - entity registry exists, but still needs stronger dedupe, richer semantics, and stricter normalization
+- stable character states
+  - builder exists, but output is still thinner than the richer profile and visual-state layers
+- visual continuity depth
+  - visual state extraction now exists, but the system still needs stronger first-appearance baselines and richer change tracking for generation-grade continuity
 - ambiguity and confidence reporting
   - some ambiguity metadata exists, but not yet as a complete reporting layer
 - point-in-time querying
-  - canon snapshots exist, but not yet the full event-anchored query surface
+  - canon snapshots and target-aware state retrieval exist, but not yet the full event-anchored query surface
 
 ### Not Yet Complete
 
