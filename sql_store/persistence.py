@@ -20,6 +20,8 @@ from .models import (
     Entity,
     Event,
     GeneratedImage,
+    GeneratedStory,
+    GeneratedStoryChapter,
     IdentityAlias,
     IdentityBook,
     IdentityCharacter,
@@ -412,6 +414,110 @@ class SagaSQLiteStore:
                         "metadata": row.metadata_json if isinstance(row.metadata_json, dict) else {},
                         "created_at": row.created_at.isoformat() if row.created_at else "",
                         "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+                    }
+                )
+            return payload
+
+    def store_generated_story(
+        self,
+        *,
+        book_id: str,
+        story_mode: str,
+        title: str,
+        user_prompt: str,
+        canon_position: str,
+        primary_pov_character: str,
+        llm_provider: str,
+        llm_model: str,
+        status: str,
+        output_text: str,
+        blueprint: dict[str, Any] | None,
+        progress: dict[str, Any] | None,
+        verification: dict[str, Any] | None,
+        metadata: dict[str, Any] | None,
+        chapters: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        with self.session_factory() as session:
+            row = GeneratedStory(
+                book_id=str(book_id),
+                story_mode=str(story_mode or "").strip() or None,
+                title=str(title or "").strip() or None,
+                user_prompt=str(user_prompt or "").strip() or None,
+                canon_position=str(canon_position or "").strip() or None,
+                primary_pov_character=str(primary_pov_character or "").strip() or None,
+                llm_provider=str(llm_provider or "").strip() or None,
+                llm_model=str(llm_model or "").strip() or None,
+                status=str(status or "").strip() or None,
+                output_text=str(output_text or "").strip() or None,
+                blueprint_json=blueprint if isinstance(blueprint, (dict, list)) else None,
+                progress_json=progress if isinstance(progress, (dict, list)) else None,
+                verification_json=verification if isinstance(verification, (dict, list)) else None,
+                metadata_json=metadata if isinstance(metadata, dict) else {},
+            )
+            session.add(row)
+            session.flush()
+            for chapter in chapters or []:
+                if not isinstance(chapter, dict):
+                    continue
+                session.add(
+                    GeneratedStoryChapter(
+                        story_id=row.id,
+                        chapter_number=self._int_or_none(chapter.get("chapter_number")) or 0,
+                        chapter_title=str(chapter.get("chapter_title") or "").strip() or None,
+                        outline_json=chapter.get("outline") if isinstance(chapter.get("outline"), (dict, list)) else None,
+                        prose_text=str(chapter.get("prose_text") or "").strip() or None,
+                        metadata_json=chapter.get("metadata") if isinstance(chapter.get("metadata"), dict) else {},
+                    )
+                )
+            session.commit()
+            return {
+                "story_id": row.id,
+                "book_id": row.book_id,
+                "story_mode": row.story_mode or "",
+                "title": row.title or "",
+                "status": row.status or "",
+            }
+
+    def get_generated_stories(self, *, book_id: str | None = None) -> list[dict[str, Any]]:
+        with self.session_factory() as session:
+            query = select(GeneratedStory).order_by(GeneratedStory.created_at.desc())
+            if book_id:
+                query = query.where(GeneratedStory.book_id == str(book_id))
+            rows = session.execute(query).scalars().all()
+            payload: list[dict[str, Any]] = []
+            for row in rows:
+                chapters = session.execute(
+                    select(GeneratedStoryChapter)
+                    .where(GeneratedStoryChapter.story_id == row.id)
+                    .order_by(GeneratedStoryChapter.chapter_number.asc())
+                ).scalars().all()
+                payload.append(
+                    {
+                        "id": row.id,
+                        "book_id": row.book_id,
+                        "story_mode": row.story_mode or "",
+                        "title": row.title or "",
+                        "user_prompt": row.user_prompt or "",
+                        "canon_position": row.canon_position or "",
+                        "primary_pov_character": row.primary_pov_character or "",
+                        "llm_provider": row.llm_provider or "",
+                        "llm_model": row.llm_model or "",
+                        "status": row.status or "",
+                        "output_text": row.output_text or "",
+                        "blueprint": row.blueprint_json if isinstance(row.blueprint_json, dict) else {},
+                        "progress": row.progress_json if isinstance(row.progress_json, dict) else {},
+                        "verification": row.verification_json if isinstance(row.verification_json, dict) else {},
+                        "metadata": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+                        "chapters": [
+                            {
+                                "chapter_number": chapter.chapter_number,
+                                "chapter_title": chapter.chapter_title or "",
+                                "outline": chapter.outline_json if isinstance(chapter.outline_json, dict) else {},
+                                "prose_text": chapter.prose_text or "",
+                                "metadata": chapter.metadata_json if isinstance(chapter.metadata_json, dict) else {},
+                            }
+                            for chapter in chapters
+                        ],
                     }
                 )
             return payload

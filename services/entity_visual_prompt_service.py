@@ -38,6 +38,14 @@ class EntityVisualPromptService:
     """Build one stored baseline visual prompt per DB entity."""
 
     PLACEHOLDER_VALUES = {"", "not_explicitly_stated_in_text", "none", "unknown", "n/a"}
+    NOISY_BASELINE_MARKERS = {
+        "tracked as a character",
+        "tracked as a creature",
+        "tracked as a location",
+        "tracked as an object",
+        "the analyzer did not capture",
+        "first seen in book",
+    }
 
     def __init__(self, sqlite_store: SagaSQLiteStore | None = None) -> None:
         self.sqlite_store = sqlite_store or SagaSQLiteStore()
@@ -463,23 +471,53 @@ class EntityVisualPromptService:
 
     def _baseline_description(self, entity: Entity, evidence_excerpt: str = "") -> str:
         parts = [
-            str(evidence_excerpt or "").strip(),
-            str(((entity.initial_physical_description or {}).get("description")) or "").strip(),
-            str(((entity.first_appearance_profile or {}).get("baseline_description")) or "").strip(),
-            str(entity.entity_context or "").strip(),
+            self._sanitized_baseline_text(evidence_excerpt),
+            self._sanitized_baseline_text(((entity.initial_physical_description or {}).get("description")) or ""),
+            self._sanitized_baseline_text(((entity.first_appearance_profile or {}).get("baseline_description")) or ""),
+            self._sanitized_baseline_text(entity.entity_context or ""),
         ]
         descriptions = entity.descriptions or []
         if isinstance(descriptions, list):
-            parts.extend(str(item.get("description") or "").strip() for item in descriptions if isinstance(item, dict))
+            parts.extend(self._sanitized_baseline_text(item.get("description") or "") for item in descriptions if isinstance(item, dict))
         return self._join_nonempty(*parts)
 
     def _role_line(self, entity: Entity) -> str:
         roles = entity.narrative_roles or []
         if isinstance(roles, list):
-            return self._join_nonempty(*(str(item) for item in roles[:3]))
+            flattened = []
+            for item in roles[:3]:
+                if isinstance(item, dict):
+                    candidate = str(item.get("value") or item.get("role") or "").strip()
+                else:
+                    candidate = str(item or "").strip()
+                if candidate:
+                    flattened.append(candidate)
+            return self._join_nonempty(*flattened)
         if isinstance(roles, dict):
-            return self._join_nonempty(*(str(value) for value in list(roles.values())[:3]))
+            flattened = []
+            for value in list(roles.values())[:3]:
+                if isinstance(value, dict):
+                    candidate = str(value.get("value") or value.get("role") or "").strip()
+                else:
+                    candidate = str(value or "").strip()
+                if candidate:
+                    flattened.append(candidate)
+            return self._join_nonempty(*flattened)
         return ""
+
+    def _sanitized_baseline_text(self, value: Any) -> str:
+        text = self._clean_slot(value)
+        if not text:
+            return ""
+        lowered = text.lower()
+        if any(marker in lowered for marker in self.NOISY_BASELINE_MARKERS):
+            return ""
+        text = text.replace(" | ", ", ")
+        text = text.replace("...", ", ")
+        text = " ".join(text.split())
+        if len(text) > 320:
+            text = text[:320].rsplit(" ", 1)[0]
+        return text
 
     def _join_nonempty(self, *values: Any) -> str:
         parts: list[str] = []

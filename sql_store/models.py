@@ -608,3 +608,36 @@ class GeneratedImage(Base, TimestampMixin):
     render_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     workflow_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     manifest_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+
+
+class GeneratedStory(Base, TimestampMixin):
+    __tablename__ = "generated_stories"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=_uuid)
+    book_id: Mapped[str] = mapped_column(ForeignKey("books.id"), index=True)
+    story_mode: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    canon_position: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    primary_pov_character: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_provider: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    llm_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    output_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blueprint_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    progress_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    verification_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+
+
+class GeneratedStoryChapter(Base, TimestampMixin):
+    __tablename__ = "generated_story_chapters"
+    __table_args__ = (UniqueConstraint("story_id", "chapter_number", name="uq_generated_story_chapters_story_chapter"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=_uuid)
+    story_id: Mapped[str] = mapped_column(ForeignKey("generated_stories.id"), index=True)
+    chapter_number: Mapped[int] = mapped_column(Integer, index=True)
+    chapter_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outline_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+    prose_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
