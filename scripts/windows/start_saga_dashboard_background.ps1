@@ -4,7 +4,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $root = Split-Path -Parent $root
 Set-Location $root
 
-$runner = Join-Path $root "scripts\windows\run_saga_dashboard_service.cmd"
+$python = Join-Path $root "venv\Scripts\python.exe"
 $logsDir = Join-Path $root "analysis_outputs\dashboard\logs"
 $pidFile = Join-Path $logsDir "saga-dashboard.pid"
 
@@ -18,8 +18,14 @@ if (Test-Path $pidFile) {
     Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
 }
 
+$env:SAGA_DASHBOARD_NO_BROWSER = "1"
+$env:SAGA_DASHBOARD_HOST = "127.0.0.1"
+$env:SAGA_DASHBOARD_PORT = "8675"
+$env:SAGA_DASHBOARD_LOG_LEVEL = "info"
+
 $process = Start-Process `
-    -FilePath $runner `
+    -FilePath $python `
+    -ArgumentList "-m", "dashboard_runtime.app" `
     -WorkingDirectory $root `
     -WindowStyle Hidden `
     -PassThru

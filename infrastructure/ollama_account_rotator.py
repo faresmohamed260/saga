@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
+from sql_store.persistence import SagaSQLiteStore
+
 
 DEFAULT_ACCOUNTS_FILE = Path("deploy/ollama/accounts.local.json")
 
@@ -30,6 +32,7 @@ class OllamaAccountRotator:
 
     def __init__(self, config_path: str | Path | None = None) -> None:
         self.config_path = Path(config_path or DEFAULT_ACCOUNTS_FILE)
+        self.sqlite_store = SagaSQLiteStore()
 
     def has_accounts(self) -> bool:
         data = self._load_data()
@@ -115,13 +118,37 @@ class OllamaAccountRotator:
         }
 
     def _load_data(self) -> Dict[str, Any]:
+        stored = self.sqlite_store.get_provider_config("ollama")
+        if isinstance(stored, dict):
+            accounts: list[dict[str, Any]] = []
+            for index, item in enumerate(stored.get("accounts") or []):
+                if not isinstance(item, dict):
+                    continue
+                merged = {
+                    "label": str(item.get("label") or f"account-{index + 1}").strip(),
+                    "email": str(item.get("email") or "").strip(),
+                    "password": str(item.get("password") or "").strip(),
+                    "api_key": str(item.get("api_key") or "").strip(),
+                }
+                metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+                for key, value in metadata.items():
+                    if key not in merged:
+                        merged[key] = value
+                accounts.append(merged)
+            return {
+                "active_index": int(stored.get("active_index", 0) or 0),
+                "accounts": accounts,
+            }
         if not self.config_path.exists():
             return {"active_index": 0, "accounts": []}
         return json.loads(self.config_path.read_text(encoding="utf-8-sig"))
 
     def _save_data(self, payload: Dict[str, Any]) -> None:
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.sqlite_store.upsert_provider_config("ollama", {
+            "provider_name": "ollama",
+            "active_index": int(payload.get("active_index", 0) or 0),
+            "accounts": payload.get("accounts") or [],
+        })
 
     def _accounts(self, payload: Dict[str, Any]) -> List[OllamaAccount]:
         accounts: List[OllamaAccount] = []

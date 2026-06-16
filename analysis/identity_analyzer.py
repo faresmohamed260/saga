@@ -1,8 +1,9 @@
 """Identity-focused scene analyzer for canonicals, mentions, and aliases."""
 
+import json
 from typing import Dict, List, Optional
 
-from analysis.evidence_schema import normalize_evidence_bundle
+from analysis.evidence_schema import compact_evidence_bundle, normalize_evidence_bundle
 from analysis.tool_runtime import SceneToolRuntime
 from infrastructure.llm_client import LLMClient
 
@@ -39,6 +40,9 @@ class IdentityAnalyzer:
         "character",
     }
     MENTION_TYPES = {"name", "title", "descriptor", "role"}
+    MAX_PROMPT_ALIAS_ROWS = 12
+    MAX_PROMPT_CONTEXT_CHARS = 1200
+    MAX_PROMPT_SCENE_TEXT_CHARS = 5500
 
     def __init__(self, llm_client: Optional[LLMClient] = None, max_attempts: int = 2):
         self.llm = llm_client or LLMClient(mode=LLMClient.MODE_GPT_OSS)
@@ -139,14 +143,56 @@ class IdentityAnalyzer:
                 "Return only valid JSON matching the exact required schema.\n"
             )
 
+        compact_alias_map = self._compact_alias_map(alias_map, scene_text)
         alias_context = [
             {
                 "canonical_name": canonical_name,
                 "aliases": aliases,
             }
-            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+            for canonical_name, aliases in sorted(compact_alias_map.items(), key=lambda item: item[0].lower())
         ]
-        local_evidence = normalize_evidence_bundle(local_evidence)
+        local_evidence = compact_evidence_bundle(local_evidence)
+        compact_scene_context = self._compact_scene_context(scene_context)
+
+        prompt_scene_text = self._compact_scene_text(scene_text)
+        if getattr(self.llm, "mode", "") == LLMClient.MODE_GENERAL_COMPUTE:
+            return f"""
+            Character-identity task only. Return strict JSON.
+
+            {retry_line}
+
+            Rules:
+            - Use only scene text, recent context, alias map, and local evidence.
+            - Preserve existing canonical names when supported.
+            - Do not invent characters or aliases.
+            - Proper names should never be rejected as non-characters.
+            - Ambiguous humanlike labels stay in character_mentions unless clearly mappable.
+            - Reject only obvious non-character labels such as prey, scenery, materials, or background noise.
+            - Never use pronouns as canonicals or aliases.
+
+            Output schema:
+            {{
+              "canonical_characters": [{{"name": "", "role": "", "is_new_character": false, "names_used": [""]}}],
+              "character_mentions": [{{"mention_text": "", "mention_type": "name|title|descriptor|role", "canonical_name": "", "is_consequential_character": true}}],
+              "alias_updates": [{{"alias": "", "canonical_name": "", "action": "map_alias", "reasoning": ""}}],
+              "rejected_identity_candidates": [""]
+            }}
+
+            Alias map:
+            {json.dumps(alias_context, ensure_ascii=False)}
+
+            Local evidence:
+            {json.dumps(local_evidence, ensure_ascii=False)}
+
+            Rejected identities:
+            {rejected_identities}
+
+            Recent context:
+            {compact_scene_context or "No additional context."}
+
+            Scene:
+            {prompt_scene_text}
+            """
 
         return f"""
         Analyze ONLY the character identity layer for this scene.
@@ -200,19 +246,19 @@ class IdentityAnalyzer:
         }}
 
         Current Alias Map:
-        {alias_context}
+        {json.dumps(alias_context, ensure_ascii=False)}
 
         Local Evidence Bundle:
-        {local_evidence}
+        {json.dumps(local_evidence, ensure_ascii=False)}
 
         Rejected Identities So Far:
         {rejected_identities}
 
         Recent Context:
-        {scene_context or "No additional context."}
+        {compact_scene_context or "No additional context."}
 
         Scene:
-        {scene_text}
+        {prompt_scene_text}
         """
 
     def _build_tool_prompt(
@@ -228,11 +274,13 @@ class IdentityAnalyzer:
         if retry_hint:
             retry_line = "Your previous tool-call response was invalid. Return only valid JSON with tool_calls.\n"
 
+        compact_alias_map = self._compact_alias_map(alias_map, scene_text)
         alias_context = [
             {"canonical_name": canonical_name, "aliases": aliases}
-            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+            for canonical_name, aliases in sorted(compact_alias_map.items(), key=lambda item: item[0].lower())
         ]
-        local_evidence = normalize_evidence_bundle(local_evidence)
+        local_evidence = compact_evidence_bundle(local_evidence)
+        compact_scene_context = self._compact_scene_context(scene_context)
 
         return f"""
         Analyze ONLY the identity layer using tool calls.
@@ -260,16 +308,16 @@ class IdentityAnalyzer:
         - Never reject clear proper names as non-characters
 
         Current Alias Map:
-        {alias_context}
+        {json.dumps(alias_context, ensure_ascii=False)}
 
         Local Evidence Bundle:
-        {local_evidence}
+        {json.dumps(local_evidence, ensure_ascii=False)}
 
         Rejected Identities So Far:
         {rejected_identities}
 
         Recent Context:
-        {scene_context or "No additional context."}
+        {compact_scene_context or "No additional context."}
 
         Scene:
         {scene_text}
@@ -282,6 +330,40 @@ class IdentityAnalyzer:
             "alias_updates": self._normalize_alias_updates(response.get("alias_updates") or []),
             "rejected_identity_candidates": self._normalize_identity_candidates(response.get("rejected_identity_candidates") or []),
         }
+
+    def _compact_alias_map(self, alias_map: Dict[str, List[str]], scene_text: str) -> Dict[str, List[str]]:
+        scene_lower = str(scene_text or "").lower()
+        prioritized: list[tuple[str, List[str], int]] = []
+        for canonical_name, aliases in sorted((alias_map or {}).items(), key=lambda item: item[0].lower()):
+            alias_list = [str(alias).strip()[:80] for alias in (aliases or []) if str(alias).strip()]
+            relevance = 1 if canonical_name.lower() in scene_lower else 0
+            relevance += sum(1 for alias in alias_list if alias.lower() in scene_lower)
+            prioritized.append((canonical_name[:80], alias_list[:6], relevance))
+        prioritized.sort(key=lambda item: (-item[2], item[0].lower()))
+        compacted: Dict[str, List[str]] = {}
+        for canonical_name, aliases, _ in prioritized[: self.MAX_PROMPT_ALIAS_ROWS]:
+            compacted[canonical_name] = aliases
+        return compacted
+
+    def _compact_scene_context(self, scene_context: str) -> str:
+        cleaned = " ".join(str(scene_context or "").split())
+        if len(cleaned) <= self.MAX_PROMPT_CONTEXT_CHARS:
+            return cleaned
+        return cleaned[: self.MAX_PROMPT_CONTEXT_CHARS].rsplit(" ", 1)[0] + " ..."
+
+    def _compact_scene_text(self, scene_text: str) -> str:
+        cleaned = str(scene_text or "").strip()
+        if len(cleaned) <= self.MAX_PROMPT_SCENE_TEXT_CHARS:
+            return cleaned
+        segment = max(1200, self.MAX_PROMPT_SCENE_TEXT_CHARS // 3)
+        middle_start = max(0, (len(cleaned) // 2) - (segment // 2))
+        middle_end = middle_start + segment
+        parts = [
+            cleaned[:segment].rstrip(),
+            cleaned[middle_start:middle_end].strip(),
+            cleaned[-segment:].lstrip(),
+        ]
+        return "\n...\n".join(part for part in parts if part)
 
     def _normalize_canonical_characters(self, characters: List[Dict]) -> List[Dict]:
         normalized = []

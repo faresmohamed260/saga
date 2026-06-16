@@ -310,3 +310,143 @@ def test_encoder_keeps_strongest_initial_character_prompt_per_name():
 
     assert len(prompt_sets["initial_characters"]) == 1
     assert "long brown hair" in prompt_sets["initial_characters"][0]["positive_prompt"]
+
+
+def test_encoder_consolidates_sparse_initial_baseline_from_later_scene_evidence():
+    service = EncoderPersistenceService()
+    scenes = [
+        {
+            "book_index": 1,
+            "chapter_index": 10,
+            "scene_index": 1,
+            "visual_analysis": {
+                "characters": [
+                    {
+                        "entity_name": "Rhysand",
+                        "visual_role": "initial_character_description",
+                        "persistent_visual_profile": {
+                            "gender_presentation": "male",
+                            "species_or_race": "faerie",
+                            "role_or_archetype": "high lord of Night Court",
+                            "lore_terms": ["Night Court"],
+                        },
+                        "dynamic_visual_changes": [
+                            {
+                                "visible_condition_change": "violet eyes, pale skin, short dark hair",
+                                "outfit_change": "obsidian tunic",
+                                "confidence": "high",
+                            }
+                        ],
+                        "source_evidence": "Rhysand appears in the cell.",
+                        "confidence": "high",
+                    }
+                ],
+                "objects": [],
+                "creatures": [],
+                "locations": [],
+                "scene_compositions": [],
+                "diagnostics": {},
+            },
+        },
+        {
+            "book_index": 1,
+            "chapter_index": 11,
+            "scene_index": 1,
+            "visual_analysis": {
+                "characters": [
+                    {
+                        "entity_name": "Rhysand",
+                        "visual_role": "initial_character_description",
+                        "persistent_visual_profile": {
+                            "gender_presentation": "male",
+                            "species_or_race": "faerie",
+                            "role_or_archetype": "high lord of Night Court",
+                            "hair_description": "short dark hair",
+                            "eye_description": "violet eyes",
+                        },
+                        "source_evidence": "Rhysand's eyes and hair are clearer here.",
+                        "confidence": "high",
+                    }
+                ],
+                "objects": [],
+                "creatures": [],
+                "locations": [],
+                "scene_compositions": [],
+                "diagnostics": {},
+            },
+        },
+    ]
+
+    prompt_sets = service._build_visual_prompt_sets(scenes)
+
+    assert len(prompt_sets["initial_characters"]) == 1
+    prompt = prompt_sets["initial_characters"][0]["positive_prompt"]
+    assert "violet eyes" in prompt
+    assert "short dark hair" in prompt
+    assert "obsidian tunic" in prompt
+
+
+def test_encoder_backfills_one_baseline_prompt_per_registry_entity():
+    service = EncoderPersistenceService()
+    scenes = [
+        {
+            "book_index": 1,
+            "chapter_index": 1,
+            "scene_index": 1,
+            "entities_present": [
+                {"name": "Harry", "entity_type": "character"},
+                {"name": "Harry Potter", "entity_type": "character"},
+                {"name": "Hedwig", "entity_type": "creature"},
+                {"name": "wand", "entity_type": "object"},
+            ],
+            "entity_descriptions": [
+                {
+                    "entity_name": "Harry Potter",
+                    "entity_type": "character",
+                    "description": "thin boy with messy dark hair, round glasses, and school robes",
+                    "description_type": "stable_trait",
+                },
+                {
+                    "entity_name": "Hedwig",
+                    "entity_type": "creature",
+                    "description": "snowy owl with bright amber eyes",
+                    "description_type": "stable_trait",
+                },
+                {
+                    "entity_name": "wand",
+                    "entity_type": "object",
+                    "description": "slender wooden wand with a polished surface",
+                    "description_type": "appearance_note",
+                },
+            ],
+            "state_changes": [],
+            "events": [],
+            "relationship_changes": [],
+            "location": {
+                "name": "Great Hall",
+                "entity_type": "location",
+                "description": "vast candlelit hall with floating candles and long house tables",
+            },
+            "visual_analysis": {
+                "characters": [],
+                "objects": [],
+                "creatures": [],
+                "locations": [],
+                "scene_compositions": [],
+                "diagnostics": {},
+            },
+        }
+    ]
+
+    prompt_sets = service._build_visual_prompt_sets(scenes)
+
+    initial_names = [row["entity_name"] for row in prompt_sets["initial_characters"]]
+    object_creature_names = [row["entity_name"] for row in prompt_sets["objects_creatures"]]
+    location_names = [row["entity_name"] for row in prompt_sets["locations"]]
+
+    assert initial_names == ["Harry Potter"]
+    assert set(object_creature_names) == {"Hedwig", "wand"}
+    assert location_names == ["Great Hall"]
+    assert all(row["positive_prompt"] for row in prompt_sets["initial_characters"])
+    assert all(row["positive_prompt"] for row in prompt_sets["objects_creatures"])
+    assert all(row["positive_prompt"] for row in prompt_sets["locations"])

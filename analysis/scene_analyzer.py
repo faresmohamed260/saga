@@ -1,10 +1,15 @@
 """Primary scene analysis module for structured narrative extraction."""
 
+import json
+import logging
 from typing import Dict, List, Optional
 
-from analysis.evidence_schema import normalize_evidence_bundle
+from analysis.evidence_schema import compact_evidence_bundle, normalize_evidence_bundle
 from analysis.tool_runtime import SceneToolRuntime
 from infrastructure.llm_client import LLMClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class SceneAnalyzer:
@@ -13,6 +18,9 @@ class SceneAnalyzer:
     """
 
     GC_JSON_RESPONSE_FORMAT = {"type": "json_object"}
+    MAX_PROMPT_ALIAS_ROWS = 12
+    MAX_PROMPT_CONTEXT_CHARS = 1200
+    MAX_PROMPT_SCENE_TEXT_CHARS = 6500
 
     EVENT_TYPES = {"action", "interaction", "movement", "discovery"}
     ENTITY_TYPES = {"character", "object", "location", "creature"}
@@ -66,17 +74,44 @@ class SceneAnalyzer:
     ) -> Dict:
         last_response = None
         evidence_bundle = normalize_evidence_bundle(local_evidence)
+        scene_ref = (
+            f"b{scene.get('book_index', '?')}:"
+            f"c{scene.get('chapter_index', '?')}:"
+            f"s{scene.get('scene_index', '?')}"
+        )
+        logger.info(
+            "SceneAnalyzer start | scene=%s mode=%s analysis_mode=%s text_chars=%s alias_count=%s rejected_count=%s",
+            scene_ref,
+            getattr(self.llm, "mode", "unknown"),
+            analysis_mode,
+            len(str(scene.get("text", "") or "")),
+            len(alias_map or {}),
+            len(rejected_identities or []),
+        )
 
         if analysis_mode == "tool":
-            return self._analyze_with_tools(
+            result = self._analyze_with_tools(
                 scene=scene,
                 alias_map=alias_map or {},
                 rejected_identities=rejected_identities or [],
                 scene_context=scene_context,
                 local_evidence=evidence_bundle,
             )
+            logger.info(
+                "SceneAnalyzer done | scene=%s mode=tool final_status=%s error=%s",
+                scene_ref,
+                result.get("final_status") or "unknown",
+                result.get("error") or "",
+            )
+            return result
 
         for attempt in range(1, self.max_attempts + 1):
+            logger.info(
+                "SceneAnalyzer attempt | scene=%s attempt=%s/%s prompt_mode=structured",
+                scene_ref,
+                attempt,
+                self.max_attempts,
+            )
             prompt = self._build_prompt(
                 scene_text=scene.get("text", ""),
                 alias_map=alias_map or {},
@@ -98,9 +133,25 @@ class SceneAnalyzer:
                     "text": scene.get("text", ""),
                 })
                 normalized.update(self._scene_runtime_metadata(attempt_count=attempt, final_status="success"))
+                logger.info(
+                    "SceneAnalyzer success | scene=%s attempt=%s events=%s entities=%s state_changes=%s relationship_changes=%s",
+                    scene_ref,
+                    attempt,
+                    len(normalized.get("events") or []),
+                    len(normalized.get("entities_present") or []),
+                    len(normalized.get("state_changes") or []),
+                    len(normalized.get("relationship_changes") or []),
+                )
                 return normalized
+            logger.warning(
+                "SceneAnalyzer retry | scene=%s attempt=%s error=%s last_error=%s",
+                scene_ref,
+                attempt,
+                response.get("error") if isinstance(response, dict) else "unknown_error",
+                response.get("last_error") if isinstance(response, dict) else "",
+            )
 
-        return {
+        failed = {
             "book_index": scene.get("book_index"),
             "chapter_index": scene.get("chapter_index"),
             "scene_index": scene.get("scene_index"),
@@ -127,6 +178,14 @@ class SceneAnalyzer:
                 last_error=last_response.get("last_error") if isinstance(last_response, dict) else "",
             ),
         }
+        logger.error(
+            "SceneAnalyzer failed | scene=%s attempts=%s error=%s last_error=%s",
+            scene_ref,
+            self.max_attempts,
+            failed.get("error") or "",
+            failed.get("last_error") or "",
+        )
+        return failed
 
     def _analyze_with_tools(
         self,
@@ -138,8 +197,19 @@ class SceneAnalyzer:
     ) -> Dict:
         last_response = None
         runtime = SceneToolRuntime()
+        scene_ref = (
+            f"b{scene.get('book_index', '?')}:"
+            f"c{scene.get('chapter_index', '?')}:"
+            f"s{scene.get('scene_index', '?')}"
+        )
 
         for attempt in range(1, self.max_attempts + 1):
+            logger.info(
+                "SceneAnalyzer tool attempt | scene=%s attempt=%s/%s",
+                scene_ref,
+                attempt,
+                self.max_attempts,
+            )
             prompt = self._build_tool_prompt(
                 scene_text=scene.get("text", ""),
                 alias_map=alias_map,
@@ -162,9 +232,23 @@ class SceneAnalyzer:
                     "text": scene.get("text", ""),
                 })
                 normalized.update(self._scene_runtime_metadata(attempt_count=attempt, final_status="success"))
+                logger.info(
+                    "SceneAnalyzer tool success | scene=%s attempt=%s events=%s entities=%s",
+                    scene_ref,
+                    attempt,
+                    len(normalized.get("events") or []),
+                    len(normalized.get("entities_present") or []),
+                )
                 return normalized
+            logger.warning(
+                "SceneAnalyzer tool retry | scene=%s attempt=%s error=%s last_error=%s",
+                scene_ref,
+                attempt,
+                response.get("error") if isinstance(response, dict) else "unknown_error",
+                response.get("last_error") if isinstance(response, dict) else "",
+            )
 
-        return {
+        failed = {
             "book_index": scene.get("book_index"),
             "chapter_index": scene.get("chapter_index"),
             "scene_index": scene.get("scene_index"),
@@ -191,6 +275,14 @@ class SceneAnalyzer:
                 last_error=last_response.get("last_error") if isinstance(last_response, dict) else "",
             ),
         }
+        logger.error(
+            "SceneAnalyzer tool failed | scene=%s attempts=%s error=%s last_error=%s",
+            scene_ref,
+            self.max_attempts,
+            failed.get("error") or "",
+            failed.get("last_error") or "",
+        )
+        return failed
 
     def analyze_many(self, scenes: List[Dict]) -> List[Dict]:
         return [self.analyze(scene) for scene in scenes]
@@ -372,19 +464,75 @@ class SceneAnalyzer:
                 "Return only valid JSON matching the exact required schema.\n"
             )
 
+        compact_alias_map = self._compact_alias_map(alias_map, scene_text)
         alias_context = [
             {
                 "canonical_name": canonical_name,
                 "aliases": aliases,
             }
-            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+            for canonical_name, aliases in sorted(compact_alias_map.items(), key=lambda item: item[0].lower())
         ]
         known_character_roster = [
             canonical_name
-            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+            for canonical_name, aliases in sorted(compact_alias_map.items(), key=lambda item: item[0].lower())
             if canonical_name or aliases
         ]
-        local_evidence = normalize_evidence_bundle(local_evidence)
+        local_evidence = compact_evidence_bundle(local_evidence)
+        compact_scene_context = self._compact_scene_context(scene_context)
+
+        prompt_scene_text = self._compact_scene_text(scene_text)
+        if getattr(self.llm, "mode", "") == LLMClient.MODE_GENERAL_COMPUTE:
+            return f"""
+            Analyze this story scene and return strict JSON.
+
+            {retry_line}
+
+            Rules:
+            - Use only scene text, recent context, alias map, and local evidence.
+            - Treat local evidence as candidates, not truth.
+            - Preserve known canonical names from the alias map.
+            - Do not invent characters, aliases, or unsupported entities.
+            - Keep entities deduplicated and consequential.
+            - If an entity appears in an event, it must also appear in entities_present unless abstract.
+            - Events should include entities_involved, reason, and outcome when supported.
+            - Entity descriptions should capture grounded physical/world detail, possessions, temporary conditions, or appearance notes.
+            - State changes should capture only newly true changes.
+            - Relationship changes should capture only meaningful shifts.
+
+            Output schema:
+            {{
+              "scene_summary": "",
+              "canonical_characters": [{{"name": "", "role": "", "is_new_character": false, "names_used": [""]}}],
+              "character_mentions": [{{"mention_text": "", "mention_type": "name|title|descriptor|role", "canonical_name": "", "is_consequential_character": true}}],
+              "events": [{{"description": "", "characters": [""], "entities_involved": [""], "reason": "", "outcome": "", "type": "action|interaction|movement|discovery"}}],
+              "entities_present": [{{"name": "", "entity_type": "character|object|location|creature"}}],
+              "entity_descriptions": [{{"entity_name": "", "entity_type": "character|object|location|creature", "description": "", "description_type": "stable_trait|temporary_condition|possession|appearance_note"}}],
+              "state_changes": [{{"entity_name": "", "entity_type": "character|object|location|creature", "attribute": "", "previous_state": "", "new_state": "", "change_type": "physical_state|status|possession|location|condition|relationship|knowledge", "evidence": ""}}],
+              "relationship_changes": [{{"source_entity": "", "target_entity": "", "relationship": "", "change": "", "evidence": ""}}],
+              "location": {{"name": "", "entity_type": "location", "description": ""}},
+              "time_signals": [""],
+              "alias_updates": [{{"alias": "", "canonical_name": "", "action": "map_alias", "reasoning": ""}}],
+              "rejected_identity_candidates": [""]
+            }}
+
+            Alias map:
+            {json.dumps(alias_context, ensure_ascii=False)}
+
+            Local evidence:
+            {json.dumps(local_evidence, ensure_ascii=False)}
+
+            Rejected identities:
+            {rejected_identities}
+
+            Known canonical characters:
+            {known_character_roster}
+
+            Recent context:
+            {compact_scene_context or "No additional context."}
+
+            Scene:
+            {prompt_scene_text}
+            """
 
         return f"""
         Analyze this story scene and return a compact structured JSON payload.
@@ -545,10 +693,10 @@ class SceneAnalyzer:
         }}
 
         Current Alias Map:
-        {alias_context}
+        {json.dumps(alias_context, ensure_ascii=False)}
 
         Local Evidence Bundle:
-        {local_evidence}
+        {json.dumps(local_evidence, ensure_ascii=False)}
 
         Rejected Identities So Far:
         {rejected_identities}
@@ -557,10 +705,10 @@ class SceneAnalyzer:
         {known_character_roster}
 
         Recent Context:
-        {scene_context or "No additional context."}
+        {compact_scene_context or "No additional context."}
 
         Scene:
-        {scene_text}
+        {prompt_scene_text}
         """
 
     def _build_tool_prompt(
@@ -576,11 +724,13 @@ class SceneAnalyzer:
         if retry_hint:
             retry_line = "Your previous tool-call response was invalid. Return only valid JSON with tool_calls.\n"
 
-        local_evidence = normalize_evidence_bundle(local_evidence)
+        local_evidence = compact_evidence_bundle(local_evidence)
+        compact_alias_map = self._compact_alias_map(alias_map, scene_text)
         alias_context = [
             {"canonical_name": canonical_name, "aliases": aliases}
-            for canonical_name, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+            for canonical_name, aliases in sorted(compact_alias_map.items(), key=lambda item: item[0].lower())
         ]
+        compact_scene_context = self._compact_scene_context(scene_context)
 
         return f"""
         You are filling a scene-analysis record using tool calls only.
@@ -632,16 +782,16 @@ class SceneAnalyzer:
         - Only reject candidates that are clearly noise or non-characters
 
         Current Alias Map:
-        {alias_context}
+        {json.dumps(alias_context, ensure_ascii=False)}
 
         Rejected Identities:
         {rejected_identities}
 
         Local Evidence Bundle:
-        {local_evidence}
+        {json.dumps(local_evidence, ensure_ascii=False)}
 
         Recent Context:
-        {scene_context or "No additional context."}
+        {compact_scene_context or "No additional context."}
 
         Scene:
         {scene_text}
@@ -662,6 +812,40 @@ class SceneAnalyzer:
             "alias_updates": self._normalize_alias_updates(response.get("alias_updates") or []),
             "rejected_identity_candidates": self._normalize_identity_candidates(response.get("rejected_identity_candidates") or []),
         }
+
+    def _compact_alias_map(self, alias_map: Dict[str, List[str]], scene_text: str) -> Dict[str, List[str]]:
+        scene_lower = str(scene_text or "").lower()
+        prioritized: list[tuple[str, List[str], int]] = []
+        for canonical_name, aliases in sorted((alias_map or {}).items(), key=lambda item: item[0].lower()):
+            alias_list = [str(alias).strip()[:80] for alias in (aliases or []) if str(alias).strip()]
+            relevance = 1 if canonical_name.lower() in scene_lower else 0
+            relevance += sum(1 for alias in alias_list if alias.lower() in scene_lower)
+            prioritized.append((canonical_name[:80], alias_list[:6], relevance))
+        prioritized.sort(key=lambda item: (-item[2], item[0].lower()))
+        compacted: Dict[str, List[str]] = {}
+        for canonical_name, aliases, _ in prioritized[: self.MAX_PROMPT_ALIAS_ROWS]:
+            compacted[canonical_name] = aliases
+        return compacted
+
+    def _compact_scene_context(self, scene_context: str) -> str:
+        cleaned = " ".join(str(scene_context or "").split())
+        if len(cleaned) <= self.MAX_PROMPT_CONTEXT_CHARS:
+            return cleaned
+        return cleaned[: self.MAX_PROMPT_CONTEXT_CHARS].rsplit(" ", 1)[0] + " ..."
+
+    def _compact_scene_text(self, scene_text: str) -> str:
+        cleaned = str(scene_text or "").strip()
+        if len(cleaned) <= self.MAX_PROMPT_SCENE_TEXT_CHARS:
+            return cleaned
+        segment = max(1400, self.MAX_PROMPT_SCENE_TEXT_CHARS // 3)
+        middle_start = max(0, (len(cleaned) // 2) - (segment // 2))
+        middle_end = middle_start + segment
+        parts = [
+            cleaned[:segment].rstrip(),
+            cleaned[middle_start:middle_end].strip(),
+            cleaned[-segment:].lstrip(),
+        ]
+        return "\n...\n".join(part for part in parts if part)
 
     def _normalize_canonical_characters(self, characters: List[Dict]) -> List[Dict]:
         normalized = []

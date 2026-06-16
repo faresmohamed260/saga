@@ -104,6 +104,11 @@ class BookNLPCleanIdentityProvider:
                 "source": str(raw.get("system") or "booknlp_small_clean"),
                 "risk_flags": list(row.get("risk_flags") or []),
                 "cluster_ids": list(row.get("cluster_ids") or []),
+                "merged_from_clusters": list(row.get("merged_from_clusters") or []),
+                "proper_mentions": list(row.get("proper_mentions") or []),
+                "common_mentions": list(row.get("common_mentions") or []),
+                "pronoun_mentions": list(row.get("pronoun_mentions") or []),
+                "llm_review": row.get("llm_review") if isinstance(row.get("llm_review"), dict) else {},
             }
             characters.append(payload)
             for alias in aliases:
@@ -127,6 +132,11 @@ class BookNLPCleanIdentityProvider:
                     "first_seen": _first_seen(row),
                     "risk_flags": list(row.get("risk_flags") or []),
                     "cluster_ids": list(row.get("cluster_ids") or []),
+                    "merged_from_clusters": list(row.get("merged_from_clusters") or []),
+                    "proper_mentions": list(row.get("proper_mentions") or []),
+                    "common_mentions": list(row.get("common_mentions") or []),
+                    "pronoun_mentions": list(row.get("pronoun_mentions") or []),
+                    "llm_review": row.get("llm_review") if isinstance(row.get("llm_review"), dict) else {},
                 }
             )
 
@@ -208,7 +218,20 @@ def resolve_identity_provider_input(
             f"Unsupported identity provider: {provider_mode}. "
             "The legacy/custom resolver has been removed; only booknlp_clean is supported."
         )
-    resolved_path = Path(input_json) if input_json else DEFAULT_BOOKNLP_PIPELINE_IDENTITY_JSON
+    raw_input = str(input_json or "").strip()
+    if raw_input.startswith("db://identity-series/"):
+        from redesign_lab.identity.series_identity_provider import SeriesBookNLPCleanIdentityProvider
+        from sql_store.persistence import SagaSQLiteStore
+
+        series_id = raw_input.split("db://identity-series/", 1)[-1].strip()
+        payload = SagaSQLiteStore().get_identity_series_payload(series_id)
+        if not isinstance(payload, dict):
+            raise FileNotFoundError(
+                f"BookNLP clean identity series '{series_id}' was not found in SQLite. "
+                "Generate or index the identity bundle first."
+            )
+        return SeriesBookNLPCleanIdentityProvider.from_payload(payload)
+    resolved_path = Path(raw_input) if raw_input else DEFAULT_BOOKNLP_PIPELINE_IDENTITY_JSON
     if not resolved_path.exists():
         raise FileNotFoundError(
             f"BookNLP clean identity file not found at {resolved_path}. "

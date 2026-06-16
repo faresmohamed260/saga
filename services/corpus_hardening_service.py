@@ -101,7 +101,7 @@ class CorpusHardeningService:
         self.web_entity_hint_service = WebEntityHintService()
 
     def discover_latest_contracts(self, series_id: str) -> List[Path]:
-        root = Path("analysis_outputs") / "encode_runs" / series_id
+        root = Path("analysis_outputs") / "contract_exports" / series_id
         latest_by_index: Dict[int, Tuple[int, float, Path]] = {}
         for path in sorted(root.glob("**/contracts/*.json")):
             match = re.match(r"^(\d+)_", path.name)

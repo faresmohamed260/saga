@@ -10,7 +10,8 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ANALYSIS_OUTPUTS_DIR = PROJECT_ROOT / "analysis_outputs"
-ENCODE_RUNS_DIR = ANALYSIS_OUTPUTS_DIR / "encode_runs"
+PIPELINE_RUNTIME_DIR = ANALYSIS_OUTPUTS_DIR / "pipeline_runtime"
+CONTRACT_EXPORTS_DIR = ANALYSIS_OUTPUTS_DIR / "contract_exports"
 IDENTITY_SERIES_DIR = ANALYSIS_OUTPUTS_DIR / "identity_series"
 STATE_SNAPSHOTS_DIR = ANALYSIS_OUTPUTS_DIR / "state_snapshots"
 VISUAL_STATE_DIR = ANALYSIS_OUTPUTS_DIR / "visual_state"
@@ -50,7 +51,7 @@ def _artifact_record(path: Path, category: str) -> dict[str, Any]:
 
 
 def discover_encode_runs(base_dir: Path | None = None) -> list[dict[str, Any]]:
-    root = base_dir or ENCODE_RUNS_DIR
+    root = base_dir or PIPELINE_RUNTIME_DIR
     if not root.exists():
         return []
 
@@ -66,7 +67,7 @@ def discover_encode_runs(base_dir: Path | None = None) -> list[dict[str, Any]]:
         for run_dir in run_dirs:
             status_path = run_dir / "status.json"
             status_data = read_json_file(status_path)
-            contracts_dir = run_dir / "contracts"
+            contracts_dir = CONTRACT_EXPORTS_DIR / series_dir.name / run_dir.name / "contracts"
             reports_dir = run_dir / "reports"
             contract_paths = sorted(contracts_dir.glob("*.json")) if contracts_dir.exists() else []
             report_paths = sorted(reports_dir.iterdir()) if reports_dir.exists() else []
@@ -105,7 +106,7 @@ def discover_encode_runs(base_dir: Path | None = None) -> list[dict[str, Any]]:
 
 
 def discover_contract_files(base_dir: Path | None = None) -> list[dict[str, Any]]:
-    root = base_dir or ENCODE_RUNS_DIR
+    root = base_dir or CONTRACT_EXPORTS_DIR
     if not root.exists():
         return []
 
@@ -180,7 +181,7 @@ def discover_report_files(base_dir: Path | None = None) -> list[dict[str, Any]]:
     visual_state_dir = root / "visual_state"
     state_snapshots_dir = root / "state_snapshots"
     identity_series_dir = root / "identity_series"
-    encode_runs_dir = root / "encode_runs"
+    pipeline_runtime_dir = root / "pipeline_runtime"
 
     items: list[dict[str, Any]] = []
     report_globs = [
@@ -193,7 +194,7 @@ def discover_report_files(base_dir: Path | None = None) -> list[dict[str, Any]]:
         state_snapshots_dir.glob("*.md"),
         identity_series_dir.rglob("*audit*.md"),
         identity_series_dir.rglob("*audit*.json"),
-        encode_runs_dir.glob("*/*/reports/*"),
+        pipeline_runtime_dir.glob("*/*/reports/*"),
     ]
     seen: set[Path] = set()
     for iterator in report_globs:

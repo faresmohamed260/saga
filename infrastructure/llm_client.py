@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -61,6 +62,7 @@ class LLMClient:
     GENERAL_COMPUTE_CHAT_URL = "https://api.generalcompute.com/v1/chat/completions"
     HERMES_WSL_DISTRO = "Ubuntu-24.04"
     HERMES_WSL_BINARY = "~/.local/bin/hermes"
+    _HERMES_CODEX_SEMAPHORE: threading.BoundedSemaphore | None = None
 
     def __init__(
         self,
@@ -368,6 +370,31 @@ class LLMClient:
                 return f"codex_session:{session.auth_mode or 'chatgpt'}"
             return "openai_unconfigured"
         return ""
+
+    @classmethod
+    def _hermes_codex_max_concurrency(cls) -> int:
+        raw = str(os.getenv("SAGA_HERMES_CODEX_MAX_CONCURRENCY") or "1").strip()
+        try:
+            return max(1, int(raw))
+        except Exception:
+            return 1
+
+    @classmethod
+    def _hermes_codex_semaphore(cls) -> threading.BoundedSemaphore:
+        max_concurrency = cls._hermes_codex_max_concurrency()
+        semaphore = cls._HERMES_CODEX_SEMAPHORE
+        if semaphore is None or getattr(semaphore, "_initial_value", max_concurrency) != max_concurrency:
+            semaphore = threading.BoundedSemaphore(max_concurrency)
+            setattr(semaphore, "_initial_value", max_concurrency)
+            cls._HERMES_CODEX_SEMAPHORE = semaphore
+        return semaphore
+
+    @classmethod
+    def _codex_hermes_timeout_budget(cls, prompt: str, timeout_seconds: int) -> int:
+        base_timeout = max(30, int(timeout_seconds))
+        prompt_chars = len(str(prompt or ""))
+        prompt_slack = min(240, max(30, prompt_chars // 120))
+        return max(base_timeout + 30, base_timeout + prompt_slack)
 
     def last_request_metadata(self) -> dict:
         base = {
@@ -812,7 +839,11 @@ class LLMClient:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        payload = response.json() or {}
+        try:
+            payload = response.json() or {}
+        except Exception:
+            raw_content = (response.text or "").strip()
+            return self._safe_parse_json(raw_content)
         self._record_general_compute_usage(payload)
         if tools:
             tool_payload = self._extract_general_compute_tool_calls(payload)
@@ -935,7 +966,10 @@ class LLMClient:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        payload = response.json() or {}
+        try:
+            payload = response.json() or {}
+        except Exception:
+            return (response.text or "").strip()
         self._record_general_compute_usage(payload)
         return self._extract_general_compute_content(payload).strip()
 
@@ -1152,27 +1186,52 @@ class LLMClient:
                 "prompt_path = sys.argv[1]; "
                 "model_name = sys.argv[2]; "
                 "prompt = open(prompt_path, 'r', encoding='utf-8').read(); "
+                "env = dict(os.environ); "
+                "env['PYTHONIOENCODING'] = 'utf-8'; "
+                "env['LC_ALL'] = 'C.UTF-8'; "
+                "env['LANG'] = 'C.UTF-8'; "
                 "cmd = [os.path.expanduser('~/.local/bin/hermes'), '--provider', 'openai-codex', '-m', model_name, '--yolo', '-z', prompt]; "
-                "proc = subprocess.run(cmd, capture_output=True, text=True); "
+                "proc = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', env=env); "
                 "sys.stdout.write(proc.stdout or ''); "
                 "sys.stderr.write(proc.stderr or ''); "
                 "raise SystemExit(proc.returncode)"
             )
-            result = subprocess.run(
-                [
-                    "wsl",
-                    "-d",
-                    cls.HERMES_WSL_DISTRO,
-                    "python3",
-                    "-c",
-                    wsl_code,
-                    wsl_prompt_path,
-                    model_name,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=max(30, int(timeout_seconds) + 30),
-            )
+            command = [
+                "wsl",
+                "-d",
+                cls.HERMES_WSL_DISTRO,
+                "python3",
+                "-c",
+                wsl_code,
+                wsl_prompt_path,
+                model_name,
+            ]
+            effective_timeout = cls._codex_hermes_timeout_budget(prompt, timeout_seconds)
+            semaphore = cls._hermes_codex_semaphore()
+            acquired = semaphore.acquire(timeout=max(30, effective_timeout))
+            if not acquired:
+                raise RuntimeError("Hermes Codex concurrency gate timed out before request could start")
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=effective_timeout,
+                )
+            except subprocess.TimeoutExpired as exc:
+                partial_stdout = str(getattr(exc, "stdout", "") or "").strip()
+                partial_stderr = str(getattr(exc, "stderr", "") or "").strip()
+                detail = "\n".join(part for part in [partial_stderr, partial_stdout] if part).strip()
+                prompt_chars = len(str(prompt or ""))
+                raise RuntimeError(
+                    f"Hermes Codex timed out after {effective_timeout}s "
+                    f"(model={model_name}, prompt_chars={prompt_chars}, transport=hermes)"
+                    + (f"\n{detail[:1000]}" if detail else "")
+                ) from exc
+            finally:
+                semaphore.release()
             if result.returncode != 0:
                 detail = "\n".join(part for part in [result.stderr.strip(), result.stdout.strip()] if part).strip()
                 raise RuntimeError(detail or f"Hermes Codex command failed with exit code {result.returncode}")
@@ -1348,6 +1407,43 @@ class LLMClient:
             return prompt
         return f"System:\n{system_prompt}\n\nUser:\n{prompt}"
 
+    @staticmethod
+    def _log_preview(text: str, limit: int = 600) -> str:
+        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(cleaned) <= limit:
+            return cleaned
+        return cleaned[:limit] + " ..."
+
+    @staticmethod
+    def _extract_balanced_json_object(text: str) -> str:
+        source = str(text or "")
+        start = source.find("{")
+        if start < 0:
+            return ""
+        depth = 0
+        in_string = False
+        escape = False
+        for index in range(start, len(source)):
+            char = source[index]
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+                continue
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return source[start:index + 1]
+        return ""
+
     def _safe_parse_json(self, content: str) -> dict:
         content = str(content or "").lstrip("\ufeff").strip()
         if not content:
@@ -1368,12 +1464,19 @@ class LLMClient:
             except Exception:
                 pass
 
+        balanced_object = self._extract_balanced_json_object(cleaned)
+        if balanced_object:
+            try:
+                return json.loads(balanced_object)
+            except Exception:
+                pass
+
         try:
             return json.loads(cleaned)
         except Exception:
             pass
 
-        logging.warning("JSON parse failed")
+        logging.warning("JSON parse failed | excerpt=%s", self._log_preview(content))
         self.json_failures += 1
         return {
             "error": "parse_failed",

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 import shutil
+import threading
 import time
 from collections import Counter
 from contextlib import contextmanager
@@ -96,6 +98,71 @@ def _booknlp_state_dict_compat():
         yield
     finally:
         torch.load = original_torch_load
+
+
+def _candidate_booknlp_homes() -> List[Path]:
+    candidates: List[Path] = []
+    explicit = str(os.environ.get("BOOKNLP_HOME") or "").strip()
+    if explicit:
+        candidates.append(Path(explicit))
+    for home_key in ("USERPROFILE", "HOME"):
+        home_value = str(os.environ.get(home_key) or "").strip()
+        if home_value:
+            candidates.append(Path(home_value) / "booknlps")
+    users_root = Path("C:/Users")
+    if users_root.exists():
+        for child in users_root.iterdir():
+            if not child.is_dir():
+                continue
+            candidates.append(child / "booknlps")
+    unique: List[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _has_booknlp_models(path: Path) -> bool:
+    if not path.exists() or not path.is_dir():
+        return False
+    required = [
+        path / "entities_google" / "bert_uncased_L-4_H-256_A-4",
+        path / "coref_google",
+        path / "speaker_google",
+    ]
+    return all(item.exists() for item in required)
+
+
+@contextmanager
+def _booknlp_home_env():
+    original_home = os.environ.get("HOME")
+    original_userprofile = os.environ.get("USERPROFILE")
+    selected_root: Optional[Path] = None
+    selected_home: Optional[Path] = None
+    for candidate in _candidate_booknlp_homes():
+        if _has_booknlp_models(candidate):
+            selected_root = candidate
+            selected_home = candidate.parent
+            break
+    if selected_home is not None:
+        os.environ["HOME"] = str(selected_home)
+        os.environ["USERPROFILE"] = str(selected_home)
+        os.environ.setdefault("BOOKNLP_HOME", str(selected_root))
+    try:
+        yield
+    finally:
+        if original_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = original_home
+        if original_userprofile is None:
+            os.environ.pop("USERPROFILE", None)
+        else:
+            os.environ["USERPROFILE"] = original_userprofile
 
 
 def _normalize_key(text: str) -> str:
@@ -377,15 +444,27 @@ def generate_book_identity_bundle(
     book_index: int,
     output_root: str | Path,
     reuse_book1_seed: bool = True,
+    llm_review_mode: str = "",
+    enable_external_research: bool = False,
+    max_review_candidates: int = 24,
+    progress_callback=None,
 ) -> Dict[str, Any]:
+    def _emit(stage: str, **payload: Any) -> None:
+        if callable(progress_callback):
+            progress_callback(stage, payload)
+
     root = Path(output_root)
     out_dir = book_output_dir(root, book, book_index)
     out_dir.mkdir(parents=True, exist_ok=True)
     slug = book_slug_from_book(book, book_index)
+    title = book.get("title") or Path(book["path"]).name
+
+    _emit("prepare_output", book_index=book_index, book_slug=slug, title=title, output_dir=str(out_dir))
 
     existing_pipeline_path = out_dir / "booknlp_small_pipeline_identity.json"
     existing_clean_path = out_dir / "booknlp_small_clean_identity_result.json"
     if existing_pipeline_path.exists() and existing_clean_path.exists() and not (reuse_book1_seed and book_index == 1):
+        _emit("reuse_existing_bundle", book_index=book_index, book_slug=slug, title=title, pipeline_identity_path=str(existing_pipeline_path))
         pipeline_identity = _load_json(existing_pipeline_path)
         return {
             "book_index": book_index,
@@ -403,6 +482,7 @@ def generate_book_identity_bundle(
         }
 
     if reuse_book1_seed and book_index == 1 and _copy_book1_seed_if_available(out_dir):
+        _emit("reuse_seed_bundle", book_index=book_index, book_slug=slug, title=title, pipeline_identity_path=str(out_dir / "booknlp_small_pipeline_identity.json"))
         pipeline_path = out_dir / "booknlp_small_pipeline_identity.json"
         pipeline = _load_json(pipeline_path)
         return {
@@ -423,39 +503,91 @@ def generate_book_identity_bundle(
     processor = SeriesProcessor(
         llm_client=LLMClient(mode=LLMClient.MODE_GPT_OSS, max_retries=1, base_delay=0.0, timeout=60)
     )
+    _emit("extract_chapters_start", book_index=book_index, book_slug=slug, title=title)
     chapters = processor.process([book])
+    _emit("extract_chapters_complete", book_index=book_index, book_slug=slug, title=title, chapter_count=len(chapters))
     input_dir = out_dir / "input"
     input_dir.mkdir(parents=True, exist_ok=True)
     input_text_path = input_dir / f"{slug}_booknlp_input_clean.txt"
+    _emit("write_booknlp_input_start", book_index=book_index, book_slug=slug, title=title, input_path=str(input_text_path))
     input_text_path.write_text(_build_booknlp_input_text(chapters), encoding="utf-8")
+    _emit("write_booknlp_input_complete", book_index=book_index, book_slug=slug, title=title, input_path=str(input_text_path), input_chars=len(input_text_path.read_text(encoding="utf-8")))
 
     booknlp_output_dir = out_dir / "booknlp_small"
     booknlp_output_dir.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    from booknlp.booknlp import BookNLP
-
     params = {"pipeline": "entity,quote,supersense,event,coref", "model": "small"}
-    with _booknlp_state_dict_compat():
-        model = BookNLP("en", params)
-    model.process(str(input_text_path), str(booknlp_output_dir), _booknlp_basename(book, book_index))
-    runtime_seconds = round(time.perf_counter() - started, 2)
+    _emit("booknlp_process_start", book_index=book_index, book_slug=slug, title=title, output_dir=str(booknlp_output_dir), pipeline=params["pipeline"], model=params["model"])
 
+    process_error: list[BaseException] = []
+
+    def _run_booknlp_process() -> None:
+        try:
+            with _booknlp_home_env():
+                from booknlp.booknlp import BookNLP
+
+                with _booknlp_state_dict_compat():
+                    model = BookNLP("en", params)
+                model.process(str(input_text_path), str(booknlp_output_dir), _booknlp_basename(book, book_index))
+        except BaseException as exc:  # pragma: no cover - runtime propagation
+            process_error.append(exc)
+
+    worker = threading.Thread(target=_run_booknlp_process, daemon=True)
+    worker.start()
+    heartbeat_index = 0
+    while worker.is_alive():
+        worker.join(timeout=5.0)
+        if worker.is_alive():
+            heartbeat_index += 1
+            _emit(
+                "booknlp_process_heartbeat",
+                book_index=book_index,
+                book_slug=slug,
+                title=title,
+                heartbeat_index=heartbeat_index,
+                elapsed_seconds=round(time.perf_counter() - started, 2),
+            )
+    if process_error:
+        raise process_error[0]
+    runtime_seconds = round(time.perf_counter() - started, 2)
+    _emit("booknlp_process_complete", book_index=book_index, book_slug=slug, title=title, elapsed_seconds=runtime_seconds)
+
+    _emit("adapt_raw_identity_start", book_index=book_index, book_slug=slug, title=title)
     raw_identity = adapt_booknlp_directory(booknlp_output_dir, "booknlp_small", runtime_seconds)
     raw_identity_path = out_dir / "booknlp_small_identity_result.json"
     raw_identity_path.write_text(json.dumps(raw_identity, ensure_ascii=False, indent=2), encoding="utf-8")
+    _emit("adapt_raw_identity_complete", book_index=book_index, book_slug=slug, title=title, raw_identity_path=str(raw_identity_path))
 
     clean_identity_path = out_dir / "booknlp_small_clean_identity_result.json"
     cleanup_report_path = out_dir / "booknlp_cleanup_report.md"
+    _emit("cleanup_identity_start", book_index=book_index, book_slug=slug, title=title, clean_identity_path=str(clean_identity_path))
     clean_booknlp_identity(
         input_json=raw_identity_path,
         output_json=clean_identity_path,
         report_md=cleanup_report_path,
+        chapters=chapters,
+        book_title=str(title),
+        llm_review_mode=llm_review_mode,
+        enable_external_research=enable_external_research,
+        max_review_candidates=max_review_candidates,
     )
+    _emit("cleanup_identity_complete", book_index=book_index, book_slug=slug, title=title, report_path=str(cleanup_report_path))
 
+    _emit("build_pipeline_identity_start", book_index=book_index, book_slug=slug, title=title)
     provider = BookNLPCleanIdentityProvider.from_path(clean_identity_path)
     pipeline_identity = provider.build_pipeline_identity()
     pipeline_path = out_dir / "booknlp_small_pipeline_identity.json"
     pipeline_path.write_text(json.dumps(pipeline_identity, ensure_ascii=False, indent=2), encoding="utf-8")
+    _emit(
+        "build_pipeline_identity_complete",
+        book_index=book_index,
+        book_slug=slug,
+        title=title,
+        pipeline_identity_path=str(pipeline_path),
+        character_count=len(pipeline_identity.get("characters") or []),
+        alias_count=len(pipeline_identity.get("alias_index") or {}),
+        reference_entity_count=len(pipeline_identity.get("reference_entities") or []),
+    )
 
     return {
         "book_index": book_index,
@@ -786,13 +918,22 @@ def build_series_pipeline_identity(
 
 @dataclass
 class SeriesBookNLPCleanIdentityProvider:
-    input_json: Path
+    input_json: Path | None = None
+    raw_payload: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_path(cls, input_json: str | Path) -> "SeriesBookNLPCleanIdentityProvider":
         return cls(input_json=Path(input_json))
 
+    @classmethod
+    def from_payload(cls, payload: Dict[str, Any]) -> "SeriesBookNLPCleanIdentityProvider":
+        return cls(input_json=None, raw_payload=dict(payload or {}))
+
     def load_raw(self) -> Dict[str, Any]:
+        if isinstance(self.raw_payload, dict):
+            return json.loads(json.dumps(self.raw_payload))
+        if self.input_json is None:
+            return {}
         return _load_json(self.input_json)
 
     def _book_slug_candidates(self, book: Dict[str, Any]) -> List[str]:
@@ -860,7 +1001,7 @@ class SeriesBookNLPCleanIdentityProvider:
         narrator = narrators[0] if narrators else {"id": "narrator_0", "display_name": "[NARRATOR]"}
         return {
             "provider": "booknlp_clean_series",
-            "source_file": str(self.input_json),
+            "source_file": str(self.input_json) if self.input_json is not None else "db://identity-series",
             "characters": ordered,
             "narrator": narrator,
             "reference_entities": reference_entities,

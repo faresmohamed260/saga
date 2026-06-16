@@ -44,28 +44,28 @@ class PDFProcessor:
             raw_toc_entries = self._extract_toc_entries(doc["reader"])
             if raw_toc_entries:
                 raw_toc_titles = [entry["title"] for entry in raw_toc_entries]
-                logging.info(f"📑 Raw ToC entries: {len(raw_toc_titles)}")
+                logging.info("Raw ToC entries: %s", len(raw_toc_titles))
 
                 filtered_toc_titles = self._prune_leading_non_narrative_title(
                     self._filter_toc_with_llm(raw_toc_titles)
                 )
-                logging.info(f"📘 Filtered chapters: {len(filtered_toc_titles)}")
+                logging.info("Filtered chapters: %s", len(filtered_toc_titles))
 
                 toc_entries = self._filter_toc_entries(raw_toc_entries, filtered_toc_titles)
             else:
                 toc_entries = self._detect_candidate_chapters(page_texts)
                 raw_toc_titles = [entry["title"] for entry in toc_entries]
-                logging.info(f"📑 Detected candidate chapters: {len(raw_toc_titles)}")
+                logging.info("Detected candidate chapters: %s", len(raw_toc_titles))
 
                 filtered_toc_titles = self._prune_leading_non_narrative_title(
                     self._filter_toc_with_llm(raw_toc_titles)
                 )
-                logging.info(f"📘 Filtered chapters: {len(filtered_toc_titles)}")
+                logging.info("Filtered chapters: %s", len(filtered_toc_titles))
 
                 toc_entries = self._filter_toc_entries(toc_entries, filtered_toc_titles)
 
             chapters = self._extract_chapters(page_texts, toc_entries)
-            logging.info(f"📚 Final chapters extracted: {len(chapters)}")
+            logging.info("Final chapters extracted: %s", len(chapters))
             return chapters
         finally:
             doc["fitz_doc"].close()
@@ -74,10 +74,10 @@ class PDFProcessor:
         try:
             return {
                 "reader": PdfReader(file_path),
-                "fitz_doc": fitz.open(file_path)
+                "fitz_doc": fitz.open(file_path),
             }
         except Exception as e:
-            logging.error(f"❌ Failed to load PDF: {e}")
+            logging.error("Failed to load PDF: %s", e)
             return None
 
     def _extract_pages_text(self, doc: fitz.Document) -> List[Dict]:
@@ -90,11 +90,13 @@ class PDFProcessor:
             if not text:
                 continue
 
-            pages.append({
-                "page_index": page_index,
-                "text": text,
-                "norm_text": self._normalize(text)
-            })
+            pages.append(
+                {
+                    "page_index": page_index,
+                    "text": text,
+                    "norm_text": self._normalize(text),
+                }
+            )
 
         return pages
 
@@ -121,13 +123,13 @@ class PDFProcessor:
 
                     yield {
                         "title": title,
-                        "page_index": page_number
+                        "page_index": page_number,
                     }
 
             entries = [entry for entry in flatten(outline) if entry["page_index"] is not None]
 
         except Exception as e:
-            logging.warning(f"⚠️ PDF ToC extraction failed: {e}")
+            logging.warning("PDF ToC extraction failed: %s", e)
 
         return entries
 
@@ -144,10 +146,12 @@ class PDFProcessor:
                 if not title:
                     continue
 
-                entries.append({
-                    "title": title,
-                    "page_index": page["page_index"]
-                })
+                entries.append(
+                    {
+                        "title": title,
+                        "page_index": page["page_index"],
+                    }
+                )
 
         deduped = []
         seen = set()
@@ -198,14 +202,14 @@ class PDFProcessor:
         response = self.llm.generate_json(prompt, strict=True)
 
         if "error" in response or "chapters" not in response:
-            logging.warning("⚠️ LLM ToC filtering failed; falling back to heuristic filtering")
+            logging.warning("LLM ToC filtering failed; falling back to heuristic filtering")
             return self._filter_toc_heuristically(toc_titles)
 
         toc_set = set(toc_titles)
         valid = [chapter for chapter in response["chapters"] if chapter in toc_set]
 
         if not valid:
-            logging.warning("⚠️ LLM returned no valid ToC chapters; falling back to heuristic filtering")
+            logging.warning("LLM returned no valid ToC chapters; falling back to heuristic filtering")
             return self._filter_toc_heuristically(toc_titles)
 
         return valid
@@ -253,7 +257,7 @@ class PDFProcessor:
         narrative_pattern = re.compile(r"^(chapter\b|prologue\b|epilogue\b)", re.IGNORECASE)
 
         if first and second and not narrative_pattern.search(first) and narrative_pattern.search(second):
-            logging.info("🧹 Dropping leading non-narrative ToC entry: %s", first)
+            logging.info("Dropping leading non-narrative ToC entry: %s", first)
             return toc_titles[1:]
 
         return toc_titles
@@ -285,11 +289,13 @@ class PDFProcessor:
                 continue
 
             start_offset = self._resolve_title_offset(page["text"], toc_entry["title"])
-            resolved_starts.append({
-                "title": toc_entry["title"],
-                "page_index": toc_entry["page_index"],
-                "offset": start_offset
-            })
+            resolved_starts.append(
+                {
+                    "title": toc_entry["title"],
+                    "page_index": toc_entry["page_index"],
+                    "offset": start_offset,
+                }
+            )
 
         chapters = []
 
@@ -303,11 +309,13 @@ class PDFProcessor:
             if self._is_junk(start["title"], content):
                 continue
 
-            chapters.append({
-                "chapter_title": start["title"],
-                "content": content
-            })
-            logging.info(f"📘 New chapter: {start['title']}")
+            chapters.append(
+                {
+                    "chapter_title": start["title"],
+                    "content": content,
+                }
+            )
+            logging.info("New chapter: %s", start["title"])
 
         return chapters
 
@@ -382,7 +390,7 @@ class PDFProcessor:
             "table of contents",
             "copyright",
             "acknowledgments",
-            "acknowledgements"
+            "acknowledgements",
         ]
 
         if any(junk in title_lower for junk in junk_titles):
@@ -394,7 +402,7 @@ class PDFProcessor:
             "isbn",
             "published by",
             "cover design",
-            "printed in"
+            "printed in",
         ]
 
         matches = sum(1 for pattern in junk_patterns if pattern in text_lower)

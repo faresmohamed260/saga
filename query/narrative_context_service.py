@@ -21,6 +21,7 @@ from core.pipeline_contract import (
 from query.target_character_state_service import TargetCharacterStateService
 from query.visual_world_state_service import VisualWorldStateService
 from rag.story_index_service import StoryIndexService
+from services.sqlite_contract_adapter import is_db_book_ref, load_contract_like
 
 
 class NarrativeContextService:
@@ -96,8 +97,11 @@ class NarrativeContextService:
         )
 
     def build_from_contract_file(self, path: str | Path, **kwargs) -> Dict[str, Any]:
-        with Path(path).open("r", encoding="utf-8") as handle:
-            contract = json.load(handle)
+        if is_db_book_ref(str(path)):
+            contract = load_contract_like(str(path))
+        else:
+            with Path(path).open("r", encoding="utf-8") as handle:
+                contract = json.load(handle)
         contract_paths = kwargs.pop("contract_paths", None)
         if contract_paths is None:
             contract_paths = [path]

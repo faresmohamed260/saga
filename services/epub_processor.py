@@ -42,23 +42,23 @@ class EPUBProcessor:
 
         raw_toc_entries = self._extract_toc_entries(book)
         raw_toc_titles = [entry["title"] for entry in raw_toc_entries]
-        logging.info(f"📑 Raw ToC entries: {len(raw_toc_titles)}")
+        logging.info("Raw ToC entries: %s", len(raw_toc_titles))
 
         filtered_toc_titles = self._filter_toc_with_llm(raw_toc_titles)
         filtered_toc_titles = self._prune_leading_non_narrative_title(filtered_toc_titles)
-        logging.info(f"📘 Filtered chapters: {len(filtered_toc_titles)}")
+        logging.info("Filtered chapters: %s", len(filtered_toc_titles))
 
         filtered_toc_entries = self._filter_toc_entries(raw_toc_entries, filtered_toc_titles)
         chapters = self._extract_chapters(book, raw_toc_entries, filtered_toc_entries)
 
-        logging.info(f"📚 Final chapters extracted: {len(chapters)}")
+        logging.info("Final chapters extracted: %s", len(chapters))
         return chapters
 
     def _load_epub(self, file_path: str):
         try:
             return epub.read_epub(file_path)
         except Exception as e:
-            logging.error(f"❌ Failed to load EPUB: {e}")
+            logging.error("Failed to load EPUB: %s", e)
             return None
 
     def _extract_toc_entries(self, book) -> List[Dict[str, Optional[str]]]:
@@ -86,7 +86,7 @@ class EPUBProcessor:
             entries = list(flatten(toc))
 
         except Exception as e:
-            logging.warning(f"⚠️ ToC extraction failed: {e}")
+            logging.warning("ToC extraction failed: %s", e)
 
         return entries
 
@@ -127,14 +127,14 @@ class EPUBProcessor:
         response = self.llm.generate_json(prompt, strict=True)
 
         if "error" in response or "chapters" not in response:
-            logging.warning("⚠️ LLM ToC filtering failed; falling back to heuristic filtering")
+            logging.warning("LLM ToC filtering failed; falling back to heuristic filtering")
             return self._filter_toc_heuristically(toc_titles)
 
         toc_set = set(toc_titles)
         valid = [chapter for chapter in response["chapters"] if chapter in toc_set]
 
         if not valid:
-            logging.warning("⚠️ LLM returned no valid ToC chapters; falling back to heuristic filtering")
+            logging.warning("LLM returned no valid ToC chapters; falling back to heuristic filtering")
             return self._filter_toc_heuristically(toc_titles)
 
         return valid
@@ -182,7 +182,7 @@ class EPUBProcessor:
         narrative_pattern = re.compile(r"^(chapter\b|prologue\b|epilogue\b)", re.IGNORECASE)
 
         if first and second and not narrative_pattern.search(first) and narrative_pattern.search(second):
-            logging.info("🧹 Dropping leading non-narrative ToC entry: %s", first)
+            logging.info("Dropping leading non-narrative ToC entry: %s", first)
             return toc_titles[1:]
 
         return toc_titles
@@ -233,7 +233,7 @@ class EPUBProcessor:
             start_index = self._resolve_toc_pointer(entry, blocks, file_index, min_index=cursor + 1)
             if start_index is None:
                 if raw_index in filtered_raw_indexes:
-                    logging.warning(f"⚠️ Could not resolve ToC pointer for: {entry['title']}")
+                    logging.warning("Could not resolve ToC pointer for: %s", entry["title"])
                 continue
 
             resolved_entries.append({
@@ -277,7 +277,7 @@ class EPUBProcessor:
                 "chapter_title": title,
                 "content": content
             })
-            logging.info(f"📘 New chapter: {title}")
+            logging.info("New chapter: %s", title)
 
         return chapters
 

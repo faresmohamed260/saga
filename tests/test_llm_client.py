@@ -240,3 +240,37 @@ def test_probe_codex_model_access_uses_hermes_when_direct_key_missing(monkeypatc
 
     assert result["status"] == "ok"
     assert result["transport"] == "hermes"
+
+
+def test_codex_hermes_timeout_budget_scales_with_prompt_size():
+    short_budget = LLMClient._codex_hermes_timeout_budget("x" * 500, 120)
+    long_budget = LLMClient._codex_hermes_timeout_budget("x" * 24000, 120)
+
+    assert short_budget >= 150
+    assert long_budget > short_budget
+    assert long_budget >= 300
+
+
+def test_codex_hermes_uses_scaled_timeout_and_utf8(monkeypatch):
+    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
+    captured = {}
+
+    def _fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["timeout"] = kwargs.get("timeout")
+        captured["encoding"] = kwargs.get("encoding")
+        captured["errors"] = kwargs.get("errors")
+        return type("Result", (), {"returncode": 0, "stdout": '{"ok": true}', "stderr": ""})()
+
+    monkeypatch.setattr("infrastructure.llm_client.subprocess.run", _fake_run)
+
+    result = LLMClient._run_codex_hermes_prompt(
+        model_name="gpt-5.4-mini",
+        prompt="x" * 24000,
+        timeout_seconds=120,
+    )
+
+    assert result == '{"ok": true}'
+    assert captured["timeout"] >= 300
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"

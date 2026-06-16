@@ -40,6 +40,17 @@ def test_entity_world_state_analyzer_normalizes_typed_fields():
                         "narrative_role": "pov",
                         "baseline_description": "a gaunt huntress with a bow",
                         "baseline_source": "the huntress moved through the snow",
+                        "persistent_traits": {
+                            "apparent_age_group": "young woman",
+                            "build": "lean",
+                            "hair_color": "brown",
+                            "default_clothing_style": "worn cloak",
+                        },
+                        "dynamic_visual_state": {
+                            "visible_condition": "hungry",
+                            "body_language": "knees shaking",
+                            "carried_items": "bow and ash arrow",
+                        },
                         "typed_attributes": {
                             "appearance": ["gaunt huntress"],
                             "outfit": ["worn cloak", "worn cloak"],
@@ -73,6 +84,8 @@ def test_entity_world_state_analyzer_normalizes_typed_fields():
 
     assert result["entities"][0]["typed_attributes"]["outfit"] == ["worn cloak"]
     assert result["entities"][0]["state_changes"][0]["attribute"] == "condition"
+    assert result["entities"][0]["persistent_traits"]["hair_color"] == "brown"
+    assert result["entities"][0]["dynamic_visual_state"]["visible_condition"] == "hungry"
     assert result["rotation_used"] is True
 
 
@@ -183,6 +196,130 @@ def test_reconcile_scene_contract_prefers_specific_non_object_type_for_duplicate
     assert [item for item in result["entities_present"] if item["name"].lower() == "white mare"] == [
         {"name": "White mare", "entity_type": "creature"}
     ]
+
+
+def test_reconcile_scene_contract_recovers_missing_event_agent_as_character():
+    scene = {
+        "book_index": 1,
+        "chapter_index": 3,
+        "scene_index": 1,
+        "events": [
+            {
+                "event_id": "evt_mercenary_1",
+                "description": "Feyre bargains with the mercenary for information.",
+                "characters": ["Feyre"],
+                "entities_involved": ["Feyre", "the mercenary"],
+                "reason": "Feyre needs an answer.",
+                "outcome": "The mercenary shares what she knows.",
+                "type": "interaction",
+            }
+        ],
+        "entities_present": [{"name": "Feyre", "entity_type": "character"}],
+        "entity_descriptions": [
+            {
+                "entity_name": "the mercenary",
+                "entity_type": "object",
+                "description": "hardened female mercenary with watchful eyes",
+                "description_type": "stable_trait",
+            }
+        ],
+        "state_changes": [],
+        "relationship_changes": [],
+        "canonical_characters": [{"name": "Feyre"}],
+        "location": {},
+        "entity_world_state": {"entities": []},
+    }
+
+    result = reconcile_scene_contract(scene)
+
+    assert any(item["name"] == "the mercenary" and item["entity_type"] == "character" for item in result["entities_present"])
+
+
+def test_reconcile_scene_contract_moves_nonhuman_character_like_entries_to_creatures():
+    scene = {
+        "book_index": 1,
+        "chapter_index": 21,
+        "scene_index": 1,
+        "events": [
+            {
+                "event_id": "evt_suriel_1",
+                "description": "Feyre questions the Suriel.",
+                "characters": ["Feyre"],
+                "entities_involved": ["the Suriel"],
+                "type": "interaction",
+            }
+        ],
+        "entities_present": [
+            {"name": "Feyre", "entity_type": "character"},
+            {"name": "the Suriel", "entity_type": "character"},
+        ],
+        "entity_descriptions": [
+            {
+                "entity_name": "the Suriel",
+                "entity_type": "character",
+                "description": "gaunt creature with barklike skin, long claws, and predatory teeth",
+                "description_type": "stable_trait",
+            }
+        ],
+        "state_changes": [],
+        "relationship_changes": [],
+        "canonical_characters": [{"name": "Feyre"}],
+        "location": {},
+        "entity_world_state": {
+            "entities": [
+                {
+                    "entity_name": "the Suriel",
+                    "entity_type": "character",
+                    "baseline_description": "gaunt creature with barklike skin and long talons",
+                    "typed_attributes": {
+                        "appearance": ["gaunt creature", "barklike skin", "long talons"],
+                        "outfit": [],
+                        "condition": [],
+                        "body_language": [],
+                        "possessions": [],
+                        "abilities": [],
+                        "titles_or_roles": [],
+                        "affiliations": [],
+                    },
+                    "state_changes": [],
+                    "source_evidence": ["gaunt creature with barklike skin and long talons"],
+                }
+            ]
+        },
+    }
+
+    result = reconcile_scene_contract(scene)
+
+    assert any(item["name"] == "the Suriel" and item["entity_type"] == "creature" for item in result["entities_present"])
+
+
+def test_reconcile_scene_contract_merges_article_variants_for_creature_names():
+    scene = {
+        "events": [],
+        "entities_present": [
+            {"name": "Attor", "entity_type": "character"},
+            {"name": "The Attor", "entity_type": "creature"},
+        ],
+        "entity_descriptions": [
+            {
+                "entity_name": "The Attor",
+                "entity_type": "creature",
+                "description": "skeletal creature with leathery skin and talons",
+                "description_type": "stable_trait",
+            }
+        ],
+        "state_changes": [],
+        "relationship_changes": [],
+        "canonical_characters": [],
+        "location": {},
+        "entity_world_state": {"entities": []},
+    }
+
+    result = reconcile_scene_contract(scene)
+
+    attor_rows = [item for item in result["entities_present"] if "attor" in item["name"].lower()]
+    assert len(attor_rows) == 1
+    assert attor_rows[0]["entity_type"] == "creature"
 
 
 def test_entity_registry_merges_cross_scene_duplicate_name_to_preferred_type():

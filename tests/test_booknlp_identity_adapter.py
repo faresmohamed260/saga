@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from redesign_lab.identity.booknlp_identity_adapter import clean_booknlp_identity
@@ -252,3 +253,127 @@ def test_booknlp_identity_cleanup_merges_short_variant_into_full_name(tmp_path: 
     assert "Rhys" not in stable
     assert "Rhys" in stable["Rhysand"]["merged_from_clusters"]
     assert "merged_short_variant" in stable["Rhysand"]["risk_flags"]
+
+
+def test_booknlp_identity_cleanup_llm_review_merges_low_count_short_variant(tmp_path: Path, monkeypatch) -> None:
+    from infrastructure import llm_client as llm_module
+    from services import wiki_character_reference_service as wiki_module
+
+    class StubLLMClient:
+        MODE_CODEX = "codex"
+
+        def __init__(self, *args, **kwargs) -> None:
+            self.mode = kwargs.get("mode", "codex")
+
+        def generate_json(self, prompt: str, **kwargs) -> dict:
+            match = re.search(r'"display_name": "([^"]+)"\s*,\s*"current_bucket"', prompt)
+            candidate_name = match.group(1) if match else ""
+            if candidate_name == "Isaac Hale":
+                return {
+                    "recommended_bucket": "stable",
+                    "recommended_display_name": "Isaac Hale",
+                    "approved_aliases": ["Isaac Hale"],
+                    "merge_target_display_name": "",
+                    "confidence": "high",
+                    "notes": ["Keep canonical full-name target."],
+                    "risk_flags_add": [],
+                    "rejected_aliases": [],
+                }
+            if candidate_name == "Isaac":
+                return {
+                    "recommended_bucket": "stable",
+                    "recommended_display_name": "Isaac Hale",
+                    "approved_aliases": ["Isaac", "Isaac Hale"],
+                    "merge_target_display_name": "Isaac Hale",
+                    "confidence": "high",
+                    "notes": ["Short-name duplicate of Isaac Hale in book evidence."],
+                    "risk_flags_add": ["llm_confirmed_duplicate"],
+                    "rejected_aliases": [],
+                }
+            return {
+                "recommended_bucket": "stable",
+                "recommended_display_name": "",
+                "approved_aliases": [],
+                "merge_target_display_name": "",
+                "confidence": "medium",
+                "notes": ["Keep current placement."],
+                "risk_flags_add": [],
+                "rejected_aliases": [],
+            }
+
+        def provider_name(self) -> str:
+            return "stub"
+
+        def resolved_model_name(self) -> str:
+            return "stub-model"
+
+    class StubWikiService:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def research_character(self, name: str, **kwargs) -> dict:
+            return {"display_name": name, "issues": [], "page_title": name.replace(" ", "_")}
+
+    monkeypatch.setattr(llm_module, "LLMClient", StubLLMClient)
+    monkeypatch.setattr(wiki_module, "WikiCharacterReferenceService", StubWikiService)
+
+    raw = {
+        "system": "booknlp_small",
+        "stable_characters": [
+            {
+                "display_name": "Isaac Hale",
+                "aliases": ["Isaac Hale"],
+                "proper_mentions": [{"text": "Isaac Hale", "count": 5}],
+                "common_mentions": [],
+                "pronoun_mentions": [{"text": "he", "count": 2}],
+                "mention_count": 9,
+                "quote_count": 1,
+                "first_seen": 2,
+                "risk_flags": [],
+                "cluster_id": 1,
+            },
+            {
+                "display_name": "Isaac",
+                "aliases": ["Isaac"],
+                "proper_mentions": [{"text": "Isaac", "count": 2}],
+                "common_mentions": [],
+                "pronoun_mentions": [],
+                "mention_count": 5,
+                "quote_count": 0,
+                "first_seen": 3,
+                "risk_flags": ["possible_split_short_name"],
+                "cluster_id": 2,
+            },
+        ],
+    }
+    chapters = [
+        {
+            "book_index": 1,
+            "chapter_index": 1,
+            "chapter_title": "One",
+            "content": "Feyre notices Isaac Hale in the market.\n\nLater, Isaac smiles at her and walks away.",
+        }
+    ]
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    report_path = tmp_path / "report.md"
+    _write_json(input_path, raw)
+
+    cleaned = clean_booknlp_identity(
+        input_path,
+        output_path,
+        report_path,
+        chapters=chapters,
+        book_title="A Court of Thorns and Roses",
+        llm_review_mode="codex",
+        enable_external_research=True,
+        max_review_candidates=10,
+    )
+
+    stable = {row["display_name"]: row for row in cleaned["stable_named_characters"]}
+    assert "Isaac Hale" in stable
+    assert "Isaac" not in stable
+    assert "Isaac" in stable["Isaac Hale"]["aliases"]
+    assert "llm_merge_applied" in stable["Isaac Hale"]["risk_flags"]
+    assert cleaned["diagnostics"]["llm_review"]["enabled"] is True
+    assert cleaned["diagnostics"]["llm_review"]["external_research_enabled"] is True

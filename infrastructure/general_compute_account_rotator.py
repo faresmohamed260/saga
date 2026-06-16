@@ -14,6 +14,8 @@ from pathlib import Path
 import time
 from typing import Any, Dict, List
 
+from sql_store.persistence import SagaSQLiteStore
+
 
 DEFAULT_ACCOUNTS_FILE = Path("deploy/general_compute/accounts.local.json")
 
@@ -35,6 +37,7 @@ class GeneralComputeAccountRotator:
 
     def __init__(self, config_path: str | Path | None = None) -> None:
         self.config_path = Path(config_path or DEFAULT_ACCOUNTS_FILE)
+        self.sqlite_store = SagaSQLiteStore()
 
     def has_accounts(self) -> bool:
         data = self._load_data()
@@ -132,13 +135,40 @@ class GeneralComputeAccountRotator:
         return
 
     def _load_data(self) -> Dict[str, Any]:
+        stored = self.sqlite_store.get_provider_config("general_compute")
+        if isinstance(stored, dict):
+            accounts: list[dict[str, Any]] = []
+            for index, item in enumerate(stored.get("accounts") or []):
+                if not isinstance(item, dict):
+                    continue
+                merged = {
+                    "label": str(item.get("label") or f"key-{index + 1}").strip(),
+                    "api_key": str(item.get("api_key") or "").strip(),
+                }
+                metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+                for key, value in metadata.items():
+                    if key not in merged:
+                        merged[key] = value
+                accounts.append(merged)
+            payload = {
+                "active_index": int(stored.get("active_index", 0) or 0),
+                "accounts": accounts,
+            }
+            metadata = stored.get("metadata") if isinstance(stored.get("metadata"), dict) else {}
+            if "last_request_index" in metadata:
+                payload["last_request_index"] = metadata.get("last_request_index")
+            return payload
         if not self.config_path.exists():
             return {"active_index": 0, "last_request_index": -1, "accounts": []}
         return json.loads(self.config_path.read_text(encoding="utf-8-sig"))
 
     def _save_data(self, payload: Dict[str, Any]) -> None:
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.sqlite_store.upsert_provider_config("general_compute", {
+            "provider_name": "general_compute",
+            "active_index": int(payload.get("active_index", 0) or 0),
+            "accounts": payload.get("accounts") or [],
+            "last_request_index": int(payload.get("last_request_index", -1) or -1),
+        })
 
     def _accounts(self, payload: Dict[str, Any]) -> List[GeneralComputeAccount]:
         accounts: List[GeneralComputeAccount] = []

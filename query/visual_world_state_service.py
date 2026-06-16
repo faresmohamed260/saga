@@ -22,6 +22,7 @@ from core.pipeline_contract import (
 )
 from query.target_character_state_service import TargetCharacterStateService, _target_scope_label
 from redesign_lab.identity.identity_provider import resolve_identity_provider_input
+from services.sqlite_contract_adapter import is_db_book_ref, load_contract_like
 
 
 def _scene_key(book_index: int, chapter_index: int, scene_index: int) -> tuple[int, int, int]:
@@ -116,7 +117,10 @@ class VisualWorldStateService:
         if not contract_paths:
             raise ValueError("At least one contract path is required.")
         normalized_target = self.target_state_service.normalize_target_point(target_point)
-        contracts = [json.loads(Path(path).read_text(encoding="utf-8")) for path in contract_paths]
+        contracts = [
+            load_contract_like(str(path)) if is_db_book_ref(str(path)) else json.loads(Path(path).read_text(encoding="utf-8"))
+            for path in contract_paths
+        ]
         books: List[Dict[str, Any]] = []
         for contract in contracts:
             books.extend(((contract.get("inputs") or {}).get("books") or []))

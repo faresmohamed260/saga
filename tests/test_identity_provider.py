@@ -100,6 +100,25 @@ def test_booknlp_identity_provider_builds_pipeline_schema(tmp_path: Path) -> Non
     assert provider.resolve_alias("Lucien")["display_name"] == "Lucien"
 
 
+def test_booknlp_identity_provider_preserves_llm_review_metadata(tmp_path: Path) -> None:
+    clean_path = _build_clean_identity(tmp_path)
+    payload = json.loads(clean_path.read_text(encoding="utf-8"))
+    tamlin_row = next(row for row in payload["stable_named_characters"] if row.get("display_name") == "Tamlin")
+    tamlin_row["llm_review"] = {
+        "recommended_bucket": "stable",
+        "confidence": "high",
+        "notes": ["Verified by review layer."],
+    }
+    clean_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    provider = BookNLPCleanIdentityProvider.from_path(clean_path)
+    pipeline = provider.build_pipeline_identity()
+    tamlin = next(row for row in pipeline["characters"] if row["display_name"] == "Tamlin")
+
+    assert tamlin["llm_review"]["recommended_bucket"] == "stable"
+    assert tamlin["proper_mentions"]
+
+
 def test_booknlp_identity_smoke_writes_outputs(tmp_path: Path) -> None:
     clean_path = _build_clean_identity(tmp_path)
     contract_path = tmp_path / "contract.json"

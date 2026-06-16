@@ -11,12 +11,16 @@ if (-not (Test-Path $nssm)) {
 
 $serviceName = "SagaDashboard"
 $serviceDisplayName = "SAGA Dashboard"
-$runner = Join-Path $root "scripts\windows\run_saga_dashboard_service.cmd"
+$python = Join-Path $root "venv\Scripts\python.exe"
 $logsDir = Join-Path $root "analysis_outputs\dashboard\logs"
 $stdoutLog = Join-Path $logsDir "saga-dashboard.out.log"
 $stderrLog = Join-Path $logsDir "saga-dashboard.err.log"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
+
+if (-not (Test-Path $python)) {
+    throw "Python runtime was not found at $python"
+}
 
 try {
     & $nssm status $serviceName | Out-Null
@@ -26,9 +30,11 @@ try {
 }
 
 if (-not $serviceExists) {
-    & $nssm install $serviceName $runner | Out-Null
+    & $nssm install $serviceName $python | Out-Null
 }
 
+& $nssm set $serviceName Application $python | Out-Null
+& $nssm set $serviceName AppParameters "-m dashboard_runtime.app" | Out-Null
 & $nssm set $serviceName AppDirectory $root | Out-Null
 & $nssm set $serviceName DisplayName $serviceDisplayName | Out-Null
 & $nssm set $serviceName Description "SAGA local dashboard runtime hosted in the background." | Out-Null

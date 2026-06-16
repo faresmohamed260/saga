@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
-from analysis.evidence_schema import normalize_evidence_bundle
+from analysis.evidence_schema import compact_evidence_bundle, normalize_evidence_bundle
+from core.trait_taxonomy import (
+    TYPED_ATTRIBUTE_KEYS as CANONICAL_TYPED_ATTRIBUTE_KEYS,
+    practical_dynamic_fields,
+    practical_persistent_fields,
+)
 from infrastructure.llm_client import LLMClient
 
 
@@ -14,43 +20,11 @@ class EntityWorldStateAnalyzer:
     AGENT_VERSION = "entity_world_state_analyzer_v1"
     GC_JSON_RESPONSE_FORMAT = {"type": "json_object"}
     CONFIDENCE_VALUES = {"high", "medium", "low"}
+    MAX_PROMPT_ALIAS_ROWS = 10
+    MAX_PROMPT_CONTEXT_CHARS = 1000
+    MAX_PROMPT_SCENE_TEXT_CHARS = 5200
     ENTITY_TYPES = {"character", "object", "location", "creature"}
-    TYPED_ATTRIBUTE_KEYS = {
-        "character": [
-            "appearance",
-            "outfit",
-            "condition",
-            "body_language",
-            "possessions",
-            "abilities",
-            "titles_or_roles",
-            "affiliations",
-        ],
-        "object": [
-            "appearance",
-            "materials",
-            "abilities",
-            "owner_or_holder",
-            "current_state",
-            "symbolic_role",
-        ],
-        "location": [
-            "appearance",
-            "atmosphere",
-            "active_features",
-            "damage_or_change",
-            "occupants",
-            "symbolic_role",
-        ],
-        "creature": [
-            "appearance",
-            "condition",
-            "behavior",
-            "abilities",
-            "species_or_kind",
-            "threat_role",
-        ],
-    }
+    TYPED_ATTRIBUTE_KEYS = CANONICAL_TYPED_ATTRIBUTE_KEYS
 
     def __init__(self, llm_client: Optional[LLMClient] = None, max_attempts: int = 2):
         self.llm = llm_client or LLMClient()
@@ -137,10 +111,65 @@ class EntityWorldStateAnalyzer:
         if retry_hint:
             retry_line = "Your previous response failed validation. Return only valid JSON matching the schema.\n"
 
+        compact_alias_map = self._compact_alias_map(alias_map, scene_text)
         alias_context = [
             {"canonical_name": canonical, "aliases": aliases}
-            for canonical, aliases in sorted(alias_map.items(), key=lambda item: item[0].lower())
+            for canonical, aliases in sorted(compact_alias_map.items(), key=lambda item: item[0].lower())
         ]
+        compact_local_evidence = compact_evidence_bundle(local_evidence)
+        compact_scene_context = self._compact_scene_context(scene_context)
+        prompt_scene_text = self._compact_scene_text(scene_text)
+        if getattr(self.llm, "mode", "") == LLMClient.MODE_GENERAL_COMPUTE:
+            return f"""
+            Typed entity/world-state task. Return strict JSON only.
+
+            {retry_line}
+
+            Rules:
+            - Extract consequential characters, objects, locations, and creatures only.
+            - Ground every claim in scene text or recent context.
+            - Baseline description = durable first-appearance physical/world detail.
+            - Temporary conditions, injuries, outfits, ownership shifts, and environment changes go in state_changes or typed attributes, not baseline.
+            - Do not invent colors, materials, powers, or motives.
+            - If an entity matters but detail is sparse, include what is supported and omit the rest.
+            - Fill practical structured fields only when the prose supports them. Leave unsupported fields blank.
+
+            Output schema:
+            {{
+              "entities": [
+                {{
+                  "entity_name": "",
+                  "entity_type": "character|object|location|creature",
+                  "narrative_role": "",
+                  "baseline_description": "",
+                  "baseline_source": "",
+                  "persistent_traits": {{"field_name": ""}},
+                  "dynamic_visual_state": {{"field_name": ""}},
+                  "typed_attributes": {{
+                    "appearance": [], "outfit": [], "condition": [], "body_language": [],
+                    "possessions": [], "abilities": [], "titles_or_roles": [], "affiliations": []
+                  }},
+                  "state_changes": [{{"attribute": "", "previous_state": "", "new_state": "", "change_type": "", "evidence": ""}}],
+                  "source_evidence": [],
+                  "confidence": "high|medium|low"
+                }}
+              ],
+              "diagnostics": {{"missing_baseline_entities": [""], "unsupported_claims": [""]}}
+            }}
+
+            Alias map:
+            {json.dumps(alias_context, ensure_ascii=False)}
+
+            Local evidence:
+            {json.dumps(compact_local_evidence, ensure_ascii=False)}
+
+            Recent context:
+            {compact_scene_context or "No recent context."}
+
+            Scene:
+            {prompt_scene_text}
+            """
+
         return f"""
         You are the typed entity/world-state extraction agent for a canon encoder.
         Return only grounded JSON. This output becomes canonical contract data.
@@ -153,6 +182,7 @@ class EntityWorldStateAnalyzer:
         - Capture temporary changes when appearance, outfit, condition, ownership, damage, or environment changes during the story.
         - Prefer specific book-grounded detail over generic fantasy filler.
         - For characters, think in terms of a reusable visual reference sheet for later image generation, but stay strictly grounded in the text.
+        - Use practical structured fields only for traits that prose can usually support reliably.
 
         Hard rules:
         - Use only supported evidence from the scene text and recent context.
@@ -167,6 +197,7 @@ class EntityWorldStateAnalyzer:
         - Temporary conditions include injuries, exhaustion, blood, dirt, weather exposure, masks worn, armor worn, and similar scene-bound states.
         - Objects in fantasy may have abilities, curses, ownership, symbolic role, or current activation state.
         - Locations may have architecture, atmosphere, active magical or environmental features, damage, and current occupants.
+        - Locations can be indoor or outdoor; capture that explicitly when the text supports it.
         - Creatures may have species/kind, threatening role, visible anatomy, condition, and active behavior.
         - Every state change must describe what changed and the evidence.
 
@@ -179,6 +210,8 @@ class EntityWorldStateAnalyzer:
               "narrative_role": "",
               "baseline_description": "",
               "baseline_source": "",
+              "persistent_traits": {{"field_name": ""}},
+              "dynamic_visual_state": {{"field_name": ""}},
               "typed_attributes": {{
                 "appearance": [],
                 "outfit": [],
@@ -209,17 +242,51 @@ class EntityWorldStateAnalyzer:
         }}
 
         Alias map:
-        {alias_context}
+        {json.dumps(alias_context, ensure_ascii=False)}
 
         Local evidence candidates:
-        {local_evidence}
+        {json.dumps(compact_local_evidence, ensure_ascii=False)}
 
         Recent context:
-        {scene_context or "No recent context."}
+        {compact_scene_context or "No recent context."}
 
         Scene text:
-        {scene_text}
+        {prompt_scene_text}
         """
+
+    def _compact_alias_map(self, alias_map: Dict[str, List[str]], scene_text: str) -> Dict[str, List[str]]:
+        scene_lower = str(scene_text or "").lower()
+        prioritized: list[tuple[str, List[str], int]] = []
+        for canonical_name, aliases in sorted((alias_map or {}).items(), key=lambda item: item[0].lower()):
+            alias_list = [str(alias).strip()[:80] for alias in (aliases or []) if str(alias).strip()]
+            relevance = 1 if canonical_name.lower() in scene_lower else 0
+            relevance += sum(1 for alias in alias_list if alias.lower() in scene_lower)
+            prioritized.append((canonical_name[:80], alias_list[:6], relevance))
+        prioritized.sort(key=lambda item: (-item[2], item[0].lower()))
+        compacted: Dict[str, List[str]] = {}
+        for canonical_name, aliases, _ in prioritized[: self.MAX_PROMPT_ALIAS_ROWS]:
+            compacted[canonical_name] = aliases
+        return compacted
+
+    def _compact_scene_context(self, scene_context: str) -> str:
+        cleaned = " ".join(str(scene_context or "").split())
+        if len(cleaned) <= self.MAX_PROMPT_CONTEXT_CHARS:
+            return cleaned
+        return cleaned[: self.MAX_PROMPT_CONTEXT_CHARS].rsplit(" ", 1)[0] + " ..."
+
+    def _compact_scene_text(self, scene_text: str) -> str:
+        cleaned = str(scene_text or "").strip()
+        if len(cleaned) <= self.MAX_PROMPT_SCENE_TEXT_CHARS:
+            return cleaned
+        segment = max(1100, self.MAX_PROMPT_SCENE_TEXT_CHARS // 3)
+        middle_start = max(0, (len(cleaned) // 2) - (segment // 2))
+        middle_end = middle_start + segment
+        parts = [
+            cleaned[:segment].rstrip(),
+            cleaned[middle_start:middle_end].strip(),
+            cleaned[-segment:].lstrip(),
+        ]
+        return "\n...\n".join(part for part in parts if part)
 
     def _validate_response(self, response: Dict[str, Any]) -> bool:
         return (
@@ -249,10 +316,18 @@ class EntityWorldStateAnalyzer:
                 if not name:
                     continue
             typed_attributes = self._normalize_typed_attributes(entity_type, row.get("typed_attributes") or {})
+            persistent_traits = self._normalize_practical_traits(entity_type, row.get("persistent_traits") or {}, scope="persistent")
+            dynamic_visual_state = self._normalize_practical_traits(entity_type, row.get("dynamic_visual_state") or {}, scope="dynamic")
             baseline_description = self._clean(row.get("baseline_description"))
             state_changes = self._normalize_state_changes(row.get("state_changes") or [])
             source_evidence = self._normalize_string_list(row.get("source_evidence") or [])
-            if not baseline_description and not any(typed_attributes.values()) and not state_changes:
+            typed_attributes = self._backfill_typed_attributes(
+                entity_type=entity_type,
+                typed_attributes=typed_attributes,
+                persistent_traits=persistent_traits,
+                dynamic_visual_state=dynamic_visual_state,
+            )
+            if not baseline_description and not any(typed_attributes.values()) and not state_changes and not any(persistent_traits.values()) and not any(dynamic_visual_state.values()):
                 continue
             key = (
                 name.lower(),
@@ -270,6 +345,8 @@ class EntityWorldStateAnalyzer:
                     "narrative_role": self._clean(row.get("narrative_role")),
                     "baseline_description": baseline_description,
                     "baseline_source": self._clean(row.get("baseline_source")),
+                    "persistent_traits": persistent_traits,
+                    "dynamic_visual_state": dynamic_visual_state,
                     "typed_attributes": typed_attributes,
                     "state_changes": state_changes,
                     "source_evidence": source_evidence,
@@ -323,6 +400,79 @@ class EntityWorldStateAnalyzer:
         for key in allowed_keys:
             normalized[key] = self._normalize_string_list(raw.get(key) or [])
         return normalized
+
+    def _normalize_practical_traits(self, entity_type: str, raw: Dict[str, Any], *, scope: str) -> Dict[str, str]:
+        allowed_fields = practical_persistent_fields(entity_type) if scope == "persistent" else practical_dynamic_fields(entity_type)
+        normalized: Dict[str, str] = {}
+        if not isinstance(raw, dict):
+            return {field: "" for field in allowed_fields}
+        for field in allowed_fields:
+            normalized[field] = self._clean(raw.get(field))
+        return normalized
+
+    def _backfill_typed_attributes(
+        self,
+        *,
+        entity_type: str,
+        typed_attributes: Dict[str, List[str]],
+        persistent_traits: Dict[str, str],
+        dynamic_visual_state: Dict[str, str],
+    ) -> Dict[str, List[str]]:
+        merged = {key: list(values or []) for key, values in typed_attributes.items()}
+
+        def _append(bucket: str, value: str) -> None:
+            cleaned = self._clean(value)
+            if not cleaned:
+                return
+            slot = merged.setdefault(bucket, [])
+            if cleaned not in slot:
+                slot.append(cleaned)
+
+        if entity_type == "character":
+            for field in [
+                "height_impression", "build", "skin_tone_or_complexion", "hair_color",
+                "hair_length_or_style", "eye_color", "facial_features", "distinguishing_marks",
+                "fantasy_features",
+            ]:
+                _append("appearance", persistent_traits.get(field, ""))
+            for field in ["default_clothing_style", "default_accessories", "default_footwear"]:
+                _append("outfit", persistent_traits.get(field, ""))
+            for field in ["scene_outfit", "scene_accessories", "scene_footwear"]:
+                _append("outfit", dynamic_visual_state.get(field, ""))
+            for field in ["visible_condition", "injuries", "dirt_blood_markings"]:
+                _append("condition", dynamic_visual_state.get(field, ""))
+            for field in ["body_language", "expression"]:
+                _append("body_language", dynamic_visual_state.get(field, ""))
+            _append("possessions", persistent_traits.get("signature_items", ""))
+            _append("possessions", dynamic_visual_state.get("carried_items", ""))
+            for field in ["species_or_race", "apparent_age_group", "world_genre_cues"]:
+                _append("affiliations", persistent_traits.get(field, ""))
+        elif entity_type == "creature":
+            for field in ["size_class", "body_plan", "surface_covering", "coloration", "head_features", "eyes", "natural_weapons", "wings", "tail", "magical_features"]:
+                _append("appearance", persistent_traits.get(field, ""))
+            for field in ["visible_condition", "injuries", "behavior_state", "threat_posture"]:
+                _append("condition", dynamic_visual_state.get(field, ""))
+            _append("species_or_kind", persistent_traits.get("species_kind", ""))
+        elif entity_type == "object":
+            for field in ["shape_form", "size_scale", "color_finish", "surface_texture", "condition_default"]:
+                _append("appearance", persistent_traits.get(field, ""))
+            for field in ["primary_material", "secondary_materials"]:
+                _append("materials", persistent_traits.get(field, ""))
+            _append("owner_or_holder", dynamic_visual_state.get("owner_or_holder", ""))
+            for field in ["activation_state", "damage_state", "location_context"]:
+                _append("current_state", dynamic_visual_state.get(field, ""))
+            _append("abilities", persistent_traits.get("magical_properties", ""))
+            _append("symbolic_role", persistent_traits.get("symbolic_markings", ""))
+        elif entity_type == "location":
+            for field in ["location_class", "indoor_outdoor", "environment_type", "architecture_or_terrain_style", "dominant_materials", "lighting_default", "weather_exposure", "notable_features", "magic_or_tech_presence"]:
+                _append("appearance", persistent_traits.get(field, ""))
+            _append("atmosphere", persistent_traits.get("ambient_mood", ""))
+            for field in ["lighting_current", "weather_current", "occupancy_state", "atmosphere_shift"]:
+                _append("atmosphere", dynamic_visual_state.get(field, ""))
+            for field in ["damage_state", "temporary_setup"]:
+                _append("damage_or_change", dynamic_visual_state.get(field, ""))
+            _append("active_features", dynamic_visual_state.get("active_effects", ""))
+        return merged
 
     def _normalize_state_changes(self, rows: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         normalized = []

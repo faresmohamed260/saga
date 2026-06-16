@@ -67,7 +67,7 @@ from timeline.timeline_service import TimelineService
 UPLOAD_DIR = Path(r"B:\Documents\PyCharm\graduationProject\uploads")
 DEFAULT_SCENE_TARGET_WORDS = 0
 SCENE_FALLBACK_TARGETS = [2400, 1800, 1400, 1100, 900, 700, 500, 350, 250]
-MODEL_OPTIONS = ["gpt_oss", "deepseek", "general_compute", "mistral", "gemini"]
+MODEL_OPTIONS = ["gpt_oss", "general_compute", "codex", "mistral", "gemini"]
 LIVE_RENDER_INTERVAL_SECONDS = 2.0
 EXPORT_CONTRACT_VERSION = "1.0.0"
 FORBIDDEN_IDENTITY_LABELS = {
@@ -1906,7 +1906,7 @@ def render_operations_overview(container: st.delta_generator.DeltaGenerator, com
                 width="stretch",
             )
         else:
-            st.info("No persisted encode runs found under analysis_outputs/encode_runs yet.")
+            st.info("No persisted encode runs found under analysis_outputs/pipeline_runtime yet.")
 
         st.caption("Operational milestone status")
         st.dataframe(
@@ -1936,7 +1936,7 @@ def render_encode_runs_dashboard(container: st.delta_generator.DeltaGenerator):
         st.subheader("Encode Runs")
         runs = discover_encode_runs()
         if not runs:
-            st.info("No encode runs found under analysis_outputs/encode_runs.")
+            st.info("No encode runs found under analysis_outputs/pipeline_runtime.")
             return
 
         series_filter = st.selectbox(

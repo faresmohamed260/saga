@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Dict, List
+from typing import Any, Dict, List
 
 
 GENERIC_ALIAS_LABELS = {
@@ -71,6 +71,46 @@ def normalize_evidence_bundle(bundle: Dict | None) -> Dict:
             normalized[key] = deepcopy(value)
 
     return normalized
+
+
+def compact_evidence_bundle(
+    bundle: Dict | None,
+    *,
+    max_mentions: int = 8,
+    max_clusters: int = 4,
+    max_candidate_characters: int = 6,
+    max_candidate_entities: int = 8,
+    max_candidate_aliases: int = 8,
+    max_text_length: int = 140,
+) -> Dict:
+    normalized = normalize_evidence_bundle(bundle)
+    compacted = empty_evidence_bundle()
+    compacted["metadata"].update(normalized.get("metadata") or {})
+
+    def _truncate_value(value: Any):
+        if isinstance(value, str):
+            return " ".join(value.strip().split())[:max_text_length]
+        if isinstance(value, list):
+            return [_truncate_value(item) for item in value[:6]]
+        if isinstance(value, dict):
+            trimmed: Dict[str, Any] = {}
+            for key, item in list(value.items())[:10]:
+                trimmed[key] = _truncate_value(item)
+            return trimmed
+        return value
+
+    def _trim_rows(rows: List[Any], limit: int) -> List[Any]:
+        trimmed_rows: List[Any] = []
+        for row in rows[:limit]:
+            trimmed_rows.append(_truncate_value(row))
+        return trimmed_rows
+
+    compacted["mentions"] = _trim_rows(normalized.get("mentions") or [], max_mentions)
+    compacted["clusters"] = _trim_rows(normalized.get("clusters") or [], max_clusters)
+    compacted["candidate_characters"] = _trim_rows(normalized.get("candidate_characters") or [], max_candidate_characters)
+    compacted["candidate_entities"] = _trim_rows(normalized.get("candidate_entities") or [], max_candidate_entities)
+    compacted["candidate_aliases"] = _trim_rows(normalized.get("candidate_aliases") or [], max_candidate_aliases)
+    return compacted
 
 
 def normalize_identity_label(value: str) -> str:

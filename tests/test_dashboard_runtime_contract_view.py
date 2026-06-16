@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dashboard_runtime.app import EncodeRequest, build_encode_command, contract_view
+from dashboard_runtime.app import EncodeRequest, build_encode_command, contract_view, derive_scene_quality
 
 
 def test_build_encode_command_supports_max_chapters():
@@ -15,6 +15,30 @@ def test_build_encode_command_supports_max_chapters():
 
     assert "--max-chapters" in command
     assert command[command.index("--max-chapters") + 1] == "5"
+    assert command[:3] == ["python", "-u", "saga_tools.py"] or command[1:3] == ["-u", "saga_tools.py"]
+    assert "--export-contracts" not in command
+
+
+def test_build_encode_command_supports_export_contracts():
+    request = EncodeRequest(
+        books=["C:\\books\\sample.epub"],
+        export_contracts=True,
+    )
+
+    command = build_encode_command(request)
+
+    assert "--export-contracts" in command
+
+
+def test_build_character_render_command_is_unbuffered():
+    from dashboard_runtime.app import CharacterRenderRequest, build_character_render_command
+
+    request = CharacterRenderRequest(contract_path="analysis_outputs\\sample.contract.json", overwrite=True)
+
+    command = build_character_render_command(request)
+
+    assert command[1:3] == ["-u", "saga_tools.py"]
+    assert "--overwrite" in command
 
 
 def test_contract_view_exposes_scene_world_state(tmp_path: Path):
@@ -61,3 +85,19 @@ def test_contract_view_exposes_scene_world_state(tmp_path: Path):
 
     assert payload["counts"]["scene_world_state"] == 1
     assert payload["outputs"]["scene_world_state"][0]["entity_world_state"]["entities"][0]["entity_name"] == "Feyre"
+
+
+def test_derive_scene_quality_falls_back_to_scene_status():
+    rows = [
+        {"final_status": "success", "scene_summary": "A"},
+        {"final_status": "failed", "error_category": "provider_exhausted"},
+        {"scene_summary": "C"},
+    ]
+
+    payload = derive_scene_quality(rows, {})
+
+    assert payload == {
+        "successful_scenes": 2,
+        "failed_scenes": 1,
+        "total_scenes": 3,
+    }

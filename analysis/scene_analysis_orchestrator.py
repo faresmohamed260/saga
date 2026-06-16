@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional
@@ -18,6 +19,9 @@ from analysis.scene_analyzer import SceneAnalyzer
 from analysis.scene_contract_reconciler import reconcile_scene_contract
 from analysis.visual_state_analyzer import VisualStateAnalyzer
 from infrastructure.llm_client import LLMClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class SceneAnalysisOrchestrator:
@@ -47,6 +51,19 @@ class SceneAnalysisOrchestrator:
         self.entity_world_state_analyzer = entity_world_state_analyzer or EntityWorldStateAnalyzer(llm_client=LLMClient(mode=analysis_model))
         self.identity_pass_enabled = identity_pass_enabled
 
+    def _should_serialize_llm_subtasks(self) -> bool:
+        analyzers = [
+            self.scene_analyzer,
+            self.identity_analyzer,
+            self.visual_analyzer,
+            self.entity_world_state_analyzer,
+        ]
+        for analyzer in analyzers:
+            llm = getattr(analyzer, "llm", None)
+            if getattr(llm, "mode", "") == LLMClient.MODE_CODEX and getattr(llm, "codex_transport", "") == "hermes":
+                return True
+        return False
+
     def analyze_scene(
         self,
         scene: Dict,
@@ -58,10 +75,23 @@ class SceneAnalysisOrchestrator:
         alias_map = alias_map or {}
         rejected_identities = rejected_identities or []
         pov_anchor = resolve_pov_anchor(scene)
+        scene_ref = (
+            f"b{scene.get('book_index', '?')}:"
+            f"c{scene.get('chapter_index', '?')}:"
+            f"s{scene.get('scene_index', '?')}"
+        )
         raw_local_evidence = self.local_entity_extractor.extract(scene.get("text", ""))
         local_evidence = score_and_filter_evidence(raw_local_evidence)
         local_evidence = self.semantic_evidence_refiner.refine(local_evidence, scene.get("text", ""))
         enriched_scene = {**scene, "local_evidence": local_evidence, "pov_anchor": pov_anchor}
+        logger.info(
+            "SceneAnalysisOrchestrator start | scene=%s mode=%s text_chars=%s local_candidates=%s pov_anchor=%s",
+            scene_ref,
+            analysis_mode,
+            len(str(scene.get("text") or "")),
+            len(raw_local_evidence or []),
+            pov_anchor or "",
+        )
 
         started_at = time.perf_counter()
         if analysis_mode == "compare":
@@ -92,6 +122,13 @@ class SceneAnalysisOrchestrator:
             }
             primary["local_evidence_raw"] = raw_local_evidence
             primary["analysis_mode"] = "compare"
+            logger.info(
+                "SceneAnalysisOrchestrator compare complete | scene=%s elapsed=%.2fs events=%s entities=%s",
+                scene_ref,
+                time.perf_counter() - started_at,
+                len(primary.get("events") or []),
+                len(primary.get("entities_present") or []),
+            )
             return primary
 
         pair_result = self._run_pair(enriched_scene, alias_map, rejected_identities, scene_context, analysis_mode)
@@ -101,6 +138,16 @@ class SceneAnalysisOrchestrator:
         merged["local_evidence_raw"] = raw_local_evidence
         merged["analysis_mode"] = analysis_mode
         merged["pov_anchor"] = pov_anchor
+        logger.info(
+            "SceneAnalysisOrchestrator complete | scene=%s elapsed=%.2fs final_status=%s events=%s entities=%s visual_chars=%s world_entities=%s",
+            scene_ref,
+            time.perf_counter() - started_at,
+            merged.get("final_status") or "success",
+            len(merged.get("events") or []),
+            len(merged.get("entities_present") or []),
+            len((merged.get("visual_analysis") or {}).get("characters") or []),
+            len((merged.get("entity_world_state") or {}).get("entities") or []),
+        )
         return merged
 
     def _run_pair(
@@ -113,10 +160,131 @@ class SceneAnalysisOrchestrator:
     ) -> Dict:
         local_evidence = scene.get("local_evidence") or {}
         started_at = time.perf_counter()
+        serialize_llm_subtasks = self._should_serialize_llm_subtasks()
+        scene_ref = (
+            f"b{scene.get('book_index', '?')}:"
+            f"c{scene.get('chapter_index', '?')}:"
+            f"s{scene.get('scene_index', '?')}"
+        )
+        logger.info(
+            "SceneAnalysisOrchestrator pair start | scene=%s mode=%s serialize_llm=%s identity_pass=%s",
+            scene_ref,
+            analysis_mode,
+            serialize_llm_subtasks,
+            self.identity_pass_enabled,
+        )
         if not self.identity_pass_enabled:
-            with ThreadPoolExecutor(max_workers=3) as executor:
+            if serialize_llm_subtasks:
+                content_result = self.scene_analyzer.analyze(
+                    scene,
+                    alias_map=alias_map,
+                    rejected_identities=rejected_identities,
+                    scene_context=scene_context,
+                    local_evidence=local_evidence,
+                    analysis_mode=analysis_mode,
+                )
+                visual_result = self.visual_analyzer.analyze(
+                    scene,
+                    alias_map=alias_map,
+                    scene_context=scene_context,
+                    local_evidence=local_evidence,
+                    analysis_mode=analysis_mode,
+                )
+                world_state_result = self.entity_world_state_analyzer.analyze(
+                    scene,
+                    alias_map=alias_map,
+                    scene_context=scene_context,
+                    local_evidence=local_evidence,
+                    analysis_mode=analysis_mode,
+                )
+            else:
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    content_future = executor.submit(
+                        self.scene_analyzer.analyze,
+                        scene,
+                        alias_map=alias_map,
+                        rejected_identities=rejected_identities,
+                        scene_context=scene_context,
+                        local_evidence=local_evidence,
+                        analysis_mode=analysis_mode,
+                    )
+                    visual_future = executor.submit(
+                        self.visual_analyzer.analyze,
+                        scene,
+                        alias_map=alias_map,
+                        scene_context=scene_context,
+                        local_evidence=local_evidence,
+                        analysis_mode=analysis_mode,
+                    )
+                    world_state_future = executor.submit(
+                        self.entity_world_state_analyzer.analyze,
+                        scene,
+                        alias_map=alias_map,
+                        scene_context=scene_context,
+                        local_evidence=local_evidence,
+                        analysis_mode=analysis_mode,
+                    )
+                    content_result = content_future.result()
+                    visual_result = visual_future.result()
+                    world_state_result = world_state_future.result()
+            identity_result = {
+                "canonical_characters": content_result.get("canonical_characters", []),
+                "character_mentions": content_result.get("character_mentions", []),
+                "alias_updates": content_result.get("alias_updates", []),
+                "rejected_identity_candidates": content_result.get("rejected_identity_candidates", []),
+                "tool_runtime": content_result.get("tool_runtime", {}),
+            }
+            return {
+                "content": content_result,
+                "identity": identity_result,
+                "visual": visual_result,
+                "entity_world_state": world_state_result,
+                "elapsed_seconds": time.perf_counter() - started_at,
+            }
+        if serialize_llm_subtasks:
+            content_result = self.scene_analyzer.analyze(
+                scene,
+                alias_map=alias_map,
+                rejected_identities=rejected_identities,
+                scene_context=scene_context,
+                local_evidence=local_evidence,
+                analysis_mode=analysis_mode,
+            )
+            identity_result = self.identity_analyzer.analyze(
+                scene,
+                alias_map=alias_map,
+                rejected_identities=rejected_identities,
+                scene_context=scene_context,
+                local_evidence=local_evidence,
+                analysis_mode=analysis_mode,
+            )
+            visual_result = self.visual_analyzer.analyze(
+                scene,
+                alias_map=alias_map,
+                scene_context=scene_context,
+                local_evidence=local_evidence,
+                analysis_mode=analysis_mode,
+            )
+            world_state_result = self.entity_world_state_analyzer.analyze(
+                scene,
+                alias_map=alias_map,
+                scene_context=scene_context,
+                local_evidence=local_evidence,
+                analysis_mode=analysis_mode,
+            )
+        else:
+            with ThreadPoolExecutor(max_workers=4) as executor:
                 content_future = executor.submit(
                     self.scene_analyzer.analyze,
+                    scene,
+                    alias_map=alias_map,
+                    rejected_identities=rejected_identities,
+                    scene_context=scene_context,
+                    local_evidence=local_evidence,
+                    analysis_mode=analysis_mode,
+                )
+                identity_future = executor.submit(
+                    self.identity_analyzer.analyze,
                     scene,
                     alias_map=alias_map,
                     rejected_identities=rejected_identities,
@@ -141,68 +309,27 @@ class SceneAnalysisOrchestrator:
                     analysis_mode=analysis_mode,
                 )
                 content_result = content_future.result()
+                identity_result = identity_future.result()
                 visual_result = visual_future.result()
                 world_state_result = world_state_future.result()
-            identity_result = {
-                "canonical_characters": content_result.get("canonical_characters", []),
-                "character_mentions": content_result.get("character_mentions", []),
-                "alias_updates": content_result.get("alias_updates", []),
-                "rejected_identity_candidates": content_result.get("rejected_identity_candidates", []),
-                "tool_runtime": content_result.get("tool_runtime", {}),
-            }
-            return {
-                "content": content_result,
-                "identity": identity_result,
-                "visual": visual_result,
-                "entity_world_state": world_state_result,
-                "elapsed_seconds": time.perf_counter() - started_at,
-            }
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            content_future = executor.submit(
-                self.scene_analyzer.analyze,
-                scene,
-                alias_map=alias_map,
-                rejected_identities=rejected_identities,
-                scene_context=scene_context,
-                local_evidence=local_evidence,
-                analysis_mode=analysis_mode,
-            )
-            identity_future = executor.submit(
-                self.identity_analyzer.analyze,
-                scene,
-                alias_map=alias_map,
-                rejected_identities=rejected_identities,
-                scene_context=scene_context,
-                local_evidence=local_evidence,
-                analysis_mode=analysis_mode,
-            )
-            visual_future = executor.submit(
-                self.visual_analyzer.analyze,
-                scene,
-                alias_map=alias_map,
-                scene_context=scene_context,
-                local_evidence=local_evidence,
-                analysis_mode=analysis_mode,
-            )
-            world_state_future = executor.submit(
-                self.entity_world_state_analyzer.analyze,
-                scene,
-                alias_map=alias_map,
-                scene_context=scene_context,
-                local_evidence=local_evidence,
-                analysis_mode=analysis_mode,
-            )
-            content_result = content_future.result()
-            identity_result = identity_future.result()
-            visual_result = visual_future.result()
-            world_state_result = world_state_future.result()
-        return {
+        result = {
             "content": content_result,
             "identity": identity_result,
             "visual": visual_result,
             "entity_world_state": world_state_result,
             "elapsed_seconds": time.perf_counter() - started_at,
         }
+        logger.info(
+            "SceneAnalysisOrchestrator pair complete | scene=%s mode=%s elapsed=%.2fs content_error=%s identity_error=%s visual_error=%s world_error=%s",
+            scene_ref,
+            analysis_mode,
+            result["elapsed_seconds"],
+            (content_result or {}).get("error") if isinstance(content_result, dict) else "",
+            (identity_result or {}).get("error") if isinstance(identity_result, dict) else "",
+            (visual_result or {}).get("error") if isinstance(visual_result, dict) else "",
+            (world_state_result or {}).get("error") if isinstance(world_state_result, dict) else "",
+        )
+        return result
 
     def _merge_scene_outputs(
         self,
@@ -327,10 +454,6 @@ class SceneAnalysisOrchestrator:
                 add_description(name, "character", baseline_text, "stable_trait" if row.get("visual_role") == "initial_character_description" else "appearance_note")
             if row.get("outfit"):
                 add_description(name, "character", row.get("outfit"), "appearance_note")
-            if row.get("visible_condition"):
-                add_description(name, "character", row.get("visible_condition"), "temporary_condition")
-            if row.get("body_language"):
-                add_description(name, "character", row.get("body_language"), "appearance_note")
             if row.get("visual_role") == "character_change":
                 change_text = row.get("image_edit_prompt") or row.get("visible_condition") or row.get("outfit")
                 if change_text:
@@ -343,6 +466,32 @@ class SceneAnalysisOrchestrator:
                             "new_state": str(change_text).strip(),
                             "change_type": "physical_state",
                             "evidence": row.get("source_evidence") or str(change_text).strip(),
+                            "visual_source": "visual_state_analyzer",
+                        }
+                    )
+                if row.get("visible_condition"):
+                    merged.setdefault("state_changes", []).append(
+                        {
+                            "entity_name": name,
+                            "entity_type": "character",
+                            "attribute": "visible_condition",
+                            "previous_state": "",
+                            "new_state": str(row.get("visible_condition")).strip(),
+                            "change_type": "condition",
+                            "evidence": row.get("source_evidence") or str(row.get("visible_condition")).strip(),
+                            "visual_source": "visual_state_analyzer",
+                        }
+                    )
+                if row.get("body_language"):
+                    merged.setdefault("state_changes", []).append(
+                        {
+                            "entity_name": name,
+                            "entity_type": "character",
+                            "attribute": "body_language",
+                            "previous_state": "",
+                            "new_state": str(row.get("body_language")).strip(),
+                            "change_type": "physical_state",
+                            "evidence": row.get("source_evidence") or str(row.get("body_language")).strip(),
                             "visual_source": "visual_state_analyzer",
                         }
                     )

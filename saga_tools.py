@@ -8,8 +8,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import threading
+import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -29,6 +31,7 @@ from core.pipeline_contract import (
 from core.stable_character_state import StableCharacterStateBuilder
 from infrastructure.llm_client import LLMClient
 from infrastructure.neo4j_ingestion_service import Neo4jIngestionError, Neo4jIngestionService
+from analysis.db_event_agent import DatabaseEventAnalysisAgent
 from query.comfyui_prompt_pack_service import ComfyUIPromptPackService
 from query.neo4j_narrative_context_service import Neo4jNarrativeContextService
 from query.narrative_context_service import NarrativeContextService
@@ -38,7 +41,15 @@ from redesign_lab.identity.identity_provider import (
     DEFAULT_BOOKNLP_PIPELINE_IDENTITY_JSON,
     override_contract_with_identity_provider,
 )
+from services.comfyui_character_sheet_service import (
+    ComfyUICharacterSheetService,
+    render_manifest_path_for_contract,
+)
+from services.entity_visual_prompt_service import EntityVisualPromptService
 from services.narrative_generation_service import NarrativeGenerationService
+from services.visual_prompt_rewrite_service import VisualPromptRewriteService
+from services.wiki_character_reference_service import WikiCharacterReferenceService
+from sql_store.persistence import SagaSQLiteStore
 
 CorpusHardeningService = None
 
@@ -55,6 +66,7 @@ MODEL_MODE_CHOICES = [
 ]
 IDENTITY_PROVIDER_CHOICES = ["booknlp_clean"]
 ANALYSIS_PROVIDER_MODE_CHOICES = ["single_provider", "same_provider_rotating", "cross_provider_fallback"]
+SQLITE_STORE = SagaSQLiteStore()
 
 
 def _preflight_model_access(model_mode: str, provider_mode: str) -> None:
@@ -137,6 +149,26 @@ class _TerminalProgressPrinter:
         self.enabled = enabled
         self.width = width
         self._last_was_bar = False
+        stream = getattr(sys, "stdout", None)
+        self._stream = stream
+        self._interactive = bool(
+            enabled
+            and stream is not None
+            and hasattr(stream, "isatty")
+            and stream.isatty()
+        )
+
+    def _safe_write(self, text: str) -> bool:
+        if not self.enabled or self._stream is None:
+            return False
+        try:
+            self._stream.write(text)
+            self._stream.flush()
+            return True
+        except (BrokenPipeError, OSError, ValueError):
+            self.enabled = False
+            self._last_was_bar = False
+            return False
 
     def __call__(self, phase: str, payload: Dict[str, Any]) -> None:
         if not self.enabled:
@@ -147,22 +179,22 @@ class _TerminalProgressPrinter:
         label = str(payload.get("label") or payload.get("status") or phase).strip()
         done = bool(payload.get("done"))
         if isinstance(current, int) and isinstance(total, int) and total >= 0:
-            filled = self.width if total == 0 else max(0, min(self.width, int(round((current / max(total, 1)) * self.width))))
-            bar = "#" * filled + "-" * (self.width - filled)
-            line = f"[{phase}] [{bar}] {current}/{total}"
-            if label:
-                line += f" {label}"
-            sys.stdout.write("\r" + line[:200])
-            sys.stdout.flush()
-            self._last_was_bar = True
-            if done:
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                self._last_was_bar = False
+            if self._interactive:
+                filled = self.width if total == 0 else max(0, min(self.width, int(round((current / max(total, 1)) * self.width))))
+                bar = "#" * filled + "-" * (self.width - filled)
+                line = f"[{phase}] [{bar}] {current}/{total}"
+                if label:
+                    line += f" {label}"
+                if self._safe_write("\r" + line[:200]):
+                    self._last_was_bar = True
+                    if done:
+                        self._safe_write("\n")
+                        self._last_was_bar = False
+                    return
+            print(f"[{phase}] {current}/{total} {label}".strip())
             return
         if self._last_was_bar:
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            self._safe_write("\n")
             self._last_was_bar = False
         print(f"[{phase}] {label or 'working...'}")
 
@@ -196,6 +228,28 @@ def _encode_progress_payload(phase: str, payload: Dict[str, Any]) -> Dict[str, A
                 "total": total_scenes,
                 "label": f"{label_prefix}{scene_label}",
             }
+    if phase == "scene_wait":
+        scene_position = payload.get("scene_position")
+        total_scenes = payload.get("total_scenes")
+        chapter_index = payload.get("chapter_index")
+        scene_index = payload.get("scene_index")
+        elapsed_seconds = payload.get("elapsed_seconds")
+        model = str(payload.get("analysis_model") or "").strip()
+        scene_label = f"scene {scene_position}/{total_scenes}" if isinstance(scene_position, int) and isinstance(total_scenes, int) else "scene running"
+        details = []
+        if chapter_index is not None and scene_index is not None:
+            details.append(f"ch {chapter_index} scene {scene_index}")
+        if elapsed_seconds is not None:
+            details.append(f"{elapsed_seconds}s elapsed")
+        if model:
+            details.append(model)
+        suffix = " · ".join(details)
+        return {
+            "current": scene_position if isinstance(scene_position, int) else None,
+            "total": total_scenes if isinstance(total_scenes, int) else None,
+            "label": f"{label_prefix}{scene_label}" + (f" · {suffix}" if suffix else ""),
+            "status": payload.get("status") or "Scene still running",
+        }
     if phase == "resume":
         completed = payload.get("completed_scenes")
         total_scenes = payload.get("total_scenes")
@@ -980,24 +1034,34 @@ def _now_utc() -> str:
 
 
 def _series_run_root(series_id: str) -> Path:
-    return Path("analysis_outputs") / "encode_runs" / series_id
+    return Path("analysis_outputs") / "pipeline_runtime" / series_id
 
 
-def _start_run_artifacts(series_id: str) -> Dict[str, Path]:
+def _series_contract_export_root(series_id: str) -> Path:
+    return Path("analysis_outputs") / "contract_exports" / series_id
+
+
+def _start_run_artifacts(series_id: str, *, export_contracts: bool = False) -> Dict[str, Any]:
     started = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = _series_run_root(series_id) / started
-    contracts_dir = run_dir / "contracts"
-    checkpoints_dir = _series_run_root(series_id) / "resume_checkpoints"
+    temp_root = Path(tempfile.mkdtemp(prefix=f"saga_{_safe_filename(series_id)}_"))
+    run_dir = temp_root / started
+    checkpoints_dir = temp_root / "resume_checkpoints"
+    reports_dir = run_dir / "reports"
+    contracts_dir = (_series_contract_export_root(series_id) / started / "contracts") if export_contracts else None
     run_dir.mkdir(parents=True, exist_ok=True)
-    contracts_dir.mkdir(parents=True, exist_ok=True)
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    if contracts_dir is not None:
+        contracts_dir.mkdir(parents=True, exist_ok=True)
     return {
         "run_dir": run_dir,
         "contracts_dir": contracts_dir,
         "checkpoints_dir": checkpoints_dir,
-        "status_path": run_dir / "status.json",
-        "latest_status_path": _series_run_root(series_id) / "latest_status.json",
-        "log_path": run_dir / "encode.log",
+        "reports_dir": reports_dir,
+        "status_path": None,
+        "latest_status_path": None,
+        "log_path": None,
+        "temp_root": temp_root,
     }
 
 
@@ -1013,10 +1077,11 @@ def _status_payload(
     return {
         "series_id": series_id,
         "series_title": series_title,
+        "run_id": run_dir.name,
         "worker_pid": os.getpid(),
         "worker_executable": os.path.abspath(os.sys.executable),
         "run_dir": str(run_dir),
-        "log_path": str(log_path),
+        "log_path": str(log_path) if log_path else "",
         "started_at_utc": _now_utc(),
         "updated_at_utc": _now_utc(),
         "status": "running",
@@ -1051,16 +1116,62 @@ def _status_payload(
     }
 
 
-def _save_status(status: Dict[str, Any], status_path: Path, latest_status_path: Path) -> None:
+def _save_status(status: Dict[str, Any], status_path: Path | None, latest_status_path: Path | None) -> None:
     status["updated_at_utc"] = _now_utc()
-    _write_json(status_path, status)
-    _write_json(latest_status_path, status)
+    if status_path is not None:
+        _write_json(status_path, status)
+    if latest_status_path is not None:
+        _write_json(latest_status_path, status)
 
 
-def _attach_file_logger(log_path: Path) -> logging.Handler:
-    handler = logging.FileHandler(log_path, encoding="utf-8")
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+def _persist_run_status_sqlite(sqlite_store, status: Dict[str, Any]) -> None:
+    if sqlite_store is None:
+        return
+    try:
+        run_dir = Path(str(status.get("run_dir") or ""))
+        run_id = str(status.get("run_id") or run_dir.name or "").strip()
+        series_id = str(status.get("series_id") or "").strip()
+        progress = None
+        for book in status.get("books") or []:
+            if isinstance(book, dict) and str(book.get("status") or "").strip().lower() == "running":
+                payload = book.get("last_progress") if isinstance(book.get("last_progress"), dict) else None
+                if payload:
+                    progress = _encode_progress_payload(str(book.get("phase") or "running"), {
+                        **payload,
+                        "book": book.get("title") or payload.get("book"),
+                    })
+                break
+        sqlite_store.upsert_pipeline_run(
+            {
+                "series_id": series_id,
+                "series_title": status.get("series_title"),
+                "run_id": run_id,
+                "run_dir": f"db://pipeline-run/{series_id}/{run_id}" if series_id and run_id else "",
+                "log_path": "",
+                "status": status.get("status"),
+                "status_reason": status.get("error") or "",
+                "status_source": "saga_tools_status",
+                "command_mode": ((status.get("plan") or {}).get("mode") or ""),
+                "worker_pid": status.get("worker_pid"),
+                "started_at_utc": status.get("started_at_utc"),
+                "finished_at_utc": status.get("finished_at_utc"),
+                "latest_progress_json": progress,
+                "books": status.get("books") or [],
+                "summary": status.get("summary") or {},
+            }
+        )
+    except Exception:
+        logging.exception("Failed to persist pipeline run status into SQLite.")
+
+
+def _attach_file_logger(log_path: Path | None) -> logging.Handler:
+    handler: logging.Handler
+    if log_path is None:
+        handler = logging.NullHandler()
+    else:
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
@@ -1165,6 +1276,12 @@ def _manuscript_metrics(output_dir: Path) -> Dict[str, Any]:
         "non_dialogue_first_person_signals": sum(lower.count(token) for token in [" i ", "\ni ", "\nmy ", " my "]),
         "retrieval_debug_present": (output_dir / "progress.json").exists(),
     }
+
+
+def _book_contract_ref(*, book_id: str, contract_path: Path | None = None) -> str:
+    if contract_path is not None:
+        return str(contract_path)
+    return f"db://book/{book_id}"
 
 
 def _artifact_count(value: Any) -> int:
@@ -1574,6 +1691,16 @@ def export_contract_copy(args) -> None:
     print(f"Prepared contract written to: {target}")
 
 
+def resplit_book_scenes(args) -> None:
+    result = SQLITE_STORE.resplit_book_scenes(
+        book_ref=str(args.book_ref),
+        target_words=int(args.target_words or 700),
+        allow_cross_chapter=bool(args.allow_cross_chapter),
+        clear_dependent_rows=not bool(args.keep_dependent_rows),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def _book_inputs_from_args(book_paths: list[str]) -> list[dict[str, str]]:
     books = []
     for raw_path in book_paths:
@@ -1588,6 +1715,7 @@ def _book_inputs_from_args(book_paths: list[str]) -> list[dict[str, str]]:
 
 def encode_store(args) -> None:
     from services.encoder_persistence_service import EncoderPersistenceService, RateLimitGuardError, SceneFailurePolicyError
+    from sql_store.persistence import SagaSQLiteStore
 
     preflight_models = [
         (args.analysis_model, args.analysis_model),
@@ -1623,6 +1751,7 @@ def encode_store(args) -> None:
         password=args.password,
         database=args.database,
     )
+    sqlite_store = SagaSQLiteStore()
     try:
         progress = _TerminalProgressPrinter(enabled=not getattr(args, "no_progress", False))
         prepared_books = encoder._prepare_book_inputs(_book_inputs_from_args(args.book))
@@ -1661,7 +1790,10 @@ def encode_store(args) -> None:
                 row for row in prepared_books
                 if next(item for item in plan["books"] if item["title"] == row["title"])["action"] != "unchanged"
             ]
-        run_artifacts = _start_run_artifacts(effective_series_id)
+        run_artifacts = _start_run_artifacts(
+            effective_series_id,
+            export_contracts=bool(getattr(args, "export_contracts", False)),
+        )
         status = _status_payload(
             series_id=effective_series_id,
             series_title=effective_series_title,
@@ -1671,6 +1803,7 @@ def encode_store(args) -> None:
             books=prepared_books,
         )
         _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
+        _persist_run_status_sqlite(sqlite_store, status)
         if not selected_books:
             for row in status["books"]:
                 row["status"] = "skipped"
@@ -1679,12 +1812,13 @@ def encode_store(args) -> None:
             status["summary"]["skipped"] = len(status["books"])
             status["summary"]["remaining"] = 0
             _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
+            _persist_run_status_sqlite(sqlite_store, status)
             print(json.dumps({
                 "encoded": {"books": 0, "chapters": 0, "scenes": 0, "timeline_rows": 0},
                 "ingest": {"status": "skipped", "reason": "All requested books are already persisted with the same source hash."},
                 "plan": plan,
-                "status_file": str(run_artifacts["status_path"]),
-                "log_file": str(run_artifacts["log_path"]),
+                "status_file": str(run_artifacts["status_path"] or ""),
+                "log_file": str(run_artifacts["log_path"] or ""),
             }, ensure_ascii=False, indent=2))
             return
         log_handler = _attach_file_logger(run_artifacts["log_path"])
@@ -1696,12 +1830,21 @@ def encode_store(args) -> None:
             with status_lock:
                 mutator()
                 _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
+                _persist_run_status_sqlite(sqlite_store, status)
 
         def _record_book_progress(book_status: Dict[str, Any], phase: str, payload: Dict[str, Any]) -> None:
             def _mutate() -> None:
                 book_status["phase"] = phase
                 book_status["status"] = "running"
                 book_status["last_progress"] = payload
+                if book_status.get("started_at_utc"):
+                    try:
+                        book_status["elapsed_seconds"] = round(
+                            (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
+                            2,
+                        )
+                    except Exception:
+                        pass
                 if payload.get("scene_position") is not None:
                     book_status["scenes_processed"] = payload.get("scene_position", 0)
                 if payload.get("total_scenes") is not None:
@@ -1772,11 +1915,17 @@ def encode_store(args) -> None:
                     )
             except SceneFailurePolicyError as exc:
                 contract = exc.contract or {}
-                contract_path = run_artifacts["contracts_dir"] / f"{book['book_index']:02d}_{_safe_filename(book['title'])}.contract.json"
-                _write_json(contract_path, contract)
-                reports_dir = run_artifacts["run_dir"] / "reports"
-                reports_dir.mkdir(parents=True, exist_ok=True)
-                report_path = reports_dir / f"{_safe_filename(Path(book['title']).stem)}_scene_failure_report.md"
+                contracts_dir = run_artifacts.get("contracts_dir")
+                contract_path = (
+                    contracts_dir / f"{book['book_index']:02d}_{_safe_filename(book['title'])}.contract.json"
+                    if contracts_dir is not None and getattr(args, "export_contracts", False)
+                    else None
+                )
+                if contract_path is not None:
+                    _write_json(contract_path, contract)
+                persisted = sqlite_store.persist_contract(contract, contract_path=contract_path)
+                contract_ref = _book_contract_ref(book_id=str(persisted.get("book_id") or ""), contract_path=contract_path)
+                report_path = run_artifacts["reports_dir"] / f"{_safe_filename(Path(book['title']).stem)}_scene_failure_report.md"
                 report = exc.failure_report or {}
                 report_md = "\n".join([
                     "# Scene Failure Report",
@@ -1807,7 +1956,7 @@ def encode_store(args) -> None:
                 report_path.write_text(report_md, encoding="utf-8")
                 raise SceneFailurePolicyError(
                     str(exc),
-                    contract={**contract, "_failure_contract_path": str(contract_path), "_failure_report_path": str(report_path)},
+                    contract={**contract, "_failure_contract_path": contract_ref, "_failure_report_path": str(report_path)},
                     failure_report=report,
                 )
             finally:
@@ -1816,14 +1965,22 @@ def encode_store(args) -> None:
 
             contract = result["contract"]
             ingest_result = result["ingest_result"]
-            contract_path = run_artifacts["contracts_dir"] / f"{book['book_index']:02d}_{_safe_filename(book['title'])}.contract.json"
-            _write_json(contract_path, contract)
+            contracts_dir = run_artifacts.get("contracts_dir")
+            contract_path = (
+                contracts_dir / f"{book['book_index']:02d}_{_safe_filename(book['title'])}.contract.json"
+                if contracts_dir is not None and getattr(args, "export_contracts", False)
+                else None
+            )
+            if contract_path is not None:
+                _write_json(contract_path, contract)
+            persisted = sqlite_store.persist_contract(contract, contract_path=contract_path)
+            contract_ref = _book_contract_ref(book_id=str(persisted.get("book_id") or ""), contract_path=contract_path)
             elapsed = round((datetime.now(timezone.utc) - book_started).total_seconds(), 2)
             return {
                 "book": book,
                 "contract": contract,
                 "ingest_result": ingest_result,
-                "contract_path": str(contract_path),
+                "contract_path": contract_ref,
                 "elapsed_seconds": elapsed,
             }
         try:
@@ -2024,11 +2181,15 @@ def encode_store(args) -> None:
                 status["status"] = "completed"
                 status["summary"]["remaining"] = 0
             _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
+            _persist_run_status_sqlite(sqlite_store, status)
         finally:
             _detach_file_logger(log_handler)
     finally:
         if neo4j is not None:
             neo4j.close()
+        temp_root = run_artifacts.get("temp_root") if "run_artifacts" in locals() else None
+        if isinstance(temp_root, Path):
+            shutil.rmtree(temp_root, ignore_errors=True)
     if args.out:
         target = _write_json(args.out, status)
         print(f"Run status written to: {target}")
@@ -2037,9 +2198,9 @@ def encode_store(args) -> None:
         "ingest": aggregate_ingest,
         "plan": plan,
         "run_status": status["status"],
-        "status_file": str(run_artifacts["status_path"]),
-        "latest_status_file": str(run_artifacts["latest_status_path"]),
-        "log_file": str(run_artifacts["log_path"]),
+        "status_file": str(run_artifacts["status_path"] or ""),
+        "latest_status_file": str(run_artifacts["latest_status_path"] or ""),
+        "log_file": str(run_artifacts["log_path"] or ""),
     }, ensure_ascii=False, indent=2, default=str))
 
 
@@ -2477,6 +2638,277 @@ def build_comfyui_curated_test_pack(args) -> None:
     print(f"ComfyUI finalization report written to: {report_target}")
 
 
+def render_character_sheets(args) -> None:
+    service = ComfyUICharacterSheetService()
+    contract_ref = str(getattr(args, "book_ref", "") or getattr(args, "contract", "") or "").strip()
+    if not contract_ref:
+        raise ValueError("Either --book-ref or --contract is required.")
+    payload = service.render_from_contract(
+        contract_ref,
+        limit=int(getattr(args, "limit", 0) or 0),
+        overwrite=bool(getattr(args, "overwrite", False)),
+    )
+    manifest_path = render_manifest_path_for_contract(contract_ref)
+    if str(getattr(args, "out", "") or "").strip():
+        _write_json(args.out, payload)
+        print(f"Character-sheet render manifest copied to: {Path(args.out)}")
+    print(f"Character-sheet renders written under: {payload.get('output_dir')}")
+    print(f"Character-sheet manifest written to: {manifest_path}")
+
+
+def analyze_db_events(args) -> None:
+    model_mode = str(getattr(args, "model_mode", "") or LLMClient.MODE_GPT_OSS).strip()
+    provider_mode = str(getattr(args, "analysis_provider_mode", "") or "same_provider_rotating").strip()
+    agent = DatabaseEventAnalysisAgent(
+        llm_client=LLMClient(
+            mode=model_mode,
+            allow_account_rotation=(provider_mode == "same_provider_rotating"),
+            allow_cross_provider_fallback=(provider_mode == "cross_provider_fallback"),
+        )
+    )
+    payload = agent.analyze_book_chapter(
+        book_ref=str(getattr(args, "book_ref", "") or "").strip(),
+        chapter_index=int(getattr(args, "chapter_index", 1) or 1),
+        replace_existing_agent_rows=bool(getattr(args, "replace_existing_agent_rows", False)),
+    )
+    _write_json(args.out, payload)
+    report_md = Path(getattr(args, "report_md", "") or Path(args.out).with_suffix(".md"))
+    report_md.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# DB Event Agent Chapter Audit",
+        "",
+        f"- Book ref: `{getattr(args, 'book_ref', '')}`",
+        f"- Chapter index: `{payload.get('chapter_index')}`",
+        f"- Scene index: `{payload.get('scene_index')}`",
+        f"- Inserted events: `{payload.get('inserted_event_count')}`",
+        f"- Known entities in roster: `{payload.get('known_entity_count')}`",
+        f"- Agent version: `{payload.get('agent_version')}`",
+        "",
+        "## Scene Summary",
+        "",
+        payload.get("scene_summary") or "_empty_",
+        "",
+        "## Events",
+        "",
+    ]
+    for row in payload.get("events") or []:
+        lines.extend(
+            [
+                f"### {row.get('event_id')}",
+                "",
+                f"- Type: `{row.get('type')}`",
+                f"- Description: {row.get('description')}",
+                f"- Characters: `{', '.join(row.get('characters') or []) or 'none'}`",
+                f"- Entities involved: `{', '.join(row.get('entities_involved') or []) or 'none'}`",
+                f"- Reason: {row.get('reason') or '_empty_'}",
+                f"- Outcome: {row.get('outcome') or '_empty_'}",
+                "",
+            ]
+        )
+    if payload.get("unresolved_entities"):
+        lines.extend(
+            [
+                "## Unresolved Entities",
+                "",
+                *(f"- `{item}`" for item in payload.get("unresolved_entities") or []),
+                "",
+            ]
+        )
+    report_md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"DB event agent JSON written to: {Path(args.out)}")
+    print(f"DB event agent report written to: {report_md}")
+
+
+def audit_visual_prompts(args) -> None:
+    service = VisualPromptRewriteService()
+    payload = service.audit_contract(
+        args.contract,
+        reference_json=(getattr(args, "reference_json", "") or None),
+        names=list(getattr(args, "name", []) or []),
+    )
+    _write_json(args.out, payload)
+    report_md = Path(getattr(args, "report_md", "") or Path(args.out).with_suffix(".md"))
+    report_md.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Visual Prompt Persistent-Trait Audit",
+        "",
+        f"- Contract: `{args.contract}`",
+        f"- Reference notes: `{getattr(args, 'reference_json', '') or 'none'}`",
+        f"- Entries audited: `{len(payload.get('entries') or [])}`",
+        "",
+    ]
+    for entry in payload.get("entries") or []:
+        lines.extend(
+            [
+                f"## {entry.get('entity_name')}",
+                "",
+                f"- Entity type: `{entry.get('entity_type')}`",
+                f"- Specificity score: `{entry.get('profile_specificity_score')}`",
+                f"- Missing core slots: `{', '.join(entry.get('missing_core_slots') or []) or 'none'}`",
+                f"- Contaminated fields: `{', '.join(entry.get('contaminated_fields') or []) or 'none'}`",
+                f"- Issues: `{'; '.join(entry.get('issues') or []) or 'none'}`",
+                "",
+                "### Persistent Profile",
+                "",
+                "```json",
+                json.dumps(entry.get("persistent_visual_profile") or {}, ensure_ascii=False, indent=2),
+                "```",
+                "",
+                "### Current Prompt",
+                "",
+                entry.get("current_prompt") or "_empty_",
+                "",
+            ]
+        )
+    report_md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Visual prompt audit written to: {args.out}")
+    print(f"Visual prompt audit report written to: {report_md}")
+
+
+def rewrite_visual_prompts(args) -> None:
+    service = VisualPromptRewriteService(
+        llm_client=LLMClient(
+            mode=getattr(args, "model_mode", LLMClient.MODE_CODEX),
+            allow_account_rotation=True,
+            allow_cross_provider_fallback=False,
+        )
+    )
+    payload = service.rewrite_contract_prompts(
+        args.contract,
+        reference_json=(getattr(args, "reference_json", "") or None),
+        names=list(getattr(args, "name", []) or []),
+    )
+    _write_json(args.out, payload)
+    report_md = Path(getattr(args, "report_md", "") or Path(args.out).with_suffix(".md"))
+    report_md.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Visual Prompt Rewrite Output",
+        "",
+        f"- Contract: `{args.contract}`",
+        f"- Reference notes: `{getattr(args, 'reference_json', '') or 'none'}`",
+        f"- Provider: `{payload.get('provider')}`",
+        f"- Model: `{payload.get('model')}`",
+        f"- Rewritten entries: `{len(payload.get('rewritten_prompts') or [])}`",
+        "",
+    ]
+    for entry in payload.get("rewritten_prompts") or []:
+        lines.extend(
+            [
+                f"## {entry.get('entity_name')}",
+                "",
+                f"- Entity type: `{entry.get('entity_type')}`",
+                f"- Confidence: `{entry.get('confidence')}`",
+                f"- Issues: `{'; '.join(entry.get('issues') or []) or 'none'}`",
+                "",
+                "### Rewritten Prompt",
+                "",
+                entry.get("rewritten_prompt") or "_empty_",
+                "",
+                "### Rewritten Profile",
+                "",
+                "```json",
+                json.dumps(entry.get("persistent_visual_profile") or {}, ensure_ascii=False, indent=2),
+                "```",
+                "",
+            ]
+        )
+    report_md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Visual prompt rewrites written to: {args.out}")
+    print(f"Visual prompt rewrite report written to: {report_md}")
+
+
+def build_entity_visual_prompts(args) -> None:
+    service = EntityVisualPromptService(SQLITE_STORE)
+    result = service.build_book_prompts(args.book_ref, overwrite=bool(getattr(args, "overwrite", False)))
+    payload = {
+        "book_ref": args.book_ref,
+        "book_id": result.book_id,
+        "total_entities": result.total_entities,
+        "prompts_written": result.prompts_written,
+        "prompts_updated": result.prompts_updated,
+        "prompts_skipped": result.prompts_skipped,
+        "prompts_total": result.prompts_total,
+    }
+    target = _write_json(args.out, payload)
+    print(f"Entity visual prompt summary written to: {target}")
+
+
+def research_visual_references(args) -> None:
+    service = WikiCharacterReferenceService(
+        llm_client=LLMClient(
+            mode=getattr(args, "model_mode", LLMClient.MODE_CODEX),
+            allow_account_rotation=True,
+            allow_cross_provider_fallback=False,
+        ),
+        wiki_base_url=getattr(args, "wiki_base_url", "") or "https://acourtofthornsandroses.fandom.com",
+        series_id=getattr(args, "series_id", "") or "acotar",
+    )
+    rewrite_service = VisualPromptRewriteService()
+    contract_rows = rewrite_service.collect_initial_rows(args.contract)
+    context_map = {
+        str(row.get("entity_name") or "").strip().lower(): {
+            "source_evidence": row.get("source_evidence") or "",
+            "persistent_visual_profile": row.get("profile") or {},
+            "dynamic_visual_changes": row.get("dynamic_visual_changes") or [],
+            "book_index": row.get("book_index"),
+            "chapter_index": row.get("chapter_index"),
+            "scene_index": row.get("scene_index"),
+        }
+        for row in contract_rows
+        if str(row.get("entity_name") or "").strip()
+    }
+    contract_payload = rewrite_service.load_contract(args.contract)
+    books = ((contract_payload.get("inputs") or {}).get("books") or [])
+    contract_title = str((books[0] or {}).get("title") or "").strip() if books else ""
+    names = list(getattr(args, "name", []) or [])
+    if not names:
+        names = [row.get("entity_name") for row in contract_rows if row.get("entity_name")]
+    payload = service.research_names(names, context_map=context_map, contract_title=contract_title)
+    _write_json(args.out, payload)
+    report_md = Path(getattr(args, "report_md", "") or Path(args.out).with_suffix(".md"))
+    report_md.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Web-Backed Character Reference Research",
+        "",
+        f"- Contract: `{getattr(args, 'contract', '')}`",
+        f"- Wiki base URL: `{payload.get('wiki_base_url')}`",
+        f"- Provider: `{payload.get('provider')}`",
+        f"- Model: `{payload.get('model')}`",
+        f"- Entries researched: `{len(payload.get('entries') or [])}`",
+        "",
+    ]
+    for entry in payload.get("entries") or []:
+        lines.extend(
+            [
+                f"## {entry.get('display_name')}",
+                "",
+                f"- Entity type: `{entry.get('entity_type')}`",
+                f"- Page: `{entry.get('page_title')}`",
+                f"- URL: `{entry.get('page_url')}`",
+                f"- Search query: `{entry.get('search_query')}`",
+                f"- Search candidates: `{', '.join(entry.get('search_candidates') or []) or 'none'}`",
+                f"- Resolved via: `{entry.get('resolved_via')}`",
+                f"- Target scope: `{entry.get('target_scope')}`",
+                f"- Confidence: `{entry.get('confidence')}`",
+                f"- Issues: `{'; '.join(entry.get('issues') or []) or 'none'}`",
+                "",
+                "### Canon Notes",
+                "",
+                *[f"- {note}" for note in (entry.get("canon_notes") or [])],
+                "",
+                "### Structured Traits",
+                "",
+                "```json",
+                json.dumps(entry.get("structured_traits") or {}, ensure_ascii=False, indent=2),
+                "```",
+                "",
+            ]
+        )
+    report_md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Visual reference research written to: {args.out}")
+    print(f"Visual reference research report written to: {report_md}")
+
+
 def validate_generation_context(args) -> None:
     contracts = _load_contracts_with_identity(args)
     context_service = NarrativeContextService()
@@ -2794,6 +3226,16 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--out", required=True, help="Target path for the prepared contract JSON.")
     export_parser.set_defaults(func=export_contract_copy)
 
+    resplit_parser = subparsers.add_parser(
+        "resplit-book-scenes",
+        help="Re-split one SQLite-backed book into smaller scene rows using stored chapter text.",
+    )
+    resplit_parser.add_argument("--book-ref", required=True, help="SQLite book reference like db://book/<book_id>.")
+    resplit_parser.add_argument("--target-words", type=int, default=700, help="Approximate target words per scene chunk.")
+    resplit_parser.add_argument("--allow-cross-chapter", action="store_true", help="Allow a scene chunk to span chapter boundaries.")
+    resplit_parser.add_argument("--keep-dependent-rows", action="store_true", help="Keep entities/events/profiles/states instead of clearing them. Not recommended for agent testing.")
+    resplit_parser.set_defaults(func=resplit_book_scenes)
+
     register_parser = subparsers.add_parser(
         "register-corpus",
         help="Create or update a persisted Neo4j series/corpus entry without ingesting books yet.",
@@ -2823,6 +3265,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     encode_parser.add_argument("--book", action="append", required=True, help="Path to an EPUB or PDF book. Repeat for multiple books.")
     encode_parser.add_argument("--out", default=None, help="Optional output path for the generated contract JSON.")
+    encode_parser.add_argument("--export-contracts", action="store_true", help="Also write compatibility .contract.json files. SQLite remains the canonical store.")
     encode_parser.add_argument("--series-id", default="", help="Stable series/corpus identifier for persistent retrieval.")
     encode_parser.add_argument("--series-title", default="", help="Human-readable series title.")
     encode_parser.add_argument("--book-index-base", type=int, default=1, help="Starting book index for this batch, used for incremental append runs.")
@@ -2853,6 +3296,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reencode_parser.add_argument("--book", action="append", required=True, help="Path to the replacement book file. Use exactly one.")
     reencode_parser.add_argument("--out", default=None, help="Optional output path for the generated contract JSON.")
+    reencode_parser.add_argument("--export-contracts", action="store_true", help="Also write compatibility .contract.json files. SQLite remains the canonical store.")
     reencode_parser.add_argument("--series-id", required=True, help="Stable series/corpus identifier.")
     reencode_parser.add_argument("--series-title", default="", help="Human-readable series title.")
     reencode_parser.add_argument("--book-index-base", type=int, required=True, help="Book index of the replacement book in the existing series.")
@@ -3089,6 +3533,75 @@ def build_parser() -> argparse.ArgumentParser:
     comfy_curated_parser.add_argument("--preview-md", required=True, help="Markdown preview path.")
     comfy_curated_parser.add_argument("--report-md", required=True, help="Finalization report path.")
     comfy_curated_parser.set_defaults(func=build_comfyui_curated_test_pack)
+
+    render_character_parser = subparsers.add_parser(
+        "render-character-sheets",
+        help="Render character-sheet images from contract-native initial character prompts through Modal ComfyUI.",
+    )
+    render_character_parser.add_argument("--contract", default="", help="Legacy contract path or db://book/<id> reference.")
+    render_character_parser.add_argument("--book-ref", default="", help="Canonical db://book/<id> reference.")
+    render_character_parser.add_argument("--limit", type=int, default=0, help="Optional limit for quick tests.")
+    render_character_parser.add_argument("--overwrite", action="store_true", help="Re-render images even if they already exist.")
+    render_character_parser.add_argument("--out", default="", help="Optional extra manifest output path.")
+    render_character_parser.set_defaults(func=render_character_sheets)
+
+    db_event_parser = subparsers.add_parser(
+        "analyze-db-events",
+        help="Run a standalone DB-native event analysis agent for one stored book chapter.",
+    )
+    db_event_parser.add_argument("--book-ref", required=True, help="Canonical db://book/<id> reference.")
+    db_event_parser.add_argument("--chapter-index", type=int, required=True, help="Stored chapter index to analyze.")
+    db_event_parser.add_argument("--model-mode", default=LLMClient.MODE_GPT_OSS, choices=MODEL_MODE_CHOICES, help="LLM backend for the standalone event agent.")
+    db_event_parser.add_argument("--analysis-provider-mode", default="same_provider_rotating", choices=ANALYSIS_PROVIDER_MODE_CHOICES, help="Provider rotation mode for the standalone event agent.")
+    db_event_parser.add_argument("--replace-existing-agent-rows", action="store_true", help="Replace prior rows produced by this standalone agent for the same chapter.")
+    db_event_parser.add_argument("--out", required=True, help="Output path for the event-agent JSON result.")
+    db_event_parser.add_argument("--report-md", default="", help="Optional markdown review report path.")
+    db_event_parser.set_defaults(func=analyze_db_events)
+
+    audit_visual_parser = subparsers.add_parser(
+        "audit-visual-prompts",
+        help="Audit persistent visual profiles and current character-sheet prompts from a contract.",
+    )
+    audit_visual_parser.add_argument("--contract", required=True, help="Path to the contract JSON.")
+    audit_visual_parser.add_argument("--reference-json", default="", help="Optional canonical reference notes JSON keyed by character name.")
+    audit_visual_parser.add_argument("--name", action="append", default=[], help="Optional character name filter. Repeat as needed.")
+    audit_visual_parser.add_argument("--out", required=True, help="Output path for the audit JSON.")
+    audit_visual_parser.add_argument("--report-md", default="", help="Optional markdown report path.")
+    audit_visual_parser.set_defaults(func=audit_visual_prompts)
+
+    rewrite_visual_parser = subparsers.add_parser(
+        "rewrite-visual-prompts",
+        help="Run the visual prompt rewrite agent against contract-native persistent character prompts.",
+    )
+    rewrite_visual_parser.add_argument("--contract", required=True, help="Path to the contract JSON.")
+    rewrite_visual_parser.add_argument("--reference-json", default="", help="Optional canonical reference notes JSON keyed by character name.")
+    rewrite_visual_parser.add_argument("--name", action="append", default=[], help="Optional character name filter. Repeat as needed.")
+    rewrite_visual_parser.add_argument("--model-mode", default=LLMClient.MODE_CODEX, choices=MODEL_MODE_CHOICES, help="LLM backend for the rewrite agent.")
+    rewrite_visual_parser.add_argument("--out", required=True, help="Output path for the rewritten prompt JSON.")
+    rewrite_visual_parser.add_argument("--report-md", default="", help="Optional markdown report path.")
+    rewrite_visual_parser.set_defaults(func=rewrite_visual_prompts)
+
+    build_db_visual_prompt_parser = subparsers.add_parser(
+        "build-entity-visual-prompts",
+        help="Build one persisted baseline visual prompt per DB entity from the typed visual trait tables.",
+    )
+    build_db_visual_prompt_parser.add_argument("--book-ref", required=True, help="Canonical DB ref like db://book/<book_id>.")
+    build_db_visual_prompt_parser.add_argument("--overwrite", action="store_true", help="Overwrite existing visual prompt rows.")
+    build_db_visual_prompt_parser.add_argument("--out", required=True, help="Output path for the build summary JSON.")
+    build_db_visual_prompt_parser.set_defaults(func=build_entity_visual_prompts)
+
+    research_visual_parser = subparsers.add_parser(
+        "research-visual-references",
+        help="Collect web-backed canon appearance notes for contract characters from a fandom wiki.",
+    )
+    research_visual_parser.add_argument("--contract", required=True, help="Path to the contract JSON.")
+    research_visual_parser.add_argument("--name", action="append", default=[], help="Optional character name filter. Repeat as needed.")
+    research_visual_parser.add_argument("--wiki-base-url", default="https://acourtofthornsandroses.fandom.com", help="MediaWiki/Fandom base URL.")
+    research_visual_parser.add_argument("--series-id", default="acotar", help="Series identifier used for title overrides.")
+    research_visual_parser.add_argument("--model-mode", default=LLMClient.MODE_CODEX, choices=MODEL_MODE_CHOICES, help="LLM backend for structuring fetched notes.")
+    research_visual_parser.add_argument("--out", required=True, help="Output path for the reference JSON.")
+    research_visual_parser.add_argument("--report-md", default="", help="Optional markdown report path.")
+    research_visual_parser.set_defaults(func=research_visual_references)
 
     validate_context_parser = subparsers.add_parser(
         "validate-generation-context",

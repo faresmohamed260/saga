@@ -123,3 +123,56 @@ def test_resolve_scene_analysis_canonicalizes_event_entities_involved_character_
     ]
     assert ("Isaac Hale", "object") not in character_names
     assert ("Tomas Mandray", "object") not in character_names
+
+
+def test_resolve_scene_analysis_recovers_event_participant_when_missing_from_entities():
+    scene = {
+        "book_index": 1,
+        "chapter_index": 3,
+        "scene_index": 1,
+        "scene_summary": "Feyre speaks with the mercenary.",
+        "canonical_characters": [
+            {"name": "Feyre", "names_used": ["Feyre"], "role": "", "is_new_character": False},
+        ],
+        "character_mentions": [],
+        "events": [
+            {
+                "event_id": "evt_mercenary",
+                "description": "Feyre bargains with the mercenary.",
+                "characters": ["Feyre"],
+                "entities_involved": ["Feyre", "the mercenary"],
+                "reason": "Feyre needs information.",
+                "outcome": "The mercenary answers.",
+                "type": "interaction",
+            }
+        ],
+        "entities_present": [{"name": "Feyre", "entity_type": "character"}],
+        "entity_descriptions": [
+            {
+                "entity_name": "the mercenary",
+                "entity_type": "object",
+                "description": "hardened female mercenary with watchful eyes",
+                "description_type": "stable_trait",
+            }
+        ],
+        "state_changes": [],
+        "relationship_changes": [],
+        "location": {},
+        "time_signals": [],
+        "alias_updates": [],
+        "rejected_identity_candidates": [],
+        "entity_world_state": {"entities": []},
+    }
+    identity_result = {
+        "identity_provider": "booknlp_clean",
+        "provider_locked": True,
+        "alias_map": {"Feyre": ["Feyre"]},
+        "rejected_non_characters": [],
+    }
+
+    resolved = resolve_scene_analysis(scene, identity_result)
+
+    assert ("the mercenary", "character") in [
+        (item["name"], item["entity_type"])
+        for item in resolved["entities_present"]
+    ]

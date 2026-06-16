@@ -16,7 +16,7 @@ def generate_comparison_report(
     baseline_root = Path(baseline_root)
     redesign_root = Path(redesign_root)
     redesign_report = _load_optional_json(redesign_root / "end_to_end" / "run_report.json") or {}
-    baseline_status = _load_optional_json(Path("analysis_outputs/encode_runs/acotar/latest_status.json"))
+    baseline_status = _load_optional_json(Path("analysis_outputs/pipeline_runtime/acotar/latest_status.json"))
     payload = {
         "status": "completed",
         "baseline": {

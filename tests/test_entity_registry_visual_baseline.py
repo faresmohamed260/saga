@@ -34,3 +34,34 @@ def test_entity_registry_prefers_stable_trait_for_initial_physical_description()
     assert feyre["initial_physical_description"]["status"] == "captured"
     assert "slender young woman" in feyre["initial_physical_description"]["description"]
     assert feyre["initial_physical_description"]["description_type"] == "stable_trait"
+
+
+def test_entity_registry_collapses_short_and_full_name_character_duplicates():
+    registry = EntityRegistryService().build(
+        [
+            {
+                "book_index": 1,
+                "chapter_index": 1,
+                "scene_index": 1,
+                "entities_present": [
+                    {"name": "Harry", "entity_type": "character"},
+                    {"name": "Harry Potter", "entity_type": "character"},
+                ],
+                "entity_descriptions": [
+                    {
+                        "entity_name": "Harry Potter",
+                        "entity_type": "character",
+                        "description": "thin boy with messy dark hair and round glasses",
+                        "description_type": "stable_trait",
+                    }
+                ],
+                "state_changes": [],
+                "events": [],
+                "relationship_changes": [],
+            }
+        ]
+    )
+
+    names = [row["name"] for row in registry if row["entity_type"] == "character"]
+    assert "Harry Potter" in names
+    assert "Harry" not in names

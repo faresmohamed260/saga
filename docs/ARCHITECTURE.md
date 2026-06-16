@@ -89,6 +89,7 @@ Responsibility:
 
 - [core/pipeline_contract.py](/B:/Documents/PyCharm/graduationProject/core/pipeline_contract.py)
 - [core/stable_character_state.py](/B:/Documents/PyCharm/graduationProject/core/stable_character_state.py)
+- [core/trait_taxonomy.py](/B:/Documents/PyCharm/graduationProject/core/trait_taxonomy.py)
 - [core/builders](/B:/Documents/PyCharm/graduationProject/core/builders)
 - [timeline/timeline_service.py](/B:/Documents/PyCharm/graduationProject/timeline/timeline_service.py)
 
@@ -101,6 +102,17 @@ Responsibility:
 - build timeline and event ledger
 - build character timelines and profiles
 - build stable character states
+
+## Local Persistent Store
+
+- [deploy/sqlite/schema.sql](/B:/Documents/PyCharm/graduationProject/deploy/sqlite/schema.sql)
+- [docs/SQLITE_SCHEMA.md](/B:/Documents/PyCharm/graduationProject/docs/SQLITE_SCHEMA.md)
+
+Responsibility:
+
+- define the normalized local SQLite store for runs, books, scenes, entities, traits, events, relationships, and visuals
+- separate persistent traits from dynamic state changes
+- preserve scene-by-scene provenance for later retrieval, dashboards, and image generation
 
 ## Retrieval And Query Layer
 

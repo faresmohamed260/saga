@@ -68,6 +68,17 @@ def build_sample_analyzed_scenes():
                             "titles_or_roles": ["huntress"],
                             "affiliations": [],
                         },
+                        "persistent_traits": {
+                            "apparent_age_group": "young woman",
+                            "build": "lean",
+                            "hair_color": "brown",
+                            "default_clothing_style": "worn cloak",
+                            "world_genre_cues": "winter survival fantasy",
+                        },
+                        "dynamic_visual_state": {
+                            "visible_condition": "hungry",
+                            "carried_items": "ash bow",
+                        },
                         "state_changes": [],
                         "source_evidence": ["a huntress in the snow"],
                         "confidence": "high",
@@ -201,6 +212,7 @@ def test_entity_registry_and_state_services():
     assert "ash arrow" in registry_by_name
     assert registry_by_name["Feyre"]["typed_attributes"]["outfit"] == ["worn cloak"]
     assert registry_by_name["Tamlin"]["first_appearance_profile"]["status"] == "captured"
+    assert registry_by_name["Feyre"]["persistent_traits"]["hair_color"] == "brown"
 
     transition_result = StateTransitionService().build(scenes)
     transitions = transition_result["transitions"]

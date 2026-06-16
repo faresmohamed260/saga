@@ -56,14 +56,14 @@ function createDirectoryHandle(name, children) {
 
 describe("artifactIndexer", () => {
   test("classifies contract and report paths", () => {
-    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/contracts/01_book.contract.json")).toBe(ARTIFACT_TYPES.CONTRACT);
+    expect(classifyArtifactPath("analysis_outputs/contract_exports/acotar/20260612T123219Z/contracts/01_book.contract.json")).toBe(ARTIFACT_TYPES.CONTRACT);
     expect(classifyArtifactPath("analysis_outputs/dashboard/report.md")).toBe(ARTIFACT_TYPES.REPORT);
   });
 
   test("does not classify series-level latest_status or helper folders as runs", () => {
-    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/latest_status.json")).not.toBe(ARTIFACT_TYPES.RUN_STATUS);
-    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/resume_checkpoints/latest_status.json")).not.toBe(ARTIFACT_TYPES.RUN_STATUS);
-    expect(classifyArtifactPath("analysis_outputs/encode_runs/acotar/20260612T123219Z/latest_status.json")).toBe(ARTIFACT_TYPES.RUN_STATUS);
+    expect(classifyArtifactPath("analysis_outputs/pipeline_runtime/acotar/latest_status.json")).not.toBe(ARTIFACT_TYPES.RUN_STATUS);
+    expect(classifyArtifactPath("analysis_outputs/pipeline_runtime/acotar/resume_checkpoints/latest_status.json")).not.toBe(ARTIFACT_TYPES.RUN_STATUS);
+    expect(classifyArtifactPath("analysis_outputs/pipeline_runtime/acotar/20260612T123219Z/latest_status.json")).toBe(ARTIFACT_TYPES.RUN_STATUS);
   });
 
   test("indexes contract and report artifacts from workspace", async () => {
@@ -74,9 +74,9 @@ describe("artifactIndexer", () => {
     const reportMd = "# Audit\n\nHello";
     const root = createDirectoryHandle("graduationProject", {
       analysis_outputs: createDirectoryHandle("analysis_outputs", {
-        encode_runs: createDirectoryHandle("encode_runs", {
+        contract_exports: createDirectoryHandle("contract_exports", {
           acotar: createDirectoryHandle("acotar", {
-            run1: createDirectoryHandle("run1", {
+            "20260612T123219Z": createDirectoryHandle("20260612T123219Z", {
               contracts: createDirectoryHandle("contracts", {
                 "01_book.contract.json": createFileHandle("01_book.contract.json", contractJson),
               }),

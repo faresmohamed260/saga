@@ -1,10 +1,9 @@
 export const TAB_NAMES = [
   "Overview",
   "Encode Runs",
-  "Contract Viewer",
+  "Analysis",
   "Identity Viewer",
   "Character States",
-  "Visual World State",
   "ComfyUI Prompts",
   "Retrieval Context",
   "Neo4j",
@@ -16,7 +15,8 @@ export const TAB_NAMES = [
 
 export const WORKSPACE_SCAN_ROOTS = [
   "analysis_outputs",
-  "analysis_outputs/encode_runs",
+  "analysis_outputs/pipeline_runtime",
+  "analysis_outputs/contract_exports",
   "analysis_outputs/encoder_validation",
   "analysis_outputs/identity_series",
   "analysis_outputs/state_snapshots",
@@ -63,7 +63,10 @@ export function classifyArtifactPath(path) {
   const normalized = normalizePath(path).toLowerCase();
   const name = normalized.split("/").pop() || "";
   const runId = detectRunId(path);
-  if ((name === "latest_status.json" && isTimestampLikeRunId(runId)) || normalized.includes("/encode_runs/") && name.endsWith(".status.json")) {
+  if (
+    (name === "latest_status.json" && isTimestampLikeRunId(runId))
+    || normalized.includes("/pipeline_runtime/") && name.endsWith(".status.json")
+  ) {
     return ARTIFACT_TYPES.RUN_STATUS;
   }
   if (name.endsWith(".contract.json")) {
@@ -98,6 +101,10 @@ export function classifyArtifactPath(path) {
 
 export function detectSeriesId(path) {
   const normalized = normalizePath(path);
+  const runtimeMatch = normalized.match(/analysis_outputs\/pipeline_runtime\/([^/]+)/i);
+  if (runtimeMatch) return runtimeMatch[1];
+  const contractMatch = normalized.match(/analysis_outputs\/contract_exports\/([^/]+)/i);
+  if (contractMatch) return contractMatch[1];
   const match = normalized.match(/analysis_outputs\/encode_runs\/([^/]+)/i);
   if (match) return match[1];
   if (normalized.includes("/identity_series/acotar/")) return "acotar";
@@ -106,6 +113,10 @@ export function detectSeriesId(path) {
 
 export function detectRunId(path) {
   const normalized = normalizePath(path);
+  const runtimeMatch = normalized.match(/analysis_outputs\/pipeline_runtime\/[^/]+\/([^/]+)/i);
+  if (runtimeMatch && isTimestampLikeRunId(runtimeMatch[1])) return runtimeMatch[1];
+  const contractMatch = normalized.match(/analysis_outputs\/contract_exports\/[^/]+\/([^/]+)/i);
+  if (contractMatch && isTimestampLikeRunId(contractMatch[1])) return contractMatch[1];
   const match = normalized.match(/analysis_outputs\/encode_runs\/[^/]+\/([^/]+)/i);
   return match && isTimestampLikeRunId(match[1]) ? match[1] : "";
 }

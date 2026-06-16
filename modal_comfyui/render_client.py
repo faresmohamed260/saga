@@ -17,7 +17,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate an image through Modal + ComfyUI with token failover."
     )
-    parser.add_argument("--prompt", required=True, help="Positive prompt text.")
+    parser.add_argument("--prompt", default="", help="Positive prompt text.")
+    parser.add_argument(
+        "--manifest-path",
+        type=Path,
+        default=None,
+        help="Optional JSON manifest for batch renders.",
+    )
     parser.add_argument(
         "--negative-prompt",
         default="blurry, low quality, distorted hands, artifacts",
@@ -29,17 +35,48 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--width", type=int, default=512, help="Image width.")
     parser.add_argument("--height", type=int, default=512, help="Image height.")
     parser.add_argument(
+        "--workflow-mode",
+        default="default",
+        choices=["default", "character_sheet"],
+        help="Workflow mode to execute inside Modal ComfyUI.",
+    )
+    parser.add_argument(
+        "--pose-image-path",
+        type=Path,
+        default=None,
+        help="Optional pose image path for character-sheet workflows.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT_DIR / "render.png",
         help="Where to save the generated PNG.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Optional output directory for batch renders.",
+    )
+    parser.add_argument(
+        "--report-path",
+        type=Path,
+        default=None,
+        help="Optional JSON report path for batch renders.",
     )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+    if not args.prompt and not args.manifest_path:
+        raise SystemExit("Either --prompt or --manifest-path is required.")
+    if args.manifest_path:
+        (args.output_dir or DEFAULT_OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+        if args.report_path:
+            args.report_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
 
     command = [
         sys.executable,
@@ -51,8 +88,8 @@ def main() -> int:
         str(MODAL_EXE),
         "run",
         str(APP_FILE),
-        "--prompt",
-        args.prompt,
+        "--workflow-mode",
+        args.workflow_mode,
         "--negative-prompt",
         args.negative_prompt,
         "--seed",
@@ -65,9 +102,16 @@ def main() -> int:
         str(args.width),
         "--height",
         str(args.height),
-        "--output-path",
-        str(args.output),
     ]
+    if args.pose_image_path:
+        command.extend(["--pose-image-path", str(args.pose_image_path)])
+    if args.manifest_path:
+        command.extend(["--manifest-path", str(args.manifest_path)])
+        command.extend(["--output-dir", str(args.output_dir or DEFAULT_OUTPUT_DIR)])
+        if args.report_path:
+            command.extend(["--report-path", str(args.report_path)])
+    else:
+        command.extend(["--prompt", args.prompt, "--output-path", str(args.output)])
     return subprocess.call(command)
 
 

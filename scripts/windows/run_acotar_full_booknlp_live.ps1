@@ -51,7 +51,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "encode-store failed with exit code $LASTEXITCODE"
 }
 
-$seriesDir = Join-Path $root ("analysis_outputs\encode_runs\" + $seriesId)
+$seriesDir = Join-Path $root ("analysis_outputs\contract_exports\" + $seriesId)
 $runDir = Get-ChildItem $seriesDir -Directory | Where-Object { $_.Name -match '^\d{8}T' } | Sort-Object Name -Descending | Select-Object -First 1
 if (-not $runDir) {
   throw "Could not find run directory for $seriesId"

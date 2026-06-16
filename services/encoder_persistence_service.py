@@ -15,6 +15,14 @@ from typing import Any, Callable, Dict, List, Tuple
 from analysis.scene_analysis_orchestrator import SceneAnalysisOrchestrator
 from analysis.scene_analyzer import SceneAnalyzer
 from analysis.scene_extractor import SceneExtractor
+from analysis.visual_prompt_schema import (
+    compile_entity_concept_prompt,
+    compile_location_concept_prompt,
+    compile_character_turnaround_prompt,
+    normalize_persistent_profile,
+    profile_specificity_score,
+    promote_persistent_profile_from_visual_changes,
+)
 from analysis.visual_state_analyzer import VisualStateAnalyzer
 from analysis.microtasks.identity_semantic_reviewer import IdentitySemanticReviewer
 from analysis.microtasks.scene_semantic_reviewer import SceneSemanticReviewer
@@ -124,6 +132,18 @@ class EncoderPersistenceService:
         started_at = time.perf_counter()
         prepared_books = self._prepare_book_inputs(book_inputs)
         series_id, series_title = self._series_context(prepared_books)
+        logging.info(
+            "EncoderPersistenceService start | series_id=%s books=%s analysis_model=%s identity_model=%s provider_mode=%s identity_provider=%s scene_failure_policy=%s target_scene_words=%s max_chapters=%s",
+            series_id,
+            len(prepared_books),
+            self.analysis_model,
+            self.identity_model,
+            self.analysis_provider_mode,
+            self.identity_provider,
+            self.scene_failure_policy,
+            self.target_scene_words,
+            self.max_chapters,
+        )
         checkpoint = self._load_checkpoint(checkpoint_path, prepared_books[0], series_id, series_title) if checkpoint_path and prepared_books else None
 
         if checkpoint:
@@ -155,10 +175,19 @@ class EncoderPersistenceService:
             })
         else:
             self._emit(progress_callback, "chapters", {"status": "Loading chapters"})
+            logging.info("EncoderPersistenceService | building chapters for %s book(s)", len(prepared_books))
             chapters = self._build_chapters(prepared_books)
+            logging.info("EncoderPersistenceService | chapters ready count=%s", len(chapters))
 
             self._emit(progress_callback, "identity", {"status": "Loading BookNLP clean identity provider"})
+            logging.info("EncoderPersistenceService | resolving BookNLP clean identity")
             identity_result = self._run_identity_resolution(prepared_books, progress_callback=progress_callback)
+            logging.info(
+                "EncoderPersistenceService | identity ready characters=%s aliases=%s references=%s",
+                len(identity_result.get("stable_characters") or []),
+                len(identity_result.get("alias_map") or {}),
+                len(identity_result.get("reference_entities") or []),
+            )
 
             scene_analyses = []
             resolved_scene_analyses = []
@@ -181,6 +210,7 @@ class EncoderPersistenceService:
             )
             total_scenes = len(planned_scenes)
             resume_scene_count = 0
+            logging.info("EncoderPersistenceService | planned scenes total=%s", total_scenes)
             self._save_checkpoint(
                 checkpoint_path,
                 prepared_books[0],
@@ -197,6 +227,15 @@ class EncoderPersistenceService:
             )
 
         for scene_position, planned_scene in enumerate(planned_scenes[resume_scene_count:], start=resume_scene_count + 1):
+            logging.info(
+                "EncoderPersistenceService | scene start position=%s/%s book=%s chapter=%s scene=%s text_chars=%s",
+                scene_position,
+                total_scenes,
+                planned_scene.get("book_index"),
+                planned_scene.get("chapter_index"),
+                planned_scene.get("scene_index"),
+                len(str(planned_scene.get("text") or "")),
+            )
             self._emit(progress_callback, "scene", {
                 "status": f"Processing scene {scene_position}/{total_scenes}",
                 "scene_position": scene_position,
@@ -214,9 +253,25 @@ class EncoderPersistenceService:
                 scene_position=scene_position,
                 total_scenes=total_scenes,
             )
+            logging.info(
+                "EncoderPersistenceService | scene analyzed position=%s/%s fragments=%s fallback_targets=%s",
+                scene_position,
+                total_scenes,
+                len(analyzed_scenes),
+                attempted_targets,
+            )
             for scene_analysis in analyzed_scenes:
                 failure_record = self._scene_failure_record(scene_analysis)
                 if failure_record:
+                    logging.error(
+                        "EncoderPersistenceService | scene failure record book=%s chapter=%s scene=%s category=%s error=%s last_error=%s",
+                        scene_analysis.get("book_index"),
+                        scene_analysis.get("chapter_index"),
+                        scene_analysis.get("scene_index"),
+                        failure_record.get("error_category") or "",
+                        failure_record.get("error") or "",
+                        failure_record.get("last_error") or "",
+                    )
                     failed_scenes.append(failure_record)
                     if self.scene_failure_policy == "fail_fast":
                         quality = self._scene_quality_metrics(scene_analyses, failed_scenes, total_scenes)
@@ -294,6 +349,17 @@ class EncoderPersistenceService:
                     causal_graph_result,
                 )
                 visual_prompt_sets = self._build_visual_prompt_sets(resolved_scene_analyses)
+                logging.info(
+                    "EncoderPersistenceService | scene committed position=%s/%s resolved_scenes=%s entities=%s timeline=%s events=%s profiles=%s stable_states=%s",
+                    scene_position,
+                    total_scenes,
+                    len(resolved_scene_analyses),
+                    len(entity_registry),
+                    len(timeline),
+                    len(event_ledger),
+                    len(character_profiles),
+                    len(stable_character_states),
+                )
                 self._save_checkpoint(
                     checkpoint_path,
                     prepared_books[0],
@@ -310,6 +376,7 @@ class EncoderPersistenceService:
                 )
 
         self._emit(progress_callback, "causal_graph", {"status": "Building causal graph"})
+        logging.info("EncoderPersistenceService | starting causal graph build timeline_rows=%s", len(timeline))
         self._save_checkpoint(
             checkpoint_path,
             prepared_books[0],
@@ -328,6 +395,11 @@ class EncoderPersistenceService:
             llm_client=LLMClient(mode=self.analysis_model, max_retries=2, base_delay=0.0, timeout=120),
             batch_size=20,
         ).build(timeline, resolved_scene_analyses)
+        logging.info(
+            "EncoderPersistenceService | causal graph complete nodes=%s edges=%s",
+            len((causal_graph_result.get("graph") or {}).get("nodes") or []),
+            len((causal_graph_result.get("graph") or {}).get("edges") or []),
+        )
         if self._is_rate_limit_error((causal_graph_result.get("graph") or {})):
             raise RateLimitGuardError("Rate limit exhausted while building the causal graph.")
 
@@ -387,6 +459,19 @@ class EncoderPersistenceService:
             scene_analysis_quality=quality,
             failed_scenes=failed_scenes,
             artifacts_invalid=artifacts_invalid,
+        )
+        logging.info(
+            "EncoderPersistenceService complete | series_id=%s run_status=%s elapsed=%.2fs scenes=%s failed_scenes=%s entities=%s timeline=%s events=%s profiles=%s stable_states=%s",
+            series_id,
+            run_status,
+            elapsed_seconds,
+            len(resolved_scene_analyses),
+            len(failed_scenes),
+            len(entity_registry),
+            len(timeline),
+            len(event_ledger),
+            len(character_profiles),
+            len(stable_character_states),
         )
         if run_status == "failed":
             raise SceneFailurePolicyError(
@@ -490,6 +575,11 @@ class EncoderPersistenceService:
     ) -> Tuple[List[Dict[str, Any]], List[int]]:
         current_target = self.target_scene_words
         attempted_targets: List[int] = []
+        scene_ref = (
+            f"b{scene.get('book_index', '?')}:"
+            f"c{scene.get('chapter_index', '?')}:"
+            f"s{scene.get('scene_index', '?')}"
+        )
         client_policy = self._analysis_client_policy()
         analysis_llm = LLMClient(
             mode=self.analysis_model,
@@ -520,6 +610,12 @@ class EncoderPersistenceService:
         working_scenes = [scene]
         while current_target is not None:
             attempted_targets.append(current_target)
+            logging.info(
+                "EncoderPersistenceService | analyze scene attempt scene=%s target_words=%s fragments=%s",
+                scene_ref,
+                current_target,
+                len(working_scenes),
+            )
             analyzed: List[Dict[str, Any]] = []
             overflow_triggered = False
             for current_scene in working_scenes:
@@ -529,16 +625,31 @@ class EncoderPersistenceService:
                     state_result,
                     identity_result,
                 )
-                result = orchestrator.analyze_scene(
-                    current_scene,
-                    alias_map=identity_result.get("alias_map") or {},
-                    rejected_identities=identity_result.get("rejected_non_characters") or [],
-                    scene_context=scene_context,
-                    analysis_mode=self.analysis_mode,
-                )
+                try:
+                    result = orchestrator.analyze_scene(
+                        current_scene,
+                        alias_map=identity_result.get("alias_map") or {},
+                        rejected_identities=identity_result.get("rejected_non_characters") or [],
+                        scene_context=scene_context,
+                        analysis_mode=self.analysis_mode,
+                    )
+                except Exception:
+                    logging.exception(
+                        "EncoderPersistenceService | unhandled scene analysis exception scene=%s target_words=%s",
+                        scene_ref,
+                        current_target,
+                    )
+                    raise
                 self._stamp_scene_provider_metadata(result)
                 self._enforce_provider_consistency(result)
                 if self._is_overflow_error(result):
+                    logging.warning(
+                        "EncoderPersistenceService | scene overflow scene=%s target_words=%s error=%s last_error=%s",
+                        scene_ref,
+                        current_target,
+                        result.get("error") or "",
+                        result.get("last_error") or "",
+                    )
                     overflow_triggered = True
                     break
                 analyzed.append(result)
@@ -553,8 +664,15 @@ class EncoderPersistenceService:
             current_target = next_target
             splitter = SceneExtractor.from_target_words(current_target)
             working_scenes = splitter.extract(scene)
+            logging.info(
+                "EncoderPersistenceService | scene split scene=%s next_target=%s fragments=%s",
+                scene_ref,
+                current_target,
+                len(working_scenes),
+            )
         overflow = dict(scene, error="Scene analysis overflowed.")
         self._stamp_scene_provider_metadata(overflow, llm_client=analysis_llm)
+        logging.error("EncoderPersistenceService | scene overflow terminal scene=%s", scene_ref)
         return [overflow], attempted_targets
 
     def _analyze_scene_with_heartbeat(
@@ -568,7 +686,7 @@ class EncoderPersistenceService:
         scene_position: int,
         total_scenes: int,
     ) -> Tuple[List[Dict[str, Any]], List[int]]:
-        should_heartbeat = self.analysis_model == LLMClient.MODE_GENERAL_COMPUTE or self.identity_model == LLMClient.MODE_GENERAL_COMPUTE
+        should_heartbeat = progress_callback is not None
         if not should_heartbeat or progress_callback is None:
             return self._analyze_scene_with_fallback(
                 scene,
@@ -581,11 +699,11 @@ class EncoderPersistenceService:
         started_at = time.perf_counter()
 
         def _heartbeat() -> None:
-            while not stop_event.wait(20):
+            while not stop_event.wait(15):
                 elapsed = int(time.perf_counter() - started_at)
                 self._emit(progress_callback, "scene_wait", {
                     "status": (
-                        f"Waiting on General Compute for scene {scene_position}/{total_scenes} "
+                        f"Scene {scene_position}/{total_scenes} still running "
                         f"(book {scene.get('book_index')} ch {scene.get('chapter_index')} "
                         f"scene {scene.get('scene_index')}, {elapsed}s elapsed)"
                     ),
@@ -595,6 +713,9 @@ class EncoderPersistenceService:
                     "chapter_index": scene.get("chapter_index"),
                     "scene_index": scene.get("scene_index"),
                     "elapsed_seconds": elapsed,
+                    "analysis_model": self.analysis_model,
+                    "identity_model": self.identity_model,
+                    "provider_mode": self.analysis_provider_mode,
                 })
 
         thread = threading.Thread(target=_heartbeat, daemon=True)
@@ -1059,13 +1180,41 @@ class EncoderPersistenceService:
                 "scene_index": scene.get("scene_index"),
             }
 
-        def prompt_specificity(row: Dict[str, Any], prompt: str) -> int:
-            details = row.get("persistent_visual_profile") or {}
-            score = sum(1 for value in details.values() if value not in ("", [], {}, None))
-            score += min(4, len(str(prompt or "").split()) // 10)
-            return score
+        def profile_score_from_payload(payload: Dict[str, Any]) -> int:
+            details = (payload.get("details") or {}).get("persistent_visual_profile") or {}
+            return profile_specificity_score(normalize_persistent_profile(details)) + min(
+                4,
+                len(str(payload.get("positive_prompt") or "").split()) // 10,
+            )
+
+        def row_should_route_to_creature(row: Dict[str, Any]) -> bool:
+            text = " ".join(
+                str(value or "")
+                for value in [
+                    row.get("entity_name"),
+                    row.get("physical_description"),
+                    row.get("visible_condition"),
+                    row.get("source_evidence"),
+                    (row.get("persistent_visual_profile") or {}).get("species_or_race"),
+                    (row.get("persistent_visual_profile") or {}).get("role_or_archetype"),
+                    (row.get("persistent_visual_profile") or {}).get("model_safe_identity"),
+                    (row.get("persistent_visual_profile") or {}).get("fantasy_features"),
+                ]
+            ).lower()
+            creature_markers = {
+                "attor", "creature", "monster", "beast", "animal", "wolf", "kelpie", "naga", "suriel", "bogge",
+                "fangs", "talons", "claws", "clawed", "snout", "muzzle", "scaled", "scales", "fur", "hide", "bat-like",
+                "leathery", "predatory", "skeletal",
+            }
+            humanoid_markers = {
+                "human", "humanoid", "woman", "man", "male", "female", "person", "warrior", "lord", "lady",
+                "noble", "priestess", "servant", "attendant", "hunter", "fighter", "soldier", "high fae", "fae",
+            }
+            return any(marker in text for marker in creature_markers) and not any(marker in text for marker in humanoid_markers)
 
         best_initial_by_name: Dict[str, Dict[str, Any]] = {}
+        entity_registry = build_entity_registry(scene_analyses or [])
+        registry_backfill_seen: set[tuple[str, str]] = set()
 
         def add_prompt(bucket: str, scene: Dict[str, Any], row: Dict[str, Any], prompt_type: str) -> None:
             prompt = str(
@@ -1075,6 +1224,11 @@ class EncoderPersistenceService:
                 or row.get("scene_prompt")
                 or ""
             ).strip()
+            if not prompt and bucket == "initial_characters":
+                prompt = compile_character_turnaround_prompt(
+                    normalize_persistent_profile((row.get("persistent_visual_profile") or {})),
+                    display_name=str(row.get("entity_name") or ""),
+                )
             if not prompt:
                 return
             entity_name = str(row.get("entity_name") or row.get("beat_title") or "").strip()
@@ -1098,8 +1252,10 @@ class EncoderPersistenceService:
             if bucket == "initial_characters":
                 name_key = entity_name.lower()
                 existing = best_initial_by_name.get(name_key)
-                if existing is None or prompt_specificity(row, prompt) > prompt_specificity(existing.get("details") or {}, existing.get("positive_prompt") or ""):
+                if existing is None:
                     best_initial_by_name[name_key] = payload
+                else:
+                    best_initial_by_name[name_key] = merge_initial_character_payloads(existing, payload)
                 return
             if key in seen[bucket]:
                 return
@@ -1112,6 +1268,9 @@ class EncoderPersistenceService:
                 continue
             for row in visual.get("characters") or []:
                 if not isinstance(row, dict):
+                    continue
+                if row_should_route_to_creature(row):
+                    add_prompt("objects_creatures", scene, row, "creature")
                     continue
                 bucket = "initial_characters" if row.get("visual_role") == "initial_character_description" else "character_changes"
                 add_prompt(bucket, scene, row, str(row.get("visual_role") or "character_change"))
@@ -1129,11 +1288,52 @@ class EncoderPersistenceService:
                 sets["diagnostics"]["missing_visual_evidence"].extend(diagnostics.get("missing_visual_evidence") or [])
                 sets["diagnostics"]["rejected_visual_claims"].extend(diagnostics.get("rejected_visual_claims") or [])
 
+        def add_registry_backfill(bucket: str, payload: Dict[str, Any]) -> None:
+            entity_name = str(payload.get("entity_name") or "").strip()
+            entity_type = str(payload.get("entity_type") or "").strip().lower()
+            if not entity_name or not entity_type:
+                return
+            key = (entity_name.lower(), entity_type)
+            if key in registry_backfill_seen:
+                return
+            registry_backfill_seen.add(key)
+            prompt = str(payload.get("positive_prompt") or "").strip()
+            if not prompt:
+                return
+            if bucket == "initial_characters":
+                existing = best_initial_by_name.get(entity_name.lower())
+                if existing is None:
+                    best_initial_by_name[entity_name.lower()] = payload
+                else:
+                    best_initial_by_name[entity_name.lower()] = merge_initial_character_payloads(existing, payload)
+                return
+            dedupe_key = (entity_name.lower(), str(payload.get("prompt_type") or "").lower(), prompt.lower())
+            if dedupe_key in seen[bucket]:
+                return
+            seen[bucket].add(dedupe_key)
+            sets[bucket].append(payload)
+
+        for entry in entity_registry:
+            synthesized = self._build_registry_baseline_prompt_payload(entry)
+            if not synthesized:
+                continue
+            bucket = (
+                "initial_characters"
+                if str(synthesized.get("entity_type") or "").strip().lower() == "character"
+                else "locations"
+                if str(synthesized.get("entity_type") or "").strip().lower() == "location"
+                else "objects_creatures"
+            )
+            add_registry_backfill(bucket, synthesized)
+
         for bucket in ["initial_characters", "character_changes", "objects_creatures", "locations", "scene_compositions"]:
             sets[bucket] = sets[bucket][:500]
         if best_initial_by_name:
+            merged_rows = []
+            for value in best_initial_by_name.values():
+                merged_rows.append(finalize_initial_character_payload(value))
             sets["initial_characters"] = sorted(
-                best_initial_by_name.values(),
+                merged_rows,
                 key=lambda item: ((item.get("entity_name") or "").lower(), int(item.get("book_index") or 0), int(item.get("chapter_index") or 0)),
             )[:500]
         for diag_key in ["missing_visual_evidence", "rejected_visual_claims"]:
@@ -1157,110 +1357,305 @@ class EncoderPersistenceService:
         )
         return sets
 
-    def _save_checkpoint(
-        self,
-        checkpoint_path: str | Path | None,
-        prepared_book: Dict[str, Any],
-        series_id: str,
-        series_title: str,
-        chapters: List[Dict[str, Any]],
-        identity_result: Dict[str, Any],
-        planned_scenes: List[Dict[str, Any]],
-        scene_analyses: List[Dict[str, Any]],
-        *,
-        phase: str,
-        total_scenes: int,
-        causal_graph_result: Dict[str, Any],
-        failed_scenes: List[Dict[str, Any]] | None = None,
-    ) -> None:
-        if not checkpoint_path:
-            return
-        target = Path(checkpoint_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "version": 1,
-            "series_id": series_id,
-            "series_title": series_title,
-            "book": prepared_book,
-            "configuration": {
-                "analysis_model": self.analysis_model,
-                "identity_model": self.identity_model,
-                "identity_strategy": "booknlp_clean",
-                "identity_provider": self.identity_provider,
-                "identity_json_path": self.identity_json_path,
-                "analysis_provider_mode": self.analysis_provider_mode,
-                "analysis_mode": self.analysis_mode,
-                "scene_failure_policy": self.scene_failure_policy,
-                "target_scene_words": self.target_scene_words,
-                "max_chapters": self.max_chapters,
-                "encoder_version": self.ENCODER_VERSION,
+    def _build_registry_baseline_prompt_payload(self, entry: Dict[str, Any]) -> Dict[str, Any] | None:
+        entity_name = str(entry.get("name") or "").strip()
+        entity_type = str(entry.get("entity_type") or "").strip().lower()
+        if not entity_name or entity_type not in {"character", "object", "location", "creature"}:
+            return None
+        first_seen = entry.get("first_seen") or {}
+        baseline_profile = entry.get("first_appearance_profile") or {}
+        baseline_description = str(
+            baseline_profile.get("baseline_description")
+            or ((entry.get("initial_physical_description") or {}).get("description"))
+            or ""
+        ).strip()
+        typed_attributes = baseline_profile.get("typed_attributes") or entry.get("typed_attributes") or {}
+        evidence = []
+        for row in entry.get("descriptions") or []:
+            text = str(row.get("description") or "").strip()
+            if text:
+                evidence.append(text)
+        if entity_type == "character":
+            profile = normalize_persistent_profile(
+                {
+                    "role_or_archetype": ", ".join(str(value) for value in (typed_attributes.get("titles_or_roles") or [])[:2]),
+                    "presence_description": baseline_description,
+                    "body_type": ", ".join(str(value) for value in (typed_attributes.get("appearance") or [])[:2]),
+                    "clothing_description": ", ".join(str(value) for value in (typed_attributes.get("outfit") or [])[:2]),
+                    "expression": ", ".join(str(value) for value in (typed_attributes.get("body_language") or [])[:1]),
+                    "equipment_or_signature_items": ", ".join(str(value) for value in (typed_attributes.get("possessions") or [])[:3]),
+                    "fantasy_features": ", ".join(str(value) for value in (typed_attributes.get("abilities") or [])[:2]),
+                    "world_aesthetic_cues": ", ".join(str(value) for value in (typed_attributes.get("affiliations") or [])[:2]),
+                }
+            )
+            if profile_specificity_score(profile) <= 0 and not baseline_description:
+                return None
+            prompt = compile_character_turnaround_prompt(profile, display_name=entity_name)
+            if not prompt:
+                return None
+            return {
+                "book_index": first_seen.get("book_index"),
+                "chapter_index": first_seen.get("chapter_index"),
+                "scene_index": first_seen.get("scene_index"),
+                "prompt_type": "initial_character_description",
+                "entity_name": entity_name,
+                "entity_type": entity_type,
+                "positive_prompt": prompt,
+                "image_edit_prompt": "",
+                "source_evidence": evidence[0] if evidence else baseline_description,
+                "confidence": "medium" if evidence else "low",
+                "details": {
+                    "persistent_visual_profile": profile,
+                    "baseline_description": baseline_description,
+                    "typed_attributes": typed_attributes,
+                    "source": "entity_registry_backfill",
+                },
+            }
+        if entity_type == "location":
+            prompt = compile_location_concept_prompt(
+                display_name=entity_name,
+                baseline_description=baseline_description,
+                current_description=baseline_description,
+                atmosphere="",
+                notable_features=[text for text in evidence[:5]],
+                damage_or_restoration_state="",
+            )
+            if not prompt:
+                return None
+            return {
+                "book_index": first_seen.get("book_index"),
+                "chapter_index": first_seen.get("chapter_index"),
+                "scene_index": first_seen.get("scene_index"),
+                "prompt_type": "initial_location_description",
+                "entity_name": entity_name,
+                "entity_type": entity_type,
+                "positive_prompt": prompt,
+                "image_edit_prompt": "",
+                "source_evidence": evidence[0] if evidence else baseline_description,
+                "confidence": "medium" if evidence else "low",
+                "details": {
+                    "baseline_description": baseline_description,
+                    "typed_attributes": typed_attributes,
+                    "source": "entity_registry_backfill",
+                },
+            }
+        current_state = ""
+        state_changes = entry.get("state_changes") or []
+        if state_changes:
+            latest_change = state_changes[-1]
+            current_state = f"{latest_change.get('attribute', '')}={latest_change.get('new_state', '')}".strip("=")
+        owner_or_associated = typed_attributes.get("owner_or_holder") or typed_attributes.get("possessions") or []
+        prompt = compile_entity_concept_prompt(
+            display_name=entity_name,
+            entity_type=entity_type,
+            baseline_description=baseline_description,
+            current_state=current_state,
+            owner_or_associated_characters=owner_or_associated,
+        )
+        if not prompt:
+            return None
+        return {
+            "book_index": first_seen.get("book_index"),
+            "chapter_index": first_seen.get("chapter_index"),
+            "scene_index": first_seen.get("scene_index"),
+            "prompt_type": f"initial_{entity_type}_description",
+            "entity_name": entity_name,
+            "entity_type": entity_type,
+            "positive_prompt": prompt,
+            "image_edit_prompt": "",
+            "source_evidence": evidence[0] if evidence else baseline_description,
+            "confidence": "medium" if evidence else "low",
+            "details": {
+                "baseline_description": baseline_description,
+                "typed_attributes": typed_attributes,
+                "source": "entity_registry_backfill",
             },
-            "chapters": chapters,
-            "identity_result": identity_result,
-            "planned_scenes": planned_scenes,
-            "scene_analyses": scene_analyses,
-            "failed_scenes": failed_scenes or [],
-            "phase": phase,
-            "total_scenes": total_scenes,
-            "causal_graph_result": causal_graph_result,
-            "checkpointed_at_utc": datetime.now(timezone.utc).isoformat(),
         }
-        temp_target = target.with_name(f"{target.name}.tmp")
-        try:
-            serialized = json.dumps(payload, ensure_ascii=True, indent=2, default=str)
-            with temp_target.open("w", encoding="utf-8", newline="\n") as handle:
-                handle.write(serialized)
-            os.replace(temp_target, target)
-        except Exception:
-            logging.exception("Checkpoint write failed at %s; continuing without aborting encode.", target)
-            try:
-                if temp_target.exists():
-                    temp_target.unlink()
-            except Exception:
-                logging.warning("Failed to clean up temporary checkpoint file at %s", temp_target)
 
-    def _load_checkpoint(
-        self,
-        checkpoint_path: str | Path | None,
-        prepared_book: Dict[str, Any],
-        series_id: str,
-        series_title: str,
-    ) -> Dict[str, Any] | None:
-        if not checkpoint_path:
-            return None
-        target = Path(checkpoint_path)
-        if not target.exists():
-            return None
-        try:
-            payload = json.loads(target.read_text(encoding="utf-8"))
-        except Exception:
-            logging.warning("Ignoring unreadable checkpoint at %s", target)
-            return None
-        checkpoint_book = payload.get("book") or {}
-        config = payload.get("configuration") or {}
-        if (
-            payload.get("series_id") != series_id
-            or checkpoint_book.get("book_index") != prepared_book.get("book_index")
-            or checkpoint_book.get("title") != prepared_book.get("title")
-            or checkpoint_book.get("source_hash_sha256") != prepared_book.get("source_hash_sha256")
-            or config.get("analysis_model") != self.analysis_model
-            or config.get("identity_model") != self.identity_model
-            or config.get("identity_strategy") not in {"", "booknlp_clean"}
-            or config.get("identity_provider", self.DEFAULT_IDENTITY_PROVIDER) != self.identity_provider
-            or str(config.get("identity_json_path") or "") != self.identity_json_path
-            or config.get("analysis_provider_mode", "single_provider") != self.analysis_provider_mode
-            or config.get("analysis_mode") != self.analysis_mode
-            or config.get("scene_failure_policy", "fail_fast") != self.scene_failure_policy
-            or config.get("target_scene_words") != self.target_scene_words
-            or config.get("max_chapters", 0) != self.max_chapters
-            or config.get("encoder_version") != self.ENCODER_VERSION
-        ):
-            return None
-        return payload
 
-    def _clear_checkpoint(self, checkpoint_path: str | Path | None) -> None:
-        if not checkpoint_path:
-            return
-        target = Path(checkpoint_path)
-        if target.exists():
-            target.unlink()
+def merge_initial_character_payloads(primary: Dict[str, Any], candidate: Dict[str, Any]) -> Dict[str, Any]:
+    def _first_nonempty(*values):
+        for value in values:
+            if value not in (None, "", [], {}):
+                return value
+        return ""
+
+    merged = dict(primary)
+    primary_details = dict(primary.get("details") or {})
+    candidate_details = dict(candidate.get("details") or {})
+    primary_profile = normalize_persistent_profile(primary_details.get("persistent_visual_profile") or {})
+    candidate_profile = normalize_persistent_profile(candidate_details.get("persistent_visual_profile") or {})
+
+    merged_profile = dict(primary_profile)
+    for key, value in candidate_profile.items():
+        if key == "lore_terms":
+            merged_profile[key] = sorted({*(primary_profile.get(key) or []), *(value or [])})
+            continue
+        if merged_profile.get(key) in ("", None, [], {}) and value not in ("", None, [], {}):
+            merged_profile[key] = value
+
+    if profile_specificity_score(merged_profile) <= 3 or not str(merged_profile.get("clothing_description") or "").strip():
+        merged_profile = promote_persistent_profile_from_visual_changes(
+            merged_profile,
+            (primary_details.get("dynamic_visual_changes") or []) + (candidate_details.get("dynamic_visual_changes") or []),
+        )
+
+    merged_details = dict(primary_details)
+    merged_details["persistent_visual_profile"] = merged_profile
+    if not merged_details.get("physical_description") and candidate_details.get("physical_description"):
+        merged_details["physical_description"] = candidate_details.get("physical_description")
+    if not merged_details.get("outfit") and candidate_details.get("outfit"):
+        merged_details["outfit"] = candidate_details.get("outfit")
+    if not merged_details.get("confidence") and candidate_details.get("confidence"):
+        merged_details["confidence"] = candidate_details.get("confidence")
+    merged_details["dynamic_visual_changes"] = (
+        (primary_details.get("dynamic_visual_changes") or []) + (candidate_details.get("dynamic_visual_changes") or [])
+    )[:12]
+
+    merged["details"] = merged_details
+    merged["source_evidence"] = _first_nonempty(primary.get("source_evidence"), candidate.get("source_evidence"))
+    merged["confidence"] = _first_nonempty(primary.get("confidence"), candidate.get("confidence"), "medium")
+
+    primary_score = profile_score_from_payload_for_merge(primary)
+    candidate_score = profile_score_from_payload_for_merge(candidate)
+    merged["book_index"] = primary.get("book_index") if int(primary.get("book_index") or 0) <= int(candidate.get("book_index") or 0) else candidate.get("book_index")
+    merged["chapter_index"] = primary.get("chapter_index") if int(primary.get("chapter_index") or 0) <= int(candidate.get("chapter_index") or 0) else candidate.get("chapter_index")
+    merged["scene_index"] = primary.get("scene_index") if int(primary.get("scene_index") or 0) <= int(candidate.get("scene_index") or 0) else candidate.get("scene_index")
+    if candidate_score > primary_score:
+        merged["source_evidence"] = _first_nonempty(candidate.get("source_evidence"), merged["source_evidence"])
+        merged["confidence"] = _first_nonempty(candidate.get("confidence"), merged["confidence"])
+    return merged
+
+
+def profile_score_from_payload_for_merge(payload: Dict[str, Any]) -> int:
+    details = (payload.get("details") or {}).get("persistent_visual_profile") or {}
+    return profile_specificity_score(normalize_persistent_profile(details)) + min(4, len(str(payload.get("positive_prompt") or "").split()) // 10)
+
+
+def finalize_initial_character_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(payload)
+    details = dict(payload.get("details") or {})
+    profile = normalize_persistent_profile(details.get("persistent_visual_profile") or {})
+    if profile_specificity_score(profile) <= 3:
+        profile = promote_persistent_profile_from_visual_changes(profile, details.get("dynamic_visual_changes") or [])
+    details["persistent_visual_profile"] = profile
+    rebuilt_prompt = compile_character_turnaround_prompt(profile, display_name=str(payload.get("entity_name") or ""))
+    if rebuilt_prompt:
+        merged["positive_prompt"] = rebuilt_prompt
+    merged["details"] = details
+    return merged
+
+def _encoder_save_checkpoint(
+    self: EncoderPersistenceService,
+    checkpoint_path: str | Path | None,
+    prepared_book: Dict[str, Any],
+    series_id: str,
+    series_title: str,
+    chapters: List[Dict[str, Any]],
+    identity_result: Dict[str, Any],
+    planned_scenes: List[Dict[str, Any]],
+    scene_analyses: List[Dict[str, Any]],
+    *,
+    phase: str,
+    total_scenes: int,
+    causal_graph_result: Dict[str, Any],
+    failed_scenes: List[Dict[str, Any]] | None = None,
+) -> None:
+    if not checkpoint_path:
+        return
+    target = Path(checkpoint_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "series_id": series_id,
+        "series_title": series_title,
+        "book": prepared_book,
+        "configuration": {
+            "analysis_model": self.analysis_model,
+            "identity_model": self.identity_model,
+            "identity_strategy": "booknlp_clean",
+            "identity_provider": self.identity_provider,
+            "identity_json_path": self.identity_json_path,
+            "analysis_provider_mode": self.analysis_provider_mode,
+            "analysis_mode": self.analysis_mode,
+            "scene_failure_policy": self.scene_failure_policy,
+            "target_scene_words": self.target_scene_words,
+            "max_chapters": self.max_chapters,
+            "encoder_version": self.ENCODER_VERSION,
+        },
+        "chapters": chapters,
+        "identity_result": identity_result,
+        "planned_scenes": planned_scenes,
+        "scene_analyses": scene_analyses,
+        "failed_scenes": failed_scenes or [],
+        "phase": phase,
+        "total_scenes": total_scenes,
+        "causal_graph_result": causal_graph_result,
+        "checkpointed_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    temp_target = target.with_name(f"{target.name}.tmp")
+    try:
+        serialized = json.dumps(payload, ensure_ascii=True, indent=2, default=str)
+        with temp_target.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(serialized)
+        os.replace(temp_target, target)
+    except Exception:
+        logging.exception("Checkpoint write failed at %s; continuing without aborting encode.", target)
+        try:
+            if temp_target.exists():
+                temp_target.unlink()
+        except Exception:
+            logging.warning("Failed to clean up temporary checkpoint file at %s", temp_target)
+
+
+def _encoder_load_checkpoint(
+    self: EncoderPersistenceService,
+    checkpoint_path: str | Path | None,
+    prepared_book: Dict[str, Any],
+    series_id: str,
+    series_title: str,
+) -> Dict[str, Any] | None:
+    if not checkpoint_path:
+        return None
+    target = Path(checkpoint_path)
+    if not target.exists():
+        return None
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except Exception:
+        logging.warning("Ignoring unreadable checkpoint at %s", target)
+        return None
+    checkpoint_book = payload.get("book") or {}
+    config = payload.get("configuration") or {}
+    if (
+        payload.get("series_id") != series_id
+        or checkpoint_book.get("book_index") != prepared_book.get("book_index")
+        or checkpoint_book.get("title") != prepared_book.get("title")
+        or checkpoint_book.get("source_hash_sha256") != prepared_book.get("source_hash_sha256")
+        or config.get("analysis_model") != self.analysis_model
+        or config.get("identity_model") != self.identity_model
+        or config.get("identity_strategy") not in {"", "booknlp_clean"}
+        or config.get("identity_provider", self.DEFAULT_IDENTITY_PROVIDER) != self.identity_provider
+        or str(config.get("identity_json_path") or "") != self.identity_json_path
+        or config.get("analysis_provider_mode", "single_provider") != self.analysis_provider_mode
+        or config.get("analysis_mode") != self.analysis_mode
+        or config.get("scene_failure_policy", "fail_fast") != self.scene_failure_policy
+        or config.get("target_scene_words") != self.target_scene_words
+        or config.get("max_chapters", 0) != self.max_chapters
+        or config.get("encoder_version") != self.ENCODER_VERSION
+    ):
+        return None
+    return payload
+
+
+def _encoder_clear_checkpoint(self: EncoderPersistenceService, checkpoint_path: str | Path | None) -> None:
+    if not checkpoint_path:
+        return
+    target = Path(checkpoint_path)
+    if target.exists():
+        target.unlink()
+
+
+EncoderPersistenceService._save_checkpoint = _encoder_save_checkpoint
+EncoderPersistenceService._load_checkpoint = _encoder_load_checkpoint
+EncoderPersistenceService._clear_checkpoint = _encoder_clear_checkpoint

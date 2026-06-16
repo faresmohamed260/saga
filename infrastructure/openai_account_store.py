@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from sql_store.persistence import SagaSQLiteStore
+
 
 DEFAULT_ACCOUNTS_FILE = Path("deploy/openai/accounts.local.json")
 
@@ -24,8 +26,22 @@ class OpenAIAccountStore:
 
     def __init__(self, config_path: Path | None = None) -> None:
         self.config_path = Path(config_path or DEFAULT_ACCOUNTS_FILE)
+        self.sqlite_store = SagaSQLiteStore()
 
     def _load(self) -> dict:
+        stored = self.sqlite_store.get_provider_config("codex")
+        if isinstance(stored, dict):
+            return {
+                "active_index": int(stored.get("active_index", 0) or 0),
+                "accounts": [
+                    {
+                        "label": str(item.get("label") or "").strip(),
+                        "api_key": str(item.get("api_key") or "").strip(),
+                    }
+                    for item in (stored.get("accounts") or [])
+                    if isinstance(item, dict)
+                ],
+            }
         if not self.config_path.exists():
             return {"active_index": 0, "accounts": []}
         try:

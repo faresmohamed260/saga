@@ -1,0 +1,196 @@
+{
+  "1": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "2": {
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "3": {
+    "inputs": {
+      "seed": 1045747208887172,
+      "steps": 12,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "14",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "illustration, painterly style, anime, CGI, 3D render, game character, plastic or overly smooth skin,\nno toon shading, no cel shading, exaggerated proportions, cinematic lighting, dramatic shadows, fantasy glow, magical effects, environment or scenery, extra characters or duplicates.\n",
+      "clip": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "studio photograph, three-view layout,\npure white seamless background,\n\nsame person shown three times side by side,\nfront view full body, side profile full body (90 degrees), back view full body,\nidentical face, body, proportions, hairstyle, clothing across all views,\n\nT-pose, arms extended horizontally at shoulder height,\nhands relaxed, palms facing down,\nlegs straight, feet shoulder-width apart,\n\nfull body visible head to toe,\nno cropping, no overlap,\n\nA tall high fae woman, standing two inches taller than average, with a powerful and commanding presence.\nHer build is lean and athletic from intensive training, with strong arms and legs.\nHer skin is pale with subtle bruising fading from her thighs and arms.\nHer hair is dark and thick, worn loosely, with natural volume and slight dishevelment.\nHer eyes are steel-gray and sharp, carrying cold intelligence and quiet ferocity.\nHer expression is controlled and unyielding, resting somewhere between defiance and resolve.\nHer facial features are aristocratic and severe, high cheekbones, a defined jaw, beautiful but intimidating.\nOccasional silver light flickers faintly in her eyes, suggesting latent magical power.\nHer hands are bloodied and raw, with sap-stained fingers, evidence of recent struggle.\n\nShe wears a deep charcoal or dark gray fitted dress, practical and slightly worn,\nfabric showing signs of exertion, bodice slightly damp,\nlong skirt with enough range of motion for combat,\nno jewelry, no ornamentation, functional and austere.\n\nphotorealistic appearance,\nreal human skin texture, visible pores,\nnatural skin tone variation,\nsubtle facial and bodily asymmetry,\nrealistic anatomy and proportions,\nnatural hair behavior and strand detail,\nphysically accurate fabric texture and weight,\n\nneutral studio lighting,\nsoft diffuse light, evenly lit,\nno dramatic contrast, no rim light,\nno cinematic lighting,\n\ncaptured with real camera optics,\nfull-frame DSLR look,\nnatural perspective, true-to-life scale,\nno orthographic distortion,\n\nsharp focus across entire image,\nno depth of field blur,\nno stylization, no painterly effects,\nstudio documentation photo,\nclean, controlled, realistic.",
+      "clip": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "image": "image1.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "8": {
+    "inputs": {
+      "name": "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+    },
+    "class_type": "ModelPatchLoader",
+    "_meta": {
+      "title": "ModelPatchLoader"
+    }
+  },
+  "9": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "2",
+        0
+      ],
+      "model_patch": [
+        "8",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ],
+      "image": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "QwenImageDiffsynthControlnet",
+    "_meta": {
+      "title": "QwenImageDiffsynthControlnet"
+    }
+  },
+  "10": {
+    "inputs": {
+      "images": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "11": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "14": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "15": {
+    "inputs": {
+      "width": 1504,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "16": {
+    "inputs": {
+      "filename_prefix": "z-image",
+      "images": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

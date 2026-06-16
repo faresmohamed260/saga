@@ -1,4 +1,5 @@
 from analysis.scene_analysis_orchestrator import SceneAnalysisOrchestrator
+from infrastructure.llm_client import LLMClient
 
 
 class StubAnalyzer:
@@ -15,6 +16,12 @@ class StubAnalyzer:
             }
         )
         return self.response_by_mode[analysis_mode]
+
+
+class TransportAwareStubAnalyzer(StubAnalyzer):
+    def __init__(self, response_by_mode, *, mode="", codex_transport=""):
+        super().__init__(response_by_mode)
+        self.llm = type("LLM", (), {"mode": mode, "codex_transport": codex_transport})()
 
 
 class StubLocalExtractor:
@@ -193,3 +200,30 @@ def test_orchestrator_can_skip_identity_pass_and_reuse_scene_identity_fields():
     assert result["character_mentions"][0]["canonical_name"] == "Tomas Mandray"
     assert result["alias_updates"][0]["canonical_name"] == "Feyre"
     assert result["rejected_identity_candidates"] == ["doe"]
+
+
+def test_orchestrator_serializes_subtasks_for_codex_hermes():
+    response = {
+        "structured": {
+            "scene_summary": "ok",
+            "canonical_characters": [],
+            "character_mentions": [],
+            "events": [],
+            "entities_present": [],
+            "entity_descriptions": [],
+            "state_changes": [],
+            "relationship_changes": [],
+            "location": {},
+            "time_signals": [],
+            "alias_updates": [],
+            "rejected_identity_candidates": [],
+        }
+    }
+    orchestrator = SceneAnalysisOrchestrator(
+        scene_analyzer=TransportAwareStubAnalyzer(response, mode=LLMClient.MODE_CODEX, codex_transport="hermes"),
+        identity_analyzer=TransportAwareStubAnalyzer({"structured": {"canonical_characters": [], "character_mentions": [], "alias_updates": [], "rejected_identity_candidates": []}}, mode=LLMClient.MODE_CODEX, codex_transport="hermes"),
+        visual_analyzer=TransportAwareStubAnalyzer({"structured": {"characters": [], "objects": [], "creatures": [], "locations": [], "scene_compositions": [], "diagnostics": {}}}, mode=LLMClient.MODE_CODEX, codex_transport="hermes"),
+        entity_world_state_analyzer=TransportAwareStubAnalyzer({"structured": {"entities": [], "diagnostics": {}}}, mode=LLMClient.MODE_CODEX, codex_transport="hermes"),
+    )
+
+    assert orchestrator._should_serialize_llm_subtasks() is True
