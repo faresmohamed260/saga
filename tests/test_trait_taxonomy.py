@@ -1,4 +1,4 @@
-from core.trait_taxonomy import (
+﻿from saga.domain.trait_taxonomy import (
     ENTITY_TYPES,
     DYNAMIC_TRAITS,
     PERSISTENT_TRAITS,

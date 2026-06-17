@@ -1,4 +1,4 @@
-from core.canon_normalization import CanonicalEntityNormalizer
+﻿from saga.domain.canon_normalization import CanonicalEntityNormalizer
 
 
 def test_expand_short_character_name_leading_substring_match():

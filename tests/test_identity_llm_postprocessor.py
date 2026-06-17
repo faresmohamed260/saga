@@ -1,4 +1,4 @@
-from entities.identity_llm_postprocessor import IdentityLLMPostProcessor
+﻿from saga.domain.entities.identity_llm_postprocessor import IdentityLLMPostProcessor
 
 
 class StubLLMClient:

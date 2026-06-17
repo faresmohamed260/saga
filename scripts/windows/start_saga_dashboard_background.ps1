@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $root = Split-Path -Parent $root
@@ -25,7 +25,7 @@ $env:SAGA_DASHBOARD_LOG_LEVEL = "info"
 
 $process = Start-Process `
     -FilePath $python `
-    -ArgumentList "-m", "dashboard_runtime.app" `
+    -ArgumentList "-m", "apps.dashboard_api.app" `
     -WorkingDirectory $root `
     -WindowStyle Hidden `
     -PassThru

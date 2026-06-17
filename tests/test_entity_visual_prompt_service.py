@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
-from services.entity_visual_prompt_service import EntityVisualPromptService
-from sql_store.models import Book, CharacterVisualBaseline, Entity, LocationVisualBaseline, ObjectVisualBaseline, VisualPrompt
-from sql_store.persistence import SagaSQLiteStore
+from saga.services.entity_visual_prompt_service import EntityVisualPromptService
+from saga.storage.models import Book, CharacterVisualBaseline, Entity, LocationVisualBaseline, ObjectVisualBaseline, VisualPrompt
+from saga.storage.persistence import SagaSQLiteStore
 
 
 def test_entity_visual_prompt_service_builds_prompts_for_all_supported_entities(tmp_path):
@@ -97,6 +97,6 @@ def test_entity_visual_prompt_service_builds_prompts_for_all_supported_entities(
         prompts = session.execute(select(VisualPrompt).order_by(VisualPrompt.entity_name.asc())).scalars().all()
         by_name = {row.entity_name: row for row in prompts}
         assert "three-view layout" in str(by_name["Harry Potter"].positive_prompt).lower()
-        assert "environmental concept image" in str(by_name["Hogwarts"].positive_prompt).lower()
+        assert "photorealistic environment photograph" in str(by_name["Hogwarts"].positive_prompt).lower()
         assert "story-significant object or artifact" in str(by_name["Sorting Hat"].positive_prompt).lower()
         assert "story-significant entity" in str(by_name["Ministry of Magic"].positive_prompt).lower()

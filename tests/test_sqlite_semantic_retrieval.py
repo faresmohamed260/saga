@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
-from sql_store.models import SemanticDocumentEmbedding
-from sql_store.persistence import SagaSQLiteStore
-from sql_store.semantic_retrieval import SQLiteSemanticRetrievalService
+from saga.storage.models import SemanticDocumentEmbedding
+from saga.storage.persistence import SagaSQLiteStore
+from saga.storage.semantic_retrieval import SQLiteSemanticRetrievalService
 
 
 def _sample_contract(tmp_path: Path) -> dict:

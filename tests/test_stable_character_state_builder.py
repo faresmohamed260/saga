@@ -1,4 +1,4 @@
-from core.stable_character_state import StableCharacterStateBuilder
+﻿from saga.domain.stable_character_state import StableCharacterStateBuilder
 
 
 def test_stable_character_state_builder_promotes_profile_state_and_inferred_role():

@@ -1,9 +1,0 @@
-{
-  "name": "stable_character_state",
-  "required": {
-    "canonical_name": "string",
-    "facts": "object",
-    "source_refs": "array"
-  }
-}
-

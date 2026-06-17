@@ -1,4 +1,4 @@
-from core.pipeline_contract import resolve_scene_analysis
+﻿from saga.domain.pipeline_contract import resolve_scene_analysis
 
 
 def test_resolve_scene_analysis_canonicalizes_entity_world_state_character_aliases():

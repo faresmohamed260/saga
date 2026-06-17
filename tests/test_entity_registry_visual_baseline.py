@@ -1,4 +1,4 @@
-from entities.entity_registry_service import EntityRegistryService
+﻿from saga.domain.entities.entity_registry_service import EntityRegistryService
 
 
 def test_entity_registry_prefers_stable_trait_for_initial_physical_description():

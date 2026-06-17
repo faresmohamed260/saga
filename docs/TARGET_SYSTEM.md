@@ -348,9 +348,7 @@ Status:
 - mostly implemented
 
 Current files:
-- [analysis/scene_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/scene_analyzer.py)
 - [analysis/identity_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/identity_analyzer.py)
-- [analysis/scene_analysis_orchestrator.py](/B:/Documents/PyCharm/graduationProject/analysis/scene_analysis_orchestrator.py)
 
 ### Phase 3: Tool-Constrained Analysis
 

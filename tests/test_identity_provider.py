@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from redesign_lab.identity.booknlp_identity_adapter import clean_booknlp_identity
-from redesign_lab.identity.identity_provider import BookNLPCleanIdentityProvider, run_booknlp_identity_integration_smoke
+from saga.identity.booknlp_identity_adapter import clean_booknlp_identity
+from saga.identity.identity_provider import BookNLPCleanIdentityProvider, run_booknlp_identity_integration_smoke
 
 
 def _write_json(path: Path, payload: dict) -> None:

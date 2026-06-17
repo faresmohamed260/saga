@@ -1,4 +1,4 @@
-from services.wiki_character_reference_service import WikiCharacterReferenceService, flatten_reference_entries
+from saga.services.wiki_character_reference_service import WikiCharacterReferenceService, flatten_reference_entries
 
 
 class StubLLM:

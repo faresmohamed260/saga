@@ -1,5 +1,5 @@
-from query.hybrid_narrative_retriever import HybridNarrativeRetriever
-from rag.hybrid_embedding_index_service import HybridEmbeddingIndexService
+﻿from saga.retrieval.hybrid_narrative_retriever import HybridNarrativeRetriever
+from saga.retrieval.hybrid_embedding_index_service import HybridEmbeddingIndexService
 
 
 def _fake_embedder(texts):

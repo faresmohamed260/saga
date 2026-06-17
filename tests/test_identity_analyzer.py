@@ -1,4 +1,4 @@
-from analysis.identity_analyzer import IdentityAnalyzer
+﻿from saga.agents.identity_analyzer import IdentityAnalyzer
 
 
 class StubLLMClient:

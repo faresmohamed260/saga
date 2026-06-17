@@ -1,4 +1,4 @@
-from core.query.rewrite_outline_service import RewriteOutlineService
+﻿from saga.domain.query.rewrite_outline_service import RewriteOutlineService
 
 from tests.test_core_artifact_bundle import build_sample_artifact_bundle
 

@@ -1,4 +1,4 @@
-from core.query.rewrite_context_service import RewriteContextService
+﻿from saga.domain.query.rewrite_context_service import RewriteContextService
 
 from tests.test_core_artifact_bundle import build_sample_artifact_bundle
 

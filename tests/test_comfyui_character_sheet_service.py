@@ -1,6 +1,6 @@
 import json
 
-from services.comfyui_character_sheet_service import ComfyUICharacterSheetService
+from saga.services.comfyui_character_sheet_service import ComfyUICharacterSheetService
 
 
 def _row(name, *, confidence="high", species="human", role="wizard", prompt="prompt", source="") -> dict:
@@ -77,7 +77,7 @@ def test_collect_character_prompts_merges_alias_duplicates_and_skips_creatures(t
 
 
 def test_collect_entity_visual_prompts_uses_entity_registry_as_source_of_truth(tmp_path):
-    contract_path = tmp_path / "entities.contract.json"
+    contract_path = tmp_path / "saga.domain.entities.contract.json"
     contract_payload = {
         "outputs": {
             "identity_result": {"alias_map": {}},
@@ -160,7 +160,7 @@ def test_collect_entity_visual_prompts_uses_entity_registry_as_source_of_truth(t
     assert by_name["Fang"]["workflow_mode"] == "default"
     assert "non-human fantasy creature" in by_name["Fang"]["positive_prompt"].lower()
     assert by_name["Hogwarts"]["entity_type"] == "location"
-    assert by_name["Hogwarts"]["workflow_mode"] == "default"
+    assert by_name["Hogwarts"]["workflow_mode"] == "location"
     assert "hogwarts location prompt" in by_name["Hogwarts"]["positive_prompt"].lower()
     assert by_name["Sorting Hat"]["entity_type"] == "object"
     assert by_name["Sorting Hat"]["workflow_mode"] == "default"
@@ -213,6 +213,6 @@ def test_build_render_manifest_emits_all_entity_types_with_per_item_workflows(tm
     assert by_name["Hedwig"]["workflow_mode"] == "default"
     assert by_name["Hedwig"]["width"] == 1024
     assert by_name["Hedwig"]["height"] == 1024
-    assert by_name["Hogwarts"]["workflow_mode"] == "default"
+    assert by_name["Hogwarts"]["workflow_mode"] == "location"
     assert by_name["Hogwarts"]["width"] == 1344
     assert by_name["Hogwarts"]["height"] == 768

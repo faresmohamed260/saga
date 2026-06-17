@@ -1,12 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
 from sqlalchemy import select
 
-from analysis.db_entity_agent import DatabaseEntityDiscoveryAgent
-from sql_store.models import Entity
-from sql_store.persistence import SagaSQLiteStore
+from saga.agents.db_entity_agent import DatabaseEntityDiscoveryAgent
+from saga.storage.models import Entity
+from saga.storage.persistence import SagaSQLiteStore
 
 
 def _sample_contract(tmp_path: Path) -> dict:

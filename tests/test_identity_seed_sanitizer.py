@@ -1,7 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from analysis.identity_seed_sanitizer import sanitize_identity_seed
-from core.canon_normalization import CanonicalEntityNormalizer
+from saga.agents.identity_seed_sanitizer import sanitize_identity_seed
+from saga.domain.canon_normalization import CanonicalEntityNormalizer
 
 
 def test_identity_seed_sanitizer_drops_low_support_malformed_rows() -> None:

@@ -1,4 +1,4 @@
-from query.neo4j_narrative_context_service import Neo4jNarrativeContextService
+﻿from saga.retrieval.neo4j_narrative_context_service import Neo4jNarrativeContextService
 
 
 class _FakeRow:

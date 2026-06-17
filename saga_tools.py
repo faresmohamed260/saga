@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from core.pipeline_contract import (
+from saga.domain.pipeline_contract import (
     build_canon_snapshot,
     build_character_timelines,
     build_entity_registry,
@@ -28,28 +28,27 @@ from core.pipeline_contract import (
     normalize_character_timelines,
     rebuild_resolved_scene_analyses,
 )
-from core.stable_character_state import StableCharacterStateBuilder
-from infrastructure.llm_client import LLMClient
-from infrastructure.neo4j_ingestion_service import Neo4jIngestionError, Neo4jIngestionService
-from analysis.db_event_agent import DatabaseEventAnalysisAgent
-from query.comfyui_prompt_pack_service import ComfyUIPromptPackService
-from query.neo4j_narrative_context_service import Neo4jNarrativeContextService
-from query.narrative_context_service import NarrativeContextService
-from query.target_character_state_service import TargetCharacterStateService
-from query.visual_world_state_service import VisualWorldStateService
-from redesign_lab.identity.identity_provider import (
+from saga.domain.stable_character_state import StableCharacterStateBuilder
+from saga.providers.llm_client import LLMClient
+from saga.providers.neo4j_ingestion_service import Neo4jIngestionError, Neo4jIngestionService
+from saga.agents.db_event_agent import DatabaseEventAnalysisAgent
+from saga.retrieval.neo4j_narrative_context_service import Neo4jNarrativeContextService
+from saga.retrieval.narrative_context_service import NarrativeContextService
+from saga.retrieval.target_character_state_service import TargetCharacterStateService
+from saga.retrieval.visual_world_state_service import VisualWorldStateService
+from saga.identity.identity_provider import (
     DEFAULT_BOOKNLP_PIPELINE_IDENTITY_JSON,
     override_contract_with_identity_provider,
 )
-from services.comfyui_character_sheet_service import (
+from saga.services.comfyui_character_sheet_service import (
     ComfyUICharacterSheetService,
     render_manifest_path_for_contract,
 )
-from services.entity_visual_prompt_service import EntityVisualPromptService
-from services.narrative_generation_service import NarrativeGenerationService
-from services.visual_prompt_rewrite_service import VisualPromptRewriteService
-from services.wiki_character_reference_service import WikiCharacterReferenceService
-from sql_store.persistence import SagaSQLiteStore
+from saga.services.entity_visual_prompt_service import EntityVisualPromptService
+from saga.services.narrative_generation_service import NarrativeGenerationService
+from saga.services.visual_prompt_rewrite_service import VisualPromptRewriteService
+from saga.services.wiki_character_reference_service import WikiCharacterReferenceService
+from saga.storage.persistence import SagaSQLiteStore
 
 CorpusHardeningService = None
 
@@ -243,11 +242,11 @@ def _encode_progress_payload(phase: str, payload: Dict[str, Any]) -> Dict[str, A
             details.append(f"{elapsed_seconds}s elapsed")
         if model:
             details.append(model)
-        suffix = " · ".join(details)
+        suffix = " آ· ".join(details)
         return {
             "current": scene_position if isinstance(scene_position, int) else None,
             "total": total_scenes if isinstance(total_scenes, int) else None,
-            "label": f"{label_prefix}{scene_label}" + (f" · {suffix}" if suffix else ""),
+            "label": f"{label_prefix}{scene_label}" + (f" آ· {suffix}" if suffix else ""),
             "status": payload.get("status") or "Scene still running",
         }
     if phase == "resume":
@@ -327,7 +326,7 @@ def _add_identity_override_args(parser: argparse.ArgumentParser, *, help_text: s
 def _get_corpus_hardening_service_class():
     global CorpusHardeningService
     if CorpusHardeningService is None:
-        from services.corpus_hardening_service import CorpusHardeningService as _CorpusHardeningService
+        from saga.services.corpus_hardening_service import CorpusHardeningService as _CorpusHardeningService
 
         CorpusHardeningService = _CorpusHardeningService
     return CorpusHardeningService
@@ -1387,7 +1386,7 @@ def _dependency_rows(outputs: Dict[str, Any], scene_schema: Dict[str, Any]) -> L
         "state_result": "state_changes",
         "timeline": "events, chapter/book/scene metadata",
         "event_ledger": "timeline, scene location/time/state/relationship context",
-        "character_timelines": "timeline.characters",
+        "character_timelines": "saga.domain.timeline.characters",
         "character_profiles": "character_timelines, entity_registry, latest_state, alias_map, relationship_changes",
         "stable_character_states": "character_profiles, canon_snapshot, latest_state, alias_map",
         "story_index_summary": "all major narrative artifacts",
@@ -1701,509 +1700,6 @@ def resplit_book_scenes(args) -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-def _book_inputs_from_args(book_paths: list[str]) -> list[dict[str, str]]:
-    books = []
-    for raw_path in book_paths:
-        path = Path(raw_path)
-        books.append({
-            "path": str(path),
-            "type": path.suffix.lstrip(".").lower(),
-            "title": path.name,
-        })
-    return books
-
-
-def encode_store(args) -> None:
-    from services.encoder_persistence_service import EncoderPersistenceService, RateLimitGuardError, SceneFailurePolicyError
-    from sql_store.persistence import SagaSQLiteStore
-
-    preflight_models = [
-        (args.analysis_model, args.analysis_model),
-        (args.identity_model, args.identity_model),
-    ]
-    checked = set()
-    for mode_name, model_mode in preflight_models:
-        if model_mode in checked:
-            continue
-        checked.add(model_mode)
-        _preflight_model_access(model_mode, getattr(args, "analysis_provider_mode", "single_provider"))
-
-    encoder = EncoderPersistenceService(
-        analysis_model=args.analysis_model,
-        identity_model=args.identity_model,
-        identity_provider=args.identity_provider,
-        identity_json_path=_resolved_identity_json(args),
-        analysis_provider_mode=args.analysis_provider_mode,
-        analysis_mode=args.analysis_mode,
-        target_scene_words=args.target_scene_words,
-        max_chapters=args.max_chapters,
-        scene_failure_policy=args.scene_failure_policy,
-        max_failed_scenes_absolute=args.max_failed_scenes_absolute,
-        max_failed_scene_ratio=args.max_failed_scene_ratio,
-        min_nonempty_scene_ratio=args.min_nonempty_scene_ratio,
-        series_id=args.series_id,
-        series_title=args.series_title,
-        book_index_base=args.book_index_base,
-    )
-    neo4j = None if getattr(args, "skip_ingest", False) else Neo4jIngestionService(
-        uri=args.uri,
-        username=args.username,
-        password=args.password,
-        database=args.database,
-    )
-    sqlite_store = SagaSQLiteStore()
-    try:
-        progress = _TerminalProgressPrinter(enabled=not getattr(args, "no_progress", False))
-        prepared_books = encoder._prepare_book_inputs(_book_inputs_from_args(args.book))
-        effective_series_id, effective_series_title = encoder._series_context(prepared_books)
-        if neo4j is None:
-            plan = {
-                "series_id": effective_series_id,
-                "series_title": effective_series_title,
-                "mode": "skip_ingest",
-                "books": [
-                    {
-                        "title": row["title"],
-                        "book_index": row["book_index"],
-                        "action": "encode_only",
-                        "reason": "Neo4j ingest skipped by CLI flag.",
-                    }
-                    for row in prepared_books
-                ],
-            }
-            selected_books = list(prepared_books)
-        else:
-            neo4j.register_series(effective_series_id, effective_series_title)
-            plan = neo4j.plan_ingest(effective_series_id, prepared_books)
-            conflicts = [row for row in plan["books"] if row["action"] == "conflict"]
-            stale = [row for row in plan["books"] if row["action"] == "stale"]
-            if conflicts:
-                joined = "; ".join(f"{row['title']}: {row['reason']}" for row in conflicts)
-                raise ValueError(f"Corpus ingest planning found book-index conflicts. {joined}")
-            if stale and not args.replace_existing:
-                joined = ", ".join(row["title"] for row in stale)
-                raise ValueError(
-                    f"Persisted books already exist with different source hashes: {joined}. "
-                    "Re-run with --replace-existing to intentionally replace them."
-                )
-            selected_books = [
-                row for row in prepared_books
-                if next(item for item in plan["books"] if item["title"] == row["title"])["action"] != "unchanged"
-            ]
-        run_artifacts = _start_run_artifacts(
-            effective_series_id,
-            export_contracts=bool(getattr(args, "export_contracts", False)),
-        )
-        status = _status_payload(
-            series_id=effective_series_id,
-            series_title=effective_series_title,
-            plan=plan,
-            run_dir=run_artifacts["run_dir"],
-            log_path=run_artifacts["log_path"],
-            books=prepared_books,
-        )
-        _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
-        _persist_run_status_sqlite(sqlite_store, status)
-        if not selected_books:
-            for row in status["books"]:
-                row["status"] = "skipped"
-                row["phase"] = "unchanged"
-            status["status"] = "completed"
-            status["summary"]["skipped"] = len(status["books"])
-            status["summary"]["remaining"] = 0
-            _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
-            _persist_run_status_sqlite(sqlite_store, status)
-            print(json.dumps({
-                "encoded": {"books": 0, "chapters": 0, "scenes": 0, "timeline_rows": 0},
-                "ingest": {"status": "skipped", "reason": "All requested books are already persisted with the same source hash."},
-                "plan": plan,
-                "status_file": str(run_artifacts["status_path"] or ""),
-                "log_file": str(run_artifacts["log_path"] or ""),
-            }, ensure_ascii=False, indent=2))
-            return
-        log_handler = _attach_file_logger(run_artifacts["log_path"])
-        aggregate_ingest = []
-        encoded_summary = {"books": 0, "chapters": 0, "scenes": 0, "timeline_rows": 0}
-        status_lock = threading.Lock()
-
-        def _update_status(mutator) -> None:
-            with status_lock:
-                mutator()
-                _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
-                _persist_run_status_sqlite(sqlite_store, status)
-
-        def _record_book_progress(book_status: Dict[str, Any], phase: str, payload: Dict[str, Any]) -> None:
-            def _mutate() -> None:
-                book_status["phase"] = phase
-                book_status["status"] = "running"
-                book_status["last_progress"] = payload
-                if book_status.get("started_at_utc"):
-                    try:
-                        book_status["elapsed_seconds"] = round(
-                            (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                            2,
-                        )
-                    except Exception:
-                        pass
-                if payload.get("scene_position") is not None:
-                    book_status["scenes_processed"] = payload.get("scene_position", 0)
-                if payload.get("total_scenes") is not None:
-                    book_status["total_scenes"] = payload.get("total_scenes", 0)
-            _update_status(_mutate)
-            progress(phase, _encode_progress_payload(phase, {
-                **payload,
-                "book": book_status.get("title") or payload.get("book"),
-            }))
-
-        def _encode_single_book(book: Dict[str, Any]) -> Dict[str, Any]:
-            checkpoint_path = _book_checkpoint_path(effective_series_id, book["book_index"], book["title"])
-            book_status = next(row for row in status["books"] if row["title"] == book["title"])
-            book_started = datetime.now(timezone.utc)
-
-            def _mark_started() -> None:
-                book_status["status"] = "running"
-                book_status["phase"] = "chapters"
-                book_status["started_at_utc"] = _now_utc()
-                book_status["checkpoint_path"] = str(checkpoint_path)
-
-            _update_status(_mark_started)
-
-            def _progress_callback(phase: str, payload: Dict[str, Any]) -> None:
-                _record_book_progress(book_status, phase, payload)
-
-            book_encoder = EncoderPersistenceService(
-                analysis_model=args.analysis_model,
-                identity_model=args.identity_model,
-                identity_provider=args.identity_provider,
-                identity_json_path=_resolved_identity_json(args),
-                analysis_provider_mode=args.analysis_provider_mode,
-                analysis_mode=args.analysis_mode,
-                target_scene_words=args.target_scene_words,
-                max_chapters=args.max_chapters,
-                scene_failure_policy=args.scene_failure_policy,
-                max_failed_scenes_absolute=args.max_failed_scenes_absolute,
-                max_failed_scene_ratio=args.max_failed_scene_ratio,
-                min_nonempty_scene_ratio=args.min_nonempty_scene_ratio,
-                series_id=effective_series_id,
-                series_title=effective_series_title,
-                book_index_base=book["book_index"],
-            )
-            book_neo4j = None if getattr(args, "skip_ingest", False) else Neo4jIngestionService(
-                uri=args.uri,
-                username=args.username,
-                password=args.password,
-                database=args.database,
-            )
-            try:
-                if book_neo4j is None:
-                    contract = book_encoder.encode_books(
-                        [book],
-                        progress_callback=_progress_callback,
-                        checkpoint_path=checkpoint_path,
-                    )
-                    result = {
-                        "contract": contract,
-                        "ingest_result": {"status": "skipped", "reason": "skip_ingest"},
-                    }
-                    book_encoder._clear_checkpoint(checkpoint_path)
-                else:
-                    result = book_encoder.encode_and_persist(
-                        [book],
-                        neo4j_service=book_neo4j,
-                        progress_callback=_progress_callback,
-                        checkpoint_path=checkpoint_path,
-                    )
-            except SceneFailurePolicyError as exc:
-                contract = exc.contract or {}
-                contracts_dir = run_artifacts.get("contracts_dir")
-                contract_path = (
-                    contracts_dir / f"{book['book_index']:02d}_{_safe_filename(book['title'])}.contract.json"
-                    if contracts_dir is not None and getattr(args, "export_contracts", False)
-                    else None
-                )
-                if contract_path is not None:
-                    _write_json(contract_path, contract)
-                persisted = sqlite_store.persist_contract(contract, contract_path=contract_path)
-                contract_ref = _book_contract_ref(book_id=str(persisted.get("book_id") or ""), contract_path=contract_path)
-                report_path = run_artifacts["reports_dir"] / f"{_safe_filename(Path(book['title']).stem)}_scene_failure_report.md"
-                report = exc.failure_report or {}
-                report_md = "\n".join([
-                    "# Scene Failure Report",
-                    "",
-                    f"- provider: `{report.get('provider', '')}`",
-                    f"- model: `{report.get('model', '')}`",
-                    f"- provider mode: `{report.get('analysis_provider_mode', '')}`",
-                    f"- failure policy: `{report.get('scene_failure_policy', '')}`",
-                    f"- total scenes: `{report.get('total_scenes', 0)}`",
-                    f"- successful scenes: `{report.get('successful_scenes', 0)}`",
-                    f"- failed scenes: `{report.get('failed_scenes', 0)}`",
-                    f"- failure ratio: `{report.get('failure_ratio', 0.0)}`",
-                    f"- dominant error: `{report.get('dominant_error', '')}`",
-                    f"- downstream artifacts invalidated: `{report.get('downstream_artifacts_invalidated', False)}`",
-                    "",
-                    "## Failed scene IDs",
-                    "",
-                    *[f"- `{item}`" for item in (report.get('first_failed_scene_ids') or [])],
-                    "",
-                    "## Error Samples",
-                    "",
-                    *[f"- `{item}`" for item in (report.get('last_error_samples') or [])],
-                    "",
-                    "## Recommended Resume Command",
-                    "",
-                    f"`{report.get('recommended_resume_command', '')}`",
-                ])
-                report_path.write_text(report_md, encoding="utf-8")
-                raise SceneFailurePolicyError(
-                    str(exc),
-                    contract={**contract, "_failure_contract_path": contract_ref, "_failure_report_path": str(report_path)},
-                    failure_report=report,
-                )
-            finally:
-                if book_neo4j is not None:
-                    book_neo4j.close()
-
-            contract = result["contract"]
-            ingest_result = result["ingest_result"]
-            contracts_dir = run_artifacts.get("contracts_dir")
-            contract_path = (
-                contracts_dir / f"{book['book_index']:02d}_{_safe_filename(book['title'])}.contract.json"
-                if contracts_dir is not None and getattr(args, "export_contracts", False)
-                else None
-            )
-            if contract_path is not None:
-                _write_json(contract_path, contract)
-            persisted = sqlite_store.persist_contract(contract, contract_path=contract_path)
-            contract_ref = _book_contract_ref(book_id=str(persisted.get("book_id") or ""), contract_path=contract_path)
-            elapsed = round((datetime.now(timezone.utc) - book_started).total_seconds(), 2)
-            return {
-                "book": book,
-                "contract": contract,
-                "ingest_result": ingest_result,
-                "contract_path": contract_ref,
-                "elapsed_seconds": elapsed,
-            }
-        try:
-            max_parallel_books = max(1, int(getattr(args, "max_parallel_books", 1) or 1))
-            if max_parallel_books == 1 or len(selected_books) == 1:
-                active_books = list(selected_books)
-                blocked_rate_limit = False
-                for book in active_books:
-                    book_status = next(row for row in status["books"] if row["title"] == book["title"])
-                    try:
-                        outcome = _encode_single_book(book)
-                    except SceneFailurePolicyError as exc:
-                        contract = exc.contract or {}
-                        def _mark_failed_policy() -> None:
-                            book_status["status"] = "failed"
-                            book_status["phase"] = "scene_failure_policy"
-                            book_status["finished_at_utc"] = _now_utc()
-                            book_status["elapsed_seconds"] = round(
-                                (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                                2,
-                            ) if book_status.get("started_at_utc") else 0.0
-                            book_status["error"] = str(exc)
-                            book_status["contract_path"] = str(contract.get("_failure_contract_path") or "")
-                            book_status["failure_report_path"] = str(contract.get("_failure_report_path") or "")
-                            status["status"] = "failed"
-                            status["summary"]["failed"] += 1
-                            status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] in {"pending", "running"})
-                        _update_status(_mark_failed_policy)
-                        raise
-                    except RateLimitGuardError as exc:
-                        def _mark_blocked() -> None:
-                            book_status["status"] = "blocked_rate_limit"
-                            book_status["phase"] = "blocked_rate_limit"
-                            book_status["finished_at_utc"] = _now_utc()
-                            book_status["elapsed_seconds"] = round(
-                                (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                                2,
-                            ) if book_status.get("started_at_utc") else 0.0
-                            book_status["error"] = str(exc)
-                            for row in status["books"]:
-                                if row["status"] == "pending":
-                                    row["phase"] = "blocked_rate_limit"
-                                    row["error"] = "Not started because the run was blocked by exhausted LLM rate limits on an earlier book."
-                            status["status"] = "blocked_rate_limit"
-                            status["summary"]["failed"] += 1
-                            status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] == "pending")
-                        _update_status(_mark_blocked)
-                        blocked_rate_limit = True
-                        break
-                    except Exception as exc:
-                        def _mark_failed() -> None:
-                            book_status["status"] = "failed"
-                            book_status["phase"] = "failed"
-                            book_status["finished_at_utc"] = _now_utc()
-                            book_status["elapsed_seconds"] = round(
-                                (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                                2,
-                            ) if book_status.get("started_at_utc") else 0.0
-                            book_status["error"] = repr(exc)
-                            status["status"] = "failed"
-                            status["summary"]["failed"] += 1
-                            status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] in {"pending", "running"})
-                        _update_status(_mark_failed)
-                        raise
-
-                    book_status = next(row for row in status["books"] if row["title"] == book["title"])
-                    contract = outcome["contract"]
-                    ingest_result = outcome["ingest_result"]
-                    def _mark_completed() -> None:
-                        book_status["status"] = "completed"
-                        book_status["phase"] = "completed"
-                        book_status["finished_at_utc"] = _now_utc()
-                        book_status["elapsed_seconds"] = outcome["elapsed_seconds"]
-                        book_status["contract_path"] = outcome["contract_path"]
-                        book_status["ingest_result"] = ingest_result
-                        status["summary"]["completed"] += 1
-                        status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] == "pending")
-                    _update_status(_mark_completed)
-
-                    encoded_summary["books"] += 1
-                    encoded_summary["chapters"] += len((contract.get("outputs") or {}).get("chapters") or [])
-                    encoded_summary["scenes"] += len((contract.get("outputs") or {}).get("resolved_scene_analyses") or [])
-                    encoded_summary["timeline_rows"] += len((contract.get("outputs") or {}).get("timeline") or [])
-                    aggregate_ingest.append(ingest_result)
-                if blocked_rate_limit:
-                    pass
-            else:
-                blocked_rate_limit = False
-                submission_index = 0
-                active_futures: dict[concurrent.futures.Future, Dict[str, Any]] = {}
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_parallel_books, len(selected_books))) as executor:
-                    while submission_index < len(selected_books) and len(active_futures) < max_parallel_books:
-                        book = selected_books[submission_index]
-                        active_futures[executor.submit(_encode_single_book, book)] = book
-                        submission_index += 1
-
-                    while active_futures:
-                        done, _ = concurrent.futures.wait(
-                            list(active_futures.keys()),
-                            return_when=concurrent.futures.FIRST_COMPLETED,
-                        )
-                        for future in done:
-                            book = active_futures.pop(future)
-                            book_status = next(row for row in status["books"] if row["title"] == book["title"])
-                            try:
-                                outcome = future.result()
-                            except SceneFailurePolicyError as exc:
-                                contract = exc.contract or {}
-                                def _mark_failed_policy_parallel() -> None:
-                                    book_status["status"] = "failed"
-                                    book_status["phase"] = "scene_failure_policy"
-                                    book_status["finished_at_utc"] = _now_utc()
-                                    book_status["elapsed_seconds"] = round(
-                                        (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                                        2,
-                                    ) if book_status.get("started_at_utc") else 0.0
-                                    book_status["error"] = str(exc)
-                                    book_status["contract_path"] = str(contract.get("_failure_contract_path") or "")
-                                    book_status["failure_report_path"] = str(contract.get("_failure_report_path") or "")
-                                    status["status"] = "failed"
-                                    status["summary"]["failed"] += 1
-                                    status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] in {"pending", "running"})
-                                _update_status(_mark_failed_policy_parallel)
-                                raise
-                            except RateLimitGuardError as exc:
-                                def _mark_blocked_parallel() -> None:
-                                    book_status["status"] = "blocked_rate_limit"
-                                    book_status["phase"] = "blocked_rate_limit"
-                                    book_status["finished_at_utc"] = _now_utc()
-                                    book_status["elapsed_seconds"] = round(
-                                        (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                                        2,
-                                    ) if book_status.get("started_at_utc") else 0.0
-                                    book_status["error"] = str(exc)
-                                    status["summary"]["failed"] += 1
-                                    status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] == "pending")
-                                _update_status(_mark_blocked_parallel)
-                                blocked_rate_limit = True
-                                continue
-                            except Exception as exc:
-                                def _mark_failed_parallel() -> None:
-                                    book_status["status"] = "failed"
-                                    book_status["phase"] = "failed"
-                                    book_status["finished_at_utc"] = _now_utc()
-                                    book_status["elapsed_seconds"] = round(
-                                        (datetime.now(timezone.utc) - datetime.fromisoformat(book_status["started_at_utc"])).total_seconds(),
-                                        2,
-                                    ) if book_status.get("started_at_utc") else 0.0
-                                    book_status["error"] = repr(exc)
-                                    status["status"] = "failed"
-                                    status["summary"]["failed"] += 1
-                                    status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] in {"pending", "running"})
-                                _update_status(_mark_failed_parallel)
-                                raise
-
-                            contract = outcome["contract"]
-                            ingest_result = outcome["ingest_result"]
-                            def _mark_completed_parallel() -> None:
-                                book_status["status"] = "completed"
-                                book_status["phase"] = "completed"
-                                book_status["finished_at_utc"] = _now_utc()
-                                book_status["elapsed_seconds"] = outcome["elapsed_seconds"]
-                                book_status["contract_path"] = outcome["contract_path"]
-                                book_status["ingest_result"] = ingest_result
-                                status["summary"]["completed"] += 1
-                                status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] == "pending")
-                            _update_status(_mark_completed_parallel)
-
-                            encoded_summary["books"] += 1
-                            encoded_summary["chapters"] += len((contract.get("outputs") or {}).get("chapters") or [])
-                            encoded_summary["scenes"] += len((contract.get("outputs") or {}).get("resolved_scene_analyses") or [])
-                            encoded_summary["timeline_rows"] += len((contract.get("outputs") or {}).get("timeline") or [])
-                            aggregate_ingest.append(ingest_result)
-
-                            if not blocked_rate_limit and submission_index < len(selected_books):
-                                next_book = selected_books[submission_index]
-                                active_futures[executor.submit(_encode_single_book, next_book)] = next_book
-                                submission_index += 1
-
-                if blocked_rate_limit:
-                    def _mark_pending_blocked() -> None:
-                        for row in status["books"]:
-                            if row["status"] == "pending":
-                                row["phase"] = "blocked_rate_limit"
-                                row["error"] = "Not started because the run was blocked by exhausted LLM rate limits on an earlier parallel book."
-                        if status["status"] == "running":
-                            status["status"] = "blocked_rate_limit"
-                            status["summary"]["remaining"] = sum(1 for row in status["books"] if row["status"] == "pending")
-                    _update_status(_mark_pending_blocked)
-
-            if status["status"] == "running":
-                for row in status["books"]:
-                    if row["status"] == "pending":
-                        row["status"] = "skipped"
-                        row["phase"] = "unchanged"
-                        status["summary"]["skipped"] += 1
-                status["status"] = "completed"
-                status["summary"]["remaining"] = 0
-            _save_status(status, run_artifacts["status_path"], run_artifacts["latest_status_path"])
-            _persist_run_status_sqlite(sqlite_store, status)
-        finally:
-            _detach_file_logger(log_handler)
-    finally:
-        if neo4j is not None:
-            neo4j.close()
-        temp_root = run_artifacts.get("temp_root") if "run_artifacts" in locals() else None
-        if isinstance(temp_root, Path):
-            shutil.rmtree(temp_root, ignore_errors=True)
-    if args.out:
-        target = _write_json(args.out, status)
-        print(f"Run status written to: {target}")
-    print(json.dumps({
-        "encoded": encoded_summary,
-        "ingest": aggregate_ingest,
-        "plan": plan,
-        "run_status": status["status"],
-        "status_file": str(run_artifacts["status_path"] or ""),
-        "latest_status_file": str(run_artifacts["latest_status_path"] or ""),
-        "log_file": str(run_artifacts["log_path"] or ""),
-    }, ensure_ascii=False, indent=2, default=str))
-
-
 def register_corpus(args) -> None:
     service = Neo4jIngestionService(
         uri=args.uri,
@@ -2212,10 +1708,14 @@ def register_corpus(args) -> None:
         database=args.database,
     )
     try:
-        result = service.register_series(args.series_id, args.series_title)
+        preflight = service.probe_connection()
+        result = service.register_series(
+            series_id=str(args.series_id or "").strip(),
+            series_title=str(args.series_title or "").strip(),
+        )
     finally:
         service.close()
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    print(json.dumps({"neo4j_preflight": preflight, "result": result}, ensure_ascii=False, indent=2, default=str))
 
 
 def inspect_corpus(args) -> None:
@@ -2226,10 +1726,11 @@ def inspect_corpus(args) -> None:
         database=args.database,
     )
     try:
-        result = service.inspect_series(args.series_id)
+        preflight = service.probe_connection()
+        result = service.inspect_series(series_id=str(args.series_id or "").strip())
     finally:
         service.close()
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    print(json.dumps({"neo4j_preflight": preflight, "result": result}, ensure_ascii=False, indent=2, default=str))
 
 
 def remove_book(args) -> None:
@@ -2240,17 +1741,14 @@ def remove_book(args) -> None:
         database=args.database,
     )
     try:
-        result = service.remove_book(args.series_id, args.book_title)
+        preflight = service.probe_connection()
+        result = service.remove_book(
+            series_id=str(args.series_id or "").strip(),
+            book_title=str(args.book_title or "").strip(),
+        )
     finally:
         service.close()
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-
-
-def reencode_book(args) -> None:
-    if len(args.book or []) != 1:
-        raise ValueError("reencode-book expects exactly one --book input.")
-    args.replace_existing = True
-    encode_store(args)
+    print(json.dumps({"neo4j_preflight": preflight, "result": result}, ensure_ascii=False, indent=2, default=str))
 
 
 def ingest_neo4j(args) -> None:
@@ -2544,109 +2042,21 @@ def enrich_contract_visual_state(args) -> None:
     print(f"Visual-enriched contract written to: {target}")
 
 
-def build_comfyui_prompt_pack(args) -> None:
-    service = ComfyUIPromptPackService()
-    payload = service.build_from_json_path(
-        visual_state_path=args.visual_state,
-        contract_path=str(getattr(args, "contract", "") or "") or None,
-        mode=args.mode,
-        focus_characters=list(getattr(args, "focus_character", []) or []),
-        focus_locations=list(getattr(args, "focus_location", []) or []),
-        focus_entities=list(getattr(args, "focus_entity", []) or []),
-        scene_id=str(getattr(args, "scene_id", "") or ""),
-        chapter=int(getattr(args, "chapter", 0) or 0),
-        include_low_confidence=bool(getattr(args, "include_low_confidence", False)),
-    )
-    target = _write_json(args.out, payload)
-    report_target = None
-    if str(getattr(args, "report_md", "") or "").strip():
-        report_target = _write_comfyui_prompt_pack_report(args.report_md, payload)
-    print(f"ComfyUI prompt pack written to: {target}")
-    if report_target:
-        print(f"ComfyUI prompt pack report written to: {report_target}")
-
-
-def build_comfyui_curated_test_pack(args) -> None:
-    service = ComfyUIPromptPackService()
-    prompt_pack = _load_json(args.prompt_pack)
-    curated = service.build_curated_test_pack(prompt_pack)
-    target = _write_json(args.out, curated)
-    export_dir = _write_comfyui_text_exports(args.export_dir, curated)
-    preview_target = _write_comfyui_curated_preview(args.preview_md, curated)
-    report_target = Path(args.report_md)
-    report_target.parent.mkdir(parents=True, exist_ok=True)
-    curated_pack = curated.get("curated_test_pack") or {}
-    top_examples: List[str] = []
-    for row in (curated_pack.get("characters") or [])[:2]:
-        top_examples.append(row.get("display_name", ""))
-    for row in (curated_pack.get("locations") or [])[:1]:
-        top_examples.append(row.get("display_name", ""))
-    for row in (curated_pack.get("objects") or [])[:1]:
-        top_examples.append(row.get("display_name", ""))
-    for row in (curated_pack.get("scene_prompts") or [])[:2]:
-        top_examples.append(row.get("requested_title") or row.get("title") or row.get("scene_key", ""))
-    lines = [
-        "# ComfyUI Prompt Pack Finalization Report",
-        "",
-        "## Files Changed",
-        "",
-        "- `query/comfyui_prompt_pack_service.py`",
-        "- `saga_tools.py`",
-        "- `tests/test_comfyui_prompt_pack_service.py`",
-        "- `tests/test_comfyui_curated_exports.py`",
-        "",
-        "## Tests Run",
-        "",
-        "```powershell",
-        ".\\venv\\Scripts\\python.exe -m pytest -q tests/test_comfyui_prompt_pack_service.py tests/test_comfyui_curated_exports.py tests/test_visual_world_state_service.py tests/test_generation_context_validation.py",
-        "```",
-        "",
-        "- result: `26 passed`",
-        "",
-        "## Generated Outputs",
-        "",
-        f"- curated pack: `{target}`",
-        f"- text exports: `{export_dir}`",
-        f"- markdown preview: `{preview_target}`",
-        "",
-        "## Counts",
-        "",
-        f"- curated characters: `{len((curated.get('curated_test_pack') or {}).get('characters') or [])}`",
-        f"- curated locations: `{len((curated.get('curated_test_pack') or {}).get('locations') or [])}`",
-        f"- curated objects: `{len((curated.get('curated_test_pack') or {}).get('objects') or [])}`",
-        f"- curated scenes: `{len((curated.get('curated_test_pack') or {}).get('scene_prompts') or [])}`",
-        "",
-        "## Top Prompt Examples",
-        "",
-        *[f"- `{example}`" for example in top_examples],
-        "",
-        "## Remaining Limitations",
-        "",
-        "- Some late-book trio scenes remain evidence-sparse or split across adjacent scenes.",
-        "- Scene prompts stay conservative and do not invent unsupported clothing or magic details.",
-        "- The full prompt pack still contains lower-value ambient locations; the curated pack is the recommended manual-test entry point.",
-        "",
-        "## Verdict",
-        "",
-        "The curated pack is ready for first manual ComfyUI testing.",
-        "",
-    ]
-    report_target.write_text("\n".join(lines), encoding="utf-8")
-    print(f"Curated ComfyUI test pack written to: {target}")
-    print(f"ComfyUI text exports written to: {export_dir}")
-    print(f"ComfyUI preview written to: {preview_target}")
-    print(f"ComfyUI finalization report written to: {report_target}")
-
-
 def render_character_sheets(args) -> None:
     service = ComfyUICharacterSheetService()
     contract_ref = str(getattr(args, "book_ref", "") or getattr(args, "contract", "") or "").strip()
     if not contract_ref:
         raise ValueError("Either --book-ref or --contract is required.")
+    entity_types = {
+        str(value or "").strip().lower()
+        for value in (getattr(args, "entity_type", None) or [])
+        if str(value or "").strip()
+    } or None
     payload = service.render_from_contract(
         contract_ref,
         limit=int(getattr(args, "limit", 0) or 0),
         overwrite=bool(getattr(args, "overwrite", False)),
+        entity_types=entity_types,
     )
     manifest_path = render_manifest_path_for_contract(contract_ref)
     if str(getattr(args, "out", "") or "").strip():
@@ -3259,65 +2669,6 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("--database", default=None, help="Neo4j database. Falls back to NEO4J_DATABASE.")
     inspect_parser.set_defaults(func=inspect_corpus)
 
-    encode_parser = subparsers.add_parser(
-        "encode-store",
-        help="Process books through the encoder pipeline and persist the result into Neo4j.",
-    )
-    encode_parser.add_argument("--book", action="append", required=True, help="Path to an EPUB or PDF book. Repeat for multiple books.")
-    encode_parser.add_argument("--out", default=None, help="Optional output path for the generated contract JSON.")
-    encode_parser.add_argument("--export-contracts", action="store_true", help="Also write compatibility .contract.json files. SQLite remains the canonical store.")
-    encode_parser.add_argument("--series-id", default="", help="Stable series/corpus identifier for persistent retrieval.")
-    encode_parser.add_argument("--series-title", default="", help="Human-readable series title.")
-    encode_parser.add_argument("--book-index-base", type=int, default=1, help="Starting book index for this batch, used for incremental append runs.")
-    encode_parser.add_argument("--replace-existing", action="store_true", help="Replace already persisted books when the source hash has changed.")
-    encode_parser.add_argument("--skip-ingest", action="store_true", help="Encode and write contracts without Neo4j ingest. Useful for bounded reliability smokes.")
-    encode_parser.add_argument("--analysis-model", default=LLMClient.MODE_GPT_OSS, choices=MODEL_MODE_CHOICES)
-    encode_parser.add_argument("--identity-model", default=LLMClient.MODE_GPT_OSS, choices=MODEL_MODE_CHOICES)
-    encode_parser.add_argument("--analysis-provider-mode", default="same_provider_rotating", choices=ANALYSIS_PROVIDER_MODE_CHOICES, help="Provider policy: single_provider for strict small debug runs, same_provider_rotating for long canonical runs, cross_provider_fallback for experimental non-canonical runs.")
-    _add_production_identity_args(encode_parser)
-    encode_parser.add_argument("--analysis-mode", default="structured", choices=["structured", "tool", "compare"])
-    encode_parser.add_argument("--target-scene-words", type=int, default=0)
-    encode_parser.add_argument("--max-chapters", type=int, default=0, help="Optional cap on chapters processed for bounded smoke runs.")
-    encode_parser.add_argument("--scene-failure-policy", default="fail_fast", choices=["fail_fast", "skip_failed", "write_partial"], help="How to handle provider/model scene-analysis failures.")
-    encode_parser.add_argument("--max-failed-scenes-absolute", type=int, default=3, help="Maximum failed scenes allowed before the book is marked failed.")
-    encode_parser.add_argument("--max-failed-scene-ratio", type=float, default=0.10, help="Maximum failed-scene ratio allowed before the book is marked failed.")
-    encode_parser.add_argument("--min-nonempty-scene-ratio", type=float, default=0.80, help="Minimum ratio of non-empty scenes required for a healthy book contract.")
-    encode_parser.add_argument("--max-parallel-books", type=int, default=2, help="Maximum number of books to encode in parallel for this batch.")
-    encode_parser.add_argument("--no-progress", action="store_true", help="Disable live terminal progress output during encoding.")
-    encode_parser.add_argument("--uri", default=None, help="Neo4j URI. Falls back to NEO4J_URI.")
-    encode_parser.add_argument("--username", default=None, help="Neo4j username. Falls back to NEO4J_USERNAME.")
-    encode_parser.add_argument("--password", default=None, help="Neo4j password. Falls back to NEO4J_PASSWORD.")
-    encode_parser.add_argument("--database", default=None, help="Neo4j database. Falls back to NEO4J_DATABASE.")
-    encode_parser.set_defaults(func=encode_store)
-
-    reencode_parser = subparsers.add_parser(
-        "reencode-book",
-        help="Re-encode and replace one persisted book inside an existing series.",
-    )
-    reencode_parser.add_argument("--book", action="append", required=True, help="Path to the replacement book file. Use exactly one.")
-    reencode_parser.add_argument("--out", default=None, help="Optional output path for the generated contract JSON.")
-    reencode_parser.add_argument("--export-contracts", action="store_true", help="Also write compatibility .contract.json files. SQLite remains the canonical store.")
-    reencode_parser.add_argument("--series-id", required=True, help="Stable series/corpus identifier.")
-    reencode_parser.add_argument("--series-title", default="", help="Human-readable series title.")
-    reencode_parser.add_argument("--book-index-base", type=int, required=True, help="Book index of the replacement book in the existing series.")
-    reencode_parser.add_argument("--analysis-model", default=LLMClient.MODE_GPT_OSS, choices=MODEL_MODE_CHOICES)
-    reencode_parser.add_argument("--identity-model", default=LLMClient.MODE_GPT_OSS, choices=MODEL_MODE_CHOICES)
-    reencode_parser.add_argument("--analysis-provider-mode", default="same_provider_rotating", choices=ANALYSIS_PROVIDER_MODE_CHOICES, help="Provider policy: single_provider for strict small debug runs, same_provider_rotating for long canonical runs, cross_provider_fallback for experimental non-canonical runs.")
-    _add_production_identity_args(reencode_parser)
-    reencode_parser.add_argument("--analysis-mode", default="structured", choices=["structured", "tool", "compare"])
-    reencode_parser.add_argument("--target-scene-words", type=int, default=0)
-    reencode_parser.add_argument("--max-chapters", type=int, default=0, help="Optional cap on chapters processed for bounded smoke runs.")
-    reencode_parser.add_argument("--scene-failure-policy", default="fail_fast", choices=["fail_fast", "skip_failed", "write_partial"], help="How to handle provider/model scene-analysis failures.")
-    reencode_parser.add_argument("--max-failed-scenes-absolute", type=int, default=3, help="Maximum failed scenes allowed before the book is marked failed.")
-    reencode_parser.add_argument("--max-failed-scene-ratio", type=float, default=0.10, help="Maximum failed-scene ratio allowed before the book is marked failed.")
-    reencode_parser.add_argument("--min-nonempty-scene-ratio", type=float, default=0.80, help="Minimum ratio of non-empty scenes required for a healthy book contract.")
-    reencode_parser.add_argument("--max-parallel-books", type=int, default=1, help="Maximum number of books to encode in parallel. Re-encode uses one book by default.")
-    reencode_parser.add_argument("--uri", default=None, help="Neo4j URI. Falls back to NEO4J_URI.")
-    reencode_parser.add_argument("--username", default=None, help="Neo4j username. Falls back to NEO4J_USERNAME.")
-    reencode_parser.add_argument("--password", default=None, help="Neo4j password. Falls back to NEO4J_PASSWORD.")
-    reencode_parser.add_argument("--database", default=None, help="Neo4j database. Falls back to NEO4J_DATABASE.")
-    reencode_parser.set_defaults(func=reencode_book)
-
     remove_parser = subparsers.add_parser(
         "remove-book",
         help="Remove one persisted book from an existing series.",
@@ -3481,59 +2832,6 @@ def build_parser() -> argparse.ArgumentParser:
     state_snapshot_parser.add_argument("--include-reference-entities", action="store_true", help="Include reference entities in the output snapshot.")
     state_snapshot_parser.set_defaults(func=build_character_state_snapshot)
 
-    visual_state_parser = subparsers.add_parser(
-        "build-visual-world-state",
-        help="Build target-aware visual/entity/location continuity packets from one or more contracts.",
-    )
-    visual_state_parser.add_argument("--contract", action="append", required=True, help="Path to a contract JSON. Repeat for multi-book visual states.")
-    visual_state_parser.add_argument("--out", required=True, help="Output path for the visual world state JSON.")
-    visual_state_parser.add_argument("--report-md", default="", help="Optional Markdown report path for the visual world state output.")
-    _add_identity_override_args(visual_state_parser, help_text="Optional identity provider override.")
-    visual_state_parser.add_argument("--target-mode", required=True, choices=["pre_canon", "mid_canon", "post_book", "post_series", "custom"], help="Target point mode.")
-    visual_state_parser.add_argument("--book-index", type=int, default=None, help="Target book index for mid_canon/post_book/custom modes.")
-    visual_state_parser.add_argument("--chapter", type=int, default=None, help="Target chapter for mid_canon/custom modes.")
-    visual_state_parser.add_argument("--scene-id", default="", help="Optional target scene identifier like b2_c20_s1 or a raw scene index.")
-    visual_state_parser.add_argument("--after-book-index", type=int, default=None, help="After-book index for post_book/post_series modes.")
-    visual_state_parser.add_argument("--include-future-facts", action="store_true", help="Include future facts beyond the target point.")
-    visual_state_parser.set_defaults(func=build_visual_world_state)
-
-    enrich_visual_parser = subparsers.add_parser(
-        "enrich-contract-visual-state",
-        help="Attach a visual world state adapter payload to a copy of a contract.",
-    )
-    enrich_visual_parser.add_argument("--contract", required=True, help="Path to the source contract JSON.")
-    enrich_visual_parser.add_argument("--visual-state", required=True, help="Path to the visual world state JSON.")
-    enrich_visual_parser.add_argument("--out-contract", required=True, help="Output path for the enriched contract JSON.")
-    enrich_visual_parser.set_defaults(func=enrich_contract_visual_state)
-
-    comfy_parser = subparsers.add_parser(
-        "build-comfyui-prompt-pack",
-        help="Compile visual world-state evidence into ComfyUI-ready prompt packs.",
-    )
-    comfy_parser.add_argument("--visual-state", required=True, help="Path to the visual world state JSON.")
-    comfy_parser.add_argument("--contract", default="", help="Optional contract JSON path for chapter-text-backed beat splitting.")
-    comfy_parser.add_argument("--mode", default="full_prompt_pack", choices=sorted(ComfyUIPromptPackService.MODES), help="Prompt-pack export mode.")
-    comfy_parser.add_argument("--focus-character", action="append", default=[], help="Character to prioritize. Repeat as needed.")
-    comfy_parser.add_argument("--focus-location", action="append", default=[], help="Location to prioritize. Repeat as needed.")
-    comfy_parser.add_argument("--focus-entity", action="append", default=[], help="Object/entity to prioritize. Repeat as needed.")
-    comfy_parser.add_argument("--scene-id", default="", help="Optional scene filter like b5_c68_s1.")
-    comfy_parser.add_argument("--chapter", type=int, default=0, help="Optional chapter filter.")
-    comfy_parser.add_argument("--include-low-confidence", action="store_true", help="Include low-confidence prompt candidates.")
-    comfy_parser.add_argument("--out", required=True, help="Output path for the prompt-pack JSON.")
-    comfy_parser.add_argument("--report-md", default="", help="Optional markdown report path.")
-    comfy_parser.set_defaults(func=build_comfyui_prompt_pack)
-
-    comfy_curated_parser = subparsers.add_parser(
-        "build-comfyui-curated-test-pack",
-        help="Create a small curated ComfyUI test pack, text exports, and markdown preview from a compiled prompt pack.",
-    )
-    comfy_curated_parser.add_argument("--prompt-pack", required=True, help="Path to the compiled ComfyUI prompt-pack JSON.")
-    comfy_curated_parser.add_argument("--out", required=True, help="Output path for the curated test pack JSON.")
-    comfy_curated_parser.add_argument("--export-dir", required=True, help="Directory for plain-text positive/negative prompt exports.")
-    comfy_curated_parser.add_argument("--preview-md", required=True, help="Markdown preview path.")
-    comfy_curated_parser.add_argument("--report-md", required=True, help="Finalization report path.")
-    comfy_curated_parser.set_defaults(func=build_comfyui_curated_test_pack)
-
     render_character_parser = subparsers.add_parser(
         "render-character-sheets",
         help="Render character-sheet images from contract-native initial character prompts through Modal ComfyUI.",
@@ -3542,6 +2840,7 @@ def build_parser() -> argparse.ArgumentParser:
     render_character_parser.add_argument("--book-ref", default="", help="Canonical db://book/<id> reference.")
     render_character_parser.add_argument("--limit", type=int, default=0, help="Optional limit for quick tests.")
     render_character_parser.add_argument("--overwrite", action="store_true", help="Re-render images even if they already exist.")
+    render_character_parser.add_argument("--entity-type", action="append", default=[], help="Optional entity type filter. Repeat for multi-type renders.")
     render_character_parser.add_argument("--out", default="", help="Optional extra manifest output path.")
     render_character_parser.set_defaults(func=render_character_sheets)
 
@@ -3571,7 +2870,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     rewrite_visual_parser = subparsers.add_parser(
         "rewrite-visual-prompts",
-        help="Run the visual prompt rewrite agent against contract-native persistent character prompts.",
+        help="Run the visual prompt rewrite agent against contract-native persistent character saga.prompts.",
     )
     rewrite_visual_parser.add_argument("--contract", required=True, help="Path to the contract JSON.")
     rewrite_visual_parser.add_argument("--reference-json", default="", help="Optional canonical reference notes JSON keyed by character name.")
@@ -3884,3 +3183,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

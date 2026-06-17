@@ -1,5 +1,5 @@
-from core.query.divergence_planning_service import DivergencePlanningService
-from core.query.event_context_service import EventContextService
+﻿from saga.domain.query.divergence_planning_service import DivergencePlanningService
+from saga.domain.query.event_context_service import EventContextService
 
 from tests.test_core_artifact_bundle import build_sample_artifact_bundle
 

@@ -1,4 +1,4 @@
-from query.narrative_context_service import NarrativeContextService
+﻿from saga.retrieval.narrative_context_service import NarrativeContextService
 
 from tests.test_core_artifact_bundle import build_sample_artifact_bundle
 

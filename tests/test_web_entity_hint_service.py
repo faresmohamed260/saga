@@ -1,4 +1,4 @@
-from services.web_entity_hint_service import WebEntityHintService
+from saga.services.web_entity_hint_service import WebEntityHintService
 
 
 def test_web_entity_hint_service_prefers_biography_signals_over_article_noise():

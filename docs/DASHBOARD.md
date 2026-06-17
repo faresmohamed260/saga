@@ -1,14 +1,11 @@
-# S.A.G.A. Dashboard Guide
+﻿# S.A.G.A. Dashboard Guide
 
 ## Current Dashboard Surface
 
 The current local dashboard stack is:
 
-- frontend: [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app)
-- runtime: [dashboard_runtime/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_runtime/app.py)
-- optional local API/backend helpers: [dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_api/app.py)
-
-The older Streamlit dashboard in [story_dashboard.py](/B:/Documents/PyCharm/graduationProject/story_dashboard.py) still exists, but it is no longer the only UI surface in the repo.
+- frontend: [apps/dashboard_web](/B:/Documents/PyCharm/graduationProject/apps/dashboard_web)
+- runtime: [apps.dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api/app.py)
 
 ## Recommended Launch Path
 
@@ -32,12 +29,12 @@ Default local URL:
 
 The dashboard is intended to help with:
 
-- browsing encode runs and contracts
-- validating contract artifacts
+- browsing encode runs and database-backed analyses
+- validating persisted analysis data
 - inspecting identity artifacts
 - reviewing character states
 - reviewing visual world state
-- reviewing ComfyUI prompt packs
+- reviewing visual prompts and rendered outputs
 - inspecting retrieval context
 - inspecting Neo4j-backed outputs where configured
 
@@ -47,33 +44,28 @@ Typical main tabs or sections include:
 
 - `Overview`
 - `Encode Runs`
-- `Contract Viewer`
-- `Identity Viewer`
-- `Character States`
-- `Visual World State`
-- `ComfyUI Prompts`
-- `Retrieval Context`
-- `Neo4j`
+- `Analysis`
 - `Prompt Inspector`
+- `Retrieval Context`
 - `Providers`
 - `Reports`
 
 Exact tab composition may vary as the frontend evolves.
 
-## Contract Viewer
+## Analysis
 
-The contract viewer is meant to render structured sections instead of raw JSON-first inspection.
+The analysis view is meant to render structured sections from the SQLite store instead of raw JSON-first inspection.
 
-Main contract-oriented sections include:
+Main sections include:
 
 - scenes
 - events
 - entities
 - timeline
-- profiles
 - relationships
 - states
 - identity
+- visuals
 
 ## Visual World State
 
@@ -91,9 +83,10 @@ Main supporting service:
 
 ## Prompt And Visual Export Support
 
-The dashboard can inspect or generate ComfyUI prompt-pack artifacts via:
+The dashboard can inspect or generate database-backed visual prompts via:
 
-- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
+- [services/entity_visual_prompt_service.py](/B:/Documents/PyCharm/graduationProject/services/entity_visual_prompt_service.py)
+- [services/comfyui_character_sheet_service.py](/B:/Documents/PyCharm/graduationProject/services/comfyui_character_sheet_service.py)
 
 This is intended for:
 
@@ -109,17 +102,14 @@ The dashboard is also meant to help inspect:
 
 - run status
 - per-book progress
-- contract presence
+- persisted analysis presence
 - scene counts
 - failure reports
 - validation outputs
 
-The main artifact discovery logic lives in:
-
-- [services/dashboard_artifact_service.py](/B:/Documents/PyCharm/graduationProject/services/dashboard_artifact_service.py)
-
 ## Notes
 
-- generated artifacts still live in `analysis_outputs/`
+- the dashboard reads its core analysis content from SQLite
+- some exported files still live in `analysis_outputs/`
 - the dashboard is a local operator tool, not a hosted multi-user service
-- some backend-assisted dashboard paths still exist in the repo, but the runtime remains local-first
+- the supported dashboard surface is the local React app plus the local Python runtime

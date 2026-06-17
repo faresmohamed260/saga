@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -40,7 +40,7 @@ def _provider_identity_json(tmp_path: Path) -> Path:
         "suppressed_clusters": [],
         "diagnostics": {},
     }
-    path = tmp_path / "identity.json"
+    path = tmp_path / "saga.identity.json"
     _write_json(path, payload)
     return path
 

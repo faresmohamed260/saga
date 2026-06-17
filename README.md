@@ -1,4 +1,4 @@
-![S.A.G.A. Logo](docs/assets/saga-logo.svg)
+﻿![S.A.G.A. Logo](docs/assets/saga-logo.svg)
 
 # S.A.G.A.
 
@@ -10,43 +10,43 @@ The current system focuses on:
 - splitting chapters into analysis scenes
 - extracting structured scene, event, entity, relationship, state, and visual-world data
 - using `booknlp_clean` as the canonical identity source
-- building contract artifacts for retrieval, downstream validation, and later generation workflows
+- storing analysis state in the local SQLite database for retrieval, downstream validation, dashboard review, and later generation workflows
 
 ## Current Product Surface
 
-The main operator surface is now the local React dashboard in [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app), served by the local runtime in [dashboard_runtime/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_runtime/app.py).
+The main operator surface is the local React dashboard in [apps/dashboard_web](/B:/Documents/PyCharm/graduationProject/apps/dashboard_web), served by the local runtime in [apps.dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api/app.py).
 
 Important repo surfaces:
 
 - [saga_tools.py](/B:/Documents/PyCharm/graduationProject/saga_tools.py)
   Main CLI for encode, validation, retrieval, and utility workflows.
-- [services/encoder_persistence_service.py](/B:/Documents/PyCharm/graduationProject/services/encoder_persistence_service.py)
-  Production encoder path.
-- [redesign_lab/identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/identity_provider.py)
+- [sql_store/persistence.py](/B:/Documents/PyCharm/graduationProject/sql_store/persistence.py)
+  Local SQLite persistence layer for books, scenes, entities, events, visuals, and generated stories.
+- [identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/identity/identity_provider.py)
   Production BookNLP-clean identity provider entrypoint.
 - [query/visual_world_state_service.py](/B:/Documents/PyCharm/graduationProject/query/visual_world_state_service.py)
   Visual/world-state retrieval layer.
-- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
-  ComfyUI prompt-pack generation.
+- [services/entity_visual_prompt_service.py](/B:/Documents/PyCharm/graduationProject/services/entity_visual_prompt_service.py)
+  Database-backed visual prompt generation for saga.domain.entities.
 
-## Core Output Families
+## Core Data Families
 
-The encoder currently builds these main artifact families:
+The pipeline currently persists these main families in SQLite:
 
 - `chapters`
-- `scene_analyses`
-- `resolved_scene_analyses`
+- `scenes`
+- `scene analyses`
 - `entity_registry`
 - `state_result`
-- `canon_snapshot`
 - `timeline`
 - `event_ledger`
 - `character_timelines`
 - `character_profiles`
 - `relationship_profiles`
 - `stable_character_states`
-- `story_index_summary`
-- `visual_prompt_sets`
+- `visual_prompts`
+- `rendered_images`
+- `generated_stories`
 
 ## Identity Strategy
 
@@ -60,14 +60,14 @@ Production identity flow:
 
 1. generate or load per-book BookNLP-clean pipeline identity JSON
 2. resolve provider-backed `characters`, `alias_index`, `narrator`, and `reference_entities`
-3. inject provider-backed identity into the contract path
+3. inject provider-backed identity into the database-native analysis path
 4. prevent scene-level inline identity from overwriting the provider stable roster
 
 Main implementation files:
 
-- [redesign_lab/identity/booknlp_identity_adapter.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/booknlp_identity_adapter.py)
-- [redesign_lab/identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/identity_provider.py)
-- [redesign_lab/identity/series_identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/series_identity_provider.py)
+- [identity/booknlp_identity_adapter.py](/B:/Documents/PyCharm/graduationProject/identity/booknlp_identity_adapter.py)
+- [identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/identity/identity_provider.py)
+- [identity/series_identity_provider.py](/B:/Documents/PyCharm/graduationProject/identity/series_identity_provider.py)
 
 ## Provider Support
 
@@ -99,10 +99,7 @@ The pipeline now includes dedicated visual-state extraction during analysis inst
 
 Current visual/state-oriented components:
 
-- [analysis/visual_state_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/visual_state_analyzer.py)
-- [analysis/entity_world_state_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/entity_world_state_analyzer.py)
 - [query/visual_world_state_service.py](/B:/Documents/PyCharm/graduationProject/query/visual_world_state_service.py)
-- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
 
 These outputs are intended to support:
 
@@ -163,56 +160,28 @@ Fresh-clone local requirements:
 
 ## Common CLI Flow
 
-Production encode runs go through `saga_tools.py`.
-
-Example bounded encode:
-
-```powershell
-.\venv\Scripts\python.exe saga_tools.py encode-store ^
-  --book "D:\Books\Example.epub" ^
-  --series-id example-series ^
-  --series-title "Example Series" ^
-  --book-index-base 1 ^
-  --analysis-model gpt_oss ^
-  --identity-model gpt_oss ^
-  --analysis-provider-mode same_provider_rotating ^
-  --identity-provider booknlp_clean ^
-  --identity-json "analysis_outputs\identity_series\example\book_01\booknlp_small_pipeline_identity.json" ^
-  --scene-failure-policy fail_fast ^
-  --skip-ingest
-```
-
-Example contract validation:
-
-```powershell
-.\venv\Scripts\python.exe saga_tools.py validate-encoder-artifacts ^
-  --contract "analysis_outputs\encode_runs\...\contracts\01_book.contract.json" ^
-  --identity-provider booknlp_clean ^
-  --identity-json "analysis_outputs\identity_series\example\book_01\booknlp_small_pipeline_identity.json"
-```
+Production analysis and rendering runs now go through the DB-native agent pipeline and the local dashboard runtime.
 
 ## Repository Layout
 
 - [analysis](/B:/Documents/PyCharm/graduationProject/analysis)
-  Scene analysis, evidence extraction, reconciliation, and visual-state extraction.
+  DB-native scene analysis agents, evidence extraction, reconciliation, and visual-state extraction.
 - [core](/B:/Documents/PyCharm/graduationProject/core)
-  Contract rebuild, normalization, builders, and stable-state logic.
+  Normalization, builders, and stable-state logic.
 - [entities](/B:/Documents/PyCharm/graduationProject/entities)
   Entity registry and identity post-processing helpers.
 - [infrastructure](/B:/Documents/PyCharm/graduationProject/infrastructure)
   Model/provider transport, credential stores, Neo4j ingestion.
 - [query](/B:/Documents/PyCharm/graduationProject/query)
-  Retrieval context, target states, visual world state, and prompt-pack services.
+  Retrieval context, indexing, target states, and visual world state saga.services.
 - [services](/B:/Documents/PyCharm/graduationProject/services)
-  Production orchestration and persistence workflows.
-- [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app)
+  Production orchestration, prompt generation, rendering, export, and persistence workflows.
+- [apps/dashboard_web](/B:/Documents/PyCharm/graduationProject/apps/dashboard_web)
   React + Tailwind local dashboard frontend.
-- [dashboard_runtime](/B:/Documents/PyCharm/graduationProject/dashboard_runtime)
+- [apps.dashboard_api](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api)
   Local web runtime for serving the dashboard.
-- [dashboard_api](/B:/Documents/PyCharm/graduationProject/dashboard_api)
-  Local FastAPI backend used by some dashboard/runtime flows.
-- [redesign_lab](/B:/Documents/PyCharm/graduationProject/redesign_lab)
-  Identity, evaluation, and experimental pipeline support code.
+- [identity](/B:/Documents/PyCharm/graduationProject/identity)
+  Minimal BookNLP identity support code retained by production.
 - [docs](/B:/Documents/PyCharm/graduationProject/docs)
   Architecture and operator documentation.
 

@@ -1,5 +1,5 @@
-from analysis.microtasks.scene_semantic_reviewer import SceneSemanticReviewer
-from analysis.microtasks.task_registry import MicroTaskRegistry
+﻿from saga.agents.microtasks.scene_semantic_reviewer import SceneSemanticReviewer
+from saga.agents.microtasks.task_registry import MicroTaskRegistry
 
 
 class StubSemanticClient:
