@@ -83,20 +83,19 @@ That means the graph persists across container restarts and normal upgrades.
 
 1. Start Neo4j.
 2. `python saga_tools.py register-corpus ...`
-3. `python saga_tools.py encode-store ...`
-4. `python saga_tools.py inspect-corpus ...`
-5. `python saga_tools.py build-sequel-context-neo4j ...`
-6. `python saga_tools.py generate-blueprint-neo4j ...`
+3. `python saga_tools.py inspect-corpus ...`
+4. `python saga_tools.py build-sequel-context-neo4j ...`
+5. `python saga_tools.py generate-blueprint-neo4j ...`
 
 This is the real persistence path for SAGA. Contract export remains available
 for fallback/debugging, but Neo4j is the intended persistent store.
 
-## Long-Running Encode Safety
+## Long-Running Ingest Safety
 
-`encode-store` is designed for long-running production ingest, not just quick
-tests.
+The DB-native ingestion and downstream rebuild flow are designed for long-running
+production use, not just quick tests.
 
-It now:
+They now:
 
 - plans the ingest before any heavy LLM work starts
 - skips unchanged books by source hash

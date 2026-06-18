@@ -1,7 +1,7 @@
-from services.narrative_generation_service import NarrativeGenerationService
+from saga.services.narrative_generation_service import NarrativeGenerationService
 
 from tests.test_narrative_context_service import _sample_contract
-from query.narrative_context_service import NarrativeContextService
+from saga.retrieval.narrative_context_service import NarrativeContextService
 
 
 class _StubLLMClient:

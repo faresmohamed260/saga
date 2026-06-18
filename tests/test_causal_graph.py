@@ -1,5 +1,5 @@
-from rag.story_index_service import StoryIndexService
-from timeline.causal_graph_service import CausalGraphService
+﻿from saga.retrieval.story_index_service import StoryIndexService
+from saga.domain.timeline.causal_graph_service import CausalGraphService
 
 
 class StubLLMClient:

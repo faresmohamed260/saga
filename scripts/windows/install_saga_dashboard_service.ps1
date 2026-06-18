@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $root = Split-Path -Parent $root
@@ -34,7 +34,7 @@ if (-not $serviceExists) {
 }
 
 & $nssm set $serviceName Application $python | Out-Null
-& $nssm set $serviceName AppParameters "-m dashboard_runtime.app" | Out-Null
+& $nssm set $serviceName AppParameters "-m apps.dashboard_api.app" | Out-Null
 & $nssm set $serviceName AppDirectory $root | Out-Null
 & $nssm set $serviceName DisplayName $serviceDisplayName | Out-Null
 & $nssm set $serviceName Description "SAGA local dashboard runtime hosted in the background." | Out-Null

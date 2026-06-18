@@ -1,5 +1,5 @@
-from analysis.microtasks.semantic_evidence_refiner import SemanticEvidenceRefiner
-from analysis.microtasks.task_registry import MicroTaskRegistry
+﻿from saga.agents.microtasks.semantic_evidence_refiner import SemanticEvidenceRefiner
+from saga.agents.microtasks.task_registry import MicroTaskRegistry
 
 
 class StubSemanticClient:

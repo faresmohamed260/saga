@@ -2,117 +2,95 @@
 
 # S.A.G.A.
 
-S.A.G.A. is a production-oriented narrative intelligence system for turning books into reusable canon memory.
+S.A.G.A. is a local, database-backed narrative analysis and generation workspace for books. It ingests source novels, builds canonical structured memory, exposes the results through a dashboard, and supports visual and decoder workflows on top of the same stored data.
 
-The current system focuses on:
+## Repository Status
 
-- ingesting EPUB and PDF books
-- splitting chapters into analysis scenes
-- extracting structured scene, event, entity, relationship, state, and visual-world data
-- using `booknlp_clean` as the canonical identity source
-- building contract artifacts for retrieval, downstream validation, and later generation workflows
+The repository has been updated around the current production path:
 
-## Current Product Surface
+- SQLite-backed canonical storage instead of filesystem-first contracts
+- BookNLP-clean identity as the main identity source
+- DB-native analysis agents for events, entities, profiles, timelines, states, and visuals
+- React + FastAPI dashboard as the main operator surface
+- database-backed visual prompt, render, and decoder story workflows
 
-The main operator surface is now the local React dashboard in [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app), served by the local runtime in [dashboard_runtime/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_runtime/app.py).
+The earlier legacy/prototype architecture is documented for comparison, but the active repo direction is the current DB-native system.
 
-Important repo surfaces:
+## What Changed In The Repo
 
-- [saga_tools.py](/B:/Documents/PyCharm/graduationProject/saga_tools.py)
-  Main CLI for encode, validation, retrieval, and utility workflows.
-- [services/encoder_persistence_service.py](/B:/Documents/PyCharm/graduationProject/services/encoder_persistence_service.py)
-  Production encoder path.
-- [redesign_lab/identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/identity_provider.py)
-  Production BookNLP-clean identity provider entrypoint.
-- [query/visual_world_state_service.py](/B:/Documents/PyCharm/graduationProject/query/visual_world_state_service.py)
-  Visual/world-state retrieval layer.
-- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
-  ComfyUI prompt-pack generation.
+Recent structural changes reflected in this repo:
 
-## Core Output Families
+- the main application code is now centered under [saga](B:\Documents\PyCharm\graduationProject\saga)
+- the dashboard frontend lives under [apps/dashboard_pro](B:\Documents\PyCharm\graduationProject\apps\dashboard_pro)
+- the dashboard runtime/backend lives under [apps/dashboard_api](B:\Documents\PyCharm\graduationProject\apps\dashboard_api)
+- persistence, identity, providers, analysis agents, visuals, and decoder code now operate against SQLite-backed storage
+- legacy top-level clutter was reduced so the repo is organized around application package, apps, configs, deploy assets, scripts, tests, and docs
 
-The encoder currently builds these main artifact families:
+## Main Surfaces
 
-- `chapters`
-- `scene_analyses`
-- `resolved_scene_analyses`
-- `entity_registry`
-- `state_result`
-- `canon_snapshot`
-- `timeline`
-- `event_ledger`
-- `character_timelines`
-- `character_profiles`
-- `relationship_profiles`
-- `stable_character_states`
-- `story_index_summary`
-- `visual_prompt_sets`
+### Dashboard
 
-## Identity Strategy
+Primary operator UI:
 
-The legacy custom resolver has been removed from the production path.
+- [apps/dashboard_pro](B:\Documents\PyCharm\graduationProject\apps\dashboard_pro)
+- [apps/dashboard_api/app.py](B:\Documents\PyCharm\graduationProject\apps\dashboard_api\app.py)
 
-Current canonical identity source:
+Used for:
 
-- `identity_provider = booknlp_clean`
+- staging books
+- validating import plans
+- starting analysis jobs
+- inspecting scenes, entities, events, states, visuals, and providers
+- launching decoder and rendering workflows
 
-Production identity flow:
+### CLI
 
-1. generate or load per-book BookNLP-clean pipeline identity JSON
-2. resolve provider-backed `characters`, `alias_index`, `narrator`, and `reference_entities`
-3. inject provider-backed identity into the contract path
-4. prevent scene-level inline identity from overwriting the provider stable roster
+Primary CLI entrypoint:
 
-Main implementation files:
+- [saga_tools.py](B:\Documents\PyCharm\graduationProject\saga_tools.py)
 
-- [redesign_lab/identity/booknlp_identity_adapter.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/booknlp_identity_adapter.py)
-- [redesign_lab/identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/identity_provider.py)
-- [redesign_lab/identity/series_identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/series_identity_provider.py)
+Used for:
 
-## Provider Support
+- targeted local runs
+- utilities
+- development workflows
+- rendering and export tasks
 
-`LLMClient` supports multiple modes through [infrastructure/llm_client.py](/B:/Documents/PyCharm/graduationProject/infrastructure/llm_client.py):
+### Application Package
 
-- `deepseek`
-- `gpt_oss`
-- `codex`
-- `general_compute`
-- `mistral`
-- `gemini`
+Core package:
 
-Important current behavior:
+- [saga](B:\Documents\PyCharm\graduationProject\saga)
 
-- long canonical Ollama runs should use `analysis_provider_mode = same_provider_rotating`
-- cross-provider fallback is non-canonical and should be treated as experimental
-- Codex now supports a Hermes-backed device-session transport path in addition to direct API-key usage
+Contains:
 
-Related files:
+- agents
+- identity pipeline
+- provider infrastructure
+- storage and persistence
+- services
+- retrieval/query logic
+- decoder support
+- visual generation support
 
-- [infrastructure/ollama_account_rotator.py](/B:/Documents/PyCharm/graduationProject/infrastructure/ollama_account_rotator.py)
-- [infrastructure/general_compute_account_rotator.py](/B:/Documents/PyCharm/graduationProject/infrastructure/general_compute_account_rotator.py)
-- [infrastructure/codex_session_store.py](/B:/Documents/PyCharm/graduationProject/infrastructure/codex_session_store.py)
-- [infrastructure/openai_account_store.py](/B:/Documents/PyCharm/graduationProject/infrastructure/openai_account_store.py)
+## Repository Layout
 
-## Visual World State
-
-The pipeline now includes dedicated visual-state extraction during analysis instead of relying only on post-hoc adapters.
-
-Current visual/state-oriented components:
-
-- [analysis/visual_state_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/visual_state_analyzer.py)
-- [analysis/entity_world_state_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/entity_world_state_analyzer.py)
-- [query/visual_world_state_service.py](/B:/Documents/PyCharm/graduationProject/query/visual_world_state_service.py)
-- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
-
-These outputs are intended to support:
-
-- character appearance baselines
-- clothing and condition changes
-- object and creature visual state
-- location atmosphere and state
-- scene-level visual prompt generation
-
-## Running The System
+- [apps](B:\Documents\PyCharm\graduationProject\apps)
+  Frontend and backend application surfaces.
+- [configs](B:\Documents\PyCharm\graduationProject\configs)
+  Configuration assets.
+- [deploy](B:\Documents\PyCharm\graduationProject\deploy)
+  Local deployment and provider-account assets.
+- [docs](B:\Documents\PyCharm\graduationProject\docs)
+  Architecture, schema, dashboard, and testing documentation.
+- [integrations](B:\Documents\PyCharm\graduationProject\integrations)
+  Integration-specific helpers.
+- [saga](B:\Documents\PyCharm\graduationProject\saga)
+  Main application code.
+- [scripts](B:\Documents\PyCharm\graduationProject\scripts)
+  Local scripts and Windows launch/install helpers.
+- [tests](B:\Documents\PyCharm\graduationProject\tests)
+  Automated tests.
 
 ## Installation
 
@@ -122,122 +100,98 @@ venv\Scripts\activate
 pip install -e .[dev]
 ```
 
-Optional graph extras:
+Optional extras:
 
 ```powershell
 pip install -e .[graph]
 ```
 
-## Launch The Local Dashboard
+Frontend dependencies:
 
-Recommended Windows path:
+```powershell
+npm install
+cd apps\dashboard_pro
+npm install
+```
+
+## Run The Dashboard
+
+Recommended local launcher:
 
 ```powershell
 scripts\windows\run_dashboard.bat
 ```
 
-That launcher:
-
-1. installs dashboard dependencies if needed
-2. builds the React dashboard
-3. starts the local web runtime
-
-Default local runtime URL:
+Default local URL:
 
 - `http://127.0.0.1:8675`
 
-Optional background-service path on Windows:
+Background Windows service install:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\install_saga_dashboard_service.ps1
 ```
 
-That installs the local dashboard as the `SagaDashboard` Windows service using NSSM so the UI can stay available without an open terminal.
+## Current Runtime Stack
 
-Fresh-clone local requirements:
+- frontend: React
+- backend/runtime: FastAPI
+- storage: SQLite
+- identity: BookNLP-clean pipeline
+- generation/render orchestration: local services + provider integrations
 
-- Python 3.10+
-- Node.js + npm
-- a virtual environment at `venv/`
-- local provider/account files under `deploy/` as needed for your chosen model path
+## Key Current Components
 
-## Common CLI Flow
+### Storage
 
-Production encode runs go through `saga_tools.py`.
+- [saga/storage/models.py](B:\Documents\PyCharm\graduationProject\saga\storage\models.py)
+- [saga/storage/persistence.py](B:\Documents\PyCharm\graduationProject\saga\storage\persistence.py)
 
-Example bounded encode:
+### Identity
 
-```powershell
-.\venv\Scripts\python.exe saga_tools.py encode-store ^
-  --book "D:\Books\Example.epub" ^
-  --series-id example-series ^
-  --series-title "Example Series" ^
-  --book-index-base 1 ^
-  --analysis-model gpt_oss ^
-  --identity-model gpt_oss ^
-  --analysis-provider-mode same_provider_rotating ^
-  --identity-provider booknlp_clean ^
-  --identity-json "analysis_outputs\identity_series\example\book_01\booknlp_small_pipeline_identity.json" ^
-  --scene-failure-policy fail_fast ^
-  --skip-ingest
-```
+- [saga/identity/booknlp_identity_adapter.py](B:\Documents\PyCharm\graduationProject\saga\identity\booknlp_identity_adapter.py)
+- [saga/identity/series_identity_provider.py](B:\Documents\PyCharm\graduationProject\saga\identity\series_identity_provider.py)
 
-Example contract validation:
+### Analysis
 
-```powershell
-.\venv\Scripts\python.exe saga_tools.py validate-encoder-artifacts ^
-  --contract "analysis_outputs\encode_runs\...\contracts\01_book.contract.json" ^
-  --identity-provider booknlp_clean ^
-  --identity-json "analysis_outputs\identity_series\example\book_01\booknlp_small_pipeline_identity.json"
-```
+- [saga/services/database_analysis_run_service.py](B:\Documents\PyCharm\graduationProject\saga\services\database_analysis_run_service.py)
+- [saga/agents](B:\Documents\PyCharm\graduationProject\saga\agents)
 
-## Repository Layout
+### Decoder
 
-- [analysis](/B:/Documents/PyCharm/graduationProject/analysis)
-  Scene analysis, evidence extraction, reconciliation, and visual-state extraction.
-- [core](/B:/Documents/PyCharm/graduationProject/core)
-  Contract rebuild, normalization, builders, and stable-state logic.
-- [entities](/B:/Documents/PyCharm/graduationProject/entities)
-  Entity registry and identity post-processing helpers.
-- [infrastructure](/B:/Documents/PyCharm/graduationProject/infrastructure)
-  Model/provider transport, credential stores, Neo4j ingestion.
-- [query](/B:/Documents/PyCharm/graduationProject/query)
-  Retrieval context, target states, visual world state, and prompt-pack services.
-- [services](/B:/Documents/PyCharm/graduationProject/services)
-  Production orchestration and persistence workflows.
-- [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app)
-  React + Tailwind local dashboard frontend.
-- [dashboard_runtime](/B:/Documents/PyCharm/graduationProject/dashboard_runtime)
-  Local web runtime for serving the dashboard.
-- [dashboard_api](/B:/Documents/PyCharm/graduationProject/dashboard_api)
-  Local FastAPI backend used by some dashboard/runtime flows.
-- [redesign_lab](/B:/Documents/PyCharm/graduationProject/redesign_lab)
-  Identity, evaluation, and experimental pipeline support code.
-- [docs](/B:/Documents/PyCharm/graduationProject/docs)
-  Architecture and operator documentation.
+- [saga/services/database_decoder_service.py](B:\Documents\PyCharm\graduationProject\saga\services\database_decoder_service.py)
+- [saga/services/generated_story_epub_service.py](B:\Documents\PyCharm\graduationProject\saga\services\generated_story_epub_service.py)
 
-## Credentials And Local-Only Files
+### Visuals
 
-Local credential files stay out of Git:
+- [saga/services/entity_visual_prompt_service.py](B:\Documents\PyCharm\graduationProject\saga\services\entity_visual_prompt_service.py)
+- [saga/services/comfyui_character_sheet_service.py](B:\Documents\PyCharm\graduationProject\saga\services\comfyui_character_sheet_service.py)
 
-- `deploy/ollama/accounts.local.json`
-- `deploy/general_compute/accounts.local.json`
-- `deploy/openai/accounts.local.json`
+## Documentation
 
-Use the example templates:
+Top-level methodology / implementation comparison:
 
-- [deploy/general_compute/accounts.local.example.json](/B:/Documents/PyCharm/graduationProject/deploy/general_compute/accounts.local.example.json)
-- [deploy/openai/accounts.local.example.json](/B:/Documents/PyCharm/graduationProject/deploy/openai/accounts.local.example.json)
+- [SYSTEM_METHODOLOGY_AND_IMPLEMENTATION.md](B:\Documents\PyCharm\graduationProject\SYSTEM_METHODOLOGY_AND_IMPLEMENTATION.md)
 
-Generated outputs are also local-only:
+Additional docs:
+
+- [docs/ARCHITECTURE.md](B:\Documents\PyCharm\graduationProject\docs\ARCHITECTURE.md)
+- [docs/DASHBOARD.md](B:\Documents\PyCharm\graduationProject\docs\DASHBOARD.md)
+- [docs/SQLITE_SCHEMA.md](B:\Documents\PyCharm\graduationProject\docs\SQLITE_SCHEMA.md)
+- [docs/TARGET_SYSTEM.md](B:\Documents\PyCharm\graduationProject\docs\TARGET_SYSTEM.md)
+- [docs/TESTING.md](B:\Documents\PyCharm\graduationProject\docs\TESTING.md)
+
+## Local-Only Data
+
+The following remain local and are not intended for Git tracking:
 
 - `analysis_outputs/`
+- local database files
+- local provider account files
+- rendered images and generated EPUB exports
 
-## Key Docs
+## Notes
 
-- [docs/ARCHITECTURE.md](/B:/Documents/PyCharm/graduationProject/docs/ARCHITECTURE.md)
-- [docs/DASHBOARD.md](/B:/Documents/PyCharm/graduationProject/docs/DASHBOARD.md)
-- [docs/JSON_CONTRACT.md](/B:/Documents/PyCharm/graduationProject/docs/JSON_CONTRACT.md)
-- [docs/NEO4J.md](/B:/Documents/PyCharm/graduationProject/docs/NEO4J.md)
-- [docs/TARGET_SYSTEM.md](/B:/Documents/PyCharm/graduationProject/docs/TARGET_SYSTEM.md)
-- [docs/TESTING.md](/B:/Documents/PyCharm/graduationProject/docs/TESTING.md)
+- The dashboard/runtime path is the main operational path.
+- The current repo is organized around the DB-native system, not the earlier contract-first prototype.
+- Methodology and implementation comparison is intentionally kept in the separate top-level document so the README can stay repository-focused.

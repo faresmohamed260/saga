@@ -1,9 +1,9 @@
-from analysis.scene_extractor import SceneExtractor
-from entities.character_profile_service import CharacterProfileService
-from rag.story_index_service import StoryIndexService
-from timeline.event_ledger_service import EventLedgerService
-from timeline.timeline_service import TimelineService
-from timeline.character_timeline_service import CharacterTimelineService
+﻿from saga.agents.scene_extractor import SceneExtractor
+from saga.domain.entities.character_profile_service import CharacterProfileService
+from saga.retrieval.story_index_service import StoryIndexService
+from saga.domain.timeline.event_ledger_service import EventLedgerService
+from saga.domain.timeline.timeline_service import TimelineService
+from saga.domain.timeline.character_timeline_service import CharacterTimelineService
 
 
 def build_sample_chapter():

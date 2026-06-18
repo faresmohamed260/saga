@@ -1,6 +1,6 @@
 import json
 
-from services.corpus_hardening_service import CorpusHardeningService
+from saga.services.corpus_hardening_service import CorpusHardeningService
 
 
 class _StubLLM:

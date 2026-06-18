@@ -1,5 +1,5 @@
-from infrastructure import neo4j_ingestion_service as neo4j_module
-from infrastructure.neo4j_ingestion_service import (
+from saga.providers import neo4j_ingestion_service as neo4j_module
+from saga.providers.neo4j_ingestion_service import (
     Neo4jAuthenticationError,
     Neo4jBookConflictError,
     Neo4jClientConfigurationError,

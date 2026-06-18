@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
 from sqlalchemy import select
 
-from sql_store.models import Book, Entity, GeneratedImage, IdentityAlias, IdentityCharacter, IdentitySeries, Scene, VisualPrompt
-from sql_store.persistence import SagaSQLiteStore
+from saga.storage.models import Book, Entity, GeneratedImage, IdentityAlias, IdentityCharacter, IdentitySeries, Scene, VisualPrompt
+from saga.storage.persistence import SagaSQLiteStore
 
 
 def _sample_contract(tmp_path: Path) -> dict:

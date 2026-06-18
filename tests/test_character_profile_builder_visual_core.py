@@ -1,4 +1,4 @@
-from core.builders.character_profile_builder import CharacterProfileBuilder
+﻿from saga.domain.builders.character_profile_builder import CharacterProfileBuilder
 
 
 def test_character_profile_builder_prefers_first_appearance_visual_baseline_for_core_description():

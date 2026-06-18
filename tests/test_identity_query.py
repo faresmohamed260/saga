@@ -1,6 +1,6 @@
-from query.story_query_service import StoryQueryService
-from rag.story_index_service import StoryIndexService
-from timeline.character_identity_service import CharacterIdentityService
+﻿from saga.retrieval.story_query_service import StoryQueryService
+from saga.retrieval.story_index_service import StoryIndexService
+from saga.domain.timeline.character_identity_service import CharacterIdentityService
 
 
 class StubLLMClient:
@@ -48,7 +48,7 @@ def build_scene_analyses():
 
 def test_incremental_identity_resolution():
     stub = StubLLMClient([
-        {"is_character": True, "confidence": 0.9, "reasoning": "The huntress is a consequential role-based identity."},
+        {"is_character": True, "confidence": 0.9, "reasoning": "The huntress is a consequential role-based saga.identity."},
         {"same_character": True, "confidence": 0.92, "reasoning": "The huntress matches Feyre's established actions.", "canonical_name": "Feyre"},
     ])
     service = CharacterIdentityService(llm_client=stub)

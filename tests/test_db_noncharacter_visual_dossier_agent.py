@@ -1,13 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
 from sqlalchemy import select
 
-from analysis.db_noncharacter_visual_dossier_agent import DatabaseNonCharacterVisualDossierAgent
-from sql_store.models import Entity
-from sql_store.persistence import SagaSQLiteStore
-from sql_store.semantic_retrieval import SQLiteSemanticRetrievalService
+from saga.agents.db_noncharacter_visual_dossier_agent import DatabaseNonCharacterVisualDossierAgent
+from saga.storage.models import Entity
+from saga.storage.persistence import SagaSQLiteStore
+from saga.storage.semantic_retrieval import SQLiteSemanticRetrievalService
 from tests.test_db_event_agent import _sample_contract
 
 

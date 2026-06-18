@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from redesign_lab.identity.booknlp_identity_adapter import clean_booknlp_identity
+from saga.identity.booknlp_identity_adapter import clean_booknlp_identity
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -256,8 +256,8 @@ def test_booknlp_identity_cleanup_merges_short_variant_into_full_name(tmp_path: 
 
 
 def test_booknlp_identity_cleanup_llm_review_merges_low_count_short_variant(tmp_path: Path, monkeypatch) -> None:
-    from infrastructure import llm_client as llm_module
-    from services import wiki_character_reference_service as wiki_module
+    from saga.providers import llm_client as llm_module
+    from saga.services import wiki_character_reference_service as wiki_module
 
     class StubLLMClient:
         MODE_CODEX = "codex"

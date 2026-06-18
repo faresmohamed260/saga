@@ -1,6 +1,9 @@
 import json
 
-from services.comfyui_character_sheet_service import ComfyUICharacterSheetService
+from saga.services.comfyui_character_sheet_service import ComfyUICharacterSheetService
+from saga.services.entity_visual_prompt_service import EntityVisualPromptService
+from saga.storage.models import Book, CharacterVisualBaseline, Entity, Series, VisualPrompt
+from saga.storage.persistence import SagaSQLiteStore
 
 
 def _row(name, *, confidence="high", species="human", role="wizard", prompt="prompt", source="") -> dict:
@@ -77,7 +80,7 @@ def test_collect_character_prompts_merges_alias_duplicates_and_skips_creatures(t
 
 
 def test_collect_entity_visual_prompts_uses_entity_registry_as_source_of_truth(tmp_path):
-    contract_path = tmp_path / "entities.contract.json"
+    contract_path = tmp_path / "saga.domain.entities.contract.json"
     contract_payload = {
         "outputs": {
             "identity_result": {"alias_map": {}},
@@ -160,7 +163,7 @@ def test_collect_entity_visual_prompts_uses_entity_registry_as_source_of_truth(t
     assert by_name["Fang"]["workflow_mode"] == "default"
     assert "non-human fantasy creature" in by_name["Fang"]["positive_prompt"].lower()
     assert by_name["Hogwarts"]["entity_type"] == "location"
-    assert by_name["Hogwarts"]["workflow_mode"] == "default"
+    assert by_name["Hogwarts"]["workflow_mode"] == "location"
     assert "hogwarts location prompt" in by_name["Hogwarts"]["positive_prompt"].lower()
     assert by_name["Sorting Hat"]["entity_type"] == "object"
     assert by_name["Sorting Hat"]["workflow_mode"] == "default"
@@ -213,6 +216,107 @@ def test_build_render_manifest_emits_all_entity_types_with_per_item_workflows(tm
     assert by_name["Hedwig"]["workflow_mode"] == "default"
     assert by_name["Hedwig"]["width"] == 1024
     assert by_name["Hedwig"]["height"] == 1024
-    assert by_name["Hogwarts"]["workflow_mode"] == "default"
+    assert by_name["Hogwarts"]["workflow_mode"] == "location"
     assert by_name["Hogwarts"]["width"] == 1344
     assert by_name["Hogwarts"]["height"] == 768
+
+
+def test_db_render_manifest_can_target_one_exact_entity_id(tmp_path):
+    store = SagaSQLiteStore(tmp_path / "saga.sqlite")
+    with store.session_factory() as session:
+        series = Series(series_id="hp", title="Harry Potter", metadata_json={})
+        session.add(series)
+        session.flush()
+        book = Book(series_fk=series.id, series_id="hp", book_index=1, title="HP1", run_status="ready")
+        session.add(book)
+        session.flush()
+        harry = Entity(
+            book_id=book.id,
+            canonical_name="Harry Potter",
+            entity_type="character",
+            mention_count=10,
+            first_seen_book_index=1,
+            first_seen_chapter_index=1,
+            first_seen_scene_index=1,
+            first_appearance_profile={"persistent_traits": {"default_clothing_style": "school robes"}},
+        )
+        hermione = Entity(
+            book_id=book.id,
+            canonical_name="Hermione Granger",
+            entity_type="character",
+            mention_count=8,
+            first_seen_book_index=1,
+            first_seen_chapter_index=6,
+            first_seen_scene_index=1,
+            first_appearance_profile={"persistent_traits": {"default_clothing_style": "school robes"}},
+        )
+        session.add_all([harry, hermione])
+        session.flush()
+        session.add(
+            CharacterVisualBaseline(
+                book_id=book.id,
+                entity_id=harry.id,
+                gender_presentation="male",
+                species_or_race="human",
+                apparent_age_group="young boy",
+                hair_color="black",
+                hair_length_or_style="messy hair",
+                eye_color="green eyes",
+                default_clothing_style="black school robes",
+                evidence_excerpt="Harry has messy black hair and green eyes.",
+            )
+        )
+        session.add(
+            CharacterVisualBaseline(
+                book_id=book.id,
+                entity_id=hermione.id,
+                gender_presentation="female",
+                species_or_race="human",
+                apparent_age_group="young girl",
+                hair_color="brown",
+                hair_length_or_style="bushy hair",
+                eye_color="brown eyes",
+                default_clothing_style="black school robes",
+                evidence_excerpt="Hermione has bushy brown hair.",
+            )
+        )
+        session.add(
+            VisualPrompt(
+                book_id=book.id,
+                entity_id=harry.id,
+                entity_name="Harry Potter",
+                entity_type="character",
+                prompt_type="baseline_character_sheet",
+                positive_prompt="wrong harry prompt",
+                negative_prompt="",
+                confidence="high",
+            )
+        )
+        hermione_prompt = VisualPrompt(
+            book_id=book.id,
+            entity_id=hermione.id,
+            entity_name="Hermione Granger",
+            entity_type="character",
+            prompt_type="baseline_character_sheet",
+            positive_prompt="selected hermione prompt",
+            negative_prompt="bad anatomy",
+            confidence="high",
+        )
+        session.add(hermione_prompt)
+        session.flush()
+        target_id = hermione.id
+        target_prompt_id = hermione_prompt.id
+        book_ref = f"db://book/{book.id}"
+        session.commit()
+
+    service = ComfyUICharacterSheetService()
+    service.sqlite_store = store
+    service.entity_visual_prompt_service = EntityVisualPromptService(store)
+
+    manifest = service.build_render_manifest(book_ref, entity_ids={target_id}, prompt_ids={target_prompt_id})
+
+    assert len(manifest["renders"]) == 1
+    assert manifest["renders"][0]["entity_id"] == target_id
+    assert manifest["renders"][0]["prompt_id"] == target_prompt_id
+    assert manifest["renders"][0]["entity_name"] == "Hermione Granger"
+    assert manifest["renders"][0]["positive_prompt"] == "selected hermione prompt"

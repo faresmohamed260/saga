@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from services.visual_prompt_rewrite_service import VisualPromptRewriteService
+from saga.services.visual_prompt_rewrite_service import VisualPromptRewriteService
 
 
 class StubRewriteLLM:

@@ -1,4 +1,4 @@
-from analysis.visual_prompt_schema import (
+﻿from saga.agents.visual_prompt_schema import (
     compile_character_edit_prompt,
     compile_character_turnaround_prompt,
     enrich_persistent_profile_from_legacy_fields,

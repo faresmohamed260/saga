@@ -1,4 +1,4 @@
-# S.A.G.A. Architecture
+﻿# S.A.G.A. Architecture
 
 ## High-Level Flow
 
@@ -10,22 +10,22 @@ Books
   -> Structured scene analysis
   -> Visual/entity world-state extraction
   -> Provider-backed identity reconciliation
-  -> Deterministic contract rebuild
-  -> Retrieval / dashboard inspection / prompt-pack generation
+  -> SQLite persistence
+  -> Retrieval / dashboard inspection / visual prompt generation
 ```
 
 ## Current Production Path
 
 The current production path is centered on:
 
-- [services/encoder_persistence_service.py](/B:/Documents/PyCharm/graduationProject/services/encoder_persistence_service.py)
 - [saga_tools.py](/B:/Documents/PyCharm/graduationProject/saga_tools.py)
-- [core/pipeline_contract.py](/B:/Documents/PyCharm/graduationProject/core/pipeline_contract.py)
+- [apps.dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api/app.py)
+- [sql_store/persistence.py](/B:/Documents/PyCharm/graduationProject/sql_store/persistence.py)
 
 Important current production characteristics:
 
 - `booknlp_clean` is the only supported production identity provider
-- scene failure handling is explicit and contract-aware
+- scene failure handling is explicit and database-native
 - same-provider rotation is supported for long canonical runs
 - visual-world-state extraction happens during analysis, not only after export
 
@@ -47,8 +47,6 @@ Responsibility:
 - [analysis/scene_extractor.py](/B:/Documents/PyCharm/graduationProject/analysis/scene_extractor.py)
 - [analysis/local_entity_extractor.py](/B:/Documents/PyCharm/graduationProject/analysis/local_entity_extractor.py)
 - [analysis/evidence_filter.py](/B:/Documents/PyCharm/graduationProject/analysis/evidence_filter.py)
-- [analysis/scene_analysis_orchestrator.py](/B:/Documents/PyCharm/graduationProject/analysis/scene_analysis_orchestrator.py)
-- [analysis/scene_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/scene_analyzer.py)
 - [analysis/scene_contract_reconciler.py](/B:/Documents/PyCharm/graduationProject/analysis/scene_contract_reconciler.py)
 
 Responsibility:
@@ -56,14 +54,11 @@ Responsibility:
 - split chapters into planned scenes
 - collect local evidence before LLM refinement
 - run structured analysis for events, entities, state changes, and relationships
-- normalize scene output into contract-safe schema
+- normalize scene output into database-safe schema
 
 ## Visual World-State Layer
 
-- [analysis/visual_state_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/visual_state_analyzer.py)
-- [analysis/entity_world_state_analyzer.py](/B:/Documents/PyCharm/graduationProject/analysis/entity_world_state_analyzer.py)
 - [query/visual_world_state_service.py](/B:/Documents/PyCharm/graduationProject/query/visual_world_state_service.py)
-- [query/comfyui_prompt_pack_service.py](/B:/Documents/PyCharm/graduationProject/query/comfyui_prompt_pack_service.py)
 
 Responsibility:
 
@@ -73,9 +68,9 @@ Responsibility:
 
 ## Identity Layer
 
-- [redesign_lab/identity/booknlp_identity_adapter.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/booknlp_identity_adapter.py)
-- [redesign_lab/identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/identity_provider.py)
-- [redesign_lab/identity/series_identity_provider.py](/B:/Documents/PyCharm/graduationProject/redesign_lab/identity/series_identity_provider.py)
+- [identity/booknlp_identity_adapter.py](/B:/Documents/PyCharm/graduationProject/identity/booknlp_identity_adapter.py)
+- [identity/identity_provider.py](/B:/Documents/PyCharm/graduationProject/identity/identity_provider.py)
+- [identity/series_identity_provider.py](/B:/Documents/PyCharm/graduationProject/identity/series_identity_provider.py)
 - [entities/identity_llm_postprocessor.py](/B:/Documents/PyCharm/graduationProject/entities/identity_llm_postprocessor.py)
 
 Responsibility:
@@ -85,9 +80,8 @@ Responsibility:
 - merge or map series-level identity where needed
 - keep provider-backed stable rosters from being overwritten by scene-local identity noise
 
-## Contract And Builder Layer
+## Builder Layer
 
-- [core/pipeline_contract.py](/B:/Documents/PyCharm/graduationProject/core/pipeline_contract.py)
 - [core/stable_character_state.py](/B:/Documents/PyCharm/graduationProject/core/stable_character_state.py)
 - [core/trait_taxonomy.py](/B:/Documents/PyCharm/graduationProject/core/trait_taxonomy.py)
 - [core/builders](/B:/Documents/PyCharm/graduationProject/core/builders)
@@ -95,7 +89,6 @@ Responsibility:
 
 Responsibility:
 
-- rebuild resolved scene analyses
 - build entity registry
 - build state result
 - build canon snapshots
@@ -119,11 +112,11 @@ Responsibility:
 - [query/narrative_context_service.py](/B:/Documents/PyCharm/graduationProject/query/narrative_context_service.py)
 - [query/neo4j_narrative_context_service.py](/B:/Documents/PyCharm/graduationProject/query/neo4j_narrative_context_service.py)
 - [query/target_character_state_service.py](/B:/Documents/PyCharm/graduationProject/query/target_character_state_service.py)
-- [rag/story_index_service.py](/B:/Documents/PyCharm/graduationProject/rag/story_index_service.py)
+- [query/story_index_service.py](/B:/Documents/PyCharm/graduationProject/query/story_index_service.py)
 
 Responsibility:
 
-- build grounded retrieval packets from contract artifacts
+- build grounded retrieval packets from persisted SQLite analysis data
 - support point-in-time or target-aware state reconstruction
 - provide structured context for later decoder and visual tooling
 
@@ -144,23 +137,16 @@ Responsibility:
 
 ## Dashboard Surfaces
 
-- [dashboard_app](/B:/Documents/PyCharm/graduationProject/dashboard_app)
-- [dashboard_runtime/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_runtime/app.py)
-- [dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/dashboard_api/app.py)
-- [story_dashboard.py](/B:/Documents/PyCharm/graduationProject/story_dashboard.py)
+- [apps/dashboard_web](/B:/Documents/PyCharm/graduationProject/apps/dashboard_web)
+- [apps.dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api/app.py)
 
 Responsibility:
 
 - local operator UI
-- contract browsing and validation
+- database-backed analysis browsing and validation
 - visual-world-state review
 - provider/config inspection
 - encode command composition and run inspection
-
-Note:
-
-- the legacy Streamlit dashboard still exists in the repo
-- the newer local React dashboard is the more current operator surface
 
 ## Design Notes
 

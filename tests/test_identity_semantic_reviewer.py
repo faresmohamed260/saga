@@ -1,5 +1,5 @@
-from analysis.microtasks.identity_semantic_reviewer import IdentitySemanticReviewer
-from analysis.microtasks.task_registry import MicroTaskRegistry
+﻿from saga.agents.microtasks.identity_semantic_reviewer import IdentitySemanticReviewer
+from saga.agents.microtasks.task_registry import MicroTaskRegistry
 
 
 class StubSemanticClient:

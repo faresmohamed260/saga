@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from query.narrative_context_service import NarrativeContextService
-from query.visual_world_state_service import VisualWorldStateService
+from saga.retrieval.narrative_context_service import NarrativeContextService
+from saga.retrieval.visual_world_state_service import VisualWorldStateService
 
 
 def _write_json(path: Path, payload: dict) -> None:

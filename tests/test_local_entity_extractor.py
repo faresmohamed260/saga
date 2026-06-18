@@ -1,4 +1,4 @@
-from analysis.local_entity_extractor import LocalEntityExtractor
+﻿from saga.agents.local_entity_extractor import LocalEntityExtractor
 
 
 def test_local_entity_extractor_finds_named_character_candidates():

@@ -1,7 +1,7 @@
-from entities.entity_registry_service import EntityRegistryService
-from rag.scene_index_service import SceneIndexService
-from state.canon_state_service import CanonStateService
-from state.state_transition_service import StateTransitionService
+﻿from saga.domain.entities.entity_registry_service import EntityRegistryService
+from saga.retrieval.scene_index_service import SceneIndexService
+from saga.domain.canon_state_service import CanonStateService
+from saga.domain.state_transition_service import StateTransitionService
 
 
 def build_sample_analyzed_scenes():

@@ -19,7 +19,6 @@ dependencies = [
   "requests",
   "scikit-learn",
   "sqlalchemy",
-  "streamlit",
   "trafilatura",
   "uvicorn",
 ]
@@ -40,19 +39,13 @@ graph = [
 where = ["."]
 namespaces = true
 include = [
-  "analysis",
-  "core",
-  "dashboard_api",
-  "dashboard_runtime",
-  "entities",
-  "infrastructure",
-  "prompts",
-  "query",
-  "rag",
-  "services",
-  "sql_store",
-  "state",
-  "timeline",
+  "apps",
+  "apps.*",
+  "saga",
+  "saga.*",
+  "integrations",
+  "integrations.*",
+  "apps.dashboard_api",
   "tests",
 ]
 

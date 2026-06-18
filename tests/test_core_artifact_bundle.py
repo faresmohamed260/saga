@@ -1,4 +1,4 @@
-from core.builders.artifact_bundle_builder import ArtifactBundleBuilder
+﻿from saga.domain.builders.artifact_bundle_builder import ArtifactBundleBuilder
 
 
 def _sample_scene_analyses():

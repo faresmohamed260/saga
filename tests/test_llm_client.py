@@ -1,11 +1,11 @@
-import requests
+﻿import requests
 
-from infrastructure.llm_client import LLMClient
+from saga.providers.llm_client import LLMClient
 
 
 def test_gpt_oss_local_ollama_payload_uses_low_thinking(monkeypatch):
     monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
-    monkeypatch.setattr("infrastructure.ollama_account_rotator.OllamaAccountRotator.active_api_key", lambda self: "")
+    monkeypatch.setattr("saga.providers.ollama_account_rotator.OllamaAccountRotator.active_api_key", lambda self: "")
     client = LLMClient(mode=LLMClient.MODE_GPT_OSS, max_retries=1, base_delay=0.0, timeout=5)
     payload = client._ollama_generate_payload(
         prompt="hello",
@@ -17,7 +17,7 @@ def test_gpt_oss_local_ollama_payload_uses_low_thinking(monkeypatch):
 
 def test_non_gpt_oss_local_ollama_payload_has_no_think_override(monkeypatch):
     monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
-    monkeypatch.setattr("infrastructure.ollama_account_rotator.OllamaAccountRotator.active_api_key", lambda self: "")
+    monkeypatch.setattr("saga.providers.ollama_account_rotator.OllamaAccountRotator.active_api_key", lambda self: "")
     client = LLMClient(mode=LLMClient.MODE_DEEPSEEK, max_retries=1, base_delay=0.0, timeout=5)
     payload = client._ollama_generate_payload(
         prompt="hello",
@@ -119,8 +119,8 @@ def test_general_compute_budget_estimate_splits_input_and_output():
 
 def test_codex_uses_local_account_store_when_env_missing(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("infrastructure.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "store-key")
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
+    monkeypatch.setattr("saga.providers.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "store-key")
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
 
     class _DummyResponses:
         def create(self, **kwargs):
@@ -131,7 +131,7 @@ def test_codex_uses_local_account_store_when_env_missing(monkeypatch):
             assert api_key == "store-key"
             self.responses = _DummyResponses()
 
-    monkeypatch.setattr("infrastructure.llm_client.OpenAI", _DummyOpenAI)
+    monkeypatch.setattr("saga.providers.llm_client.OpenAI", _DummyOpenAI)
     client = LLMClient(mode=LLMClient.MODE_CODEX, max_retries=1, base_delay=0.0, timeout=5)
 
     assert client.provider_name() == "openai-codex"
@@ -140,7 +140,7 @@ def test_codex_uses_local_account_store_when_env_missing(monkeypatch):
 
 def test_codex_generate_json_uses_json_object_format(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
     captured = {}
 
     class _DummyResponses:
@@ -153,7 +153,7 @@ def test_codex_generate_json_uses_json_object_format(monkeypatch):
             assert api_key == "env-key"
             self.responses = _DummyResponses()
 
-    monkeypatch.setattr("infrastructure.llm_client.OpenAI", _DummyOpenAI)
+    monkeypatch.setattr("saga.providers.llm_client.OpenAI", _DummyOpenAI)
     client = LLMClient(mode=LLMClient.MODE_CODEX, max_retries=1, base_delay=0.0, timeout=5)
     payload = client.generate_json("Return JSON", strict=True, max_tokens=123)
 
@@ -165,7 +165,7 @@ def test_codex_generate_json_uses_json_object_format(monkeypatch):
 
 def test_codex_generate_text_uses_instructions(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
     captured = {}
 
     class _DummyResponses:
@@ -177,7 +177,7 @@ def test_codex_generate_text_uses_instructions(monkeypatch):
         def __init__(self, api_key):
             self.responses = _DummyResponses()
 
-    monkeypatch.setattr("infrastructure.llm_client.OpenAI", _DummyOpenAI)
+    monkeypatch.setattr("saga.providers.llm_client.OpenAI", _DummyOpenAI)
     client = LLMClient(mode=LLMClient.MODE_CODEX, max_retries=1, base_delay=0.0, timeout=5)
     text = client.generate_text("User prompt", system_prompt="System prompt", temperature=0.2, max_tokens=222)
 
@@ -190,9 +190,9 @@ def test_codex_generate_text_uses_instructions(monkeypatch):
 
 def test_codex_uses_local_device_session_when_api_key_store_missing(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("infrastructure.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "")
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
-    monkeypatch.setattr("infrastructure.codex_session_store.CodexSessionStore.active_access_token", lambda self: "session-token")
+    monkeypatch.setattr("saga.providers.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "")
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: False))
+    monkeypatch.setattr("saga.providers.codex_session_store.CodexSessionStore.active_access_token", lambda self: "session-token")
 
     class _DummyResponses:
         def create(self, **kwargs):
@@ -203,7 +203,7 @@ def test_codex_uses_local_device_session_when_api_key_store_missing(monkeypatch)
             assert api_key == "session-token"
             self.responses = _DummyResponses()
 
-    monkeypatch.setattr("infrastructure.llm_client.OpenAI", _DummyOpenAI)
+    monkeypatch.setattr("saga.providers.llm_client.OpenAI", _DummyOpenAI)
     client = LLMClient(mode=LLMClient.MODE_CODEX, max_retries=1, base_delay=0.0, timeout=5)
 
     assert client.current_account_alias().startswith("codex_session") or client.current_account_alias()
@@ -212,11 +212,11 @@ def test_codex_uses_local_device_session_when_api_key_store_missing(monkeypatch)
 
 def test_codex_uses_hermes_transport_when_device_auth_available(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("infrastructure.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "")
-    monkeypatch.setattr("infrastructure.codex_session_store.CodexSessionStore.has_session", lambda self: True)
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
+    monkeypatch.setattr("saga.providers.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "")
+    monkeypatch.setattr("saga.providers.codex_session_store.CodexSessionStore.has_session", lambda self: True)
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
     monkeypatch.setattr(
-        "infrastructure.llm_client.LLMClient._run_codex_hermes_prompt",
+        "saga.providers.llm_client.LLMClient._run_codex_hermes_prompt",
         classmethod(lambda cls, *, model_name, prompt, timeout_seconds: '{"ok": true}'),
     )
 
@@ -229,10 +229,10 @@ def test_codex_uses_hermes_transport_when_device_auth_available(monkeypatch):
 
 def test_probe_codex_model_access_uses_hermes_when_direct_key_missing(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("infrastructure.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "")
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
+    monkeypatch.setattr("saga.providers.openai_account_store.OpenAIAccountStore.active_api_key", lambda self: "")
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
     monkeypatch.setattr(
-        "infrastructure.llm_client.LLMClient._run_codex_hermes_prompt",
+        "saga.providers.llm_client.LLMClient._run_codex_hermes_prompt",
         classmethod(lambda cls, *, model_name, prompt, timeout_seconds: '{"ok": true}'),
     )
 
@@ -252,7 +252,7 @@ def test_codex_hermes_timeout_budget_scales_with_prompt_size():
 
 
 def test_codex_hermes_uses_scaled_timeout_and_utf8(monkeypatch):
-    monkeypatch.setattr("infrastructure.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
+    monkeypatch.setattr("saga.providers.llm_client.LLMClient._hermes_codex_available", classmethod(lambda cls: True))
     captured = {}
 
     def _fake_run(command, **kwargs):
@@ -262,7 +262,7 @@ def test_codex_hermes_uses_scaled_timeout_and_utf8(monkeypatch):
         captured["errors"] = kwargs.get("errors")
         return type("Result", (), {"returncode": 0, "stdout": '{"ok": true}', "stderr": ""})()
 
-    monkeypatch.setattr("infrastructure.llm_client.subprocess.run", _fake_run)
+    monkeypatch.setattr("saga.providers.llm_client.subprocess.run", _fake_run)
 
     result = LLMClient._run_codex_hermes_prompt(
         model_name="gpt-5.4-mini",

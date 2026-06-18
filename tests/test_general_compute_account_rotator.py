@@ -1,8 +1,8 @@
-import json
+﻿import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from infrastructure.general_compute_account_rotator import GeneralComputeAccountRotator
+from saga.providers.general_compute_account_rotator import GeneralComputeAccountRotator
 
 
 def test_acquire_api_key_for_request_rotates_to_next_available_key(tmp_path):

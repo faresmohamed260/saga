@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from redesign_lab.identity.identity_provider import resolve_identity_provider_input
-from redesign_lab.identity.series_identity_provider import build_series_pipeline_identity
+from saga.identity.identity_provider import resolve_identity_provider_input
+from saga.identity.series_identity_provider import build_series_pipeline_identity
 
 
 def _write_json(path: Path, payload: dict) -> None:
