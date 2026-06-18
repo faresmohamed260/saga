@@ -176,6 +176,7 @@ Top-level methodology / implementation comparison:
 Additional docs:
 
 - [docs/ARCHITECTURE.md](B:\Documents\PyCharm\graduationProject\docs\ARCHITECTURE.md)
+- [docs/AGENT_PIPELINE_DATAFLOW.md](B:\Documents\PyCharm\graduationProject\docs\AGENT_PIPELINE_DATAFLOW.md)
 - [docs/DASHBOARD.md](B:\Documents\PyCharm\graduationProject\docs\DASHBOARD.md)
 - [docs/SQLITE_SCHEMA.md](B:\Documents\PyCharm\graduationProject\docs\SQLITE_SCHEMA.md)
 - [docs/TARGET_SYSTEM.md](B:\Documents\PyCharm\graduationProject\docs\TARGET_SYSTEM.md)

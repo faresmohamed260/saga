@@ -14,6 +14,8 @@ Books
   -> Retrieval / dashboard inspection / visual prompt generation
 ```
 
+For a stage-by-stage explanation of the database-native agents, runtime orchestration, and SQLite dataflow, see `docs/AGENT_PIPELINE_DATAFLOW.md`.
+
 ## Current Production Path
 
 The current production path is centered on:
