@@ -1,0 +1,25 @@
+{
+  "name": "graduationproject",
+  "version": "1.0.0",
+  "description": "![S.A.G.A. Logo](docs/assets/saga-logo.svg)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/faresmohamed260/saga.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/faresmohamed260/saga/issues"
+  },
+  "homepage": "https://github.com/faresmohamed260/saga#readme"
+}

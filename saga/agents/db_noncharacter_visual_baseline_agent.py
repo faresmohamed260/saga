@@ -65,6 +65,7 @@ class DatabaseNonCharacterVisualBaselineAgent:
         entity_types: list[str] | None = None,
         entity_names: list[str] | None = None,
         limit_entities: int | None = None,
+        progress_callback: Any | None = None,
     ) -> dict[str, Any]:
         book_id = self._resolve_book_id(book_ref)
         requested_types = {
@@ -90,6 +91,19 @@ class DatabaseNonCharacterVisualBaselineAgent:
             len(roster),
             sorted(requested_types),
         )
+        if callable(progress_callback):
+            progress_callback(
+                {
+                    "event": "started",
+                    "book_id": book_id,
+                    "total_entities": len(roster),
+                    "completed_entities": 0,
+                    "persisted_visual_baselines": 0,
+                    "skipped_entities": 0,
+                    "current_entity_name": "",
+                    "current_entity_type": "",
+                }
+            )
         self.semantic_retrieval.ensure_book_index(book_id=book_id, source_types=("scene", "event"))
         results: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
@@ -102,14 +116,57 @@ class DatabaseNonCharacterVisualBaselineAgent:
                 outcome = future.result()
                 if outcome.get("skipped"):
                     skipped.append(outcome["skipped"])
+                    if callable(progress_callback):
+                        row = future_map.get(future) or {}
+                        progress_callback(
+                            {
+                                "event": "entity_completed",
+                                "book_id": book_id,
+                                "total_entities": len(roster),
+                                "completed_entities": len(results) + len(skipped),
+                                "persisted_visual_baselines": len(results),
+                                "skipped_entities": len(skipped),
+                                "current_entity_name": str(row.get("entity_name") or ""),
+                                "current_entity_type": str(row.get("entity_type") or ""),
+                                "skipped": True,
+                            }
+                        )
                     continue
                 results.append(outcome["result"])
+                if callable(progress_callback):
+                    result_row = outcome.get("result") or {}
+                    progress_callback(
+                        {
+                            "event": "entity_completed",
+                            "book_id": book_id,
+                            "total_entities": len(roster),
+                            "completed_entities": len(results) + len(skipped),
+                            "persisted_visual_baselines": len(results),
+                            "skipped_entities": len(skipped),
+                            "current_entity_name": str(result_row.get("entity_name") or ""),
+                            "current_entity_type": str(result_row.get("entity_type") or ""),
+                            "skipped": False,
+                        }
+                    )
         LOGGER.info(
             "DB non-character visual baseline agent complete | book=%s persisted=%s skipped=%s",
             book_id,
             len(results),
             len(skipped),
         )
+        if callable(progress_callback):
+            progress_callback(
+                {
+                    "event": "completed",
+                    "book_id": book_id,
+                    "total_entities": len(roster),
+                    "completed_entities": len(results) + len(skipped),
+                    "persisted_visual_baselines": len(results),
+                    "skipped_entities": len(skipped),
+                    "current_entity_name": "",
+                    "current_entity_type": "",
+                }
+            )
         return {
             "book_id": book_id,
             "persisted_visual_baselines": len(results),

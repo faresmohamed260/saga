@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.orm import defer
 
 from saga.domain.builders.relationship_profile_builder import RelationshipProfileBuilder
 from saga.providers.codex_session_store import CodexSessionStore
@@ -33,12 +34,15 @@ from saga.identity.series_identity_provider import (
     generate_book_identity_bundle,
 )
 from saga.services.comfyui_character_sheet_service import render_manifest_path_for_contract
+from saga.services.database_analysis_run_service import DatabaseAnalysisRunService
 from saga.services.database_decoder_service import DatabaseDecoderService
 from saga.services.generated_story_epub_service import GeneratedStoryEpubService
+from saga.storage.database import get_database_url
 from saga.storage.persistence import SagaSQLiteStore
 from saga.storage.models import Book as SqlBook
 from saga.storage.models import Chapter as SqlChapter
 from saga.storage.models import CharacterProfile as SqlCharacterProfile
+from saga.storage.models import DashboardJob as SqlDashboardJob
 from saga.storage.models import Entity as SqlEntity
 from saga.storage.models import Event as SqlEvent
 from saga.storage.models import GeneratedImage as SqlGeneratedImage
@@ -49,18 +53,22 @@ from saga.storage.models import IdentityCharacter as SqlIdentityCharacter
 from saga.storage.models import IdentityNarrator as SqlIdentityNarrator
 from saga.storage.models import IdentityReferenceEntity as SqlIdentityReferenceEntity
 from saga.storage.models import IdentitySeries as SqlIdentitySeries
+from saga.storage.models import Series as SqlSeries
 from saga.storage.models import Scene as SqlScene
 from saga.storage.models import StableCharacterState as SqlStableCharacterState
 from saga.storage.models import TimelineRow as SqlTimelineRow
+from saga.storage.models import UploadedSource as SqlUploadedSource
 from saga.storage.models import VisualPrompt as SqlVisualPrompt
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DIST_DIR = ROOT / "apps" / "dashboard_web" / "dist"
-OUTPUTS_DIR = ROOT / "analysis_outputs"
-DASHBOARD_DIR = OUTPUTS_DIR / "dashboard"
-UPLOADS_DIR = DASHBOARD_DIR / "uploads"
-STORY_EXPORTS_DIR = DASHBOARD_DIR / "story_exports"
+PRO_DIST_DIR = ROOT / "apps" / "dashboard_pro" / "dist"
+FALLBACK_DIST_DIR = ROOT / "apps" / "dashboard_web" / "dist"
+DIST_DIR = PRO_DIST_DIR if PRO_DIST_DIR.exists() else FALLBACK_DIST_DIR
+OUTPUTS_DIR = Path(os.environ.get("SAGA_OUTPUTS_DIR") or (ROOT / "analysis_outputs")).resolve()
+DASHBOARD_DIR = Path(os.environ.get("SAGA_DASHBOARD_DIR") or (OUTPUTS_DIR / "dashboard")).resolve()
+UPLOADS_DIR = Path(os.environ.get("SAGA_UPLOADS_DIR") or (DASHBOARD_DIR / "uploads")).resolve()
+STORY_EXPORTS_DIR = Path(os.environ.get("SAGA_STORY_EXPORTS_DIR") or (DASHBOARD_DIR / "story_exports")).resolve()
 OLLAMA_ACCOUNTS_FILE = ROOT / "deploy" / "ollama" / "accounts.local.json"
 CODEX_ACCOUNTS_FILE = ROOT / "deploy" / "openai" / "accounts.local.json"
 GENERAL_COMPUTE_ACCOUNTS_FILE = ROOT / "deploy" / "general_compute" / "accounts.local.json"
@@ -95,7 +103,7 @@ PROMPT_FILES = [
 ]
 
 HEAVY_CONTRACT_BYTES = 2 * 1024 * 1024
-SCAN_CACHE_TTL_SECONDS = 10
+SCAN_CACHE_TTL_SECONDS = 0
 CONTRACT_SUMMARY_CACHE: dict[str, dict[str, Any]] = {}
 SCAN_CACHE: dict[str, Any] = {"created_at": 0.0, "payload": None}
 SQLITE_STORE = SagaSQLiteStore()
@@ -239,6 +247,8 @@ class CharacterRenderRequest(BaseModel):
     limit: int = 0
     overwrite: bool = False
     entity_types: list[str] = Field(default_factory=lambda: ["character"])
+    entity_ids: list[str] = Field(default_factory=list)
+    prompt_ids: list[str] = Field(default_factory=list)
 
 
 class SeriesCharacterRenderRequest(BaseModel):
@@ -249,6 +259,55 @@ class SeriesCharacterRenderRequest(BaseModel):
 
 
 class DecoderRequest(BaseModel):
+    series_id: str = ""
+    book_ref: str = ""
+    story_mode: str = "post_canon"
+    user_prompt: str = ""
+    chapter_count: int = 20
+    primary_pov_character: str = ""
+    continuity_anchor: str = ""
+    divergence_anchor: str = ""
+
+
+class ImportPlanBook(BaseModel):
+    source_id: str
+    target_title: str = ""
+    book_index: int = 1
+    selected: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ImportPlanRequest(BaseModel):
+    series_id: str
+    series_title: str
+    books: list[ImportPlanBook] = Field(default_factory=list)
+    shared_config: dict[str, Any] = Field(default_factory=dict)
+
+
+class PromptVersionRequest(BaseModel):
+    positive_prompt: str
+    negative_prompt: str = ""
+    source: str = "dashboard_edit"
+    activate: bool = True
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class EntityRenderRequest(BaseModel):
+    prompt_id: str = ""
+    overwrite: bool = False
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class RenderBatchRequest(BaseModel):
+    book_ref: str = ""
+    series_id: str = ""
+    scope: str = "missing"
+    entity_types: list[str] = Field(default_factory=list)
+    overwrite: bool = False
+    limit: int = 0
+
+
+class DecoderPlanRequest(BaseModel):
     series_id: str = ""
     book_ref: str = ""
     story_mode: str = "post_canon"
@@ -574,7 +633,7 @@ def run_summary(run_dir: Path) -> dict[str, Any]:
         scenes_processed = int(active_book.get("scenes_processed") or 0)
         total_book_scenes = int(active_book.get("total_scenes") or 0)
         phase = str(active_book.get("phase") or "running")
-        label = str((active_book.get("last_progress") or {}).get("status") or f"{active_book.get('title') or 'Book'} آ· {phase}")
+        label = str((active_book.get("last_progress") or {}).get("status") or f"{active_book.get('title') or 'Book'} ط¢- {phase}")
         progress = {
             "stage": "encode",
             "current": scenes_processed,
@@ -644,6 +703,7 @@ def scan_artifacts() -> dict[str, Any]:
     identity_db = _safe_db([], "db_identity_summaries", db_identity_summaries)
     db_counts = database_summary()
     payload = {
+        "books": contracts,
         "contracts": contracts,
         "runs": runs,
         "reports": reports,
@@ -862,8 +922,8 @@ def read_prompts() -> list[dict[str, Any]]:
                 "path": relative,
                 "name": path.name,
                 "line_count": len(text.splitlines()),
+                "size_bytes": path.stat().st_size,
                 "prompt_hits": prompt_hits,
-                "content": text,
             }
         )
     return prompts
@@ -997,8 +1057,8 @@ def refresh_provider_statuses() -> dict[str, Any]:
                 status = _safe_probe_general_compute_account(account)
             else:
                 status = _safe_probe_codex_account(account)
-            SQLITE_STORE.upsert_provider_status(provider_name, status["label"], status)
             rows.append(status)
+        SQLITE_STORE.replace_provider_statuses(provider_name, rows)
         results[provider_name] = {
             "active_index": int(payload.get("active_index", 0) or 0),
             "accounts": _masked_provider_payload(payload).get("accounts", []) if accounts else [],
@@ -1017,6 +1077,7 @@ def reduce_contract_row(row: Any) -> dict[str, Any]:
         "scene_id",
         "event_id",
         "character_id",
+        "character_name",
         "entity_id",
         "entity_name",
         "chapter_index",
@@ -1109,6 +1170,9 @@ def reduce_contract_row(row: Any) -> dict[str, Any]:
         "visual_profile",
         "world_state_profile",
         "relationship_refs",
+        "attributes",
+        "latest_state",
+        "agent_metadata",
         "state_history",
         "state_at_latest",
         "tool_runtime",
@@ -1316,7 +1380,7 @@ def _db_book_by_contract_path(path: Path | str) -> SqlBook | None:
     return None
 
 
-def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] | None:
+def _db_contract_view(path: Path | str, *, limit: int = 200, section: str | None = None) -> dict[str, Any] | None:
     book_row = _db_book_by_contract_path(path)
     if book_row is None:
         return None
@@ -1324,15 +1388,38 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
         book = session.get(SqlBook, book_row.id)
         if book is None:
             return None
+        requested_section = str(section or "all").strip().lower()
+        if requested_section not in {"all", "", "scenes", "entities", "events", "timeline", "states", "world", "visuals"}:
+            requested_section = "all"
+
+        def include_output(name: str) -> bool:
+            if requested_section in {"", "all"}:
+                return True
+            return name == requested_section
+
         chapters = session.execute(select(SqlChapter).where(SqlChapter.book_id == book.id).order_by(SqlChapter.chapter_index.asc())).scalars().all()
         scenes = session.execute(select(SqlScene).where(SqlScene.book_id == book.id).order_by(SqlScene.chapter_index.asc(), SqlScene.scene_index.asc())).scalars().all()
         events = session.execute(select(SqlEvent).where(SqlEvent.book_id == book.id).order_by(SqlEvent.chapter_index.asc(), SqlEvent.scene_index.asc())).scalars().all()
-        entities = session.execute(select(SqlEntity).where(SqlEntity.book_id == book.id).order_by(SqlEntity.entity_type.asc(), SqlEntity.canonical_name.asc())).scalars().all()
+        should_load_entities = include_output("entities") or include_output("visuals")
+        entities = session.execute(
+            select(SqlEntity)
+            .options(defer(SqlEntity.generated_image_bytes))
+            .where(SqlEntity.book_id == book.id)
+            .order_by(SqlEntity.entity_type.asc(), SqlEntity.canonical_name.asc())
+        ).scalars().all() if should_load_entities else []
+        entity_count = len(entities) if should_load_entities else int(session.execute(select(func.count()).select_from(SqlEntity).where(SqlEntity.book_id == book.id)).scalar_one() or 0)
         profiles = session.execute(select(SqlCharacterProfile).where(SqlCharacterProfile.book_id == book.id)).scalars().all()
         states = session.execute(select(SqlStableCharacterState).where(SqlStableCharacterState.book_id == book.id)).scalars().all()
         timeline = session.execute(select(SqlTimelineRow).where(SqlTimelineRow.book_id == book.id).order_by(SqlTimelineRow.row_index.asc())).scalars().all()
-        prompts = session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.book_id == book.id)).scalars().all()
-        images = session.execute(select(SqlGeneratedImage).where(SqlGeneratedImage.book_id == book.id)).scalars().all()
+        prompts = session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.book_id == book.id)).scalars().all() if include_output("visuals") else []
+        images = session.execute(
+            select(
+                SqlGeneratedImage.entity_name,
+                SqlGeneratedImage.entity_type,
+                SqlGeneratedImage.output_path,
+                SqlGeneratedImage.render_status,
+            ).where(SqlGeneratedImage.book_id == book.id)
+        ).all() if include_output("visuals") else []
 
         prompt_map = {}
         for row in prompts:
@@ -1341,7 +1428,13 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
         image_map = {}
         for row in images:
             key = (str(row.entity_name or "").lower(), str(row.entity_type or "").lower())
-            image_map.setdefault(key, row)
+            image_map.setdefault(
+                key,
+                {
+                    "output_path": str(row.output_path or ""),
+                    "render_status": str(row.render_status or ""),
+                },
+            )
 
         entity_rows = []
         visual_inventory = []
@@ -1352,13 +1445,13 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
             initial_physical_description = _clean_analysis_dict(entity.initial_physical_description or {})
             first_appearance_profile = _clean_analysis_dict(entity.first_appearance_profile or {})
             latest_world_state = _clean_analysis_dict(entity.latest_world_state or {})
-            descriptions = _clean_analysis_list(entity.descriptions or [])
-            state_changes = _clean_analysis_list(entity.state_changes or [])
-            event_links = _clean_analysis_list(entity.event_links or [])
-            narrative_roles = _clean_analysis_list(entity.narrative_roles or [])
-            visual_change_log = _clean_analysis_list(entity.visual_change_log or [])
-            analysis_quality_flags = _clean_analysis_list(entity.analysis_quality_flags or [])
-            scene_visual_states = _clean_analysis_list(((entity.metadata_json or {}).get("scene_visual_states") or []))
+            descriptions = _clean_analysis_list(entity.descriptions or [])[:8]
+            state_changes = _clean_analysis_list(entity.state_changes or [])[:8]
+            event_links = _clean_analysis_list(entity.event_links or [])[:8]
+            narrative_roles = _clean_analysis_list(entity.narrative_roles or [])[:8]
+            visual_change_log = _clean_analysis_list(entity.visual_change_log or [])[:8]
+            analysis_quality_flags = _clean_analysis_list(entity.analysis_quality_flags or [])[:8]
+            scene_visual_states = _clean_analysis_list(((entity.metadata_json or {}).get("scene_visual_states") or []))[:8]
 
             if initial_physical_description and "description" not in initial_physical_description:
                 baseline_fields = initial_physical_description.get("baseline_visual_fields") or {}
@@ -1464,9 +1557,9 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
                 "baseline_details": getattr(prompt, "details_json", None) or {},
                 "change_prompts": [],
                 "scene_prompts": [],
-                "generated_image_path": entity.generated_image_path or str(getattr(image, "output_path", "") or ""),
+                "generated_image_path": entity.generated_image_path or str((image or {}).get("output_path") or ""),
                 "negative_prompt": str(getattr(prompt, "negative_prompt", "") or ""),
-                "render_status": str(getattr(image, "render_status", "") or ""),
+                "render_status": str((image or {}).get("render_status") or ""),
             })
 
         chapter_title_map = {
@@ -1511,8 +1604,17 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
             row.setdefault("chapter_index", event.chapter_index)
             row.setdefault("scene_index", event.scene_index)
             row.setdefault("participants", row.get("characters") or [])
-            if not row.get("location") and event.location_name:
-                row["location"] = {"name": event.location_name}
+            if not row.get("location"):
+                location_name = ""
+                if isinstance(event.entities_involved, dict):
+                    location_value = event.entities_involved.get("location") or event.entities_involved.get("locations")
+                    if isinstance(location_value, list):
+                        location_name = ", ".join(str(item).strip() for item in location_value if str(item).strip())
+                    else:
+                        location_name = str(location_value or "").strip()
+                location_name = location_name or str(row.get("event_location") or row.get("location_name") or "").strip()
+                if location_name:
+                    row["location"] = {"name": location_name}
             event_rows.append(row)
         timeline_rows = [row.payload_json or {} for row in timeline]
         profile_rows = [row.payload_json or {"character_name": row.character_name} for row in profiles]
@@ -1534,79 +1636,87 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
             "scenes": len(scene_rows),
             "successful_scenes": successful_scenes,
             "failed_scenes": failed_scenes,
-            "entity_registry": len(entity_rows),
+            "entity_registry": entity_count,
             "timeline": len(timeline_rows),
             "event_ledger": len(event_rows),
             "character_profiles": len(profile_rows),
             "stable_character_states": len(state_rows),
             "story_index_docs": 0,
         }
+        scene_payload = [reduce_contract_row(row) for row in scene_rows[:limit]] if include_output("scenes") else []
+        event_payload = [reduce_contract_row(row) for row in event_rows[:limit]] if include_output("events") else []
+        entity_payload = [reduce_contract_row(row) for row in entity_rows[:limit]] if include_output("entities") else []
+        timeline_payload = [reduce_contract_row(row) for row in timeline_rows[:limit]] if include_output("timeline") else []
+        state_payload = [reduce_contract_row(row) for row in state_rows[:limit]] if include_output("states") else []
+        world_payload = [
+            reduce_contract_row({
+                "scene_id": f"b{row.get('book_index', '?')}_c{row.get('chapter_index', '?')}_s{row.get('scene_index', '?')}",
+                "book_index": row.get("book_index"),
+                "chapter_index": row.get("chapter_index"),
+                "scene_index": row.get("scene_index"),
+                "scene_summary": row.get("scene_summary") or "",
+                "location": row.get("location") or {},
+                "visual_analysis": row.get("visual_analysis") or {},
+                "entity_world_state": row.get("entity_world_state") or {},
+                "state_changes": row.get("state_changes") or [],
+                "relationship_changes": row.get("relationship_changes") or [],
+                "text": row.get("text") or "",
+            })
+            for row in scene_rows[:limit]
+        ] if include_output("world") else []
+        visual_payload = [reduce_contract_row(row) for row in visual_inventory[:limit]] if include_output("visuals") else []
+        visual_prompt_sets_payload = {
+            "initial_characters": [reduce_contract_row({
+                "entity_name": item["name"],
+                "entity_type": item["entity_type"],
+                "positive_prompt": item["baseline_prompt"],
+                "generated_image_path": item["generated_image_path"],
+                "prompt_type": item["baseline_prompt_type"],
+                "source_evidence": item["baseline_source_evidence"],
+                "confidence": item["baseline_confidence"],
+            }) for item in visual_inventory if item["entity_type"] == "character"][:limit],
+            "objects_creatures": [reduce_contract_row({
+                "entity_name": item["name"],
+                "entity_type": item["entity_type"],
+                "positive_prompt": item["baseline_prompt"],
+                "generated_image_path": item["generated_image_path"],
+                "prompt_type": item["baseline_prompt_type"],
+                "source_evidence": item["baseline_source_evidence"],
+                "confidence": item["baseline_confidence"],
+            }) for item in visual_inventory if item["entity_type"] in {"object", "creature"}][:limit],
+            "locations": [reduce_contract_row({
+                "entity_name": item["name"],
+                "entity_type": item["entity_type"],
+                "positive_prompt": item["baseline_prompt"],
+                "generated_image_path": item["generated_image_path"],
+                "prompt_type": item["baseline_prompt_type"],
+                "source_evidence": item["baseline_source_evidence"],
+                "confidence": item["baseline_confidence"],
+            }) for item in visual_inventory if item["entity_type"] == "location"][:limit],
+            "character_changes": [],
+            "scene_compositions": [],
+        } if include_output("visuals") else {}
         return {
             "path": str(path) if is_db_book_ref(str(path)) else rel(Path(path)),
             "summary": summary,
             "metadata": (book.metadata_json or {}).get("metadata") or {},
             "outputs": {
-                "resolved_scene_analyses": [reduce_contract_row(row) for row in scene_rows[:limit]],
-                "event_ledger": [reduce_contract_row(row) for row in event_rows[:limit]],
-                "entity_registry": [reduce_contract_row(row) for row in entity_rows[: max(limit, 500)]],
-                "timeline": [reduce_contract_row(row) for row in timeline_rows[:limit]],
+                "resolved_scene_analyses": scene_payload,
+                "event_ledger": event_payload,
+                "entity_registry": entity_payload,
+                "timeline": timeline_payload,
                 "character_profiles": [reduce_contract_row(row) for row in profile_rows[:limit]],
-                "stable_character_states": [reduce_contract_row(row) for row in state_rows[:limit]],
+                "stable_character_states": state_payload,
                 "relationship_profiles": [reduce_contract_row(row) for row in relationship_profiles[:limit]],
-                "scene_world_state": [
-                    reduce_contract_row({
-                        "scene_id": f"b{row.get('book_index', '?')}_c{row.get('chapter_index', '?')}_s{row.get('scene_index', '?')}",
-                        "book_index": row.get("book_index"),
-                        "chapter_index": row.get("chapter_index"),
-                        "scene_index": row.get("scene_index"),
-                        "scene_summary": row.get("scene_summary") or "",
-                        "location": row.get("location") or {},
-                        "visual_analysis": row.get("visual_analysis") or {},
-                        "entity_world_state": row.get("entity_world_state") or {},
-                        "state_changes": row.get("state_changes") or [],
-                        "relationship_changes": row.get("relationship_changes") or [],
-                        "text": row.get("text") or "",
-                    })
-                    for row in scene_rows[:limit]
-                ],
-                "visual_prompt_sets": {
-                    "initial_characters": [reduce_contract_row({
-                        "entity_name": item["name"],
-                        "entity_type": item["entity_type"],
-                        "positive_prompt": item["baseline_prompt"],
-                        "generated_image_path": item["generated_image_path"],
-                        "prompt_type": item["baseline_prompt_type"],
-                        "source_evidence": item["baseline_source_evidence"],
-                        "confidence": item["baseline_confidence"],
-                    }) for item in visual_inventory if item["entity_type"] == "character"][: max(limit, 500)],
-                    "objects_creatures": [reduce_contract_row({
-                        "entity_name": item["name"],
-                        "entity_type": item["entity_type"],
-                        "positive_prompt": item["baseline_prompt"],
-                        "generated_image_path": item["generated_image_path"],
-                        "prompt_type": item["baseline_prompt_type"],
-                        "source_evidence": item["baseline_source_evidence"],
-                        "confidence": item["baseline_confidence"],
-                    }) for item in visual_inventory if item["entity_type"] in {"object", "creature"}][: max(limit, 500)],
-                    "locations": [reduce_contract_row({
-                        "entity_name": item["name"],
-                        "entity_type": item["entity_type"],
-                        "positive_prompt": item["baseline_prompt"],
-                        "generated_image_path": item["generated_image_path"],
-                        "prompt_type": item["baseline_prompt_type"],
-                        "source_evidence": item["baseline_source_evidence"],
-                        "confidence": item["baseline_confidence"],
-                    }) for item in visual_inventory if item["entity_type"] == "location"][: max(limit, 500)],
-                    "character_changes": [],
-                    "scene_compositions": [],
-                },
-                "visual_inventory": [reduce_contract_row(row) for row in visual_inventory[: max(limit, 500)]],
+                "scene_world_state": world_payload,
+                "visual_prompt_sets": visual_prompt_sets_payload,
+                "visual_inventory": visual_payload,
                 "visual_prompt_diagnostics": {},
             },
             "counts": {
                 "resolved_scene_analyses": len(scene_rows),
                 "event_ledger": len(event_rows),
-                "entity_registry": len(entity_rows),
+                "entity_registry": entity_count,
                 "timeline": len(timeline_rows),
                 "character_profiles": len(profile_rows),
                 "stable_character_states": len(state_rows),
@@ -1617,7 +1727,7 @@ def _db_contract_view(path: Path | str, *, limit: int = 200) -> dict[str, Any] |
                 "visual_locations": len([row for row in visual_inventory if row["entity_type"] == "location"]),
                 "visual_character_changes": 0,
                 "visual_scene_compositions": 0,
-                "visual_inventory": len(visual_inventory),
+                "visual_inventory": len(visual_inventory) if include_output("visuals") else entity_count,
             },
             "render_summary": {
                 "manifest_path": rel(render_manifest_path_for_contract(path)) if render_manifest_path_for_contract(path).exists() else "",
@@ -1713,7 +1823,6 @@ def load_job(job_id: str) -> dict[str, Any]:
     payload = SQLITE_STORE.get_dashboard_job(job_id)
     if not isinstance(payload, dict):
         raise HTTPException(status_code=404, detail="Job not found")
-    payload["log_tail"] = SQLITE_STORE.get_dashboard_job_log_tail(job_id, limit=120)
     return _normalize_job_payload(payload, persist=True)
 
 
@@ -1728,10 +1837,8 @@ def list_jobs() -> list[dict[str, Any]]:
     rows = []
     db_rows = _safe_db([], "get_dashboard_jobs", lambda: SQLITE_STORE.get_dashboard_jobs(limit=100))
     for data in db_rows:
-        try:
-            rows.append(load_job(data.get("id") or ""))
-        except HTTPException:
-            continue
+        if isinstance(data, dict):
+            rows.append(_normalize_job_payload(data, persist=True))
     return rows[:50]
 
 
@@ -1768,11 +1875,25 @@ def _status_update_age_seconds(status_payload: dict[str, Any] | None) -> float |
     return max(0.0, (datetime.now(timezone.utc) - updated_dt).total_seconds())
 
 
+def _iso_age_seconds(value: Any) -> float | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds())
+
+
 def _humanize_status_reason(code: str, *, fallback: str = "") -> str:
     value = str(code or "").strip()
     mapping = {
         "stale_encode_worker_process": "The encoder worker stopped unexpectedly and did not write a terminal status.",
         "stale_dashboard_job_process": "The dashboard wrapper process stopped after the underlying run had already ended.",
+        "stale_dashboard_thread_no_heartbeat": "The dashboard job stopped reporting progress and is no longer considered active.",
         "blocked_rate_limit": "The run was blocked by provider rate limits before it could complete.",
     }
     return mapping.get(value, fallback or value)
@@ -1783,6 +1904,7 @@ def _is_stale_status_reason(value: str) -> bool:
     return text in {
         _humanize_status_reason("stale_encode_worker_process").lower(),
         _humanize_status_reason("stale_dashboard_job_process").lower(),
+        _humanize_status_reason("stale_dashboard_thread_no_heartbeat").lower(),
     }
 
 
@@ -1901,6 +2023,25 @@ def _normalize_job_payload(payload: dict[str, Any], *, persist: bool = False) ->
             payload["progress"] = progress
         if persist:
             save_job(payload)
+    if _current_status() == "running" and pid in (None, "", 0, "0"):
+        progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
+        progress_age = _iso_age_seconds(progress.get("updated_at")) if isinstance(progress, dict) else None
+        started_age = _iso_age_seconds(payload.get("started_at"))
+        stale_age = progress_age if progress_age is not None else started_age
+        if stale_age is not None and stale_age > 30 * 60:
+            has_cancel_request = "cancel" in str(payload.get("status_reason") or "").lower() or "cancel" in str(payload.get("artifacts") or "").lower()
+            payload["status"] = "cancelled" if has_cancel_request else "failed"
+            payload["error"] = payload.get("error") or "stale_dashboard_thread_no_heartbeat"
+            payload["status_reason"] = "Cancelled after the worker stopped responding." if has_cancel_request else _humanize_status_reason("stale_dashboard_thread_no_heartbeat")
+            if isinstance(progress, dict):
+                progress["status"] = payload["status"]
+                progress["label"] = payload["status_reason"]
+                progress.setdefault("details", {})
+                progress["details"]["stale_heartbeat_age_seconds"] = stale_age
+                payload["progress"] = progress
+            payload["finished_at"] = payload.get("finished_at") or utc_now()
+            if persist:
+                save_job(payload)
     if _current_status() == "running" and pid not in (None, "", 0, "0") and not _pid_is_running(pid):
         if latest_run_status != "running":
             payload["status"] = "failed"
@@ -2043,11 +2184,11 @@ def derive_encode_progress(status_payload: dict[str, Any] | None) -> dict[str, A
             "scene_failure_policy": "book failed policy checks",
         }
         progress_status = str((active_book.get("last_progress") or {}).get("status") or "").strip()
-        label = f"{active_book.get('title') or 'Book'} آ· {phase_labels.get(phase, phase)}"
+        label = f"{active_book.get('title') or 'Book'} ط¢- {phase_labels.get(phase, phase)}"
         if total_scenes > 0:
-            label += f" آ· scene {scenes_processed}/{total_scenes}"
+            label += f" ط¢- scene {scenes_processed}/{total_scenes}"
         if progress_status and phase == "scene_wait":
-            label = f"{active_book.get('title') or 'Book'} آ· {progress_status}"
+            label = f"{active_book.get('title') or 'Book'} ط¢- {progress_status}"
         details = {
             "book_title": active_book.get("title") or "",
             "book_phase": phase,
@@ -2135,6 +2276,12 @@ def build_character_render_command(request: CharacterRenderRequest) -> list[str]
     for entity_type in request.entity_types or []:
         if str(entity_type or "").strip():
             command.extend(["--entity-type", str(entity_type).strip()])
+    for entity_id in request.entity_ids or []:
+        if str(entity_id or "").strip():
+            command.extend(["--entity-id", str(entity_id).strip()])
+    for prompt_id in request.prompt_ids or []:
+        if str(prompt_id or "").strip():
+            command.extend(["--prompt-id", str(prompt_id).strip()])
     return command
 
 
@@ -2200,7 +2347,7 @@ def generate_identity_bundles_for_request(job_id: str, request: EncodeRequest, l
             stage="identity_bundle",
             current=step,
             total=total,
-            label=f"{title} آ· preparing identity bundle",
+            label=f"{title} ط¢- preparing identity bundle",
             status="running",
             details={
                 "book_index": book.get("book_index"),
@@ -2218,7 +2365,7 @@ def generate_identity_bundles_for_request(job_id: str, request: EncodeRequest, l
             stage="identity_bundle",
             current=step,
             total=total,
-            label=f"{title} آ· running BookNLP and cleanup adapter",
+            label=f"{title} ط¢- running BookNLP and cleanup adapter",
             status="running",
             details={
                 "book_index": book.get("book_index"),
@@ -2242,7 +2389,7 @@ def generate_identity_bundles_for_request(job_id: str, request: EncodeRequest, l
             stage="identity_bundle",
             current=step,
             total=total,
-            label=f"{title} آ· bundle ready",
+            label=f"{title} ط¢- bundle ready",
             status="running",
             details={
                 "book_index": book.get("book_index"),
@@ -2382,7 +2529,7 @@ def generate_identity_bundles_for_request_v2(job_id: str, request: EncodeRequest
             stage="identity_bundle",
             current=step,
             total=total,
-            label=f"{title} آ· preparing identity bundle",
+            label=f"{title} ط¢- preparing identity bundle",
             status="running",
             details={
                 "book_index": book.get("book_index"),
@@ -2407,7 +2554,7 @@ def generate_identity_bundles_for_request_v2(job_id: str, request: EncodeRequest
                 stage="identity_bundle",
                 current=current_value,
                 total=total,
-                label=f"{title} آ· {label}",
+                label=f"{title} ط¢- {label}",
                 status="running",
                 details={
                     "book_index": book.get("book_index"),
@@ -2446,7 +2593,7 @@ def generate_identity_bundles_for_request_v2(job_id: str, request: EncodeRequest
             stage="identity_bundle",
             current=step,
             total=total,
-            label=f"{title} آ· bundle ready",
+            label=f"{title} ط¢- bundle ready",
             status="running",
             details={
                 "book_index": book.get("book_index"),
@@ -2612,7 +2759,7 @@ def render_visuals_for_run(
                 stage="visual_render",
                 current=int(match.group("current")),
                 total=int(match.group("total")),
-                label=f"{contract_name} آ· {entity_name} آ· {render_status.replace('_', ' ')}",
+                label=f"{contract_name} ط¢- {entity_name} ط¢- {render_status.replace('_', ' ')}",
                 status=render_status,
                 details={
                     "contract_path": contract_path,
@@ -2821,7 +2968,7 @@ def runtime_state() -> dict[str, Any]:
     }
     uploads = _safe_db([], "get_uploaded_sources", lambda: SQLITE_STORE.get_uploaded_sources(limit=100))
     return {
-        "workspace": {"root": str(ROOT), "outputs": rel(OUTPUTS_DIR), "uploads": rel(UPLOADS_DIR)},
+        "workspace": {"root": str(ROOT), "outputs": rel(OUTPUTS_DIR), "uploads": rel(UPLOADS_DIR), "database_url": get_database_url()},
         "defaults": {
             "books": DEFAULT_BOOKS,
             "series_identity_json": r"db://identity-series/acotar-full-booknlp-clean-live",
@@ -2925,6 +3072,193 @@ async def upload_book(file: UploadFile = File(...)) -> dict[str, Any]:
     }
 
 
+@app.get("/runtime/uploads")
+def runtime_uploads() -> dict[str, Any]:
+    return {"uploads": _safe_db([], "get_uploaded_sources", lambda: SQLITE_STORE.get_uploaded_sources(limit=500))}
+
+
+@app.post("/runtime/uploads/batch")
+async def runtime_upload_batch(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+    uploads: list[dict[str, Any]] = []
+    for file in files:
+        uploads.append(await upload_book(file))
+    return {"uploads": uploads, "count": len(uploads)}
+
+
+@app.delete("/runtime/uploads/{source_id}")
+def runtime_delete_upload(source_id: str) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        row = session.get(SqlUploadedSource, source_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Uploaded source not found.")
+        stored_path = row.stored_path
+        session.delete(row)
+        session.commit()
+    return {"deleted": True, "source_id": source_id, "file_retained": stored_path}
+
+
+def _import_plan_payload(plan: ImportPlanRequest) -> dict[str, Any]:
+    return {
+        "series_id": slugify(plan.series_id),
+        "series_title": plan.series_title.strip() or plan.series_id.strip() or "Untitled Series",
+        "books": [book.model_dump() for book in plan.books if book.selected],
+        "shared_config": plan.shared_config,
+        "created_at": utc_now(),
+    }
+
+
+def _validate_import_plan_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return DatabaseAnalysisRunService(SQLITE_STORE).validate_import_plan_payload(payload)
+
+
+def _run_import_plan_analysis_job(job_id: str, request_payload: dict[str, Any]) -> None:
+    DatabaseAnalysisRunService(SQLITE_STORE).run_import_plan_job(job_id, request_payload)
+
+
+@app.post("/runtime/import-plans")
+def runtime_create_import_plan(request: ImportPlanRequest) -> dict[str, Any]:
+    ensure_dirs()
+    plan_id = f"import_plan_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    plan_payload = _import_plan_payload(request)
+    payload = {
+        "id": plan_id,
+        "type": "import-plan",
+        "status": "staging",
+        "created_at": utc_now(),
+        "request": plan_payload,
+        "progress": {"current": 0, "total": len(plan_payload["books"]), "label": "Plan created", "phase": "staging"},
+    }
+    save_job(payload)
+    return load_job(plan_id)
+
+
+@app.get("/runtime/import-plans/{plan_id}")
+def runtime_import_plan(plan_id: str) -> dict[str, Any]:
+    return load_job(plan_id)
+
+
+@app.post("/runtime/import-plans/{plan_id}/validate")
+def runtime_validate_import_plan(plan_id: str) -> dict[str, Any]:
+    payload = load_job(plan_id)
+    if payload.get("type") != "import-plan":
+        raise HTTPException(status_code=400, detail="Job is not an import plan.")
+    validation = _validate_import_plan_payload(payload.get("request") or {})
+    payload["status"] = "validated" if validation["can_start"] else "blocked"
+    payload["artifacts"] = {**(payload.get("artifacts") or {}), "validation": validation}
+    payload["progress"] = {"current": len((payload.get("request") or {}).get("books") or []), "total": len((payload.get("request") or {}).get("books") or []), "label": validation["summary"], "phase": "validation"}
+    save_job(payload)
+    SQLITE_STORE.append_dashboard_job_log(plan_id, f"IMPORT_PLAN_VALIDATION {json.dumps(validation, ensure_ascii=False)}", level="INFO")
+    return {"id": plan_id, "validation": validation, "plan": load_job(plan_id)}
+
+
+@app.post("/runtime/import-plans/{plan_id}/start")
+def runtime_start_import_plan(plan_id: str) -> dict[str, Any]:
+    payload = load_job(plan_id)
+    validation = _validate_import_plan_payload(payload.get("request") or {})
+    if not validation["can_start"]:
+        raise HTTPException(status_code=409, detail={"message": "Import plan is blocked.", "validation": validation})
+    job_id = f"analysis_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    job = {
+        "id": job_id,
+        "type": "db-native-analysis",
+        "status": "queued",
+        "status_reason": "Queued from validated dashboard import plan.",
+        "created_at": utc_now(),
+        "request": payload.get("request") or {},
+        "artifacts": {"import_plan_id": plan_id, "validation": validation},
+        "progress": {"current": 0, "total": len((payload.get("request") or {}).get("books") or []), "label": "Queued database-native analysis", "phase": "queued"},
+    }
+    save_job(job)
+    SQLITE_STORE.append_dashboard_job_log(job_id, "DB_NATIVE_ANALYSIS_QUEUED from validated import plan.", level="INFO")
+    thread = threading.Thread(target=_run_import_plan_analysis_job, args=(job_id, payload.get("request") or {}), daemon=True)
+    thread.start()
+    return load_job(job_id)
+
+
+@app.get("/runtime/series")
+def runtime_series() -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        series_rows = session.execute(select(SqlSeries).order_by(SqlSeries.title.asc())).scalars().all()
+        books = session.execute(select(SqlBook)).scalars().all()
+        counts: dict[str, int] = {}
+        for book in books:
+            counts[str(book.series_id or "")] = counts.get(str(book.series_id or ""), 0) + 1
+        rows = [
+            {
+                "id": row.id,
+                "series_id": row.series_id,
+                "title": row.title,
+                "book_count": counts.get(row.series_id, 0),
+                "metadata": row.metadata_json or {},
+            }
+            for row in series_rows
+        ]
+    return {"series": rows}
+
+
+@app.get("/runtime/series/{series_id}/books")
+def runtime_series_books(series_id: str) -> dict[str, Any]:
+    return {"books": SQLITE_STORE.get_series_books(series_id)}
+
+
+@app.get("/runtime/books/{book_ref:path}/analysis")
+def runtime_book_analysis(book_ref: str, limit: int = 1000, section: str | None = None) -> dict[str, Any]:
+    payload = _db_contract_view(book_ref, limit=max(20, min(limit, 1000)), section=section)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Book not found in SQLite.")
+    return payload
+
+
+@app.get("/runtime/jobs/{job_id}/logs")
+def runtime_job_logs(job_id: str, limit: int = 300) -> dict[str, Any]:
+    load_job(job_id)
+    lines = SQLITE_STORE.get_dashboard_job_log_tail(job_id, limit=max(1, min(limit, 2000)))
+    return {"job_id": job_id, "lines": lines}
+
+
+@app.post("/runtime/jobs/{job_id}/{action}")
+def runtime_job_control(job_id: str, action: str) -> dict[str, Any]:
+    if action not in {"pause", "resume", "cancel", "retry"}:
+        raise HTTPException(status_code=404, detail="Unsupported job action.")
+    payload = load_job(job_id)
+    status = str(payload.get("status") or "").lower()
+    if action == "cancel" and status in {"running", "queued"}:
+        artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
+        artifacts["control_requested"] = "cancel"
+        payload["artifacts"] = artifacts
+        payload["status_reason"] = "Cancellation requested; worker will stop at the next safe boundary."
+        save_job(payload)
+        SQLITE_STORE.append_dashboard_job_log(job_id, "JOB_CANCEL_REQUESTED safe-boundary cancellation requested from dashboard.", level="WARNING")
+        return load_job(job_id)
+    if action == "cancel" and status in {"queued", "staging", "validated", "blocked"}:
+        payload.update({"status": "cancelled", "finished_at": utc_now(), "status_reason": "Cancelled from dashboard before worker execution."})
+        save_job(payload)
+        SQLITE_STORE.append_dashboard_job_log(job_id, "JOB_CANCELLED safe pre-worker cancellation from dashboard.", level="WARNING")
+        return load_job(job_id)
+    if action == "retry" and status in {"failed", "cancelled"} and str(payload.get("type") or "") == "db-native-analysis":
+        request_payload = dict(payload.get("request") or {})
+        resume_payload = dict(request_payload.get("resume") or {})
+        resume_payload["retry_of"] = job_id
+        request_payload["resume"] = resume_payload
+        retry_id = f"analysis_retry_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        retry_job = {
+            "id": retry_id,
+            "type": "db-native-analysis",
+            "status": "queued",
+            "status_reason": f"Retry of {job_id}",
+            "created_at": utc_now(),
+            "request": request_payload,
+            "artifacts": {"retry_of": job_id, "resume_enabled": True},
+            "progress": {"current": 0, "total": len((payload.get("request") or {}).get("books") or []), "label": "Queued retry", "phase": "queued"},
+        }
+        save_job(retry_job)
+        SQLITE_STORE.append_dashboard_job_log(retry_id, f"DB_NATIVE_ANALYSIS_RETRY queued from {job_id} with resume semantics enabled.", level="INFO")
+        thread = threading.Thread(target=_run_import_plan_analysis_job, args=(retry_id, retry_job.get("request") or {}), daemon=True)
+        thread.start()
+        return load_job(retry_id)
+    raise HTTPException(status_code=409, detail=f"{action} is not safe for this job type/status in the current runtime.")
+
+
 @app.post("/runtime/start-character-render")
 def start_character_render(request: CharacterRenderRequest) -> dict[str, Any]:
     ensure_dirs()
@@ -3009,6 +3343,62 @@ def runtime_generated_story(story_id: str) -> dict[str, Any]:
     return story
 
 
+@app.get("/runtime/stories")
+def runtime_stories(series_id: str = "", book_id: str = "") -> dict[str, Any]:
+    return runtime_generated_stories(series_id=series_id, book_id=book_id)
+
+
+@app.get("/runtime/stories/{story_id}")
+def runtime_story(story_id: str) -> dict[str, Any]:
+    return runtime_generated_story(story_id)
+
+
+@app.get("/runtime/decoder/options")
+def runtime_decoder_options() -> dict[str, Any]:
+    books = _db_contract_summaries(limit=500)
+    series_ids = sorted({str(book.get("series_id") or "") for book in books if str(book.get("series_id") or "").strip()})
+    return {
+        "modes": [
+            {"value": "pre_canon", "label": "Pre-canon", "requires": ["book_ref", "user_prompt"]},
+            {"value": "mid_canon", "label": "Mid-canon", "requires": ["book_ref", "continuity_anchor", "user_prompt"]},
+            {"value": "post_canon", "label": "Post-canon", "requires": ["book_ref", "user_prompt"]},
+            {"value": "alternate_universe", "label": "Alternate universe", "requires": ["book_ref", "divergence_anchor", "user_prompt"]},
+        ],
+        "defaults": {"chapter_count": 20, "story_mode": "post_canon"},
+        "books": books,
+        "series": series_ids,
+    }
+
+
+@app.post("/runtime/decoder/plans/validate")
+def runtime_validate_decoder_plan(request: DecoderPlanRequest) -> dict[str, Any]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not str(request.book_ref or "").strip():
+        errors.append("A database-backed book must be selected.")
+    elif _db_book_by_contract_path(request.book_ref) is None:
+        errors.append("Selected book was not found in SQLite.")
+    if request.story_mode not in {"pre_canon", "mid_canon", "post_canon", "alternate_universe"}:
+        errors.append("Story mode is not supported.")
+    if request.chapter_count < 1 or request.chapter_count > 60:
+        errors.append("Chapter count must be between 1 and 60.")
+    if not str(request.user_prompt or "").strip():
+        errors.append("User prompt is required.")
+    if request.story_mode == "mid_canon" and not str(request.continuity_anchor or "").strip():
+        warnings.append("Mid-canon generation should include a continuity anchor.")
+    if request.story_mode == "alternate_universe" and not str(request.divergence_anchor or "").strip():
+        warnings.append("Alternate-universe generation should include a divergence anchor.")
+    return {"valid": not errors, "errors": errors, "warnings": warnings, "plan": request.model_dump()}
+
+
+@app.post("/runtime/decoder/jobs")
+def runtime_decoder_jobs(request: DecoderRequest) -> dict[str, Any]:
+    validation = runtime_validate_decoder_plan(DecoderPlanRequest(**request.model_dump()))
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail=validation)
+    return start_decoder(request)
+
+
 @app.get("/runtime/export-generated-story-epub")
 def runtime_export_generated_story_epub(story_id: str):
     story = SQLITE_STORE.get_generated_story(story_id)
@@ -3017,6 +3407,189 @@ def runtime_export_generated_story_epub(story_id: str):
     exporter = GeneratedStoryEpubService(STORY_EXPORTS_DIR)
     output_path = exporter.export_story(story)
     return FileResponse(output_path, filename=output_path.name, media_type="application/epub+zip")
+
+
+@app.get("/runtime/assets/entities")
+def runtime_assets_entities(entity_type: str = "", q: str = "", book_id: str = "", series_id: str = "", limit: int = 500) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        query = select(SqlEntity, SqlBook).join(SqlBook, SqlEntity.book_id == SqlBook.id)
+        if entity_type:
+            query = query.where(SqlEntity.entity_type == entity_type)
+        if book_id:
+            query = query.where(SqlEntity.book_id == book_id)
+        if series_id:
+            query = query.where(SqlBook.series_id == series_id)
+        rows = session.execute(query.order_by(SqlBook.book_index.asc(), SqlEntity.entity_type.asc(), SqlEntity.canonical_name.asc())).all()
+        prompt_counts = dict(session.execute(select(SqlVisualPrompt.entity_id, func.count(SqlVisualPrompt.id)).group_by(SqlVisualPrompt.entity_id)).all())
+        image_counts = dict(session.execute(select(SqlGeneratedImage.entity_id, func.count(SqlGeneratedImage.id)).group_by(SqlGeneratedImage.entity_id)).all())
+        latest_images = {
+            row.entity_id: row
+            for row in session.execute(select(SqlGeneratedImage).order_by(SqlGeneratedImage.updated_at.desc())).scalars().all()
+            if row.entity_id
+        }
+        output: list[dict[str, Any]] = []
+        needle = q.strip().lower()
+        for entity, book in rows[: max(1, min(limit, 2000))]:
+            if needle and needle not in f"{entity.canonical_name} {entity.entity_type} {book.title}".lower():
+                continue
+            image = latest_images.get(entity.id)
+            output.append(
+                {
+                    "id": entity.id,
+                    "book_id": entity.book_id,
+                    "book_title": book.title,
+                    "series_id": book.series_id,
+                    "name": entity.canonical_name,
+                    "entity_type": entity.entity_type,
+                    "mention_count": entity.mention_count or 0,
+                    "prompt_count": int(prompt_counts.get(entity.id) or 0),
+                    "image_count": int(image_counts.get(entity.id) or 0),
+                    "render_status": image.render_status if image else "",
+                    "generated_image_path": entity.generated_image_path or (image.output_path if image else ""),
+                }
+            )
+    return {"entities": output, "count": len(output)}
+
+
+@app.get("/runtime/assets/entities/{entity_id}")
+def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+        book = session.get(SqlBook, entity.book_id)
+        prompts = session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id).order_by(SqlVisualPrompt.updated_at.desc())).scalars().all()
+        images = session.execute(select(SqlGeneratedImage).where(SqlGeneratedImage.entity_id == entity.id).order_by(SqlGeneratedImage.updated_at.desc())).scalars().all()
+        entity_payload = {
+            "id": entity.id,
+            "book_id": entity.book_id,
+            "book_title": book.title if book else "",
+            "name": entity.canonical_name,
+            "entity_type": entity.entity_type,
+            "mention_count": entity.mention_count or 0,
+            "initial_physical_description": entity.initial_physical_description or {},
+            "first_appearance_profile": entity.first_appearance_profile or {},
+            "typed_attributes": entity.typed_attributes or {},
+            "latest_world_state": entity.latest_world_state or {},
+            "baseline_visual_prompt": entity.baseline_visual_prompt or "",
+            "generated_image_path": entity.generated_image_path or "",
+        }
+        prompt_rows = [
+            {
+                "id": row.id,
+                "prompt_type": row.prompt_type,
+                "visual_bucket": row.visual_bucket,
+                "positive_prompt": row.positive_prompt,
+                "negative_prompt": row.negative_prompt,
+                "source_evidence": row.source_evidence,
+                "confidence": row.confidence,
+                "details": row.details_json or {},
+                "metadata": row.metadata_json or {},
+                "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+            }
+            for row in prompts
+        ]
+        image_rows = [
+            {
+                "id": row.id,
+                "prompt_id": row.prompt_id,
+                "output_path": row.output_path,
+                "render_status": row.render_status,
+                "workflow_name": row.workflow_name,
+                "manifest": row.manifest_json or {},
+                "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+            }
+            for row in images
+        ]
+    return {"entity": entity_payload, "prompts": prompt_rows, "images": image_rows}
+
+
+@app.post("/runtime/assets/entities/{entity_id}/prompt-versions")
+def runtime_create_prompt_version(entity_id: str, request: PromptVersionRequest) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+        if not request.positive_prompt.strip():
+            raise HTTPException(status_code=400, detail="positive_prompt is required.")
+        prompt = SqlVisualPrompt(
+            book_id=entity.book_id,
+            entity_id=entity.id,
+            entity_name=entity.canonical_name,
+            entity_type=entity.entity_type,
+            prompt_type=f"{entity.entity_type}_baseline",
+            visual_bucket="baseline",
+            positive_prompt=request.positive_prompt.strip(),
+            negative_prompt=request.negative_prompt.strip(),
+            source_evidence="dashboard prompt edit",
+            confidence="manual",
+            details_json=request.details,
+            metadata_json={"source": request.source, "created_from_dashboard": True, "created_at": utc_now()},
+        )
+        session.add(prompt)
+        if request.activate:
+            entity.baseline_visual_prompt = request.positive_prompt.strip()
+        session.commit()
+        return {"prompt_id": prompt.id, "entity_id": entity.id, "activated": request.activate}
+
+
+@app.post("/runtime/assets/entities/{entity_id}/render")
+def runtime_render_entity(entity_id: str, request: EntityRenderRequest) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+        book_id = entity.book_id
+        entity_type = entity.entity_type
+    render_request = CharacterRenderRequest(
+        contract_path=f"db://book/{book_id}",
+        limit=0,
+        overwrite=request.overwrite,
+        entity_types=[entity_type],
+        entity_ids=[entity_id],
+        prompt_ids=[request.prompt_id] if request.prompt_id else [],
+    )
+    job = start_character_render(render_request)
+    job["entity_id"] = entity_id
+    return job
+
+
+@app.post("/runtime/assets/render-batch")
+def runtime_render_batch(request: RenderBatchRequest) -> dict[str, Any]:
+    if request.series_id:
+        return start_series_character_render(
+            SeriesCharacterRenderRequest(
+                series_id=request.series_id,
+                overwrite=request.overwrite,
+                limit_per_book=request.limit,
+                entity_types=request.entity_types or ["character", "creature", "object", "location"],
+            )
+        )
+    if request.book_ref:
+        return start_character_render(
+            CharacterRenderRequest(
+                contract_path=request.book_ref,
+                limit=request.limit,
+                overwrite=request.overwrite,
+                entity_types=request.entity_types or ["character", "creature", "object", "location"],
+            )
+        )
+    raise HTTPException(status_code=400, detail="book_ref or series_id is required.")
+
+
+@app.post("/runtime/assets/images/{image_id}/preferred")
+def runtime_mark_preferred_image(image_id: str) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        image = session.get(SqlGeneratedImage, image_id)
+        if image is None:
+            raise HTTPException(status_code=404, detail="Generated image not found.")
+        entity = session.get(SqlEntity, image.entity_id) if image.entity_id else None
+        if entity is None:
+            raise HTTPException(status_code=400, detail="Image is not linked to an entity.")
+        entity.generated_image_path = image.output_path
+        entity.generated_image_bytes = image.image_bytes
+        session.commit()
+    return {"image_id": image_id, "entity_id": entity.id, "preferred": True}
 
 
 @app.get("/runtime/jobs")
@@ -3088,19 +3661,25 @@ def runtime_file(path: str):
     return FileResponse(target, filename=target.name, media_type=media_type)
 
 
-if DIST_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
+def _active_dist_dir() -> Path:
+    return PRO_DIST_DIR if PRO_DIST_DIR.exists() else FALLBACK_DIST_DIR
+
+
+ACTIVE_DIST_DIR = _active_dist_dir()
+if (ACTIVE_DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=ACTIVE_DIST_DIR / "assets"), name="assets")
 
 
 @app.get("/{full_path:path}")
 def serve_dashboard(full_path: str = ""):
-    target = DIST_DIR / full_path
+    dist_dir = _active_dist_dir()
+    target = dist_dir / full_path
     if full_path and target.exists() and target.is_file():
         return FileResponse(target)
-    index = DIST_DIR / "index.html"
+    index = dist_dir / "index.html"
     if index.exists():
         return FileResponse(index)
-    return {"status": "dashboard build missing", "hint": "Run npm run build in apps/dashboard_web first."}
+    return {"status": "dashboard build missing", "hint": "Run npm run build in apps/dashboard_pro first."}
 
 
 def main() -> None:

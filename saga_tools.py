@@ -2052,11 +2052,23 @@ def render_character_sheets(args) -> None:
         for value in (getattr(args, "entity_type", None) or [])
         if str(value or "").strip()
     } or None
+    entity_ids = {
+        str(value or "").strip()
+        for value in (getattr(args, "entity_id", None) or [])
+        if str(value or "").strip()
+    } or None
+    prompt_ids = {
+        str(value or "").strip()
+        for value in (getattr(args, "prompt_id", None) or [])
+        if str(value or "").strip()
+    } or None
     payload = service.render_from_contract(
         contract_ref,
         limit=int(getattr(args, "limit", 0) or 0),
         overwrite=bool(getattr(args, "overwrite", False)),
         entity_types=entity_types,
+        entity_ids=entity_ids,
+        prompt_ids=prompt_ids,
     )
     manifest_path = render_manifest_path_for_contract(contract_ref)
     if str(getattr(args, "out", "") or "").strip():
@@ -2841,6 +2853,8 @@ def build_parser() -> argparse.ArgumentParser:
     render_character_parser.add_argument("--limit", type=int, default=0, help="Optional limit for quick tests.")
     render_character_parser.add_argument("--overwrite", action="store_true", help="Re-render images even if they already exist.")
     render_character_parser.add_argument("--entity-type", action="append", default=[], help="Optional entity type filter. Repeat for multi-type renders.")
+    render_character_parser.add_argument("--entity-id", action="append", default=[], help="Optional exact SQLite entity id to render. Repeat for multi-entity renders.")
+    render_character_parser.add_argument("--prompt-id", action="append", default=[], help="Optional exact SQLite visual prompt id to render. Repeat for multi-prompt renders.")
     render_character_parser.add_argument("--out", default="", help="Optional extra manifest output path.")
     render_character_parser.set_defaults(func=render_character_sheets)
 

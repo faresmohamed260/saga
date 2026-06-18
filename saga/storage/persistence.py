@@ -265,12 +265,12 @@ class SagaSQLiteStore:
     def get_dashboard_jobs(self, limit: int = 100) -> list[dict[str, Any]]:
         with self.session_factory() as session:
             rows = session.execute(select(DashboardJob).order_by(DashboardJob.updated_at.desc())).scalars().all()
-            return [self._dashboard_job_dict(row) for row in rows[:limit]]
+            return [self._dashboard_job_dict(row, log_tail=self._dashboard_job_log_tail(session, row.id, limit=120)) for row in rows[:limit]]
 
     def get_dashboard_job(self, job_id: str) -> dict[str, Any] | None:
         with self.session_factory() as session:
             row = session.get(DashboardJob, job_id)
-            return self._dashboard_job_dict(row) if row else None
+            return self._dashboard_job_dict(row, log_tail=self._dashboard_job_log_tail(session, row.id, limit=120)) if row else None
 
     def upsert_provider_config(self, provider_name: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self.session_factory() as session:
@@ -293,6 +293,22 @@ class SagaSQLiteStore:
             row = self._upsert_provider_status(session, provider_name=provider_name, label=label, payload=payload)
             session.commit()
             return self._provider_status_dict(row)
+
+    def replace_provider_statuses(self, provider_name: str, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        provider_key = str(provider_name or "").strip().lower()
+        with self.session_factory() as session:
+            session.execute(delete(ProviderAccountStatus).where(ProviderAccountStatus.provider_name == provider_key))
+            session.flush()
+            rows: list[ProviderAccountStatus] = []
+            for payload in payloads:
+                if not isinstance(payload, dict):
+                    continue
+                label = str(payload.get("label") or "").strip()
+                if not label:
+                    continue
+                rows.append(self._upsert_provider_status(session, provider_name=provider_key, label=label, payload=payload))
+            session.commit()
+            return [self._provider_status_dict(row) for row in rows]
 
     def get_provider_statuses(self, provider_name: str | None = None) -> list[dict[str, Any]]:
         with self.session_factory() as session:
@@ -351,13 +367,7 @@ class SagaSQLiteStore:
 
     def get_dashboard_job_log_tail(self, job_id: str, limit: int = 120) -> list[str]:
         with self.session_factory() as session:
-            rows = session.execute(
-                select(DashboardJobLog)
-                .where(DashboardJobLog.job_id == str(job_id))
-                .order_by(DashboardJobLog.line_index.desc())
-            ).scalars().all()
-            ordered = list(reversed(rows[: max(0, int(limit))]))
-            return [str(row.line_text or "") for row in ordered]
+            return self._dashboard_job_log_tail(session, job_id, limit=limit)
 
     def register_uploaded_source(
         self,
@@ -829,7 +839,17 @@ class SagaSQLiteStore:
         session.flush()
         return existing
 
-    def _dashboard_job_dict(self, row: DashboardJob) -> dict[str, Any]:
+    def _dashboard_job_log_tail(self, session: Session, job_id: str, limit: int = 120) -> list[str]:
+        rows = session.execute(
+            select(DashboardJobLog)
+            .where(DashboardJobLog.job_id == str(job_id))
+            .order_by(DashboardJobLog.line_index.desc())
+            .limit(max(0, int(limit)))
+        ).scalars().all()
+        ordered = list(reversed(rows))
+        return [str(row.line_text or "") for row in ordered]
+
+    def _dashboard_job_dict(self, row: DashboardJob, *, log_tail: list[str] | None = None) -> dict[str, Any]:
         return {
             "id": row.id,
             "type": row.job_type or "",
@@ -845,7 +865,7 @@ class SagaSQLiteStore:
             "artifacts": row.artifacts_json if isinstance(row.artifacts_json, dict) else {},
             "error": row.error or "",
             "log_path": row.log_path or "",
-            "log_tail": self.get_dashboard_job_log_tail(row.id, limit=120),
+            "log_tail": log_tail or [],
         }
 
     def _upsert_provider_config(self, session: Session, *, provider_name: str, payload: dict[str, Any]) -> ProviderConfig:
@@ -886,27 +906,83 @@ class SagaSQLiteStore:
             .where(ProviderAccount.provider_name == row.provider_name)
             .order_by(ProviderAccount.account_index.asc(), ProviderAccount.created_at.asc())
         ).scalars().all()
+        normalized_accounts = [
+            self._normalized_provider_account_payload(account, fallback_index=idx)
+            for idx, account in enumerate(accounts)
+        ]
+        stored_active_index = int(row.active_index or 0)
+        active_positions = [idx for idx, account in enumerate(normalized_accounts) if account.get("active")]
+        if active_positions:
+            active_index = active_positions[0]
+        else:
+            active_index = max(0, min(stored_active_index, max(len(normalized_accounts) - 1, 0)))
+        for idx, account in enumerate(normalized_accounts):
+            account["active"] = idx == active_index if normalized_accounts else False
+            account["index"] = idx
+            account["metadata"] = {
+                "label": account["label"],
+                "index": idx,
+                "auth_mode": account["auth_mode"],
+                "account_id": account["account_id"],
+                "active": account["active"],
+            }
+        metadata_accounts = [
+            {
+                "index": account["index"],
+                "label": account["label"],
+                "email": account["email"],
+                "auth_mode": account["auth_mode"],
+                "api_key": account["api_key"],
+                "password": account["password"],
+                "account_id": account["account_id"],
+                "active": account["active"],
+            }
+            for account in normalized_accounts
+        ]
         return {
             "provider_name": row.provider_name,
-            "active_index": int(row.active_index or 0),
+            "active_index": active_index,
             "transport": row.transport or "",
-            "accounts": [
-                {
-                    "index": int(account.account_index or idx),
-                    "label": account.label,
-                    "email": account.email or "",
-                    "auth_mode": account.auth_mode or "",
-                    "api_key": account.api_key or "",
-                    "password": account.password or "",
-                    "account_id": account.account_id or "",
-                    "active": bool(account.is_active),
-                    "has_api_key": bool(str(account.api_key or "").strip()),
-                    "has_password": bool(str(account.password or "").strip()),
-                    "metadata": account.metadata_json if isinstance(account.metadata_json, dict) else {},
-                }
-                for idx, account in enumerate(accounts)
-            ],
-            "metadata": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+            "accounts": normalized_accounts,
+            "metadata": {
+                "provider_name": row.provider_name,
+                "active_index": active_index,
+                "accounts": metadata_accounts,
+            },
+        }
+
+    def _normalized_provider_account_payload(self, account: ProviderAccount, *, fallback_index: int) -> dict[str, Any]:
+        raw = account.metadata_json if isinstance(account.metadata_json, dict) else {}
+        nested = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+
+        def pick_str(key: str, fallback: str = "") -> str:
+            candidate = raw.get(key)
+            if candidate in (None, ""):
+                candidate = nested.get(key)
+            if candidate in (None, ""):
+                candidate = getattr(account, key, None)
+            return str(candidate or fallback).strip()
+
+        def pick_bool(key: str, fallback: bool = False) -> bool:
+            candidate = raw.get(key)
+            if candidate is None:
+                candidate = nested.get(key)
+            if candidate is None:
+                candidate = fallback
+            return bool(candidate)
+
+        return {
+            "index": fallback_index,
+            "label": pick_str("label", account.label or f"account-{fallback_index + 1}") or f"account-{fallback_index + 1}",
+            "email": pick_str("email"),
+            "auth_mode": pick_str("auth_mode"),
+            "api_key": pick_str("api_key"),
+            "password": pick_str("password"),
+            "account_id": pick_str("account_id"),
+            "active": pick_bool("active", bool(account.is_active)),
+            "has_api_key": bool(pick_str("api_key")),
+            "has_password": bool(pick_str("password")),
+            "metadata": {},
         }
 
     def _upsert_provider_status(self, session: Session, *, provider_name: str, label: str, payload: dict[str, Any]) -> ProviderAccountStatus:

@@ -112,10 +112,20 @@ class ComfyUICharacterSheetService:
         *,
         limit: int = 0,
         entity_types: set[str] | None = None,
+        entity_ids: set[str] | None = None,
+        prompt_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         normalized_types = {str(item or "").strip().lower() for item in (entity_types or set()) if str(item or "").strip()}
+        normalized_entity_ids = {str(item or "").strip() for item in (entity_ids or set()) if str(item or "").strip()}
+        normalized_prompt_ids = {str(item or "").strip() for item in (prompt_ids or set()) if str(item or "").strip()}
         if str(contract_path).startswith("db://book/"):
-            return self._collect_entity_visual_prompts_from_db(str(contract_path), limit=limit, entity_types=normalized_types or None)
+            return self._collect_entity_visual_prompts_from_db(
+                str(contract_path),
+                limit=limit,
+                entity_types=normalized_types or None,
+                entity_ids=normalized_entity_ids or None,
+                prompt_ids=normalized_prompt_ids or None,
+            )
         payload = self.load_contract(contract_path)
         outputs = payload.get("outputs") or {}
         prompt_sets = outputs.get("visual_prompt_sets") or {}
@@ -183,11 +193,21 @@ class ComfyUICharacterSheetService:
             rows = rows[:limit]
         return rows
 
-    def _collect_entity_visual_prompts_from_db(self, book_ref: str, *, limit: int = 0, entity_types: set[str] | None = None) -> list[dict[str, Any]]:
+    def _collect_entity_visual_prompts_from_db(
+        self,
+        book_ref: str,
+        *,
+        limit: int = 0,
+        entity_types: set[str] | None = None,
+        entity_ids: set[str] | None = None,
+        prompt_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
         book_id = str(book_ref).split("db://book/", 1)[-1].strip()
         rows: list[dict[str, Any]] = []
         self.entity_visual_prompt_service.build_book_prompts(book_ref, overwrite=False)
         normalized_types = {str(item or "").strip().lower() for item in (entity_types or set()) if str(item or "").strip()}
+        normalized_entity_ids = {str(item or "").strip() for item in (entity_ids or set()) if str(item or "").strip()}
+        normalized_prompt_ids = {str(item or "").strip() for item in (prompt_ids or set()) if str(item or "").strip()}
         with self.sqlite_store.session_factory() as session:
             book = session.get(SqlBook, book_id)
             if book is None:
@@ -198,8 +218,11 @@ class ComfyUICharacterSheetService:
             prompts = session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.book_id == book.id)).scalars().all()
             images = session.execute(select(SqlGeneratedImage).where(SqlGeneratedImage.book_id == book.id)).scalars().all()
             prompt_map = {(str(row.entity_name or "").lower(), str(row.entity_type or "").lower()): row for row in prompts}
+            prompt_by_id = {str(row.id): row for row in prompts}
             image_map = {(str(row.entity_name or "").lower(), str(row.entity_type or "").lower()): row for row in images}
             for entity in entities:
+                if normalized_entity_ids and str(entity.id) not in normalized_entity_ids:
+                    continue
                 registry_entry = self._sql_entity_to_registry_entry(entity)
                 entity_type = str(entity.entity_type or "").strip().lower() or self._effective_registry_entity_type(registry_entry)
                 if entity_type not in {"character", "creature", "object", "location", "organization", "other"}:
@@ -208,7 +231,17 @@ class ComfyUICharacterSheetService:
                     continue
                 registry_entry["entity_type"] = entity_type
                 key = (str(entity.canonical_name or "").lower(), entity_type)
-                prompt = prompt_map.get(key)
+                prompt = None
+                if normalized_prompt_ids:
+                    for prompt_id in normalized_prompt_ids:
+                        candidate = prompt_by_id.get(prompt_id)
+                        if candidate is not None and str(candidate.entity_id or "") == str(entity.id):
+                            prompt = candidate
+                            break
+                    if prompt is None:
+                        continue
+                else:
+                    prompt = prompt_map.get(key)
                 prompt_valid = bool(prompt and str(prompt.positive_prompt or "").strip())
                 if prompt_valid and entity_type != "character":
                     prompt_kind = str(prompt.prompt_type or "").strip().lower()
@@ -232,6 +265,7 @@ class ComfyUICharacterSheetService:
                         "visual_bucket": str(prompt.visual_bucket or "").strip() or ("initial_characters" if entity_type == "character" else entity_type),
                         "source_evidence": str(prompt.source_evidence or "").strip(),
                         "details": dict(prompt.details_json or {}),
+                        "prompt_id": prompt.id,
                     }
                     merged_row = (
                         self._merge_registry_character_payload(prompt_row, registry_entry)
@@ -243,6 +277,7 @@ class ComfyUICharacterSheetService:
                     continue
                 chosen["generated_image_path"] = entity.generated_image_path or str(getattr(image, "output_path", "") or "")
                 chosen["render_status"] = str(getattr(image, "render_status", "") or "")
+                chosen["entity_id"] = entity.id
                 chosen["mention_count"] = entity.mention_count or 0
                 chosen["entity_context"] = entity.entity_context or ""
                 chosen["initial_physical_description"] = entity.initial_physical_description or {}
@@ -706,6 +741,8 @@ class ComfyUICharacterSheetService:
         limit: int = 0,
         overwrite: bool = False,
         entity_types: set[str] | None = None,
+        entity_ids: set[str] | None = None,
+        prompt_ids: set[str] | None = None,
         negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
         width: int = 1504,
         height: int = 1024,
@@ -725,7 +762,13 @@ class ComfyUICharacterSheetService:
                     stale.unlink()
                 except OSError:
                     pass
-        prompt_rows = self.collect_entity_visual_prompts_filtered(contract_ref, limit=limit, entity_types=entity_types)
+        prompt_rows = self.collect_entity_visual_prompts_filtered(
+            contract_ref,
+            limit=limit,
+            entity_types=entity_types,
+            entity_ids=entity_ids,
+            prompt_ids=prompt_ids,
+        )
         renders: list[dict[str, Any]] = []
         for index, row in enumerate(prompt_rows, start=1):
             name = str(row.get("entity_name") or "").strip()
@@ -734,6 +777,8 @@ class ComfyUICharacterSheetService:
             image_path = images_dir / output_name
             render_row = {
                 "entity_name": name,
+                "entity_id": row.get("entity_id") or "",
+                "prompt_id": row.get("prompt_id") or "",
                 "entity_type": row.get("entity_type") or "character",
                 "prompt_type": row.get("prompt_type") or "initial_character_description",
                 "visual_bucket": row.get("visual_bucket") or "initial_characters",
@@ -784,6 +829,8 @@ class ComfyUICharacterSheetService:
         limit: int = 0,
         overwrite: bool = False,
         entity_types: set[str] | None = None,
+        entity_ids: set[str] | None = None,
+        prompt_ids: set[str] | None = None,
         negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
         width: int = 1504,
         height: int = 1024,
@@ -795,6 +842,8 @@ class ComfyUICharacterSheetService:
             limit=limit,
             overwrite=overwrite,
             entity_types=entity_types,
+            entity_ids=entity_ids,
+            prompt_ids=prompt_ids,
             negative_prompt=negative_prompt,
             width=width,
             height=height,
