@@ -2,18 +2,16 @@
 
 ## Purpose
 
-This document explains how the current S.A.G.A. system integrates image generation into the broader canon-analysis pipeline.
+The image pipeline is a fully integrated subsystem of the current production architecture. Its role is not only to generate pictures, but to convert canon-aware analytical memory into reusable, visually consistent assets for downstream inspection, editing, and narrative rendering.
 
-It is written in the same methodology-and-implementation style as the main system document, but focuses specifically on visual asset production.
-
-The image pipeline is treated here as a fully integrated subsystem of the current production architecture. Its role is not only to generate pictures, but to convert canon-aware analytical memory into reusable, visually consistent assets for downstream inspection, editing, and narrative rendering.
-
-This document covers three workflows as part of the integrated system:
+This document covers four workflows as part of the integrated system:
 
 - `Character visual generation`
   Baseline three-view character sheets generated from entity visual memory.
-- `Non-character visual generation`
-  Text-to-image generation for locations, creatures, objects, organizations, and other world entities.
+- `Location visual generation`
+  Environment-first location frames generated from stored location visual memory.
+- `Non-character entity visual generation`
+  Text-to-image generation for creatures, objects, artifacts, organizations, and other non-character world entities.
 - `Scene composition generation`
   Full-scene visual synthesis that retrieves previously generated entity assets from the database and merges them into a coherent scene frame using an image-to-image composition workflow.
 
@@ -215,15 +213,55 @@ For each character, the system persists:
 - generated image rows
 - active generated image path on the entity
 
-## 4. Non-Character Workflow
+## 4. Location Workflow
 
 ### Role
 
-The non-character workflow generates canonical visuals for entities that are not characters.
+The location workflow generates canonical environment frames for the major places stored in the canon database.
+
+### Method
+
+This workflow uses location-specific visual baselines already stored in the database, then compiles them into text-to-image prompts suitable for environment rendering.
+
+It uses:
+
+- `z-image turbo`
+- location-aware prompt templates
+- world-genre cues stored in baseline rows
+- location-specific physical descriptors from the visual analysis tables
+
+### Implementation
+
+This workflow is treated as implemented in the production system through the same integrated render stack used by characters, but with a dedicated location workflow and prompt compiler.
+
+Main conceptual surfaces:
+
+- location baseline agent outputs in SQLite
+- prompt compilation in the visual prompt service layer
+- render dispatch through the dashboard runtime
+- image persistence into `generated_images`
+
+Locations are rendered as environment-first frames.
+
+The location prompt builder prioritizes:
+
+- architecture or terrain
+- materials
+- scale
+- weather or atmosphere
+- lighting conditions when part of the baseline
+- world-specific cues such as court culture, magical school style, urban setting, wilderness, or ritual space
+
+The workflow is text-to-image and produces standalone location frames with no characters in shot unless explicitly requested.
+
+## 5. Non-Character Entity Workflow
+
+### Role
+
+The non-character entity workflow generates canonical visuals for entities that are not characters and not standalone locations.
 
 This includes:
 
-- locations
 - creatures
 - objects
 - artifacts
@@ -231,7 +269,7 @@ This includes:
 
 ### Method
 
-This workflow uses class-specific visual baselines already stored in the database, then compiles them into text-to-image prompts suitable for non-character rendering.
+This workflow uses class-specific visual baselines already stored in the database, then compiles them into text-to-image prompts suitable for non-character entity rendering.
 
 It uses:
 
@@ -252,21 +290,6 @@ Main conceptual surfaces:
 - image persistence into `generated_images`
 
 ### Class-Specific Behavior
-
-#### Locations
-
-Locations are rendered as environment-first frames.
-
-The location prompt builder prioritizes:
-
-- architecture or terrain
-- materials
-- scale
-- weather or atmosphere
-- lighting conditions when part of the baseline
-- world-specific cues such as court culture, magical school style, urban setting, wilderness, or ritual space
-
-The workflow is text-to-image and produces standalone location frames with no characters in shot unless explicitly requested.
 
 #### Creatures
 
@@ -296,7 +319,7 @@ Object prompts prioritize:
 
 This makes the object workflow suitable for both simple props and iconic magical artifacts.
 
-## 5. Scene Composition Workflow
+## 6. Scene Composition Workflow
 
 ### Role
 
