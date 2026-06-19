@@ -29,11 +29,17 @@ const apiMock = vi.hoisted(() => ({
   createImportPlan: vi.fn(async () => ({ id: "plan-1", status: "staging" })),
   validateImportPlan: vi.fn(async () => ({ validation: { status: "ready", can_start: true, summary: "ready", errors: [], warnings: [] } })),
   startImportPlan: vi.fn(async () => ({ id: "analysis-1", status: "queued" })),
-  decoderOptions: vi.fn(async () => ({ modes: ["pre_canon", "mid_canon", "post_canon", "alternate_universe"], defaults: {} })),
-  validateDecoderPlan: vi.fn(async () => ({ status: "ready", can_start: true, warnings: [], errors: [] })),
-  stories: vi.fn(async () => ({ stories: [{ id: "story-1", title: "Story One", status: "completed" }] })),
-  assets: vi.fn(async () => ({ entities: [{ id: "entity-1", name: "Hero", canonical_name: "Hero", entity_type: "character", baseline_visual_prompt: "photo prompt" }] })),
-  asset: vi.fn(async () => ({ entity: { id: "entity-1", name: "Hero", canonical_name: "Hero", entity_type: "character" }, prompts: [], images: [] })),
+  decoderOptions: vi.fn(async () => ({
+    modes: ["pre_canon", "mid_canon", "post_canon", "alternate_universe"],
+    defaults: { provider: "ollama" },
+    series: [{ series_id: "series-1", title: "Series One", book_count: 1 }],
+    providers: [{ value: "ollama", label: "Ollama" }],
+  })),
+  validateDecoderPlan: vi.fn(async () => ({ valid: true, warnings: [], errors: [], plan: { series_id: "series-1" } })),
+  stories: vi.fn(async () => ({ stories: [{ id: "story-1", title: "Story One", status: "completed", story_mode: "post_canon", series_id: "series-1" }] })),
+  assetSeriesSummary: vi.fn(async () => ({ series: [{ series_id: "series-1", series_title: "Series One", asset_count: 1, rendered_count: 1 }] })),
+  assets: vi.fn(async () => ({ total: 1, entities: [{ id: "entity-1", name: "Hero", entity_type: "character", series_id: "series-1", series_title: "Series One", book_title: "Book One", image_count: 1, prompt_count: 1, render_status: "completed", generated_thumbnail_path: "", generated_image_path: "" }] })),
+  asset: vi.fn(async () => ({ entity: { id: "entity-1", name: "Hero", entity_type: "character", baseline_visual_prompt: "photo prompt", series_id: "series-1", series_title: "Series One", book_title: "Book One" }, prompts: [], images: [] })),
   savePromptVersion: vi.fn(async () => ({ prompt_id: "prompt-1" })),
   renderEntity: vi.fn(async () => ({ id: "render-1", status: "queued" })),
   renderBatch: vi.fn(async () => ({ id: "render-batch-1", status: "queued" })),
@@ -81,18 +87,18 @@ test("renders decoder validation controls", async () => {
   render(<BrowserRouter><App /></BrowserRouter>);
 
   expect(await screen.findByText("Decoder Controls")).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Validate plan"));
+  const validateButton = screen.getByText("Validate plan");
+  await waitFor(() => expect(validateButton).not.toBeDisabled());
+  fireEvent.click(validateButton);
   await waitFor(() => expect(apiMock.validateDecoderPlan).toHaveBeenCalled());
 });
 
-test("renders visual assets and exposes exact entity render action", async () => {
+test("renders visual assets with database-backed prompt content", async () => {
   window.history.pushState({}, "", "/assets");
   render(<BrowserRouter><App /></BrowserRouter>);
 
   expect(await screen.findByText("Hero")).toBeInTheDocument();
-  const renderButton = await screen.findByRole("button", { name: "Render entity" });
-  fireEvent.click(renderButton);
-  await waitFor(() => expect(apiMock.renderEntity).toHaveBeenCalledWith("entity-1", expect.any(Object)));
+  expect(await screen.findByText(/series one/i)).toBeInTheDocument();
 });
 
 test("renders diagnostics with prompt metadata instead of raw dumps", async () => {

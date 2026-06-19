@@ -7,7 +7,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from saga.providers.llm_client import LLMClient
 from saga.retrieval.hybrid_narrative_retriever import HybridNarrativeRetriever
@@ -607,6 +607,7 @@ class NarrativeGenerationService:
         generation_controls: Optional[Dict[str, Any]] = None,
         prefer_exported_context: bool = True,
         prefer_exported_blueprint: bool = True,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Path:
         retrieval_context = self.build_retrieval_context(
             contract,
@@ -630,6 +631,7 @@ class NarrativeGenerationService:
             output_dir=output_dir,
             blueprint=blueprint,
             generation_controls=generation_controls,
+            progress_callback=progress_callback,
         )
 
     def generate_sequel_from_neo4j(
@@ -670,6 +672,7 @@ class NarrativeGenerationService:
         output_dir: str | Path = "output/sequel",
         blueprint: Optional[Dict[str, Any]] = None,
         generation_controls: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Path:
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
@@ -684,10 +687,29 @@ class NarrativeGenerationService:
             user_prompt,
             generation_controls=controls,
         )
+        self._emit_decoder_progress(
+            progress_callback,
+            stage="decoder",
+            event="blueprint_started",
+            label="building blueprint",
+            chapter_current=0,
+            chapter_total=int(controls["chapter_count"]),
+        )
         blueprint = blueprint or self.generate_blueprint(compiled)
+        repaired_blueprint = self._repair_blueprint_to_controls(blueprint, controls=controls)
+        if repaired_blueprint is not None:
+            blueprint = repaired_blueprint
         if not self._blueprint_matches_controls(blueprint, controls):
             raise ValueError("Provided blueprint does not satisfy the requested generation controls.")
         blueprint["total_chapters"] = int(controls["chapter_count"])
+        self._emit_decoder_progress(
+            progress_callback,
+            stage="decoder",
+            event="blueprint_completed",
+            label=f"blueprint ready: {blueprint.get('title') or 'untitled story'}",
+            chapter_current=0,
+            chapter_total=int(controls["chapter_count"]),
+        )
 
         with (out_path / "blueprint.json").open("w", encoding="utf-8") as handle:
             json.dump(blueprint, handle, ensure_ascii=False, indent=2)
@@ -699,6 +721,15 @@ class NarrativeGenerationService:
         retrieval_debug: List[Dict[str, Any]] = []
 
         for chapter_number in range(1, total_chapters + 1):
+            self._emit_decoder_progress(
+                progress_callback,
+                stage="decoder",
+                event="chapter_outline_started",
+                label=f"planning chapter {chapter_number}/{total_chapters}",
+                chapter_number=chapter_number,
+                chapter_current=max(0, chapter_number - 1),
+                chapter_total=total_chapters,
+            )
             current_story_position = self._current_story_position(
                 compiled_context=compiled,
                 previous_summaries=previous_summaries,
@@ -729,6 +760,16 @@ class NarrativeGenerationService:
                 chapter_context_packet=chapter_context_packet,
             )
             scenes = outline.get("scenes", []) or []
+            self._emit_decoder_progress(
+                progress_callback,
+                stage="decoder",
+                event="chapter_outline_completed",
+                label=f"writing chapter {chapter_number}/{total_chapters}",
+                chapter_number=chapter_number,
+                chapter_current=max(0, chapter_number - 1),
+                chapter_total=total_chapters,
+                total_scenes=len(scenes),
+            )
             scenes_prose: List[str] = []
             last_ending = rolling_previous_ending
             scene_memory = self._empty_scene_memory()
@@ -738,6 +779,18 @@ class NarrativeGenerationService:
                 "scene_packets": [],
             }
             for scene in scenes:
+                scene_number = int(scene.get("scene_number") or (len(scenes_prose) + 1))
+                self._emit_decoder_progress(
+                    progress_callback,
+                    stage="decoder",
+                    event="scene_started",
+                    label=f"chapter {chapter_number}/{total_chapters} scene {scene_number}/{max(1, len(scenes))}",
+                    chapter_number=chapter_number,
+                    scene_number=scene_number,
+                    chapter_current=max(0, chapter_number - 1),
+                    chapter_total=total_chapters,
+                    total_scenes=len(scenes),
+                )
                 scene_context_packet = self.hybrid_retriever.build_scene_context_packet(
                     retrieval_context=retrieval_json,
                     compiled_context=compiled,
@@ -759,6 +812,17 @@ class NarrativeGenerationService:
                     scene_context_packet=scene_context_packet,
                 )
                 scenes_prose.append(prose)
+                self._emit_decoder_progress(
+                    progress_callback,
+                    stage="decoder",
+                    event="scene_completed",
+                    label=f"chapter {chapter_number}/{total_chapters} scene {scene_number}/{max(1, len(scenes))} complete",
+                    chapter_number=chapter_number,
+                    scene_number=scene_number,
+                    chapter_current=max(0, chapter_number - 1),
+                    chapter_total=total_chapters,
+                    total_scenes=len(scenes),
+                )
                 last_ending = prose[-150:].strip()
                 scene_memory = self._update_scene_memory(scene_memory, scene, prose)
                 world_state = self.update_world_state_from_scene(world_state, scene, prose)
@@ -770,6 +834,16 @@ class NarrativeGenerationService:
                 chapter_number=chapter_number,
                 chapter_title=outline.get("chapter_title", f"Chapter {chapter_number}"),
                 scenes_prose=scenes_prose,
+            )
+            self._emit_decoder_progress(
+                progress_callback,
+                stage="decoder",
+                event="chapter_completed",
+                label=f"completed chapter {chapter_number}/{total_chapters}",
+                chapter_number=chapter_number,
+                chapter_current=chapter_number,
+                chapter_total=total_chapters,
+                total_scenes=len(scenes),
             )
             if scenes_prose:
                 rolling_previous_ending = scenes_prose[-1][-150:].strip() or outline.get("chapter_closes_on", "") or last_ending
@@ -796,6 +870,15 @@ class NarrativeGenerationService:
                 time.sleep(self.chapter_pause_seconds)
 
         return out_path
+
+    def _emit_decoder_progress(
+        self,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]],
+        **payload: Any,
+    ) -> None:
+        if not callable(progress_callback):
+            return
+        progress_callback(payload)
 
     def initialise_world_state(self, compiled_context: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -1800,8 +1883,6 @@ class NarrativeGenerationService:
                     return f"relationship_target_{index}_invalid_{key}"
         active_controls = controls or {}
         if active_controls:
-            if response.get("total_chapters") != active_controls.get("chapter_count"):
-                return "chapter_count_control_mismatch"
             if response.get("canon_placement") != active_controls.get("canon_position"):
                 return "canon_position_control_mismatch"
             if active_controls.get("canon_position") == "mid_canon_divergent":
@@ -1971,6 +2052,8 @@ class NarrativeGenerationService:
                 ).strip()
         acts = repaired.get("acts") or []
         if isinstance(acts, list) and acts:
+            if chapter_count < len(acts):
+                acts = acts[:chapter_count]
             ranges = self._balanced_chapter_ranges(chapter_count, len(acts))
             for act, (start, end) in zip(acts, ranges):
                 if isinstance(act, dict):

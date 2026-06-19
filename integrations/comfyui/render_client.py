@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--workflow-mode",
         default="default",
-        choices=["default", "character_sheet", "location"],
+        choices=["default", "character_sheet", "location", "non_character"],
         help="Workflow mode to execute inside Modal ComfyUI.",
     )
     parser.add_argument(

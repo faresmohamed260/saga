@@ -160,13 +160,13 @@ def test_collect_entity_visual_prompts_uses_entity_registry_as_source_of_truth(t
     assert by_name["Harry Potter"]["workflow_mode"] == "character_sheet"
     assert "three-view layout" in by_name["Harry Potter"]["positive_prompt"].lower()
     assert by_name["Fang"]["entity_type"] == "creature"
-    assert by_name["Fang"]["workflow_mode"] == "default"
-    assert "non-human fantasy creature" in by_name["Fang"]["positive_prompt"].lower()
+    assert by_name["Fang"]["workflow_mode"] == "non_character"
+    assert "creature reference image" in by_name["Fang"]["positive_prompt"].lower()
     assert by_name["Hogwarts"]["entity_type"] == "location"
     assert by_name["Hogwarts"]["workflow_mode"] == "location"
     assert "hogwarts location prompt" in by_name["Hogwarts"]["positive_prompt"].lower()
     assert by_name["Sorting Hat"]["entity_type"] == "object"
-    assert by_name["Sorting Hat"]["workflow_mode"] == "default"
+    assert by_name["Sorting Hat"]["workflow_mode"] == "non_character"
 
 
 def test_build_render_manifest_emits_all_entity_types_with_per_item_workflows(tmp_path):
@@ -213,8 +213,8 @@ def test_build_render_manifest_emits_all_entity_types_with_per_item_workflows(tm
     assert by_name["Harry Potter"]["workflow_mode"] == "character_sheet"
     assert by_name["Harry Potter"]["width"] == 1504
     assert by_name["Harry Potter"]["height"] == 1024
-    assert by_name["Hedwig"]["workflow_mode"] == "default"
-    assert by_name["Hedwig"]["width"] == 1024
+    assert by_name["Hedwig"]["workflow_mode"] == "non_character"
+    assert by_name["Hedwig"]["width"] == 1504
     assert by_name["Hedwig"]["height"] == 1024
     assert by_name["Hogwarts"]["workflow_mode"] == "location"
     assert by_name["Hogwarts"]["width"] == 1344

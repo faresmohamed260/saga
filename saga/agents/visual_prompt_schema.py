@@ -501,44 +501,382 @@ def compile_entity_concept_prompt(
 def compile_location_concept_prompt(
     *,
     display_name: str,
+    view_archetype: str = "",
+    location_class: str = "",
+    indoor_outdoor: str = "",
+    environment_type: str = "",
+    region_or_domain: str = "",
+    architecture_or_terrain_style: str = "",
+    dominant_materials: str = "",
+    lighting_default: str = "",
+    weather_exposure: str = "",
     baseline_description: str = "",
     current_description: str = "",
     atmosphere: str = "",
     notable_features: Iterable[str] | None = None,
     damage_or_restoration_state: str = "",
+    magic_or_tech_presence: str = "",
+    world_genre_cues: str = "",
 ) -> str:
     name = clean_text(display_name) or "the location"
+    archetype = clean_text(view_archetype, limit=80) or "establishing_exterior"
+    location_identity = clean_text(location_class, limit=180)
+    indoor = clean_text(indoor_outdoor, limit=120)
+    environment = clean_text(environment_type, limit=220)
+    region = clean_text(region_or_domain, limit=220)
+    architecture = clean_text(architecture_or_terrain_style, limit=260)
+    materials = clean_text(dominant_materials, limit=240)
+    lighting = clean_text(lighting_default, limit=220)
+    weather = clean_text(weather_exposure, limit=180)
     baseline = clean_text(baseline_description, limit=1200)
     current = clean_text(current_description, limit=1200)
     mood = clean_text(atmosphere, limit=400)
     damage = clean_text(damage_or_restoration_state, limit=300)
+    magic_presence = clean_text(magic_or_tech_presence, limit=240)
+    world_cues = clean_text(world_genre_cues, limit=260)
     features = normalize_string_list(notable_features or [])
+    location_noun = _location_subject_noun(location_identity, architecture, environment)
     lines = [
-        "photorealistic environment photograph,",
-        "no people, no characters, empty scene,",
-        "",
-        f"{name},",
+        f"Create a photorealistic empty environment reference image of {_location_view_title(name, archetype)}.",
+        "Empty environment reference plate focused entirely on the location itself.",
+        "Neutral worldbuilding reference for a canon location, presented as observational production design documentation.",
     ]
-    if baseline:
-        lines.append(f"{baseline},")
-    if current and current.lower() != baseline.lower():
-        lines.append(f"{current},")
-    if mood:
-        lines.append(f"{mood},")
-    if features:
-        lines.append(f"{', '.join(features[:5])},")
-    if damage:
-        lines.append(f"{damage},")
+    lines.append(_location_view_opening(archetype, location_noun))
+    structure_line = _location_structure_line(
+        archetype=archetype,
+        architecture=architecture,
+        location_identity=location_identity,
+        environment=environment,
+        region=region,
+    )
+    if structure_line:
+        lines.append(structure_line)
+    material_line = _location_material_line(materials, lighting, weather, damage)
+    if material_line:
+        lines.append(material_line)
+    feature_line = _location_feature_line(archetype, features)
+    if feature_line:
+        lines.append(feature_line)
+    baseline_line = _location_baseline_line(archetype, baseline, features)
+    if baseline_line:
+        lines.append(baseline_line)
+    if mood and not (
+        archetype in {"establishing_exterior", "main_approach", "grounds"}
+        and any(token in mood.lower() for token in ("christmas", "holiday", "festive", "celebration"))
+    ):
+        lines.append(_sentence(f"Let the place feel {mood} without turning it into a dramatic story beat"))
+    magic_line = _location_magic_line(magic_presence)
+    if magic_line:
+        lines.append(magic_line)
+    if world_cues:
+        lines.append(_sentence(f"Keep the design language faithful to {world_cues} and avoid screen-inspired replicas, generic fantasy drift, or theme-park presentation"))
+    elif region:
+        lines.append(_sentence(f"Keep the architecture and surface treatment grounded in the material culture of {region}, with no generic fantasy set dressing"))
     lines.extend(
         [
-            "",
-            "shot on Canon EOS R5, 8k uhd,",
-            "physically accurate lighting,",
-            "no stylization, no painterly effects,",
-            "sharp focus throughout",
+            _location_composition_line(archetype),
+            "Observational documentary framing suitable for production design reference.",
+            "The scene must read as a permanent, believable place with coherent architecture, stable layout, and realistic scale.",
+            "Photorealistic rendering, naturalistic light, physically plausible textures, sharp focus, no stylization, and no painterly effects.",
         ]
     )
     return "\n".join(line for line in lines if line).strip()
+
+
+def compile_creature_concept_prompt(
+    *,
+    display_name: str,
+    species_kind: str = "",
+    size_class: str = "",
+    body_plan: str = "",
+    surface_covering: str = "",
+    coloration: str = "",
+    head_features: str = "",
+    eyes: str = "",
+    limbs_appendages: str = "",
+    natural_weapons: str = "",
+    wings: str = "",
+    tail: str = "",
+    magical_features: str = "",
+    baseline_description: str = "",
+    current_description: str = "",
+    world_genre_cues: str = "",
+) -> str:
+    name = clean_text(display_name) or "the creature"
+    subject_identity = clean_text(species_kind, limit=180) or "a canon creature"
+    anatomy_bits = normalize_string_list(
+        [
+            clean_text(size_class, limit=140),
+            clean_text(body_plan, limit=220),
+            clean_text(surface_covering, limit=180),
+            clean_text(coloration, limit=180),
+            clean_text(head_features, limit=180),
+            clean_text(eyes, limit=140),
+            clean_text(limbs_appendages, limit=180),
+            clean_text(natural_weapons, limit=180),
+            clean_text(wings, limit=160),
+            clean_text(tail, limit=140),
+        ]
+    )
+    magic = clean_text(magical_features, limit=220)
+    baseline = clean_text(baseline_description, limit=1200)
+    current = clean_text(current_description, limit=700)
+    world = clean_text(world_genre_cues, limit=220)
+    lines = [
+        f"Create a photorealistic creature reference image of {name}.",
+        "Single-subject creature reference plate focused entirely on the creature.",
+        "Neutral worldbuilding reference for a canon creature, presented as design documentation rather than narrative action.",
+        _sentence(f"Depict {name} as {subject_identity}"),
+    ]
+    if anatomy_bits:
+        lines.append(_sentence(f"Primary anatomy and visible structure: {', '.join(anatomy_bits)}"))
+    if magic:
+        lines.append(_sentence(f"Supernatural or special-world traits should appear as {magic}"))
+    if baseline:
+        lines.append(_sentence(f"Persistent visual description: {baseline}"))
+    if current:
+        lines.append(_sentence(f"Current visible condition only if canon-relevant: {current}"))
+    if world:
+        lines.append(_sentence(f"Keep the design language faithful to {world} and avoid generic monster design drift"))
+    lines.extend(
+        [
+            "Use a clear full-subject composition with readable silhouette, believable anatomy, grounded material detail, and stable proportions.",
+            "Observational documentary framing suitable for a production design reference library.",
+            "Photorealistic rendering, naturalistic light, physically plausible textures, sharp focus, no stylization, and no painterly effects.",
+        ]
+    )
+    return "\n".join(line for line in lines if line).strip()
+
+
+def compile_creature_negative_prompt() -> str:
+    return (
+        "people, characters, handlers, riders, saddles, reins, crowds, battle scene, attack pose, narrative action, motion blur, cinematic scene, "
+        "movie still, illustration, painting, cartoon, anime, CGI, toy-like proportions, mascot look, generic monster design, duplicate limbs, "
+        "extra heads, malformed anatomy, floating accessories, stylized fantasy glow, oversaturated colors"
+    )
+
+
+def compile_object_concept_prompt(
+    *,
+    display_name: str,
+    object_class: str = "",
+    function: str = "",
+    size_scale: str = "",
+    shape_form: str = "",
+    primary_material: str = "",
+    secondary_materials: str = "",
+    color_finish: str = "",
+    surface_texture: str = "",
+    condition_default: str = "",
+    symbolic_markings: str = "",
+    magical_properties: str = "",
+    baseline_description: str = "",
+    current_description: str = "",
+    world_genre_cues: str = "",
+) -> str:
+    name = clean_text(display_name) or "the object"
+    object_identity = clean_text(object_class, limit=180) or "a canon prop or artifact"
+    function_text = clean_text(function, limit=220)
+    structure_bits = normalize_string_list(
+        [
+            clean_text(size_scale, limit=140),
+            clean_text(shape_form, limit=220),
+            clean_text(primary_material, limit=180),
+            clean_text(secondary_materials, limit=180),
+            clean_text(color_finish, limit=180),
+            clean_text(surface_texture, limit=180),
+            clean_text(condition_default, limit=180),
+            clean_text(symbolic_markings, limit=200),
+        ]
+    )
+    magic = clean_text(magical_properties, limit=220)
+    baseline = clean_text(baseline_description, limit=1200)
+    current = clean_text(current_description, limit=700)
+    world = clean_text(world_genre_cues, limit=220)
+    lines = [
+        f"Create a photorealistic isolated prop reference image of {name}.",
+        "Single-subject prop reference plate with the object fully visible and clearly readable.",
+        "Neutral worldbuilding reference for a canon object, presented as production design documentation.",
+        _sentence(f"Depict {name} as {object_identity}"),
+    ]
+    if function_text:
+        lines.append(_sentence(f"Primary function or use: {function_text}"))
+    if structure_bits:
+        lines.append(_sentence(f"Fixed visual structure, materials, and finish: {', '.join(structure_bits)}"))
+    if magic:
+        lines.append(_sentence(f"Special-world properties should appear as {magic}"))
+    if baseline:
+        lines.append(_sentence(f"Persistent visual description: {baseline}"))
+    if current:
+        lines.append(_sentence(f"Current visible condition only if canon-relevant: {current}"))
+    if world:
+        lines.append(_sentence(f"Keep the design language faithful to {world} and avoid generic fantasy prop styling or modern product drift"))
+    lines.extend(
+        [
+            "Use a clean readable composition with the full object clearly visible, stable proportions, believable construction, and grounded material detail.",
+            "Observational documentary framing suitable for production design reference.",
+            "Photorealistic rendering, naturalistic light, physically plausible textures, sharp focus, no stylization, and no painterly effects.",
+        ]
+    )
+    return "\n".join(line for line in lines if line).strip()
+
+
+def compile_object_negative_prompt() -> str:
+    return (
+        "people, hands, fingers, characters, creatures, mannequins, product ad, display pedestal, shop display, cluttered background, movie still, "
+        "action scene, illustration, painting, cartoon, anime, CGI, oversized ornamentation, generic fantasy trinket design, duplicate objects, "
+        "broken perspective, floating parts, unreadable silhouette, stylized glow, oversaturated colors"
+    )
+
+
+def compile_location_negative_prompt() -> str:
+    return (
+        "people, person, human figure, character, student, wizard, witch, crowd, portrait, close-up face, silhouette, "
+        "hands, feet, body part, creature, animal, staged action, duel, battle, chase, movie still, cinematic blocking, "
+        "dramatic hero shot, over-the-shoulder shot, point-of-view shot, Dutch angle, theme park, amusement park, tourist attraction, "
+        "castle replica, polished courtyard, clean modern paving, multicolored decorative stone, artificial rock facade, oversized fantasy ornament, "
+        "generic fantasy castle, generic fantasy tavern, generic medieval village, random background extras, modern props, signs, information boards, "
+        "railings, ropes, barriers, bins, speakers, security equipment, sci-fi elements, visible spells, glowing runes, magical portal, stylized concept art, "
+        "painterly brushwork, anime, illustration, matte painting look, text, logo, watermark"
+    )
+
+
+def _location_view_title(name: str, archetype: str) -> str:
+    mapping = {
+        "establishing_exterior": f"a distant exterior establishing view of {name}",
+        "main_approach": f"the main exterior approach to {name}",
+        "courtyard": f"the central courtyard of {name}",
+        "grounds": f"the surrounding grounds of {name}",
+        "interior_hall": f"the main interior hall of {name}",
+        "corridor_passage": f"a corridor or passage within {name}",
+        "chamber_room": f"a key interior room within {name}",
+        "hidden_entry": f"a concealed entry point within {name}",
+    }
+    return mapping.get(archetype, name)
+
+
+def _location_subject_noun(location_identity: str, architecture: str, environment: str) -> str:
+    for value in (location_identity, architecture, environment):
+        lowered = value.lower()
+        if "castle" in lowered:
+            return "castle"
+        if "street" in lowered or "road" in lowered or "drive" in lowered:
+            return "street"
+        if "forest" in lowered:
+            return "forest edge"
+        if "hall" in lowered:
+            return "hall"
+        if "corridor" in lowered or "passage" in lowered or "tunnel" in lowered:
+            return "passage"
+        if "courtroom" in lowered:
+            return "courtroom"
+        if "house" in lowered or "home" in lowered:
+            return "house"
+    return "location"
+
+
+def _location_view_opening(archetype: str, location_noun: str) -> str:
+    mapping = {
+        "establishing_exterior": f"Show a wide establishing view where the full scale and silhouette of the {location_noun} are clearly readable.",
+        "main_approach": f"Show a wide eye-level approach view where the entrance sequence and the larger mass of the {location_noun} remain the visual focus.",
+        "courtyard": "Show a broad enclosed open-air view where the surrounding walls and permanent architectural edges define the space clearly.",
+        "grounds": "Show a wide environmental view that makes the surrounding terrain, pathways, and permanent structures easy to read at a glance.",
+        "interior_hall": "Show a wide interior reference view with the room volume, circulation paths, and major architectural anchors clearly visible.",
+        "corridor_passage": "Show a grounded linear view through the passage so the corridor depth, walls, thresholds, and circulation path read clearly.",
+        "chamber_room": "Show a wide documentary interior view with the room layout, fixed furnishings, and architectural structure clearly readable.",
+        "hidden_entry": "Show a close-to-mid environmental reference view centered on a concealed architectural access point that still feels embedded in the larger structure.",
+    }
+    return mapping.get(archetype, "Show a coherent, readable environmental reference view with a clear spatial hierarchy.")
+
+
+def _location_structure_line(*, archetype: str, architecture: str, location_identity: str, environment: str, region: str) -> str:
+    subject = clean_text(architecture or location_identity or environment or region, limit=220)
+    if not subject:
+        return ""
+    if archetype == "establishing_exterior":
+        return _sentence(f"Depict an immense, permanent {subject} with believable massing, layered depth, and a stable real-world construction logic")
+    if archetype == "main_approach":
+        return _sentence(f"Use enclosing walls, entry structures, arches, or doors to define a clear arrival sequence into {subject}")
+    if archetype == "courtyard":
+        return _sentence(f"Let the courtyard be framed by surrounding architecture so the space feels enclosed, functional, and permanently built into {subject}")
+    if archetype == "grounds":
+        return _sentence(f"Let the landforms, pathways, vegetation, and built structures feel native to {subject} rather than decorative or staged")
+    if archetype == "hidden_entry":
+        return _sentence(f"The concealed access point should read as part of the original structure of {subject}, not as a theatrical set piece")
+    return _sentence(f"Keep the architecture and layout grounded in {subject} with believable scale, circulation, and material logic")
+
+
+def _location_material_line(materials: str, lighting: str, weather: str, damage: str) -> str:
+    parts = []
+    if materials:
+        parts.append(f"Use {materials} as the dominant visible materials and surface textures")
+    if lighting:
+        parts.append(f"Let the default lighting read as {lighting}")
+    if weather:
+        parts.append(f"Show the surfaces as shaped by {weather}")
+    if damage:
+        parts.append(f"Let any visible wear read as {damage}")
+    if not parts:
+        return ""
+    return _sentence(", ".join(parts))
+
+
+def _location_feature_line(archetype: str, features: List[str]) -> str:
+    if not features:
+        return ""
+    if archetype == "hidden_entry":
+        feature = clean_text(features[0], limit=180).lower()
+        if any(token in feature for token in ("hidden", "secret", "concealed", "tunnel", "passage", "trapdoor")):
+            return (
+                "Include a concealed entrance integrated into old masonry or structure, easy to overlook rather than presented as a dramatic focal attraction."
+            )
+    if archetype == "main_approach":
+        return _sentence(f"Anchor the composition with fixed approach details such as {', '.join(features[:2])}")
+    if archetype in {"interior_hall", "corridor_passage", "chamber_room"}:
+        return _sentence(f"Keep permanent interior reference points clearly visible, including {', '.join(features[:3])}")
+    return _sentence(f"Keep fixed architectural details visible, including {', '.join(features[:3])}")
+
+
+def _location_baseline_line(archetype: str, baseline: str, features: List[str]) -> str:
+    if not baseline:
+        return ""
+    lowered = baseline.lower()
+    blocked = ("where ", "when ", "after ", "before ", "during ", "location of ", "referenced as", "allegedly", "encounter")
+    if any(marker in lowered for marker in blocked):
+        return ""
+    if archetype in {"establishing_exterior", "main_approach", "grounds"} and any(
+        token in lowered
+        for token in (
+            "hidden", "secret", "concealed", "tunnel", "passage", "trapdoor",
+            "both", "corridor", "common room", "dungeon", "dormitor", "classroom", "courtroom", "kitchen", "library", "bedroom",
+        )
+    ):
+        return ""
+    if features and all(feature.lower() in lowered for feature in features[:2]):
+        return ""
+    return _sentence(f"Keep the persistent visual identity grounded in {baseline}")
+
+
+def _location_magic_line(magic_presence: str) -> str:
+    if not magic_presence:
+        return ""
+    return _sentence(
+        f"Convey the special-world quality of the place subtly through built-in environmental cues such as practical lighting, atmosphere, impossible-but-grounded details, or architectural logic related to {magic_presence}, not through visible spell effects"
+    )
+
+
+def _location_composition_line(archetype: str) -> str:
+    mapping = {
+        "establishing_exterior": "Use a wide documentary composition with the structure occupying most of the frame, restrained foreground, readable skyline, and minimal empty paving.",
+        "main_approach": "Use a wide eye-level composition with the entrance path and main structure dominant in frame, restrained foreground, and clear human scale.",
+        "courtyard": "Use a balanced documentary composition that keeps the open space readable without letting empty foreground overwhelm the architecture.",
+        "grounds": "Use a wide environmental composition with clear terrain depth and enough surrounding structure to keep the place specific rather than generic.",
+        "interior_hall": "Use a wide interior composition with clear volume, strong architectural anchors, and no extreme lens distortion.",
+        "corridor_passage": "Use a linear perspective composition that emphasizes depth and thresholds without turning the passage into a dramatic chase shot.",
+        "chamber_room": "Use a wide room-level composition with clear layout, stable perspective, and enough surrounding context to read as a permanent functional space.",
+        "hidden_entry": "Use a restrained close-to-mid composition with the concealed access point visible but not oversized, keeping it embedded in the surrounding structure.",
+    }
+    return mapping.get(archetype, "Use a readable documentary composition with coherent scale, restrained foreground, and stable perspective.")
 
 
 def _confidence(value: Any) -> str:

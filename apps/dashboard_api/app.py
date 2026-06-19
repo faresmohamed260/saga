@@ -21,7 +21,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import defer
 
@@ -33,15 +33,29 @@ from saga.identity.series_identity_provider import (
     build_series_pipeline_identity,
     generate_book_identity_bundle,
 )
-from saga.services.comfyui_character_sheet_service import render_manifest_path_for_contract
+from saga.services.comfyui_character_sheet_service import (
+    DEFAULT_NEGATIVE_PROMPT,
+    ComfyUICharacterSheetService,
+    render_manifest_path_for_contract,
+    render_output_dir_for_contract,
+)
+from saga.agents.visual_prompt_schema import (
+    compile_creature_negative_prompt,
+    compile_location_negative_prompt,
+    compile_object_negative_prompt,
+)
 from saga.services.database_analysis_run_service import DatabaseAnalysisRunService
 from saga.services.database_decoder_service import DatabaseDecoderService
 from saga.services.generated_story_epub_service import GeneratedStoryEpubService
+from saga.services.image_thumbnail_service import ensure_thumbnail
 from saga.storage.database import get_database_url
 from saga.storage.persistence import SagaSQLiteStore
 from saga.storage.models import Book as SqlBook
-from saga.storage.models import Chapter as SqlChapter
 from saga.storage.models import CharacterProfile as SqlCharacterProfile
+from saga.storage.models import CharacterVisualBaseline as SqlCharacterVisualBaseline
+from saga.storage.models import CharacterVisualSceneState as SqlCharacterVisualSceneState
+from saga.storage.models import Chapter as SqlChapter
+from saga.storage.models import CreatureVisualBaseline as SqlCreatureVisualBaseline
 from saga.storage.models import DashboardJob as SqlDashboardJob
 from saga.storage.models import Entity as SqlEntity
 from saga.storage.models import Event as SqlEvent
@@ -53,6 +67,10 @@ from saga.storage.models import IdentityCharacter as SqlIdentityCharacter
 from saga.storage.models import IdentityNarrator as SqlIdentityNarrator
 from saga.storage.models import IdentityReferenceEntity as SqlIdentityReferenceEntity
 from saga.storage.models import IdentitySeries as SqlIdentitySeries
+from saga.storage.models import LocationSceneState as SqlLocationSceneState
+from saga.storage.models import LocationVisualBaseline as SqlLocationVisualBaseline
+from saga.storage.models import ObjectSceneState as SqlObjectSceneState
+from saga.storage.models import ObjectVisualBaseline as SqlObjectVisualBaseline
 from saga.storage.models import Series as SqlSeries
 from saga.storage.models import Scene as SqlScene
 from saga.storage.models import StableCharacterState as SqlStableCharacterState
@@ -225,6 +243,147 @@ def _clean_analysis_dict(payload: Any) -> dict[str, Any]:
     return cleaned
 
 
+def _prompt_negative_base_for_entity(entity_type: str) -> str:
+    normalized = str(entity_type or "").strip().lower()
+    if normalized == "location":
+        return compile_location_negative_prompt()
+    if normalized == "creature":
+        return compile_creature_negative_prompt()
+    if normalized == "object":
+        return compile_object_negative_prompt()
+    return DEFAULT_NEGATIVE_PROMPT
+
+
+def _split_negative_prompt_for_editor(prompt: str, entity_type: str) -> dict[str, str]:
+    value = str(prompt or "").strip()
+    locked_base = _prompt_negative_base_for_entity(entity_type)
+    if not value:
+        return {"locked_base": locked_base, "editable_tail": ""}
+    if value.startswith(locked_base):
+        return {"locked_base": locked_base, "editable_tail": value[len(locked_base):].lstrip(", ")}
+    embedded_index = value.find(locked_base)
+    if embedded_index >= 0:
+        return {"locked_base": locked_base, "editable_tail": value[embedded_index + len(locked_base):].lstrip(", ")}
+    return {"locked_base": locked_base, "editable_tail": value}
+
+
+def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str, str]:
+    lines = [str(line or "").strip() for line in str(prompt or "").splitlines()]
+    lines = [line for line in lines if line]
+    normalized_type = str(entity_type or "").strip().lower()
+    if not lines:
+        return {"locked_prefix": "", "editable_body": "", "locked_suffix": ""}
+
+    if normalized_type == "character":
+        if (
+            len(lines) >= len(CHARACTER_PROMPT_PREFIX_LINES) + len(CHARACTER_PROMPT_SUFFIX_LINES)
+            and lines[: len(CHARACTER_PROMPT_PREFIX_LINES)] == CHARACTER_PROMPT_PREFIX_LINES
+            and lines[-len(CHARACTER_PROMPT_SUFFIX_LINES):] == CHARACTER_PROMPT_SUFFIX_LINES
+        ):
+            return {
+                "locked_prefix": "\n".join(CHARACTER_PROMPT_PREFIX_LINES),
+                "editable_body": "\n".join(lines[len(CHARACTER_PROMPT_PREFIX_LINES): -len(CHARACTER_PROMPT_SUFFIX_LINES)]),
+                "locked_suffix": "\n".join(CHARACTER_PROMPT_SUFFIX_LINES),
+            }
+        return {"locked_prefix": "", "editable_body": "\n".join(lines), "locked_suffix": ""}
+
+    first_line = lines[0]
+    prefix_lines: list[str] = []
+    suffix_lines: list[str] = []
+
+    if normalized_type == "location" and first_line.startswith("Create a photorealistic empty environment reference image of "):
+        legacy_prefix_starts = (
+            "The location itself is the only subject.",
+            "Show no people, no characters, no creatures, no silhouettes, no body parts, and no active figure of any kind.",
+            "Treat this as a worldbuilding reference plate for a canon location",
+            "Empty environment reference plate focused entirely on the location itself.",
+            "Neutral worldbuilding reference for a canon location",
+        )
+        remaining = lines[1:]
+        while remaining and remaining[0].startswith(legacy_prefix_starts):
+            prefix_lines.append(remaining.pop(0))
+        prefix_lines = [first_line, *prefix_lines]
+        while remaining and (
+            remaining[-1] in LOCATION_SUFFIX_LINES
+            or remaining[-1].startswith("Use a wide ")
+            or remaining[-1].startswith("Use a wide room-level composition")
+            or remaining[-1].startswith("Keep the framing observational and documentary")
+            or remaining[-1].startswith("The scene must read as a permanent, believable place")
+            or remaining[-1].startswith("The scene is completely empty.")
+        ):
+            suffix_lines.insert(0, remaining.pop())
+        return {
+            "locked_prefix": "\n".join(prefix_lines),
+            "editable_body": "\n".join(remaining),
+            "locked_suffix": "\n".join(suffix_lines),
+        }
+
+    if normalized_type == "creature" and first_line.startswith("Create a photorealistic creature reference image of "):
+        legacy_prefix_starts = (
+            "The creature itself is the only subject.",
+            "Show no people, no characters, no handlers, no riders, no extra creatures, and no environmental storytelling action.",
+            "Treat this as a worldbuilding reference plate for a canon creature",
+            "Single-subject creature reference plate focused entirely on the creature.",
+            "Neutral worldbuilding reference for a canon creature",
+        )
+        remaining = lines[1:]
+        while remaining and remaining[0].startswith(legacy_prefix_starts):
+            prefix_lines.append(remaining.pop(0))
+        prefix_lines = [first_line, *prefix_lines]
+        while remaining and (
+            remaining[-1] in CREATURE_SUFFIX_LINES
+            or remaining[-1].startswith("Keep the framing observational and documentary")
+        ):
+            suffix_lines.insert(0, remaining.pop())
+        return {
+            "locked_prefix": "\n".join(prefix_lines),
+            "editable_body": "\n".join(remaining),
+            "locked_suffix": "\n".join(suffix_lines),
+        }
+
+    if normalized_type == "object" and first_line.startswith("Create a photorealistic isolated prop reference image of "):
+        legacy_prefix_starts = (
+            "The object itself is the only subject.",
+            "Show no people, no hands, no characters, no creatures, no shelves full of props, and no environmental storytelling clutter.",
+            "Treat this as a worldbuilding reference plate for a canon object",
+            "Single-subject prop reference plate with the object fully visible and clearly readable.",
+            "Neutral worldbuilding reference for a canon object",
+        )
+        remaining = lines[1:]
+        while remaining and remaining[0].startswith(legacy_prefix_starts):
+            prefix_lines.append(remaining.pop(0))
+        prefix_lines = [first_line, *prefix_lines]
+        while remaining and (
+            remaining[-1] in OBJECT_SUFFIX_LINES
+            or remaining[-1].startswith("Keep the framing observational and documentary")
+        ):
+            suffix_lines.insert(0, remaining.pop())
+        return {
+            "locked_prefix": "\n".join(prefix_lines),
+            "editable_body": "\n".join(remaining),
+            "locked_suffix": "\n".join(suffix_lines),
+        }
+
+    return {"locked_prefix": "", "editable_body": "\n".join(lines), "locked_suffix": ""}
+
+
+def _build_prompt_editor_payload(positive_prompt: str, negative_prompt: str, entity_type: str) -> dict[str, Any]:
+    positive = _split_positive_prompt_for_editor(positive_prompt, entity_type)
+    negative = _split_negative_prompt_for_editor(negative_prompt, entity_type)
+    compiled_positive = "\n".join(
+        part for part in [positive["locked_prefix"], positive["editable_body"], positive["locked_suffix"]] if str(part or "").strip()
+    )
+    compiled_negative = negative["locked_base"]
+    if str(negative["editable_tail"] or "").strip():
+        compiled_negative = f"{compiled_negative}, {str(negative['editable_tail']).strip()}"
+    return {
+        "positive": positive,
+        "negative": negative,
+        "compiled_positive": compiled_positive,
+        "compiled_negative": compiled_negative,
+    }
+
+
 def _summarize_analysis_fields(payload: dict[str, Any], keys: list[str], *, limit: int = 8) -> str:
     parts: list[str] = []
     seen: set[str] = set()
@@ -262,6 +421,7 @@ class DecoderRequest(BaseModel):
     series_id: str = ""
     book_ref: str = ""
     story_mode: str = "post_canon"
+    provider: str = ""
     user_prompt: str = ""
     chapter_count: int = 20
     primary_pov_character: str = ""
@@ -298,6 +458,17 @@ class EntityRenderRequest(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
 
 
+class AssetPreviewRenderRequest(BaseModel):
+    positive_prompt: str
+    negative_prompt: str = ""
+
+
+class AssetSaveRenderRequest(BaseModel):
+    positive_prompt: str
+    negative_prompt: str = ""
+    preview_image_path: str
+
+
 class RenderBatchRequest(BaseModel):
     book_ref: str = ""
     series_id: str = ""
@@ -311,6 +482,7 @@ class DecoderPlanRequest(BaseModel):
     series_id: str = ""
     book_ref: str = ""
     story_mode: str = "post_canon"
+    provider: str = ""
     user_prompt: str = ""
     chapter_count: int = 20
     primary_pov_character: str = ""
@@ -2291,6 +2463,239 @@ def _series_book_refs(series_id: str) -> list[str]:
     return [f"db://book/{row.get('book_id')}" for row in ordered if str(row.get("book_id") or "").strip()]
 
 
+def _resolve_decoder_book_ref(*, series_id: str = "", book_ref: str = "") -> str:
+    explicit = str(book_ref or "").strip()
+    if explicit:
+        return explicit
+    series_value = str(series_id or "").strip()
+    if not series_value:
+        return ""
+    refs = _series_book_refs(series_value)
+    return refs[-1] if refs else ""
+
+
+DECODER_PROVIDER_CHOICES: tuple[tuple[str, str], ...] = (
+    ("ollama", "Ollama"),
+    ("general_compute", "General Compute"),
+    ("codex", "Codex"),
+)
+
+CHARACTER_PROMPT_PREFIX_LINES = [
+    "Create a photorealistic studio character-sheet photograph.",
+    "Use a three-view layout with a pure white seamless background.",
+    "Show the same person three times side by side: front view full body, side profile full body, and back view full body.",
+    "Keep the face, body, hairstyle, and proportions identical across all views.",
+    "Place the subject in a T-pose with arms relaxed at the sides, legs straight, feet shoulder-width apart, and the full body visible head to toe with no cropping.",
+]
+CHARACTER_PROMPT_SUFFIX_LINES = [
+    "Photorealistic, real human skin texture, visible pores, and natural skin tone variation.",
+    "Subtle facial asymmetry, realistic anatomy and proportions, natural hair strand detail, and physically accurate fabric texture.",
+    "Neutral studio lighting with soft diffuse even light, no dramatic contrast, and no rim light.",
+    "Sharp focus across the entire image, no depth-of-field blur, no stylization, clean controlled studio documentation photo, RAW photo, shot on Canon EOS R5, 8k UHD.",
+]
+LOCATION_PREFIX_LINES = [
+    "Empty environment reference plate focused entirely on the location itself.",
+    "Neutral worldbuilding reference for a canon location, presented as observational production design documentation.",
+]
+LOCATION_SUFFIX_LINES = [
+    "Observational documentary framing suitable for production design reference.",
+    "The scene must read as a permanent, believable place with coherent architecture, stable layout, and realistic scale.",
+    "Photorealistic rendering, naturalistic light, physically plausible textures, sharp focus, no stylization, and no painterly effects.",
+]
+CREATURE_PREFIX_LINES = [
+    "Single-subject creature reference plate focused entirely on the creature.",
+    "Neutral worldbuilding reference for a canon creature, presented as design documentation rather than narrative action.",
+]
+CREATURE_SUFFIX_LINES = [
+    "Use a clear full-subject composition with readable silhouette, believable anatomy, grounded material detail, and stable proportions.",
+    "Observational documentary framing suitable for a production design reference library.",
+    "Photorealistic rendering, naturalistic light, physically plausible textures, sharp focus, no stylization, and no painterly effects.",
+]
+OBJECT_PREFIX_LINES = [
+    "Single-subject prop reference plate with the object fully visible and clearly readable.",
+    "Neutral worldbuilding reference for a canon object, presented as production design documentation.",
+]
+OBJECT_SUFFIX_LINES = [
+    "Use a clean readable composition with the full object clearly visible, stable proportions, believable construction, and grounded material detail.",
+    "Observational documentary framing suitable for production design reference.",
+    "Photorealistic rendering, naturalistic light, physically plausible textures, sharp focus, no stylization, and no painterly effects.",
+]
+
+
+def _decoder_provider_status_rows(provider_name: str, *, refresh: bool = False) -> list[dict[str, Any]]:
+    if refresh:
+        return list((refresh_provider_statuses().get(provider_name) or {}).get("statuses") or [])
+    return list(SQLITE_STORE.get_provider_statuses(provider_name) or [])
+
+
+def _decoder_provider_available(provider_name: str, *, refresh: bool = False) -> bool:
+    rows = _decoder_provider_status_rows(provider_name, refresh=refresh)
+    for row in rows:
+        if str(row.get("probe_status") or "").strip().lower() == "ok":
+            return True
+    return False
+
+
+def _available_decoder_providers(*, refresh: bool = False) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for provider_name, label in DECODER_PROVIDER_CHOICES:
+        if _decoder_provider_available(provider_name, refresh=refresh):
+            rows.append({"value": provider_name, "label": label})
+    return rows
+
+
+def _auto_decoder_anchors(*, story_mode: str, book_ref: str, continuity_anchor: str = "", divergence_anchor: str = "") -> tuple[str, str]:
+    continuity_value = str(continuity_anchor or "").strip()
+    divergence_value = str(divergence_anchor or "").strip()
+    if continuity_value and (story_mode != "alternate_universe" or divergence_value):
+        return continuity_value, divergence_value
+
+    book_row = _db_book_by_contract_path(book_ref) if str(book_ref or "").strip() else None
+    book_title = str(getattr(book_row, "title", "") or "").strip()
+    anchor_label = book_title or "the resolved canon anchor"
+
+    if story_mode == "mid_canon" and not continuity_value:
+        continuity_value = (
+            f"Stay fully consistent with canon through {anchor_label} and insert the new material "
+            "between established events without contradicting known outcomes."
+        )
+    if story_mode == "alternate_universe":
+        if not continuity_value:
+            continuity_value = f"Preserve canon continuity through {anchor_label} until the divergence point."
+        if not divergence_value:
+            divergence_value = f"Diverge from canon immediately after the resolved anchor in {anchor_label}."
+    return continuity_value, divergence_value
+
+
+def _decoder_series_options() -> list[dict[str, Any]]:
+    with SQLITE_STORE.session_factory() as session:
+        series_rows = session.execute(select(SqlSeries).order_by(SqlSeries.title.asc())).scalars().all()
+        books = session.execute(select(SqlBook)).scalars().all()
+    books_by_series: dict[str, list[SqlBook]] = {}
+    for book in books:
+        key = str(book.series_id or "").strip()
+        if not key:
+            continue
+        books_by_series.setdefault(key, []).append(book)
+    rows: list[dict[str, Any]] = []
+    for row in series_rows:
+        series_id = str(row.series_id or "").strip()
+        if not series_id:
+            continue
+        ordered = sorted(books_by_series.get(series_id, []), key=lambda book: (int(book.book_index or 0), str(book.title or "").lower()))
+        latest = ordered[-1] if ordered else None
+        rows.append(
+            {
+                "series_id": series_id,
+                "title": str(row.title or series_id),
+                "book_count": len(ordered),
+                "latest_book_ref": f"db://book/{latest.id}" if latest else "",
+                "latest_book_title": str(latest.title or "") if latest else "",
+            }
+        )
+    return rows
+
+
+def _normalize_runtime_path(path: str) -> str:
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    try:
+        resolved = Path(raw).resolve()
+    except OSError:
+        return raw
+    return str(resolved)
+
+
+def _ensure_runtime_thumbnail(image_path: str, thumbnail_path: str = "") -> str:
+    source = _normalize_runtime_path(image_path)
+    if not source:
+        return ""
+    existing = _normalize_runtime_path(thumbnail_path)
+    if existing and Path(existing).exists():
+        return existing
+    try:
+        return _normalize_runtime_path(ensure_thumbnail(source))
+    except Exception:
+        return ""
+
+
+def _slugify_asset_name(value: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower())
+    return cleaned.strip("-") or "asset"
+
+
+def _asset_prompt_fingerprint(positive_prompt: str, negative_prompt: str) -> str:
+    payload = f"{str(positive_prompt or '').strip()}\n---\n{str(negative_prompt or '').strip()}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _asset_preview_dir(entity_id: str) -> Path:
+    path = DASHBOARD_DIR / "asset_previews" / str(entity_id or "").strip()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _asset_preview_meta_path(image_path: Path) -> Path:
+    return image_path.with_suffix(f"{image_path.suffix}.json")
+
+
+def _resolve_project_file(path: str | Path) -> Path:
+    raw = Path(str(path or "")).resolve()
+    if not str(raw).lower().startswith(str(ROOT).lower()):
+        raise HTTPException(status_code=400, detail="File path must stay inside the project.")
+    return raw
+
+
+def _safe_runtime_cleanup_path(path: str | Path) -> Path | None:
+    raw_text = str(path or "").strip()
+    if not raw_text:
+        return None
+    raw = Path(raw_text).resolve()
+    allowed_roots = [ROOT.resolve(), OUTPUTS_DIR.resolve(), DASHBOARD_DIR.resolve()]
+    if not any(str(raw).lower().startswith(str(base).lower()) for base in allowed_roots):
+        return None
+    return raw
+
+
+def _remove_runtime_artifact(path: str | Path) -> None:
+    target = _safe_runtime_cleanup_path(path)
+    if target is None or not target.exists():
+        return
+    try:
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
+    except OSError:
+        return
+
+
+def _asset_render_row(entity_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    entity_key = str(entity_id or "").strip()
+    if not entity_key:
+        raise HTTPException(status_code=400, detail="entity_id is required.")
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_key)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+        book = session.get(SqlBook, entity.book_id)
+    service = ComfyUICharacterSheetService()
+    rows = service.collect_entity_visual_prompts_filtered(
+        f"db://book/{entity.book_id}",
+        entity_ids={entity.id},
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No visual prompt payload available for the selected entity.")
+    return dict(rows[0]), {
+        "entity_id": entity.id,
+        "entity_name": str(entity.canonical_name or "").strip(),
+        "entity_type": str(entity.entity_type or "").strip().lower(),
+        "book_id": entity.book_id,
+        "book_title": str(book.title or "") if book else "",
+    }
+
+
 def resolve_identity_output_root(request: EncodeRequest) -> Path:
     configured = str(request.identity_output_root or "").strip()
     if configured:
@@ -2817,6 +3222,8 @@ def run_series_character_render_job(job_id: str, request: SeriesCharacterRenderR
 
 
 def run_decoder_job(job_id: str, request: DecoderRequest) -> None:
+    resolved_book_ref = _resolve_decoder_book_ref(series_id=request.series_id, book_ref=request.book_ref)
+    request = request.model_copy(update={"book_ref": resolved_book_ref})
     payload = load_job(job_id)
     payload.update({"status": "running", "started_at": utc_now(), "pid": None})
     save_job(payload)
@@ -2828,20 +3235,62 @@ def run_decoder_job(job_id: str, request: DecoderRequest) -> None:
         series_id=request.series_id,
         book_ref=request.book_ref,
         story_mode=request.story_mode,
+        provider=request.provider,
         chapter_count=request.chapter_count,
     )
+    total_chapters = max(1, int(request.chapter_count or 1))
+
+    def _decoder_progress_callback(event: dict[str, Any]) -> None:
+        if not isinstance(event, dict):
+            return
+        chapter_total = max(1, int(event.get("chapter_total") or total_chapters))
+        chapter_current = max(0, min(int(event.get("chapter_current") or 0), chapter_total))
+        scene_number = int(event.get("scene_number") or 0)
+        total_scenes = int(event.get("total_scenes") or 0)
+        label = str(event.get("label") or "decoder running").strip() or "decoder running"
+        details = {
+            "series_id": request.series_id,
+            "book_ref": request.book_ref,
+            "story_mode": request.story_mode,
+            "provider": request.provider,
+            "chapter_count": request.chapter_count,
+            "primary_pov_character": request.primary_pov_character,
+            "event": str(event.get("event") or "").strip(),
+            "chapter_number": int(event.get("chapter_number") or 0),
+            "scene_number": scene_number,
+            "total_scenes": total_scenes,
+        }
+        update_job_progress(
+            job_id,
+            stage="decoder",
+            current=chapter_current,
+            total=chapter_total,
+            label=label,
+            status="running",
+            details=details,
+        )
+        append_stage_log(
+            log,
+            "decoder",
+            str(event.get("event") or "progress").strip() or "progress",
+            chapter_number=int(event.get("chapter_number") or 0) or None,
+            scene_number=scene_number or None,
+            total_scenes=total_scenes or None,
+            label=label,
+        )
     try:
         update_job_progress(
             job_id,
             stage="decoder",
             current=0,
-            total=max(1, int(request.chapter_count or 1)),
+            total=total_chapters,
             label="building canon-aware story",
             status="running",
             details={
                 "series_id": request.series_id,
                 "book_ref": request.book_ref,
                 "story_mode": request.story_mode,
+                "provider": request.provider,
                 "chapter_count": request.chapter_count,
                 "primary_pov_character": request.primary_pov_character,
             },
@@ -2849,18 +3298,21 @@ def run_decoder_job(job_id: str, request: DecoderRequest) -> None:
         service = DatabaseDecoderService(sqlite_store=SQLITE_STORE)
         result = service.generate_and_store(
             book_ref=request.book_ref,
+            series_id=request.series_id,
             story_mode=request.story_mode,
+            provider=request.provider,
             user_prompt=request.user_prompt,
             chapter_count=request.chapter_count,
             primary_pov_character=request.primary_pov_character,
             continuity_anchor=request.continuity_anchor,
             divergence_anchor=request.divergence_anchor,
+            progress_callback=_decoder_progress_callback,
         )
         update_job_progress(
             job_id,
             stage="decoder",
             current=int(result.get("chapter_count") or request.chapter_count or 1),
-            total=max(1, int(request.chapter_count or 1)),
+            total=total_chapters,
             label=f"generated {result.get('title') or 'story'}",
             status="completed",
             details={
@@ -2876,7 +3328,7 @@ def run_decoder_job(job_id: str, request: DecoderRequest) -> None:
                 "status": "completed",
                 "return_code": 0,
                 "finished_at": utc_now(),
-                "artifacts": {"story_id": result.get("story_id"), "book_ref": request.book_ref},
+                "artifacts": {"story_id": result.get("story_id"), "book_ref": request.book_ref, "series_id": request.series_id},
             }
         )
         save_job(payload)
@@ -3299,17 +3751,19 @@ def start_series_character_render(request: SeriesCharacterRenderRequest) -> dict
 @app.post("/runtime/start-decoder")
 def start_decoder(request: DecoderRequest) -> dict[str, Any]:
     ensure_dirs()
-    if not str(request.book_ref or "").strip():
-        raise HTTPException(status_code=400, detail="book_ref is required.")
+    resolved_book_ref = _resolve_decoder_book_ref(series_id=request.series_id, book_ref=request.book_ref)
+    if not str(request.series_id or "").strip() and not resolved_book_ref:
+        raise HTTPException(status_code=400, detail="series_id is required.")
     if not str(request.user_prompt or "").strip():
         raise HTTPException(status_code=400, detail="user_prompt is required.")
+    request = request.model_copy(update={"book_ref": resolved_book_ref})
     job_id = f"decoder_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
     payload = {
         "id": job_id,
         "type": "decoder-generate-story",
         "status": "queued",
         "created_at": utc_now(),
-        "command": f"db-decoder:{request.story_mode}",
+        "command": f"db-decoder:{request.story_mode}:{request.provider or 'auto'}",
         "request": request.model_dump(),
     }
     save_job(payload)
@@ -3356,17 +3810,23 @@ def runtime_story(story_id: str) -> dict[str, Any]:
 @app.get("/runtime/decoder/options")
 def runtime_decoder_options() -> dict[str, Any]:
     books = _db_contract_summaries(limit=500)
-    series_ids = sorted({str(book.get("series_id") or "") for book in books if str(book.get("series_id") or "").strip()})
+    series_rows = _decoder_series_options()
+    providers = _available_decoder_providers(refresh=True)
     return {
         "modes": [
-            {"value": "pre_canon", "label": "Pre-canon", "requires": ["book_ref", "user_prompt"]},
-            {"value": "mid_canon", "label": "Mid-canon", "requires": ["book_ref", "continuity_anchor", "user_prompt"]},
-            {"value": "post_canon", "label": "Post-canon", "requires": ["book_ref", "user_prompt"]},
-            {"value": "alternate_universe", "label": "Alternate universe", "requires": ["book_ref", "divergence_anchor", "user_prompt"]},
+            {"value": "pre_canon", "label": "Pre-canon", "requires": ["series_id", "provider", "user_prompt"]},
+            {"value": "mid_canon", "label": "Mid-canon", "requires": ["series_id", "provider", "user_prompt"]},
+            {"value": "post_canon", "label": "Post-canon", "requires": ["series_id", "provider", "user_prompt"]},
+            {"value": "alternate_universe", "label": "Alternate universe", "requires": ["series_id", "provider", "user_prompt"]},
         ],
-        "defaults": {"chapter_count": 20, "story_mode": "post_canon"},
+        "defaults": {
+            "chapter_count": 20,
+            "story_mode": "post_canon",
+            "provider": providers[0]["value"] if providers else "",
+        },
         "books": books,
-        "series": series_ids,
+        "series": series_rows,
+        "providers": providers,
     }
 
 
@@ -3374,21 +3834,42 @@ def runtime_decoder_options() -> dict[str, Any]:
 def runtime_validate_decoder_plan(request: DecoderPlanRequest) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
-    if not str(request.book_ref or "").strip():
-        errors.append("A database-backed book must be selected.")
-    elif _db_book_by_contract_path(request.book_ref) is None:
-        errors.append("Selected book was not found in SQLite.")
+    resolved_book_ref = _resolve_decoder_book_ref(series_id=request.series_id, book_ref=request.book_ref)
+    resolved_series_id = str(request.series_id or "").strip()
+    available_providers = _available_decoder_providers(refresh=False)
+    available_provider_keys = {str(row.get("value") or "").strip().lower() for row in available_providers}
+    requested_provider = str(request.provider or "").strip().lower()
+    if not resolved_series_id and not resolved_book_ref:
+        errors.append("A database-backed series must be selected.")
+    elif resolved_series_id and not _series_book_refs(resolved_series_id):
+        errors.append("Selected series was not found in SQLite.")
+    elif resolved_book_ref and _db_book_by_contract_path(resolved_book_ref) is None:
+        errors.append("Selected decoder anchor book was not found in SQLite.")
     if request.story_mode not in {"pre_canon", "mid_canon", "post_canon", "alternate_universe"}:
         errors.append("Story mode is not supported.")
     if request.chapter_count < 1 or request.chapter_count > 60:
         errors.append("Chapter count must be between 1 and 60.")
     if not str(request.user_prompt or "").strip():
         errors.append("User prompt is required.")
-    if request.story_mode == "mid_canon" and not str(request.continuity_anchor or "").strip():
-        warnings.append("Mid-canon generation should include a continuity anchor.")
-    if request.story_mode == "alternate_universe" and not str(request.divergence_anchor or "").strip():
-        warnings.append("Alternate-universe generation should include a divergence anchor.")
-    return {"valid": not errors, "errors": errors, "warnings": warnings, "plan": request.model_dump()}
+    if not available_providers:
+        errors.append("No decoder providers are currently available.")
+    elif requested_provider and requested_provider not in available_provider_keys:
+        errors.append("Selected decoder provider is not currently available.")
+    elif not requested_provider:
+        requested_provider = available_providers[0]["value"]
+    continuity_anchor, divergence_anchor = _auto_decoder_anchors(
+        story_mode=request.story_mode,
+        book_ref=resolved_book_ref,
+        continuity_anchor=request.continuity_anchor,
+        divergence_anchor=request.divergence_anchor,
+    )
+    plan = request.model_dump()
+    plan["series_id"] = resolved_series_id
+    plan["book_ref"] = resolved_book_ref
+    plan["provider"] = requested_provider
+    plan["continuity_anchor"] = continuity_anchor
+    plan["divergence_anchor"] = divergence_anchor
+    return {"valid": not errors, "errors": errors, "warnings": warnings, "plan": plan}
 
 
 @app.post("/runtime/decoder/jobs")
@@ -3396,7 +3877,18 @@ def runtime_decoder_jobs(request: DecoderRequest) -> dict[str, Any]:
     validation = runtime_validate_decoder_plan(DecoderPlanRequest(**request.model_dump()))
     if not validation["valid"]:
         raise HTTPException(status_code=400, detail=validation)
-    return start_decoder(request)
+    validated_request = DecoderRequest(**validation["plan"])
+    if not str(validated_request.user_prompt or "").strip():
+        validated_request.user_prompt = request.user_prompt
+    if not str(validated_request.primary_pov_character or "").strip():
+        validated_request.primary_pov_character = request.primary_pov_character
+    if not str(validated_request.continuity_anchor or "").strip():
+        validated_request.continuity_anchor = request.continuity_anchor
+    if not str(validated_request.divergence_anchor or "").strip():
+        validated_request.divergence_anchor = request.divergence_anchor
+    if not int(validated_request.chapter_count or 0):
+        validated_request.chapter_count = request.chapter_count
+    return start_decoder(validated_request)
 
 
 @app.get("/runtime/export-generated-story-epub")
@@ -3409,46 +3901,139 @@ def runtime_export_generated_story_epub(story_id: str):
     return FileResponse(output_path, filename=output_path.name, media_type="application/epub+zip")
 
 
-@app.get("/runtime/assets/entities")
-def runtime_assets_entities(entity_type: str = "", q: str = "", book_id: str = "", series_id: str = "", limit: int = 500) -> dict[str, Any]:
+@app.get("/runtime/assets/series-summary")
+def runtime_assets_series_summary() -> dict[str, Any]:
     with SQLITE_STORE.session_factory() as session:
-        query = select(SqlEntity, SqlBook).join(SqlBook, SqlEntity.book_id == SqlBook.id)
+        rows = session.execute(
+            select(
+                SqlBook.series_id.label("series_id"),
+                SqlSeries.title.label("series_title"),
+                func.count(SqlEntity.id).label("asset_count"),
+                func.sum(case((SqlEntity.generated_image_path.is_not(None), 1), else_=0)).label("rendered_count"),
+            )
+            .join(SqlEntity, SqlEntity.book_id == SqlBook.id)
+            .join(SqlSeries, SqlSeries.series_id == SqlBook.series_id, isouter=True)
+            .group_by(SqlBook.series_id, SqlSeries.title)
+            .order_by(SqlSeries.title.asc(), SqlBook.series_id.asc())
+        ).mappings().all()
+    return {
+        "series": [
+            {
+                "series_id": str(row.get("series_id") or "").strip(),
+                "series_title": str(row.get("series_title") or row.get("series_id") or "Unassigned").strip(),
+                "asset_count": int(row.get("asset_count") or 0),
+                "rendered_count": int(row.get("rendered_count") or 0),
+            }
+            for row in rows
+            if str(row.get("series_id") or "").strip()
+        ]
+    }
+
+
+@app.get("/runtime/assets/entities")
+def runtime_assets_entities(entity_type: str = "", q: str = "", book_id: str = "", series_id: str = "", limit: int = 48, offset: int = 0) -> dict[str, Any]:
+    with SQLITE_STORE.session_factory() as session:
+        safe_limit = max(1, min(int(limit or 48), 120))
+        safe_offset = max(0, int(offset or 0))
+        base_query = (
+            select(
+                SqlEntity.id.label("entity_id"),
+                SqlEntity.book_id.label("book_id"),
+                SqlEntity.canonical_name.label("canonical_name"),
+                SqlEntity.entity_type.label("entity_type"),
+                SqlEntity.mention_count.label("mention_count"),
+                SqlEntity.generated_image_path.label("generated_image_path"),
+                SqlEntity.generated_thumbnail_path.label("generated_thumbnail_path"),
+                SqlBook.title.label("book_title"),
+                SqlBook.series_id.label("series_id"),
+                SqlBook.book_index.label("book_index"),
+            )
+            .join(SqlBook, SqlEntity.book_id == SqlBook.id)
+        )
         if entity_type:
-            query = query.where(SqlEntity.entity_type == entity_type)
+            base_query = base_query.where(SqlEntity.entity_type == entity_type)
         if book_id:
-            query = query.where(SqlEntity.book_id == book_id)
+            base_query = base_query.where(SqlEntity.book_id == book_id)
         if series_id:
-            query = query.where(SqlBook.series_id == series_id)
-        rows = session.execute(query.order_by(SqlBook.book_index.asc(), SqlEntity.entity_type.asc(), SqlEntity.canonical_name.asc())).all()
-        prompt_counts = dict(session.execute(select(SqlVisualPrompt.entity_id, func.count(SqlVisualPrompt.id)).group_by(SqlVisualPrompt.entity_id)).all())
-        image_counts = dict(session.execute(select(SqlGeneratedImage.entity_id, func.count(SqlGeneratedImage.id)).group_by(SqlGeneratedImage.entity_id)).all())
-        latest_images = {
-            row.entity_id: row
-            for row in session.execute(select(SqlGeneratedImage).order_by(SqlGeneratedImage.updated_at.desc())).scalars().all()
-            if row.entity_id
-        }
-        output: list[dict[str, Any]] = []
+            base_query = base_query.where(SqlBook.series_id == series_id)
         needle = q.strip().lower()
-        for entity, book in rows[: max(1, min(limit, 2000))]:
-            if needle and needle not in f"{entity.canonical_name} {entity.entity_type} {book.title}".lower():
-                continue
-            image = latest_images.get(entity.id)
+        if needle:
+            base_query = base_query.where(func.lower(SqlEntity.canonical_name).contains(needle))
+        total_count = session.execute(
+            select(func.count()).select_from(base_query.subquery())
+        ).scalar_one()
+        rows = session.execute(
+            base_query
+            .order_by(SqlBook.book_index.asc(), SqlEntity.entity_type.asc(), SqlEntity.canonical_name.asc())
+            .offset(safe_offset)
+            .limit(safe_limit)
+        ).mappings().all()
+        entity_ids = [str(row.get("entity_id") or "").strip() for row in rows if str(row.get("entity_id") or "").strip()]
+        series_ids = sorted({str(row.get("series_id") or "").strip() for row in rows if str(row.get("series_id") or "").strip()})
+        prompt_counts: dict[str, int] = {}
+        image_counts: dict[str, int] = {}
+        latest_images: dict[str, dict[str, Any]] = {}
+        if entity_ids:
+            prompt_counts = dict(
+                session.execute(
+                    select(SqlVisualPrompt.entity_id, func.count(SqlVisualPrompt.id))
+                    .where(SqlVisualPrompt.entity_id.in_(entity_ids))
+                    .group_by(SqlVisualPrompt.entity_id)
+                ).all()
+            )
+            image_counts = dict(
+                session.execute(
+                    select(SqlGeneratedImage.entity_id, func.count(SqlGeneratedImage.id))
+                    .where(SqlGeneratedImage.entity_id.in_(entity_ids))
+                    .group_by(SqlGeneratedImage.entity_id)
+                ).all()
+            )
+            image_rows = session.execute(
+                select(
+                    SqlGeneratedImage.entity_id.label("entity_id"),
+                    SqlGeneratedImage.output_path.label("output_path"),
+                    SqlGeneratedImage.thumbnail_path.label("thumbnail_path"),
+                    SqlGeneratedImage.render_status.label("render_status"),
+                )
+                .where(SqlGeneratedImage.entity_id.in_(entity_ids))
+                .order_by(SqlGeneratedImage.entity_id.asc(), SqlGeneratedImage.updated_at.desc())
+            ).mappings().all()
+            for row in image_rows:
+                entity_id_value = str(row.get("entity_id") or "").strip()
+                if entity_id_value and entity_id_value not in latest_images:
+                    latest_images[entity_id_value] = dict(row)
+        series_lookup = {
+            str(row.series_id): str(row.title or "")
+            for row in session.execute(select(SqlSeries).where(SqlSeries.series_id.in_(series_ids))).scalars().all()
+            if row.series_id
+        } if series_ids else {}
+        output: list[dict[str, Any]] = []
+        for row in rows:
+            entity_id_value = str(row.get("entity_id") or "").strip()
+            image = latest_images.get(entity_id_value) or {}
+            image_path = str(row.get("generated_image_path") or image.get("output_path") or "").strip()
+            thumbnail_path = _ensure_runtime_thumbnail(
+                image_path,
+                str(row.get("generated_thumbnail_path") or image.get("thumbnail_path") or "").strip(),
+            )
             output.append(
                 {
-                    "id": entity.id,
-                    "book_id": entity.book_id,
-                    "book_title": book.title,
-                    "series_id": book.series_id,
-                    "name": entity.canonical_name,
-                    "entity_type": entity.entity_type,
-                    "mention_count": entity.mention_count or 0,
-                    "prompt_count": int(prompt_counts.get(entity.id) or 0),
-                    "image_count": int(image_counts.get(entity.id) or 0),
-                    "render_status": image.render_status if image else "",
-                    "generated_image_path": entity.generated_image_path or (image.output_path if image else ""),
+                    "id": entity_id_value,
+                    "book_id": row.get("book_id") or "",
+                    "book_title": row.get("book_title") or "",
+                    "series_id": row.get("series_id") or "",
+                    "series_title": series_lookup.get(str(row.get("series_id") or "").strip(), ""),
+                    "name": row.get("canonical_name") or "",
+                    "entity_type": row.get("entity_type") or "",
+                    "mention_count": int(row.get("mention_count") or 0),
+                    "prompt_count": int(prompt_counts.get(entity_id_value) or 0),
+                    "image_count": int(image_counts.get(entity_id_value) or 0),
+                    "render_status": str(image.get("render_status") or "").strip(),
+                    "generated_image_path": image_path,
+                    "generated_thumbnail_path": thumbnail_path,
                 }
             )
-    return {"entities": output, "count": len(output)}
+    return {"entities": output, "count": len(output), "total": int(total_count or 0), "limit": safe_limit, "offset": safe_offset}
 
 
 @app.get("/runtime/assets/entities/{entity_id}")
@@ -3473,6 +4058,7 @@ def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
             "latest_world_state": entity.latest_world_state or {},
             "baseline_visual_prompt": entity.baseline_visual_prompt or "",
             "generated_image_path": entity.generated_image_path or "",
+            "generated_thumbnail_path": _ensure_runtime_thumbnail(entity.generated_image_path or "", entity.generated_thumbnail_path or ""),
         }
         prompt_rows = [
             {
@@ -3489,11 +4075,14 @@ def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
             }
             for row in prompts
         ]
+        latest_positive_prompt = str(prompt_rows[0]["positive_prompt"] if prompt_rows else entity.baseline_visual_prompt or "").strip()
+        latest_negative_prompt = str(prompt_rows[0]["negative_prompt"] if prompt_rows else "").strip()
         image_rows = [
             {
                 "id": row.id,
                 "prompt_id": row.prompt_id,
                 "output_path": row.output_path,
+                "thumbnail_path": _ensure_runtime_thumbnail(row.output_path or "", row.thumbnail_path or ""),
                 "render_status": row.render_status,
                 "workflow_name": row.workflow_name,
                 "manifest": row.manifest_json or {},
@@ -3501,7 +4090,88 @@ def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
             }
             for row in images
         ]
-    return {"entity": entity_payload, "prompts": prompt_rows, "images": image_rows}
+    return {
+        "entity": entity_payload,
+        "prompts": prompt_rows,
+        "images": image_rows,
+        "prompt_editor": _build_prompt_editor_payload(
+            latest_positive_prompt,
+            latest_negative_prompt,
+            str(entity.entity_type or "").strip().lower(),
+        ),
+    }
+
+
+@app.delete("/runtime/assets/entities/{entity_id}")
+def runtime_delete_asset_entity(entity_id: str) -> dict[str, Any]:
+    deleted_files: list[str] = []
+    preview_dir = DASHBOARD_DIR / "asset_previews" / str(entity_id or "").strip()
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+
+        image_rows = session.execute(select(SqlGeneratedImage).where(SqlGeneratedImage.entity_id == entity.id)).scalars().all()
+        prompt_rows = session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id)).scalars().all()
+        file_candidates = {
+            str(entity.generated_image_path or "").strip(),
+            str(entity.generated_thumbnail_path or "").strip(),
+        }
+        for row in image_rows:
+            file_candidates.add(str(row.output_path or "").strip())
+            file_candidates.add(str(row.thumbnail_path or "").strip())
+
+        deleted_counts = {
+            "generated_images": len(image_rows),
+            "visual_prompts": len(prompt_rows),
+            "character_profiles": session.execute(
+                delete(SqlCharacterProfile).where(SqlCharacterProfile.entity_id == entity.id)
+            ).rowcount or 0,
+            "character_visual_baselines": session.execute(
+                delete(SqlCharacterVisualBaseline).where(SqlCharacterVisualBaseline.entity_id == entity.id)
+            ).rowcount or 0,
+            "character_visual_scene_states": session.execute(
+                delete(SqlCharacterVisualSceneState).where(SqlCharacterVisualSceneState.entity_id == entity.id)
+            ).rowcount or 0,
+            "creature_visual_baselines": session.execute(
+                delete(SqlCreatureVisualBaseline).where(SqlCreatureVisualBaseline.entity_id == entity.id)
+            ).rowcount or 0,
+            "object_visual_baselines": session.execute(
+                delete(SqlObjectVisualBaseline).where(SqlObjectVisualBaseline.entity_id == entity.id)
+            ).rowcount or 0,
+            "object_scene_states": session.execute(
+                delete(SqlObjectSceneState).where(SqlObjectSceneState.entity_id == entity.id)
+            ).rowcount or 0,
+            "location_visual_baselines": session.execute(
+                delete(SqlLocationVisualBaseline).where(SqlLocationVisualBaseline.entity_id == entity.id)
+            ).rowcount or 0,
+            "location_scene_states": session.execute(
+                delete(SqlLocationSceneState).where(SqlLocationSceneState.entity_id == entity.id)
+            ).rowcount or 0,
+            "stable_character_states": session.execute(
+                delete(SqlStableCharacterState).where(SqlStableCharacterState.entity_id == entity.id)
+            ).rowcount or 0,
+        }
+        if image_rows:
+            session.execute(delete(SqlGeneratedImage).where(SqlGeneratedImage.entity_id == entity.id))
+        if prompt_rows:
+            session.execute(delete(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id))
+        session.delete(entity)
+        session.commit()
+
+    for path in sorted(candidate for candidate in file_candidates if candidate):
+        target = _safe_runtime_cleanup_path(path)
+        if target and target.exists():
+            deleted_files.append(str(target))
+        _remove_runtime_artifact(path)
+    _remove_runtime_artifact(preview_dir)
+
+    return {
+        "deleted": True,
+        "entity_id": entity_id,
+        "deleted_counts": deleted_counts,
+        "deleted_files": deleted_files,
+    }
 
 
 @app.post("/runtime/assets/entities/{entity_id}/prompt-versions")
@@ -3552,6 +4222,194 @@ def runtime_render_entity(entity_id: str, request: EntityRenderRequest) -> dict[
     job = start_character_render(render_request)
     job["entity_id"] = entity_id
     return job
+
+
+@app.post("/runtime/assets/entities/{entity_id}/preview-render")
+def runtime_preview_render_entity(entity_id: str, request: AssetPreviewRenderRequest) -> dict[str, Any]:
+    positive_prompt = str(request.positive_prompt or "").strip()
+    if not positive_prompt:
+        raise HTTPException(status_code=400, detail="positive_prompt is required.")
+    negative_prompt = str(request.negative_prompt or "").strip()
+    base_row, entity_info = _asset_render_row(entity_id)
+    service = ComfyUICharacterSheetService()
+    preview_dir = _asset_preview_dir(entity_info["entity_id"])
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    output_name = f"{stamp}_{_slugify_asset_name(entity_info['entity_name'])}.png"
+    preview_path = preview_dir / output_name
+    render_row = dict(base_row)
+    render_row["positive_prompt"] = positive_prompt
+    render_row["negative_prompt"] = negative_prompt
+    render_row = service.render_single_payload(
+        render_row,
+        negative_prompt=negative_prompt,
+        output_path=preview_path,
+    )
+    thumbnail_path = _ensure_runtime_thumbnail(str(preview_path))
+    fingerprint = _asset_prompt_fingerprint(positive_prompt, negative_prompt)
+    metadata = {
+        "entity_id": entity_info["entity_id"],
+        "entity_name": entity_info["entity_name"],
+        "entity_type": entity_info["entity_type"],
+        "book_id": entity_info["book_id"],
+        "positive_prompt": positive_prompt,
+        "negative_prompt": negative_prompt,
+        "fingerprint": fingerprint,
+        "workflow_mode": render_row.get("workflow_mode"),
+        "width": render_row.get("width"),
+        "height": render_row.get("height"),
+        "created_at": utc_now(),
+    }
+    _asset_preview_meta_path(preview_path).write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "entity_id": entity_info["entity_id"],
+        "preview_image_path": str(preview_path),
+        "preview_thumbnail_path": thumbnail_path,
+        "render_status": "rendered",
+        "fingerprint": fingerprint,
+    }
+
+
+@app.post("/runtime/assets/entities/{entity_id}/save-render")
+def runtime_save_render_entity(entity_id: str, request: AssetSaveRenderRequest) -> dict[str, Any]:
+    positive_prompt = str(request.positive_prompt or "").strip()
+    preview_image_path = str(request.preview_image_path or "").strip()
+    if not positive_prompt:
+        raise HTTPException(status_code=400, detail="positive_prompt is required.")
+    if not preview_image_path:
+        raise HTTPException(status_code=400, detail="preview_image_path is required.")
+
+    preview_path = _resolve_project_file(preview_image_path)
+    if not preview_path.exists() or not preview_path.is_file():
+        raise HTTPException(status_code=404, detail="Rendered preview image was not found.")
+    preview_meta_path = _asset_preview_meta_path(preview_path)
+    if not preview_meta_path.exists():
+        raise HTTPException(status_code=400, detail="Preview metadata is missing. Render again before saving.")
+    preview_meta = json.loads(preview_meta_path.read_text(encoding="utf-8"))
+    requested_negative = str(request.negative_prompt or "").strip()
+    requested_fingerprint = _asset_prompt_fingerprint(positive_prompt, requested_negative)
+    if str(preview_meta.get("entity_id") or "").strip() != str(entity_id or "").strip():
+        raise HTTPException(status_code=400, detail="Preview does not belong to the selected entity.")
+    if str(preview_meta.get("fingerprint") or "").strip() != requested_fingerprint:
+        raise HTTPException(status_code=400, detail="Preview is stale for the current prompt draft. Render again before saving.")
+
+    base_row, entity_info = _asset_render_row(entity_id)
+    target_dir = render_output_dir_for_contract(f"db://book/{entity_info['book_id']}") / "images"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    output_name = f"manual_{stamp}_{_slugify_asset_name(entity_info['entity_name'])}.png"
+    final_path = (target_dir / output_name).resolve()
+    shutil.copy2(preview_path, final_path)
+    thumbnail_path = _ensure_runtime_thumbnail(str(final_path))
+
+    render_row = dict(base_row)
+    render_row.update(
+        {
+            "entity_name": entity_info["entity_name"],
+            "entity_id": entity_info["entity_id"],
+            "entity_type": entity_info["entity_type"],
+            "positive_prompt": positive_prompt,
+            "negative_prompt": requested_negative,
+            "output_filename": output_name,
+            "output_path": str(final_path),
+            "relative_output_path": str(final_path.relative_to(ROOT)),
+            "status": "rendered",
+            "render_status": "rendered",
+            "thumbnail_path": thumbnail_path,
+            "source_evidence": "dashboard modal save",
+            "details": {
+                **dict(base_row.get("details") or {}),
+                "saved_from_modal": True,
+                "preview_image_path": str(preview_path),
+            },
+        }
+    )
+    image_bytes = final_path.read_bytes()
+
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_info["entity_id"])
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+
+        existing_prompts = session.execute(
+            select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity_info["entity_id"]).order_by(SqlVisualPrompt.updated_at.desc())
+        ).scalars().all()
+        primary_prompt = existing_prompts[0] if existing_prompts else None
+        if primary_prompt is None:
+            primary_prompt = SqlVisualPrompt(
+                book_id=entity.book_id,
+                entity_id=entity.id,
+                entity_name=entity.canonical_name,
+                entity_type=entity.entity_type,
+            )
+            session.add(primary_prompt)
+            session.flush()
+        primary_prompt.entity_name = entity_info["entity_name"]
+        primary_prompt.entity_type = entity_info["entity_type"] or primary_prompt.entity_type
+        primary_prompt.prompt_type = str(base_row.get("prompt_type") or primary_prompt.prompt_type or f"{entity.entity_type}_baseline").strip() or None
+        primary_prompt.visual_bucket = str(base_row.get("visual_bucket") or primary_prompt.visual_bucket or "baseline").strip() or None
+        primary_prompt.positive_prompt = positive_prompt
+        primary_prompt.negative_prompt = requested_negative
+        primary_prompt.source_evidence = "dashboard modal save"
+        primary_prompt.confidence = str(base_row.get("confidence") or primary_prompt.confidence or "manual").strip() or None
+        primary_prompt.book_index = base_row.get("book_index")
+        primary_prompt.chapter_index = base_row.get("chapter_index")
+        primary_prompt.scene_index = base_row.get("scene_index")
+        primary_prompt.details_json = {
+            **dict(base_row.get("details") or {}),
+            "saved_from_modal": True,
+            "preview_image_path": str(preview_path),
+        }
+        primary_prompt.metadata_json = {"source": "dashboard_modal_edit", "created_from_dashboard": True, "updated_at": utc_now()}
+        session.flush()
+
+        render_row["prompt_id"] = primary_prompt.id
+
+        existing_images = session.execute(
+            select(SqlGeneratedImage).where(SqlGeneratedImage.entity_id == entity_info["entity_id"]).order_by(SqlGeneratedImage.updated_at.desc())
+        ).scalars().all()
+        primary_image = existing_images[0] if existing_images else None
+        if primary_image is None:
+            primary_image = SqlGeneratedImage(
+                book_id=entity.book_id,
+                entity_id=entity.id,
+                entity_name=entity.canonical_name,
+                entity_type=entity.entity_type,
+            )
+            session.add(primary_image)
+            session.flush()
+        primary_image.prompt_id = primary_prompt.id
+        primary_image.entity_name = entity_info["entity_name"]
+        primary_image.entity_type = entity_info["entity_type"] or primary_image.entity_type
+        primary_image.output_path = str(final_path)
+        primary_image.thumbnail_path = thumbnail_path or None
+        primary_image.mime_type = "image/png" if str(final_path).lower().endswith(".png") else primary_image.mime_type
+        primary_image.image_bytes = image_bytes
+        primary_image.render_status = "rendered"
+        primary_image.workflow_name = "dashboard/manual-save"
+        primary_image.manifest_json = render_row
+
+        primary_prompt_id = primary_prompt.id
+        primary_image_id = primary_image.id
+        extra_image_ids = [row.id for row in existing_images[1:] if row.id != primary_image_id]
+        if extra_image_ids:
+            session.execute(delete(SqlGeneratedImage).where(SqlGeneratedImage.id.in_(extra_image_ids)))
+        extra_prompt_ids = [row.id for row in existing_prompts[1:] if row.id != primary_prompt_id]
+        if extra_prompt_ids:
+            session.execute(delete(SqlVisualPrompt).where(SqlVisualPrompt.id.in_(extra_prompt_ids)))
+
+        entity.baseline_visual_prompt = positive_prompt
+        entity.generated_image_path = str(final_path)
+        entity.generated_thumbnail_path = thumbnail_path or ""
+        entity.generated_image_bytes = image_bytes
+        session.commit()
+
+    return {
+        "saved": True,
+        "prompt_id": render_row["prompt_id"],
+        "image_path": str(final_path),
+        "thumbnail_path": thumbnail_path,
+        "asset": runtime_asset_entity(entity_info["entity_id"]),
+    }
 
 
 @app.post("/runtime/assets/render-batch")

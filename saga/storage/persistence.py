@@ -44,6 +44,7 @@ from .models import (
     UploadedSource,
     VisualPrompt,
 )
+from saga.services.image_thumbnail_service import ensure_thumbnail
 
 
 class SagaSQLiteStore:
@@ -114,12 +115,17 @@ class SagaSQLiteStore:
 
                 output_path = str(row.get("output_path") or "").strip()
                 render_status = str(row.get("status") or row.get("render_status") or "").strip().lower()
+                thumbnail_path = ""
                 image_bytes = None
                 if output_path:
                     try:
                         image_bytes = Path(output_path).read_bytes()
                     except OSError:
                         image_bytes = None
+                    try:
+                        thumbnail_path = ensure_thumbnail(output_path)
+                    except Exception:
+                        thumbnail_path = ""
                 should_store_image = bool(output_path and image_bytes is not None)
                 generated = session.execute(
                     select(GeneratedImage).where(
@@ -136,6 +142,7 @@ class SagaSQLiteStore:
                         entity_name=entity_name,
                         entity_type=entity_type or None,
                         output_path=output_path or None,
+                        thumbnail_path=thumbnail_path or None,
                         mime_type="image/png" if output_path.lower().endswith(".png") else None,
                         image_bytes=image_bytes,
                         render_status=render_status or None,
@@ -150,6 +157,8 @@ class SagaSQLiteStore:
                     generated.entity_type = entity_type or generated.entity_type
                     if output_path:
                         generated.output_path = output_path
+                    if thumbnail_path:
+                        generated.thumbnail_path = thumbnail_path
                     if output_path.lower().endswith(".png"):
                         generated.mime_type = "image/png"
                     if image_bytes is not None:
@@ -162,6 +171,8 @@ class SagaSQLiteStore:
                         entity.baseline_visual_prompt = str(row.get("positive_prompt") or "").strip()
                     if should_store_image:
                         entity.generated_image_path = output_path
+                    if thumbnail_path:
+                        entity.generated_thumbnail_path = thumbnail_path
                     if image_bytes:
                         entity.generated_image_bytes = image_bytes
             session.commit()

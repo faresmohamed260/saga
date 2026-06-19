@@ -36,6 +36,30 @@ class DatabaseNonCharacterVisualBaselineAgent:
     MAX_SCENES_PER_ENTITY = 12
     MAX_EVENTS_PER_ENTITY = 12
     MAX_SCENE_CHARS = 1000
+    LOCATION_PLACEHOLDER_VALUES = {"", UNKNOWN_TEXT.lower(), "not_explicitly_stated_in_text", "not explicitly stated in text", "unknown", "none", "n/a"}
+    LOCATION_PLOT_MARKERS = {
+        "arrives",
+        "escape",
+        "escapes",
+        "chase",
+        "hides",
+        "hide",
+        "flees",
+        "fight",
+        "battle",
+        "duel",
+        "investigate",
+        "alerts",
+        "announces",
+        "safely remove",
+        "taken away",
+        "ending the crisis",
+        "students practice",
+        "corrects",
+        "fails",
+        "succeeds",
+        "ran for their lives",
+    }
 
     def __init__(
         self,
@@ -243,67 +267,76 @@ class DatabaseNonCharacterVisualBaselineAgent:
             entity_name = str(roster_row.get("entity_name") or "").strip()
             aliases = [entity_name, *[str(item).strip() for item in roster_row.get("aliases") or [] if str(item).strip()]]
             alias_keys = {self._normalize_text(item) for item in aliases if self._normalize_text(item)}
+            entity_type = str(roster_row.get("entity_type") or "").strip().lower()
+            is_location = entity_type == "location"
             scenes: list[dict[str, Any]] = []
             for scene in session.execute(
                 select(Scene).where(Scene.book_id == book_id).order_by(Scene.chapter_index.asc(), Scene.scene_index.asc())
             ).scalars():
+                location_match = is_location and self._normalize_text(str(scene.location_name or "")) in alias_keys
                 excerpt = self._excerpt_for_aliases(str(scene.text or ""), aliases)
-                if excerpt:
+                location_description = self._clean(scene.location_description)
+                if excerpt or location_match or location_description:
+                    scene_excerpt = excerpt
+                    if is_location:
+                        scene_excerpt = self._clean_location_text(excerpt, allow_sentence=True)
                     scenes.append(
                         {
                             "scene_id": scene.id,
                             "chapter_index": scene.chapter_index,
                             "scene_index": scene.scene_index,
-                            "summary": str(scene.summary or "").strip(),
+                            "summary": "" if is_location else str(scene.summary or "").strip(),
                             "location_name": str(scene.location_name or "").strip(),
-                            "excerpt": excerpt,
+                            "location_description": location_description,
+                            "excerpt": scene_excerpt,
                         }
                     )
                 if len(scenes) >= self.MAX_SCENES_PER_ENTITY:
                     break
             events: list[dict[str, Any]] = []
-            for event in session.execute(
-                select(Event).where(Event.book_id == book_id).order_by(Event.chapter_index.asc(), Event.scene_index.asc(), Event.created_at.asc())
-            ).scalars():
-                payload = dict(event.payload_json or {})
-                raw_names = [
-                    *[str(item).strip() for item in (event.entities_involved or []) if str(item).strip()],
-                    *[str(item).strip() for item in payload.get("objects_involved") or [] if str(item).strip()],
-                    *[str(item).strip() for item in payload.get("creatures_involved") or [] if str(item).strip()],
-                    str(payload.get("location_name") or "").strip(),
-                ]
-                raw_keys = {self._normalize_text(item) for item in raw_names if self._normalize_text(item)}
-                if not alias_keys & raw_keys:
-                    description = " ".join(
-                        piece
-                        for piece in [
-                            str(event.description or "").strip(),
-                            str(event.reason or "").strip(),
-                            str(event.outcome or "").strip(),
-                        ]
-                        if piece
+            if not is_location:
+                for event in session.execute(
+                    select(Event).where(Event.book_id == book_id).order_by(Event.chapter_index.asc(), Event.scene_index.asc(), Event.created_at.asc())
+                ).scalars():
+                    payload = dict(event.payload_json or {})
+                    raw_names = [
+                        *[str(item).strip() for item in (event.entities_involved or []) if str(item).strip()],
+                        *[str(item).strip() for item in payload.get("objects_involved") or [] if str(item).strip()],
+                        *[str(item).strip() for item in payload.get("creatures_involved") or [] if str(item).strip()],
+                        str(payload.get("location_name") or "").strip(),
+                    ]
+                    raw_keys = {self._normalize_text(item) for item in raw_names if self._normalize_text(item)}
+                    if not alias_keys & raw_keys:
+                        description = " ".join(
+                            piece
+                            for piece in [
+                                str(event.description or "").strip(),
+                                str(event.reason or "").strip(),
+                                str(event.outcome or "").strip(),
+                            ]
+                            if piece
+                        )
+                        if not self._contains_alias(description, aliases):
+                            continue
+                    events.append(
+                        {
+                            "chapter_index": event.chapter_index,
+                            "scene_index": event.scene_index,
+                            "event_type": event.event_type,
+                            "description": str(event.description or "").strip(),
+                            "reason": str(event.reason or "").strip(),
+                            "outcome": str(event.outcome or "").strip(),
+                        }
                     )
-                    if not self._contains_alias(description, aliases):
-                        continue
-                events.append(
-                    {
-                        "chapter_index": event.chapter_index,
-                        "scene_index": event.scene_index,
-                        "event_type": event.event_type,
-                        "description": str(event.description or "").strip(),
-                        "reason": str(event.reason or "").strip(),
-                        "outcome": str(event.outcome or "").strip(),
-                    }
-                )
-                if len(events) >= self.MAX_EVENTS_PER_ENTITY:
-                    break
+                    if len(events) >= self.MAX_EVENTS_PER_ENTITY:
+                        break
             return {
                 "book_id": book_id,
                 "series_id": str(book.series_id or "").strip() if book else "",
                 "book_title": str(book.title or "").strip() if book else "",
                 "entity_id": str(roster_row.get("entity_id") or "").strip() or None,
                 "entity_name": entity_name,
-                "entity_type": str(roster_row.get("entity_type") or "").strip().lower(),
+                "entity_type": entity_type,
                 "aliases": [alias for alias in aliases if alias],
                 "entity_context": str(roster_row.get("entity_context") or "").strip(),
                 "typed_attributes": dict(roster_row.get("typed_attributes") or {}),
@@ -339,6 +372,9 @@ Hard rules:
 - Do not invent colors, materials, powers, scale, atmosphere, or magical properties.
 - `evidence_excerpt` must not be blank.
 - For locations, capture indoor/outdoor, environment, architecture/terrain, mood, notable features, and magic/tech presence only when supported.
+- For locations, do not write plot summaries, actions, character behavior, goals, outcomes, or scene beats into any baseline field.
+- For locations, prefer stable environmental facts from `location_description`, explicit spatial wording, recurring architectural cues, materials, lighting, weather, and named features.
+- For locations, if a field is only implied by an action scene and not explicitly described as a visual property of the place, return `{UNKNOWN_TEXT}`.
 - For objects, capture material, shape, condition, markings, function, and magical properties only when supported.
 - For creatures, capture body plan, covering, coloration, anatomy, natural weapons, and magical features only when supported.
 
@@ -426,14 +462,23 @@ Event evidence:
             field: self._fallback_text((response.get("visual_baseline") or {}).get(field))
             for field in fields
         }
+        if bundle["entity_type"] == "location":
+            baseline = self._normalize_location_baseline(baseline)
+            evidence_excerpt = self._fallback_text(
+                response.get("evidence_excerpt"),
+                fallback=self._fallback_location_evidence_excerpt(bundle),
+            )
+            evidence_excerpt = self._clean_location_text(evidence_excerpt, allow_sentence=True) or self._fallback_location_evidence_excerpt(bundle)
+        else:
+            evidence_excerpt = self._fallback_text(
+                response.get("evidence_excerpt"),
+                fallback=self._fallback_evidence_excerpt(bundle),
+            )
         return {
             "entity_name": bundle["entity_name"],
             "entity_type": bundle["entity_type"],
             "visual_baseline": baseline,
-            "evidence_excerpt": self._fallback_text(
-                response.get("evidence_excerpt"),
-                fallback=self._fallback_evidence_excerpt(bundle),
-            ),
+            "evidence_excerpt": evidence_excerpt,
             "confidence": self._clean(response.get("confidence")).lower() or "low",
             "agent_version": self.VERSION,
         }
@@ -445,16 +490,21 @@ Event evidence:
             for item in [
                 bundle["entity_name"],
                 " / ".join(bundle["aliases"][:4]),
-                f"persistent visual traits for {bundle['entity_type']}",
+                (
+                    "stable environmental appearance, architecture, terrain, materials, lighting, and mood for location"
+                    if bundle["entity_type"] == "location"
+                    else f"persistent visual traits for {bundle['entity_type']}"
+                ),
                 "fields: " + ", ".join(field_names),
             ]
             if item
         )
+        source_types = ("scene",) if bundle["entity_type"] == "location" else ("scene", "event")
         rows = self.semantic_retrieval.query(
             book_id=bundle["book_id"],
             query_text=query_text,
             top_k=8,
-            source_types=("scene", "event"),
+            source_types=source_types,
             entity_bias=bundle["aliases"],
         )
         if rows:
@@ -464,19 +514,26 @@ Event evidence:
                 bundle["entity_type"],
                 len(rows),
             )
-        return [
-            {
-                "source_type": str(row.get("source_type") or "").strip(),
-                "source_id": row.get("source_id"),
-                "chapter_index": row.get("chapter_index"),
-                "scene_index": row.get("scene_index"),
-                "summary": str(row.get("summary") or "").strip(),
-                "excerpt": self._clean(row.get("excerpt")),
-                "score": row.get("score"),
-                "metadata": row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
-            }
-            for row in rows
-        ]
+        payload: list[dict[str, Any]] = []
+        for row in rows:
+            excerpt = self._clean(row.get("excerpt"))
+            summary = str(row.get("summary") or "").strip()
+            if bundle["entity_type"] == "location":
+                excerpt = self._clean_location_text(excerpt, allow_sentence=True)
+                summary = ""
+            payload.append(
+                {
+                    "source_type": str(row.get("source_type") or "").strip(),
+                    "source_id": row.get("source_id"),
+                    "chapter_index": row.get("chapter_index"),
+                    "scene_index": row.get("scene_index"),
+                    "summary": summary,
+                    "excerpt": excerpt,
+                    "score": row.get("score"),
+                    "metadata": row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+                }
+            )
+        return payload
 
     def _persist_visual_baseline(self, *, bundle: dict[str, Any], visual_profile: dict[str, Any]) -> None:
         with self.sqlite_store.session_factory() as session:
@@ -555,6 +612,17 @@ Event evidence:
                 return description
         return self._fallback_text(bundle.get("entity_context"))
 
+    def _fallback_location_evidence_excerpt(self, bundle: dict[str, Any]) -> str:
+        for row in bundle["scenes"]:
+            location_description = self._clean_location_text(row.get("location_description"), allow_sentence=True)
+            if location_description:
+                return location_description
+        for row in bundle["scenes"]:
+            location_name = self._clean(row.get("location_name"))
+            if location_name:
+                return location_name
+        return self._clean_location_text(bundle.get("entity_context"), allow_sentence=True) or self._fallback_text(bundle.get("entity_name"))
+
     def _contains_alias(self, text: str, aliases: list[str]) -> bool:
         normalized_text = self._normalize_text(text)
         for alias in aliases:
@@ -597,3 +665,43 @@ Event evidence:
     def _normalize_text(self, value: str) -> str:
         cleaned = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower())
         return " ".join(cleaned.split())
+
+    def _normalize_location_baseline(self, baseline: dict[str, Any]) -> dict[str, Any]:
+        cleaned: dict[str, str] = {}
+        for field, value in (baseline or {}).items():
+            allow_sentence = field in {"notable_features", "architecture_or_terrain_style", "world_genre_cues"}
+            text = self._clean_location_text(value, allow_sentence=allow_sentence)
+            cleaned[field] = text or UNKNOWN_TEXT
+        return cleaned
+
+    def _clean_location_text(self, value: Any, *, allow_sentence: bool = False) -> str:
+        text = self._clean(value)
+        lowered = text.lower()
+        if lowered in self.LOCATION_PLACEHOLDER_VALUES:
+            return ""
+        if self._looks_like_plot_summary(text):
+            return ""
+        if not allow_sentence:
+            parts = [part.strip() for part in re.split(r"[.;]|, and | and ", text) if part.strip()]
+            filtered: list[str] = []
+            for part in parts:
+                lowered_part = part.lower()
+                if self._looks_like_plot_summary(part):
+                    continue
+                if any(token in lowered_part for token in {" he ", " she ", " they ", " harry ", " hermione ", " ron "}) and len(part.split()) > 4:
+                    continue
+                filtered.append(part)
+            text = ", ".join(filtered[:4]).strip(", ")
+        return text
+
+    def _looks_like_plot_summary(self, text: str) -> bool:
+        lowered = self._clean(text).lower()
+        if not lowered:
+            return False
+        if any(marker in lowered for marker in self.LOCATION_PLOT_MARKERS):
+            return True
+        if len(lowered.split()) > 14 and any(token in lowered for token in {" to ", " because ", " while ", " after ", " before ", " when "}):
+            return True
+        if ";" in lowered:
+            return True
+        return False

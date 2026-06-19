@@ -56,5 +56,10 @@ def _ensure_sqlite_migrations(engine) -> None:
             connection.execute(text("ALTER TABLE entities ADD COLUMN baseline_visual_prompt TEXT"))
         if "generated_image_path" not in columns:
             connection.execute(text("ALTER TABLE entities ADD COLUMN generated_image_path TEXT"))
+        if "generated_thumbnail_path" not in columns:
+            connection.execute(text("ALTER TABLE entities ADD COLUMN generated_thumbnail_path TEXT"))
         if "generated_image_bytes" not in columns:
             connection.execute(text("ALTER TABLE entities ADD COLUMN generated_image_bytes BLOB"))
+        image_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(generated_images)")).fetchall()}
+        if "thumbnail_path" not in image_columns:
+            connection.execute(text("ALTER TABLE generated_images ADD COLUMN thumbnail_path TEXT"))

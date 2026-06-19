@@ -342,6 +342,7 @@ class Entity(Base, TimestampMixin):
     analysis_quality_flags: Mapped[list | dict | None] = mapped_column(JSON, nullable=True)
     baseline_visual_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     generated_image_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generated_thumbnail_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     generated_image_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     metadata_json: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
 
@@ -603,6 +604,7 @@ class GeneratedImage(Base, TimestampMixin):
     entity_name: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     output_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thumbnail_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     image_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     render_status: Mapped[str | None] = mapped_column(String(32), nullable=True)

@@ -8,6 +8,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 import uuid
 from pathlib import Path
 from typing import Any
@@ -69,7 +70,7 @@ def _link_model(downloaded_path: str, target_path: Path) -> None:
     target_path.symlink_to(Path(downloaded_path))
 
 
-def download_character_sheet_models() -> None:
+def download_workflow_models() -> None:
     from huggingface_hub import hf_hub_download
 
     for spec in MODEL_SPECS:
@@ -106,7 +107,7 @@ image = (
         f"git clone --depth 1 https://github.com/Comfy-Org/ComfyUI.git {COMFY_DIR}",
         f"cd {COMFY_DIR} && pip install -r requirements.txt",
     )
-    .run_function(download_character_sheet_models, volumes={CACHE_DIR: cache_volume})
+    .run_function(download_workflow_models, volumes={CACHE_DIR: cache_volume})
     .add_local_file(LOCAL_WORKFLOW, DEFAULT_WORKFLOW_PATH)
     .add_local_file(LOCAL_CHARACTER_SHEET_WORKFLOW, CHARACTER_SHEET_WORKFLOW_PATH)
     .add_local_file(LOCAL_LOCATION_WORKFLOW, LOCATION_WORKFLOW_PATH)
@@ -118,8 +119,16 @@ app = modal.App(name=APP_NAME, image=image)
 
 def _request_json(url: str, data: bytes | None = None) -> Any:
     request = urllib.request.Request(url, data=data)
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        raise RuntimeError(f"HTTP {exc.code} from {url}: {body or exc.reason}") from None
 
 
 def _request_bytes(url: str) -> bytes:
@@ -314,7 +323,7 @@ class ComfyService:
             resolved_workflow = workflow_path
         elif mode == "character_sheet":
             resolved_workflow = CHARACTER_SHEET_WORKFLOW_PATH
-        elif mode == "location":
+        elif mode in {"location", "non_character"}:
             resolved_workflow = LOCATION_WORKFLOW_PATH
         else:
             resolved_workflow = DEFAULT_WORKFLOW_PATH
@@ -335,7 +344,7 @@ class ComfyService:
                 filename_prefix=resolved_prefix,
                 pose_image_name="image1.png",
             )
-        elif mode == "location":
+        elif mode in {"location", "non_character"}:
             workflow = self._apply_location_inputs(
                 workflow=workflow,
                 prompt=prompt,

@@ -40,6 +40,15 @@ export function RunsPage() {
     return () => clearInterval(timer);
   }, [selected?.id, selected?.status]);
 
+  useEffect(() => {
+    if (!selected?.id || !details.value || details.value.id !== selected.id) return;
+    const selectedStatus = String(selected.status || "").toLowerCase();
+    const detailStatus = String(details.value.status || "").toLowerCase();
+    if (selectedStatus && selectedStatus !== detailStatus && !isActiveJob(selected)) {
+      details.reload();
+    }
+  }, [selected?.id, selected?.status, details.value?.id, details.value?.status]);
+
   async function control(action) {
     if (!selected?.id) return;
     try {
@@ -55,7 +64,7 @@ export function RunsPage() {
     }
   }
 
-  const job = details.value || selected;
+  const job = useMemo(() => mergeJobSnapshot(selected, details.value), [selected, details.value]);
   const progress = normalizedProgress(job);
   const logs = job?.log_tail || [];
   const failureSummary = summarizeFailure(job, logs);
@@ -112,6 +121,26 @@ export function RunsPage() {
       </Panel>
     </div>
   );
+}
+
+function mergeJobSnapshot(selected, detail) {
+  if (!detail) return selected;
+  if (!selected) return detail;
+  if (selected.id !== detail.id) return detail;
+  return {
+    ...detail,
+    ...selected,
+    log_tail: detail.log_tail || selected.log_tail || [],
+    request: detail.request || selected.request || {},
+    artifacts: {
+      ...(detail.artifacts || {}),
+      ...(selected.artifacts || {}),
+    },
+    progress: {
+      ...(detail.progress || {}),
+      ...(selected.progress || {}),
+    },
+  };
 }
 
 function isActiveJob(job) {

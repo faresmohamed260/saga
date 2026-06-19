@@ -11,9 +11,12 @@ from typing import Any
 from sqlalchemy import select
 
 from saga.agents.visual_prompt_schema import (
-    compile_entity_concept_prompt,
-    compile_location_concept_prompt,
     compile_character_turnaround_prompt,
+    compile_creature_concept_prompt,
+    compile_creature_negative_prompt,
+    compile_location_concept_prompt,
+    compile_object_concept_prompt,
+    compile_object_negative_prompt,
     normalize_persistent_profile,
     profile_specificity_score,
     promote_persistent_profile_from_visual_changes,
@@ -32,6 +35,10 @@ RENDER_ROOT = ANALYSIS_OUTPUTS / "visual_state" / "character_sheet_renders"
 RENDER_CLIENT = ROOT / "integrations" / "comfyui" / "render_client.py"
 POSE_IMAGE = ROOT / "integrations" / "comfyui" / "assets" / "pose-sheet.png"
 POOL_STATE = ROOT / "integrations" / "comfyui" / "pool_state.json"
+STANDARD_RENDER_WIDTH = 1504
+STANDARD_RENDER_HEIGHT = 1024
+LOCATION_RENDER_WIDTH = 1344
+LOCATION_RENDER_HEIGHT = 768
 
 DEFAULT_NEGATIVE_PROMPT = (
     "illustration, painterly style, anime, CGI, 3D render, game character, plastic or overly smooth skin, "
@@ -176,17 +183,17 @@ class ComfyUICharacterSheetService:
             render_row["workflow_mode"] = (
                 "character_sheet"
                 if entity_type == "character"
-                else ("location" if entity_type == "location" else "default")
+                else ("location" if entity_type == "location" else "non_character")
             )
             if entity_type == "character":
-                render_row.setdefault("width", 1504)
-                render_row.setdefault("height", 1024)
+                render_row.setdefault("width", STANDARD_RENDER_WIDTH)
+                render_row.setdefault("height", STANDARD_RENDER_HEIGHT)
             elif entity_type == "location":
-                render_row.setdefault("width", 1344)
-                render_row.setdefault("height", 768)
+                render_row.setdefault("width", LOCATION_RENDER_WIDTH)
+                render_row.setdefault("height", LOCATION_RENDER_HEIGHT)
             else:
-                render_row.setdefault("width", 1024)
-                render_row.setdefault("height", 1024)
+                render_row.setdefault("width", STANDARD_RENDER_WIDTH)
+                render_row.setdefault("height", STANDARD_RENDER_HEIGHT)
             rows.append(render_row)
         rows = sorted(rows, key=lambda row: (str(row.get("entity_type") or ""), str(row.get("entity_name") or "").lower()))
         if limit and limit > 0:
@@ -287,10 +294,10 @@ class ComfyUICharacterSheetService:
                 chosen["workflow_mode"] = (
                     "character_sheet"
                     if entity_type == "character"
-                    else ("location" if entity_type == "location" else "default")
+                    else ("location" if entity_type == "location" else "non_character")
                 )
-                chosen["width"] = 1504 if entity_type == "character" else (1344 if entity_type == "location" else 1024)
-                chosen["height"] = 1024 if entity_type == "character" else (768 if entity_type == "location" else 1024)
+                chosen["width"] = STANDARD_RENDER_WIDTH if entity_type != "location" else LOCATION_RENDER_WIDTH
+                chosen["height"] = STANDARD_RENDER_HEIGHT if entity_type != "location" else LOCATION_RENDER_HEIGHT
                 rows.append(chosen)
         rows = sorted(rows, key=lambda row: (str(row.get("entity_type") or ""), str(row.get("entity_name") or "").lower()))
         if limit and limit > 0:
@@ -359,6 +366,77 @@ class ComfyUICharacterSheetService:
             raise RuntimeError(f"Modal ComfyUI API returned non-image content: {content_type} :: {preview}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(body)
+
+    def render_single_payload(
+        self,
+        row: dict[str, Any],
+        *,
+        negative_prompt: str = "",
+        output_path: str | Path | None = None,
+        steps: int = 12,
+        cfg: float = 1.0,
+        seed: int = 1001,
+    ) -> dict[str, Any]:
+        render_row = dict(row or {})
+        positive_prompt = str(render_row.get("positive_prompt") or "").strip()
+        if not positive_prompt:
+            raise ValueError("positive_prompt is required for preview rendering.")
+        workflow_mode = str(render_row.get("workflow_mode") or "default").strip().lower()
+        resolved_negative_prompt = str(negative_prompt or render_row.get("negative_prompt") or "").strip()
+        resolved_seed = int(render_row.get("seed") or seed)
+        resolved_steps = int(render_row.get("steps") or steps)
+        resolved_cfg = float(render_row.get("cfg") or cfg)
+        resolved_width = int(render_row.get("width") or 1024)
+        resolved_height = int(render_row.get("height") or 1024)
+        target_path = Path(str(output_path or render_row.get("output_path") or "")).resolve()
+        if not str(target_path):
+            raise ValueError("output_path is required for preview rendering.")
+
+        if workflow_mode == "default":
+            self._render_default_via_live_api(
+                positive_prompt=positive_prompt,
+                negative_prompt=resolved_negative_prompt,
+                seed=resolved_seed,
+                steps=resolved_steps,
+                cfg=resolved_cfg,
+                width=resolved_width,
+                height=resolved_height,
+                output_path=target_path,
+            )
+        else:
+            command = [
+                sys.executable,
+                str(RENDER_CLIENT),
+                "--workflow-mode",
+                workflow_mode,
+                "--prompt",
+                positive_prompt,
+                "--negative-prompt",
+                resolved_negative_prompt,
+                "--seed",
+                str(resolved_seed),
+                "--steps",
+                str(resolved_steps),
+                "--cfg",
+                str(resolved_cfg),
+                "--width",
+                str(resolved_width),
+                "--height",
+                str(resolved_height),
+                "--output",
+                str(target_path),
+            ]
+            subprocess.run(command, cwd=ROOT, check=True)
+
+        render_row["output_path"] = str(target_path)
+        render_row["negative_prompt"] = resolved_negative_prompt
+        render_row["seed"] = resolved_seed
+        render_row["steps"] = resolved_steps
+        render_row["cfg"] = resolved_cfg
+        render_row["width"] = resolved_width
+        render_row["height"] = resolved_height
+        render_row["status"] = "rendered"
+        return render_row
 
     def _build_prompt_maps(self, *, prompt_sets: dict[str, Any], entity_registry: list[dict[str, Any]], context) -> dict[tuple[str, str], dict[str, Any]]:
         registry_by_name = {
@@ -665,6 +743,7 @@ class ComfyUICharacterSheetService:
                 }
             )
             prompt = compile_character_turnaround_prompt(profile, display_name=entity_name)
+            negative_prompt = ""
         elif entity_type == "location":
             prompt = compile_location_concept_prompt(
                 display_name=entity_name,
@@ -674,16 +753,24 @@ class ComfyUICharacterSheetService:
                 notable_features=evidence[:5],
                 damage_or_restoration_state="",
             )
+            negative_prompt = ""
         else:
             latest_change = ((entry.get("state_changes") or [])[-1] if (entry.get("state_changes") or []) else {}) or {}
             current_state = f"{latest_change.get('attribute', '')}={latest_change.get('new_state', '')}".strip("=")
-            prompt = compile_entity_concept_prompt(
-                display_name=entity_name,
-                entity_type=entity_type,
-                baseline_description=baseline_description or str(entry.get("entity_context") or "").strip(),
-                current_state=current_state,
-                owner_or_associated_characters=(typed_attributes.get("owner_or_holder") or typed_attributes.get("possessions") or []),
-            )
+            if entity_type == "creature":
+                prompt = compile_creature_concept_prompt(
+                    display_name=entity_name,
+                    baseline_description=baseline_description or str(entry.get("entity_context") or "").strip(),
+                    current_description=current_state,
+                )
+                negative_prompt = compile_creature_negative_prompt()
+            else:
+                prompt = compile_object_concept_prompt(
+                    display_name=entity_name,
+                    baseline_description=baseline_description or str(entry.get("entity_context") or "").strip(),
+                    current_description=current_state,
+                )
+                negative_prompt = compile_object_negative_prompt()
         if not str(prompt or "").strip():
             return None
         return {
@@ -694,6 +781,7 @@ class ComfyUICharacterSheetService:
             "entity_name": entity_name,
             "entity_type": entity_type,
             "positive_prompt": str(prompt).strip(),
+            "negative_prompt": negative_prompt,
             "image_edit_prompt": "",
             "source_evidence": evidence[0] if evidence else baseline_description,
             "confidence": "medium" if evidence else "low",
@@ -783,7 +871,7 @@ class ComfyUICharacterSheetService:
                 "prompt_type": row.get("prompt_type") or "initial_character_description",
                 "visual_bucket": row.get("visual_bucket") or "initial_characters",
                 "positive_prompt": str(row.get("positive_prompt") or "").strip(),
-                "negative_prompt": negative_prompt,
+                "negative_prompt": str(row.get("negative_prompt") or "").strip() or negative_prompt,
                 "confidence": row.get("confidence") or "medium",
                 "book_index": row.get("book_index"),
                 "chapter_index": row.get("chapter_index"),
@@ -793,7 +881,7 @@ class ComfyUICharacterSheetService:
                 "workflow_mode": row.get("workflow_mode") or (
                     "character_sheet"
                     if str(row.get("entity_type") or "").lower() == "character"
-                    else ("location" if str(row.get("entity_type") or "").lower() == "location" else "default")
+                    else ("location" if str(row.get("entity_type") or "").lower() == "location" else "non_character")
                 ),
                 "output_filename": output_name,
                 "output_path": str(image_path),

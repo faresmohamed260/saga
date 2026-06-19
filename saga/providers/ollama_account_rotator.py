@@ -8,6 +8,7 @@ It supports either browser-signin credentials or direct Ollama Cloud API keys.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -144,11 +145,21 @@ class OllamaAccountRotator:
         return json.loads(self.config_path.read_text(encoding="utf-8-sig"))
 
     def _save_data(self, payload: Dict[str, Any]) -> None:
-        self.sqlite_store.upsert_provider_config("ollama", {
+        normalized = {
             "provider_name": "ollama",
             "active_index": int(payload.get("active_index", 0) or 0),
             "accounts": payload.get("accounts") or [],
-        })
+        }
+        try:
+            self.sqlite_store.upsert_provider_config("ollama", normalized)
+            return
+        except Exception as exc:  # pragma: no cover - runtime fallback
+            logging.warning("Failed to persist Ollama rotation state to SQLite: %s", exc)
+        try:
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            self.config_path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:  # pragma: no cover - runtime fallback
+            logging.warning("Failed to persist Ollama rotation state to local config file: %s", exc)
 
     def _accounts(self, payload: Dict[str, Any]) -> List[OllamaAccount]:
         accounts: List[OllamaAccount] = []

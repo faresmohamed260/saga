@@ -4,8 +4,10 @@ export function Progress({ job }) {
   const progress = job?.progress || {};
   const current = Number(progress.current || 0);
   const total = Number(progress.total || 0);
-  const percent = total ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
+  const details = progress.details || {};
+  const percent = computeProgressPercent({ current, total, details, status: job?.status || progress.status || "unknown" });
   const status = job?.status || progress.status || "unknown";
+  const counterLabel = computeCounterLabel({ current, total, details, status });
   return (
     <div className="rounded-2xl border border-slate-800 bg-[#10141d] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -15,7 +17,7 @@ export function Progress({ job }) {
         </div>
         <div className="flex gap-2">
           <Badge tone={toneFor(status)}>{status}</Badge>
-          <Badge tone="blue">{total ? `${current}/${total}` : "indeterminate"}</Badge>
+          <Badge tone="blue">{counterLabel}</Badge>
         </div>
       </div>
       <div className="mt-4 h-3 overflow-hidden rounded-full bg-black/50">
@@ -23,6 +25,55 @@ export function Progress({ job }) {
       </div>
     </div>
   );
+}
+
+function computeProgressPercent({ current, total, details, status }) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  const chapterTotal = Number(details.chapter_count || total || 0);
+  const chapterNumber = Number(details.chapter_number || 0);
+  const totalScenes = Number(details.total_scenes || 0);
+  const sceneNumber = Number(details.scene_number || 0);
+  const event = String(details.event || "").toLowerCase();
+
+  if (chapterTotal > 0 && chapterNumber > 0 && totalScenes > 0 && sceneNumber > 0) {
+    const completedChapters = Math.max(0, chapterNumber - 1);
+    const completedScenesInChapter = Math.max(
+      0,
+      Math.min(
+        totalScenes,
+        event === "scene_completed" ? sceneNumber : sceneNumber - 1,
+      ),
+    );
+    const chapterProgress = completedScenesInChapter / totalScenes;
+    return Math.max(0, Math.min(100, Math.round(((completedChapters + chapterProgress) / chapterTotal) * 100)));
+  }
+
+  if (chapterTotal > 0 && chapterNumber > 0 && event === "chapter_completed") {
+    return Math.max(0, Math.min(100, Math.round((chapterNumber / chapterTotal) * 100)));
+  }
+
+  if (total > 0) {
+    return Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+  }
+
+  return normalizedStatus.includes("completed") ? 100 : 0;
+}
+
+function computeCounterLabel({ current, total, details, status }) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  const chapterTotal = Number(details.chapter_count || total || 0);
+  const chapterNumber = Number(details.chapter_number || 0);
+  const totalScenes = Number(details.total_scenes || 0);
+  const sceneNumber = Number(details.scene_number || 0);
+
+  if (chapterTotal > 0 && chapterNumber > 0 && totalScenes > 0 && sceneNumber > 0) {
+    return `${chapterNumber}/${chapterTotal} · ${sceneNumber}/${totalScenes}`;
+  }
+  if (chapterTotal > 0) {
+    const safeCurrent = normalizedStatus.includes("completed") ? chapterTotal : current;
+    return `${safeCurrent}/${chapterTotal}`;
+  }
+  return "indeterminate";
 }
 
 export function LogViewer({ lines = [] }) {

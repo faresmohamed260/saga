@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -9,7 +10,12 @@ from saga.agents.visual_prompt_schema import (
     DEFAULT_MODEST_CLOTHING,
     compile_character_turnaround_prompt,
     compile_entity_concept_prompt,
+    compile_creature_concept_prompt,
+    compile_creature_negative_prompt,
     compile_location_concept_prompt,
+    compile_location_negative_prompt,
+    compile_object_concept_prompt,
+    compile_object_negative_prompt,
     normalize_persistent_profile,
 )
 from saga.storage.models import (
@@ -37,7 +43,7 @@ class PromptBuildResult:
 class EntityVisualPromptService:
     """Build one stored baseline visual prompt per DB entity."""
 
-    PLACEHOLDER_VALUES = {"", "not_explicitly_stated_in_text", "none", "unknown", "n/a"}
+    PLACEHOLDER_VALUES = {"", "not_explicitly_stated_in_text", "not explicitly stated in text", "none", "unknown", "n/a"}
     NOISY_BASELINE_MARKERS = {
         "tracked as a character",
         "tracked as a creature",
@@ -46,12 +52,58 @@ class EntityVisualPromptService:
         "the analyzer did not capture",
         "first seen in book",
     }
+    LOCATION_PROMPT_NOISE_MARKERS = {
+        "where ",
+        "when ",
+        "after ",
+        "before ",
+        "during ",
+        "while ",
+        "because ",
+        "location of ",
+        "referenced as",
+        "allegedly",
+        "encounter",
+        "disappears after",
+        "turns and leaves",
+        "where harry lives",
+        "imprisonment",
+        "held",
+        "lives",
+    }
+    NONCHARACTER_PROMPT_NOISE_MARKERS = {
+        "not_explicitly_stated_in_text",
+        "not explicitly stated in text",
+        "first seen in book",
+        "tracked as",
+        "obtains",
+        "obtain",
+        "retrieves",
+        "receives",
+        "followed",
+        "leads",
+        "leading off",
+        "inside his pockets",
+        "inside her pockets",
+        "inside their pockets",
+        "inside the hall",
+        "practice",
+        "successfully",
+        "fails",
+        "corrects",
+        "walked",
+        "walks",
+        "ran",
+        "running",
+        "vault 700",
+    }
 
     def __init__(self, sqlite_store: SagaSQLiteStore | None = None) -> None:
         self.sqlite_store = sqlite_store or SagaSQLiteStore()
 
-    def build_book_prompts(self, book_ref: str, *, overwrite: bool = False) -> PromptBuildResult:
+    def build_book_prompts(self, book_ref: str, *, overwrite: bool = False, entity_types: set[str] | None = None) -> PromptBuildResult:
         book_id = self._parse_book_ref(book_ref)
+        requested_entity_types = {str(value).strip().lower() for value in (entity_types or set()) if str(value).strip()}
         with self.sqlite_store.session_factory() as session:
             book = session.get(Book, book_id)
             if book is None:
@@ -60,6 +112,8 @@ class EntityVisualPromptService:
             entities = session.execute(
                 select(Entity).where(Entity.book_id == book.id).order_by(Entity.entity_type.asc(), Entity.canonical_name.asc())
             ).scalars().all()
+            if requested_entity_types:
+                entities = [row for row in entities if str(row.entity_type or "").strip().lower() in requested_entity_types]
             prompt_map = {
                 (str(row.entity_id or ""), str(row.prompt_type or "").strip().lower()): row
                 for row in session.execute(select(VisualPrompt).where(VisualPrompt.book_id == book.id)).scalars().all()
@@ -234,39 +288,63 @@ class EntityVisualPromptService:
         }
 
     def _build_creature_prompt(self, entity: Entity, baseline: CreatureVisualBaseline | None) -> dict[str, Any] | None:
-        baseline_description = self._join_nonempty(
-            baseline.species_kind if baseline else "",
-            baseline.size_class if baseline else "",
-            baseline.body_plan if baseline else "",
-            baseline.surface_covering if baseline else "",
-            baseline.coloration if baseline else "",
-            baseline.head_features if baseline else "",
-            baseline.eyes if baseline else "",
-            baseline.limbs_appendages if baseline else "",
-            baseline.natural_weapons if baseline else "",
-            baseline.wings if baseline else "",
-            baseline.tail if baseline else "",
-            baseline.magical_features if baseline else "",
+        species_kind = self._clean_noncharacter_slot(baseline.species_kind if baseline else "")
+        size_class = self._clean_noncharacter_slot(baseline.size_class if baseline else "")
+        body_plan = self._clean_noncharacter_slot(baseline.body_plan if baseline else "")
+        surface_covering = self._clean_noncharacter_slot(baseline.surface_covering if baseline else "")
+        coloration = self._clean_noncharacter_slot(baseline.coloration if baseline else "")
+        head_features = self._clean_noncharacter_slot(baseline.head_features if baseline else "")
+        eyes = self._clean_noncharacter_slot(baseline.eyes if baseline else "")
+        limbs_appendages = self._clean_noncharacter_slot(baseline.limbs_appendages if baseline else "")
+        natural_weapons = self._clean_noncharacter_slot(baseline.natural_weapons if baseline else "")
+        wings = self._clean_noncharacter_slot(baseline.wings if baseline else "")
+        tail = self._clean_noncharacter_slot(baseline.tail if baseline else "")
+        magical_features = self._clean_noncharacter_slot(baseline.magical_features if baseline else "")
+        world_genre_cues = self._clean_noncharacter_slot(baseline.world_genre_cues if baseline else "")
+        baseline_description = self._build_noncharacter_baseline_description(
+            entity,
+            self._join_nonempty(
+                size_class,
+                body_plan,
+                surface_covering,
+                coloration,
+                head_features,
+                eyes,
+                limbs_appendages,
+                natural_weapons,
+                wings,
+                tail,
+                magical_features,
+            ),
+            baseline.evidence_excerpt if baseline else "",
         )
-        if len(baseline_description.split()) < 6:
-            baseline_description = self._join_nonempty(
-                baseline_description,
-                self._baseline_description(entity, baseline.evidence_excerpt if baseline else ""),
+        current_state = self._clean_noncharacter_prompt_seed(
+            self._join_nonempty(
+                self._latest_state_summary(entity),
+                self._recent_visual_change_summary(entity),
             )
-        current_state = self._join_nonempty(
-            self._latest_state_summary(entity),
-            self._recent_visual_change_summary(entity),
         )
-        prompt = compile_entity_concept_prompt(
+        prompt = compile_creature_concept_prompt(
             display_name=entity.canonical_name,
-            entity_type="creature",
+            species_kind=species_kind,
+            size_class=size_class,
+            body_plan=body_plan,
+            surface_covering=surface_covering,
+            coloration=coloration,
+            head_features=head_features,
+            eyes=eyes,
+            limbs_appendages=limbs_appendages,
+            natural_weapons=natural_weapons,
+            wings=wings,
+            tail=tail,
+            magical_features=magical_features,
             baseline_description=baseline_description,
-            current_state=current_state,
-            owner_or_associated_characters=self._associated_characters(entity),
+            current_description=current_state,
+            world_genre_cues=world_genre_cues,
         )
         if not prompt:
             return None
-        return self._noncharacter_payload(
+        payload = self._noncharacter_payload(
             entity=entity,
             prompt_type="initial_creature_description",
             visual_bucket="objects_creatures",
@@ -278,55 +356,79 @@ class EntityVisualPromptService:
             typed_fields=self._compact_dict(
                 {
                     "species_kind": baseline.species_kind if baseline else "",
-                    "size_class": baseline.size_class if baseline else "",
-                    "body_plan": baseline.body_plan if baseline else "",
-                    "surface_covering": baseline.surface_covering if baseline else "",
-                    "coloration": baseline.coloration if baseline else "",
-                    "head_features": baseline.head_features if baseline else "",
-                    "eyes": baseline.eyes if baseline else "",
-                    "limbs_appendages": baseline.limbs_appendages if baseline else "",
-                    "natural_weapons": baseline.natural_weapons if baseline else "",
-                    "wings": baseline.wings if baseline else "",
-                    "tail": baseline.tail if baseline else "",
-                    "magical_features": baseline.magical_features if baseline else "",
-                    "world_genre_cues": baseline.world_genre_cues if baseline else "",
+                    "size_class": size_class,
+                    "body_plan": body_plan,
+                    "surface_covering": surface_covering,
+                    "coloration": coloration,
+                    "head_features": head_features,
+                    "eyes": eyes,
+                    "limbs_appendages": limbs_appendages,
+                    "natural_weapons": natural_weapons,
+                    "wings": wings,
+                    "tail": tail,
+                    "magical_features": magical_features,
+                    "world_genre_cues": world_genre_cues,
                 }
             ),
         )
+        payload["negative_prompt"] = compile_creature_negative_prompt()
+        return payload
 
     def _build_object_prompt(self, entity: Entity, baseline: ObjectVisualBaseline | None) -> dict[str, Any] | None:
-        baseline_description = self._join_nonempty(
-            baseline.object_class if baseline else "",
-            baseline.function if baseline else "",
-            baseline.size_scale if baseline else "",
-            baseline.shape_form if baseline else "",
-            baseline.primary_material if baseline else "",
-            baseline.secondary_materials if baseline else "",
-            baseline.color_finish if baseline else "",
-            baseline.surface_texture if baseline else "",
-            baseline.condition_default if baseline else "",
-            baseline.symbolic_markings if baseline else "",
-            baseline.magical_properties if baseline else "",
+        object_class = self._clean_noncharacter_slot(baseline.object_class if baseline else "")
+        function_text = self._clean_noncharacter_slot(baseline.function if baseline else "")
+        size_scale = self._clean_noncharacter_slot(baseline.size_scale if baseline else "")
+        shape_form = self._clean_noncharacter_slot(baseline.shape_form if baseline else "")
+        primary_material = self._clean_noncharacter_slot(baseline.primary_material if baseline else "")
+        secondary_materials = self._clean_noncharacter_slot(baseline.secondary_materials if baseline else "")
+        color_finish = self._clean_noncharacter_slot(baseline.color_finish if baseline else "")
+        surface_texture = self._clean_noncharacter_slot(baseline.surface_texture if baseline else "")
+        condition_default = self._clean_noncharacter_slot(baseline.condition_default if baseline else "")
+        symbolic_markings = self._clean_noncharacter_slot(baseline.symbolic_markings if baseline else "")
+        magical_properties = self._clean_noncharacter_slot(baseline.magical_properties if baseline else "")
+        world_genre_cues = self._clean_noncharacter_slot(baseline.world_genre_cues if baseline else "")
+        baseline_description = self._build_noncharacter_baseline_description(
+            entity,
+            self._join_nonempty(
+                function_text,
+                size_scale,
+                shape_form,
+                primary_material,
+                secondary_materials,
+                color_finish,
+                surface_texture,
+                condition_default,
+                symbolic_markings,
+                magical_properties,
+            ),
+            baseline.evidence_excerpt if baseline else "",
         )
-        if len(baseline_description.split()) < 5:
-            baseline_description = self._join_nonempty(
-                baseline_description,
-                self._baseline_description(entity, baseline.evidence_excerpt if baseline else ""),
+        current_state = self._clean_noncharacter_prompt_seed(
+            self._join_nonempty(
+                self._latest_state_summary(entity),
+                self._recent_visual_change_summary(entity),
             )
-        current_state = self._join_nonempty(
-            self._latest_state_summary(entity),
-            self._recent_visual_change_summary(entity),
         )
-        prompt = compile_entity_concept_prompt(
+        prompt = compile_object_concept_prompt(
             display_name=entity.canonical_name,
-            entity_type="object",
+            object_class=object_class,
+            function=function_text,
+            size_scale=size_scale,
+            shape_form=shape_form,
+            primary_material=primary_material,
+            secondary_materials=secondary_materials,
+            color_finish=color_finish,
+            surface_texture=surface_texture,
+            condition_default=condition_default,
+            symbolic_markings=symbolic_markings,
+            magical_properties=magical_properties,
             baseline_description=baseline_description,
-            current_state=current_state,
-            owner_or_associated_characters=self._associated_characters(entity),
+            current_description=current_state,
+            world_genre_cues=world_genre_cues,
         )
         if not prompt:
             return None
-        return self._noncharacter_payload(
+        payload = self._noncharacter_payload(
             entity=entity,
             prompt_type="initial_object_description",
             visual_bucket="objects_creatures",
@@ -338,55 +440,90 @@ class EntityVisualPromptService:
             typed_fields=self._compact_dict(
                 {
                     "object_class": baseline.object_class if baseline else "",
-                    "function": baseline.function if baseline else "",
-                    "size_scale": baseline.size_scale if baseline else "",
-                    "shape_form": baseline.shape_form if baseline else "",
-                    "primary_material": baseline.primary_material if baseline else "",
-                    "secondary_materials": baseline.secondary_materials if baseline else "",
-                    "color_finish": baseline.color_finish if baseline else "",
-                    "surface_texture": baseline.surface_texture if baseline else "",
-                    "condition_default": baseline.condition_default if baseline else "",
-                    "symbolic_markings": baseline.symbolic_markings if baseline else "",
-                    "magical_properties": baseline.magical_properties if baseline else "",
-                    "world_genre_cues": baseline.world_genre_cues if baseline else "",
+                    "function": function_text,
+                    "size_scale": size_scale,
+                    "shape_form": shape_form,
+                    "primary_material": primary_material,
+                    "secondary_materials": secondary_materials,
+                    "color_finish": color_finish,
+                    "surface_texture": surface_texture,
+                    "condition_default": condition_default,
+                    "symbolic_markings": symbolic_markings,
+                    "magical_properties": magical_properties,
+                    "world_genre_cues": world_genre_cues,
                 }
             ),
         )
+        payload["negative_prompt"] = compile_object_negative_prompt()
+        return payload
 
     def _build_location_prompt(self, entity: Entity, baseline: LocationVisualBaseline | None) -> dict[str, Any] | None:
-        baseline_description = self._join_nonempty(
-            baseline.location_class if baseline else "",
-            baseline.indoor_outdoor if baseline else "",
-            baseline.environment_type if baseline else "",
-            baseline.region_or_domain if baseline else "",
-            baseline.architecture_or_terrain_style if baseline else "",
-            baseline.dominant_materials if baseline else "",
-            baseline.lighting_default if baseline else "",
-            baseline.weather_exposure if baseline else "",
-            baseline.ambient_mood if baseline else "",
-            baseline.notable_features if baseline else "",
-            baseline.magic_or_tech_presence if baseline else "",
-        )
-        if len(baseline_description.split()) < 6:
-            baseline_description = self._join_nonempty(
-                baseline_description,
-                self._baseline_description(entity, baseline.evidence_excerpt if baseline else ""),
-            )
-        current_description = ""
+        location_class = self._clean_slot(baseline.location_class if baseline else "")
+        indoor_outdoor = self._clean_slot(baseline.indoor_outdoor if baseline else "")
+        environment_type = self._clean_slot(baseline.environment_type if baseline else "")
+        region_or_domain = self._clean_slot(baseline.region_or_domain if baseline else "")
+        architecture_or_terrain_style = self._clean_slot(baseline.architecture_or_terrain_style if baseline else "")
+        dominant_materials = self._clean_slot(baseline.dominant_materials if baseline else "")
+        lighting_default = self._clean_slot(baseline.lighting_default if baseline else "")
+        weather_exposure = self._clean_slot(baseline.weather_exposure if baseline else "")
         atmosphere = self._clean_slot((baseline.ambient_mood if baseline else ""))
-        notable_features = self._split_features(baseline.notable_features if baseline else "")
-        damage_state = self._latest_damage_summary(entity)
+        notable_features = self._split_location_features(baseline.notable_features if baseline else "")
+        magic_or_tech_presence = self._clean_slot(baseline.magic_or_tech_presence if baseline else "")
+        world_cues = self._clean_slot((baseline.world_genre_cues if baseline else ""))
+        baseline_description = self._clean_location_prompt_seed(self._join_nonempty(
+            location_class,
+            indoor_outdoor,
+            environment_type,
+            region_or_domain,
+            architecture_or_terrain_style,
+            dominant_materials,
+            lighting_default,
+            weather_exposure,
+            atmosphere,
+            ", ".join(notable_features[:5]) if notable_features else "",
+            magic_or_tech_presence,
+        ))
+        if len(baseline_description.split()) < 6:
+            baseline_description = self._clean_location_prompt_seed(self._join_nonempty(
+                baseline_description,
+                self._location_fallback_description(entity),
+            ))
+        damage_state = self._clean_slot(self._latest_damage_summary(entity))
+        current_description = damage_state
+        view_archetype = self._select_location_view_archetype(
+            entity_name=entity.canonical_name,
+            location_class=location_class,
+            indoor_outdoor=indoor_outdoor,
+            environment_type=environment_type,
+            architecture_or_terrain_style=architecture_or_terrain_style,
+            notable_features=notable_features,
+        )
+        focus_features = self._select_location_focus_features(
+            notable_features=notable_features,
+            view_archetype=view_archetype,
+        )
         prompt = compile_location_concept_prompt(
             display_name=entity.canonical_name,
+            view_archetype=view_archetype,
+            location_class=location_class,
+            indoor_outdoor=indoor_outdoor,
+            environment_type=environment_type,
+            region_or_domain=region_or_domain,
+            architecture_or_terrain_style=architecture_or_terrain_style,
+            dominant_materials=dominant_materials,
+            lighting_default=lighting_default,
+            weather_exposure=weather_exposure,
             baseline_description=baseline_description,
             current_description=current_description,
             atmosphere=atmosphere,
-            notable_features=notable_features,
+            notable_features=focus_features,
             damage_or_restoration_state=damage_state,
+            magic_or_tech_presence=magic_or_tech_presence,
+            world_genre_cues=world_cues,
         )
         if not prompt:
             return None
-        return self._noncharacter_payload(
+        payload = self._noncharacter_payload(
             entity=entity,
             prompt_type="initial_location_description",
             visual_bucket="locations",
@@ -409,9 +546,13 @@ class EntityVisualPromptService:
                     "notable_features": baseline.notable_features if baseline else "",
                     "magic_or_tech_presence": baseline.magic_or_tech_presence if baseline else "",
                     "world_genre_cues": baseline.world_genre_cues if baseline else "",
+                    "location_view_archetype": view_archetype,
+                    "location_focus_features": focus_features,
                 }
             ),
         )
+        payload["negative_prompt"] = compile_location_negative_prompt()
+        return payload
 
     def _build_generic_prompt(self, entity: Entity) -> dict[str, Any] | None:
         entity_type = str(entity.entity_type or "other").strip().lower()
@@ -519,6 +660,19 @@ class EntityVisualPromptService:
             text = text[:320].rsplit(" ", 1)[0]
         return text
 
+    def _location_fallback_description(self, entity: Entity) -> str:
+        parts: list[str] = []
+        descriptions = entity.descriptions or []
+        if isinstance(descriptions, list):
+            for item in descriptions:
+                if not isinstance(item, dict):
+                    continue
+                description = self._clean_location_prompt_seed(self._sanitized_baseline_text(item.get("description") or ""))
+                if description:
+                    parts.append(description)
+        parts.append(self._clean_location_prompt_seed(self._sanitized_baseline_text(entity.entity_context or "")))
+        return self._join_nonempty(*parts)
+
     def _join_nonempty(self, *values: Any) -> str:
         parts: list[str] = []
         seen: set[str] = set()
@@ -541,6 +695,42 @@ class EntityVisualPromptService:
         if lowered.startswith("db_") or "agent_v" in lowered:
             return ""
         return text
+
+    def _clean_noncharacter_slot(self, value: Any) -> str:
+        text = self._clean_slot(value)
+        if not text:
+            return ""
+        lowered = text.lower()
+        if any(marker in lowered for marker in self.NONCHARACTER_PROMPT_NOISE_MARKERS):
+            return ""
+        return text
+
+    def _build_noncharacter_baseline_description(self, entity: Entity, typed_summary: str, evidence_excerpt: str = "") -> str:
+        cleaned_typed = self._clean_noncharacter_prompt_seed(typed_summary)
+        evidence = self._clean_noncharacter_prompt_seed(
+            self._baseline_description(entity, evidence_excerpt),
+        )
+        if cleaned_typed and len(cleaned_typed.split()) >= 5:
+            return cleaned_typed
+        return self._join_nonempty(cleaned_typed, evidence)
+
+    def _clean_noncharacter_prompt_seed(self, value: Any) -> str:
+        text = self._sanitized_baseline_text(value)
+        if not text:
+            return ""
+        fragments = [chunk.strip(" .") for chunk in re.split(r"[,\n;]+", text)]
+        keep: list[str] = []
+        for fragment in fragments:
+            cleaned = self._clean_noncharacter_slot(fragment)
+            lowered = cleaned.lower()
+            if not cleaned:
+                continue
+            if any(marker in lowered for marker in self.NONCHARACTER_PROMPT_NOISE_MARKERS):
+                continue
+            if len(cleaned.split()) > 18 and any(token in lowered for token in (" and ", " then ", " after ", " before ", " while ", " inside ")):
+                continue
+            keep.append(cleaned)
+        return self._join_nonempty(*keep)
 
     def _compact_dict(self, payload: dict[str, Any]) -> dict[str, Any]:
         compact: dict[str, Any] = {}
@@ -662,6 +852,136 @@ class EntityVisualPromptService:
             seen.add(lowered)
             deduped.append(part)
         return deduped[:5]
+
+    def _split_location_features(self, value: Any) -> list[str]:
+        rows = []
+        for part in self._split_features(value):
+            cleaned = self._clean_location_prompt_seed(part)
+            if cleaned:
+                rows.append(cleaned)
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            lowered = row.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            deduped.append(row)
+        return deduped[:5]
+
+    def _clean_location_prompt_seed(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        fragments = [chunk.strip(" .") for chunk in text.replace(";", ",").split(",")]
+        keep: list[str] = []
+        for fragment in fragments:
+            lowered = fragment.lower()
+            if not fragment or lowered in self.PLACEHOLDER_VALUES:
+                continue
+            if any(marker in lowered for marker in self.LOCATION_PROMPT_NOISE_MARKERS):
+                continue
+            if lowered.startswith(("a ", "an ", "the ")) and len(fragment.split()) <= 3:
+                continue
+            keep.append(fragment)
+        return self._join_nonempty(*keep)
+
+    def _select_location_view_archetype(
+        self,
+        *,
+        entity_name: str,
+        location_class: str,
+        indoor_outdoor: str,
+        environment_type: str,
+        architecture_or_terrain_style: str,
+        notable_features: list[str],
+    ) -> str:
+        name = str(entity_name or "").strip().lower()
+        joined = " ".join(
+            part.lower()
+            for part in [
+                entity_name,
+                location_class,
+                indoor_outdoor,
+                environment_type,
+                architecture_or_terrain_style,
+                " ".join(notable_features),
+            ]
+            if str(part or "").strip()
+        )
+        if any(token in name for token in ("hidden passage", "secret passage", "hidden tunnel", "secret tunnel")):
+            return "hidden_entry"
+        if any(token in name for token in ("corridor", "hallway", "passage", "staircase", "stairwell", "tunnel")):
+            return "corridor_passage"
+        if any(token in name for token in ("great hall", "entrance hall", "atrium", "gallery")):
+            return "interior_hall"
+        if any(token in name for token in ("classroom", "office", "room", "chamber", "courtroom", "library", "kitchen", "dormitory", "common room", "bedroom", "shop")):
+            return "chamber_room"
+        interior_cues = any(
+            token in joined
+            for token in ("underground", "interior", "corridor", "hall", "gallery", "atrium", "office", "courtroom", "library", "kitchen", "staircase", "dungeon")
+        )
+        if interior_cues and indoor_outdoor.lower() == "indoor":
+            if any(token in joined for token in ("hall", "gallery", "atrium", "corridor", "staircase")):
+                return "interior_hall"
+            return "chamber_room"
+        if any(token in name for token in ("courtyard", "forecourt", "quad")):
+            return "courtyard"
+        if any(token in name for token in ("grounds", "forest", "lake", "garden", "street", "drive", "road", "bridge", "shore", "village")):
+            return "grounds"
+        broad_site = any(token in joined for token in ("castle", "fortress", "school", "manor", "palace", "ministry"))
+        entry_cues = any(token in joined for token in ("door", "doors", "gate", "gates", "entrance", "archway", "bridge", "forecourt"))
+        hidden_cues = any(token in joined for token in ("hidden", "secret", "concealed", "tunnel", "passage"))
+        if broad_site and entry_cues:
+            return "main_approach"
+        if broad_site and not hidden_cues:
+            return "establishing_exterior"
+        if indoor_outdoor.lower() == "indoor":
+            return "chamber_room"
+        if indoor_outdoor.lower() == "outdoor":
+            return "grounds"
+        return "establishing_exterior" if broad_site else "grounds"
+
+    def _select_location_focus_features(self, *, notable_features: list[str], view_archetype: str) -> list[str]:
+        keyword_map = {
+            "establishing_exterior": ("tower", "turret", "wall", "battlement", "roof", "window", "bridge", "gate"),
+            "main_approach": ("door", "gate", "entrance", "arch", "bridge", "wall", "forecourt", "courtyard"),
+            "courtyard": ("courtyard", "forecourt", "quad", "arch", "wall", "stair", "fountain"),
+            "grounds": ("garden", "forest", "lake", "path", "road", "drive", "shore", "hedge", "lawn", "bridge"),
+            "interior_hall": ("hall", "stair", "ceiling", "banner", "window", "gallery", "fireplace", "door"),
+            "corridor_passage": ("corridor", "passage", "stair", "arch", "portrait", "alcove", "torch"),
+            "chamber_room": ("table", "shelf", "desk", "bed", "hearth", "bookcase", "window", "door"),
+            "hidden_entry": ("hidden", "secret", "concealed", "tunnel", "passage", "trapdoor", "arch", "masonry"),
+        }
+        blocked_map = {
+            "establishing_exterior": (
+                "hidden", "secret", "concealed", "tunnel", "passage", "table", "breakfast",
+                "hall", "corridor", "dormitor", "classroom", "library", "kitchen", "bedroom", "courtroom", "attic", "scullery", "common room", "dungeon",
+            ),
+            "main_approach": (
+                "hidden", "secret", "concealed", "tunnel", "breakfast", "attic", "scullery",
+                "dormitor", "classroom", "library", "kitchen", "bedroom", "courtroom", "common room", "dungeon",
+            ),
+            "grounds": (
+                "hidden", "secret", "concealed", "tunnel", "courtroom", "bedroom", "hall", "corridor", "dormitor", "classroom", "library", "kitchen", "common room", "dungeon",
+            ),
+        }
+        preferred = keyword_map.get(view_archetype, ())
+        blocked = blocked_map.get(view_archetype, ())
+        selected: list[str] = []
+        for feature in notable_features:
+            lowered = feature.lower()
+            if blocked and any(token in lowered for token in blocked):
+                continue
+            if preferred and any(token in lowered for token in preferred):
+                selected.append(feature)
+        if not selected:
+            for feature in notable_features:
+                lowered = feature.lower()
+                if blocked and any(token in lowered for token in blocked):
+                    continue
+                selected.append(feature)
+        return selected[:3]
 
     def _summarize_character_presence(self, text: str) -> str:
         if not text:
