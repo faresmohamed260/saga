@@ -1,0 +1,90 @@
+---
+title: S.A.G.A. Current Overall System Architecture
+---
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Arial",
+    "fontSize": "20px",
+    "primaryColor": "#d7e8ff",
+    "primaryTextColor": "#1f2937",
+    "primaryBorderColor": "#243447",
+    "lineColor": "#415a77",
+    "secondaryColor": "#dff4e4",
+    "tertiaryColor": "#fde8c8",
+    "background": "#f4efe6",
+    "clusterBkg": "#fffaf2",
+    "clusterBorder": "#c9b79c"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 45,
+    "rankSpacing": 60,
+    "padding": 18
+  }
+}}%%
+flowchart TB
+    classDef entry fill:#d7e8ff,stroke:#243447,stroke-width:2px,color:#1f2937;
+    classDef input fill:#fde8c8,stroke:#243447,stroke-width:2px,color:#1f2937;
+    classDef infra fill:#e5ebf3,stroke:#243447,stroke-width:2px,color:#1f2937;
+    classDef pipeline fill:#dff4e4,stroke:#243447,stroke-width:2px,color:#1f2937;
+    classDef storage fill:#f8d9d6,stroke:#243447,stroke-width:2px,color:#1f2937;
+    classDef output fill:#fff0cc,stroke:#243447,stroke-width:2px,color:#1f2937;
+    classDef provider fill:#e6dcfb,stroke:#243447,stroke-width:2px,color:#1f2937;
+
+    subgraph entry_layer["Entry Surfaces & Inputs"]
+        direction LR
+        books["Source Books<br/>EPUB / PDF uploads<br/>series metadata, order, titles"]:::input
+        dashboard["Dashboard UI<br/>React operator surface<br/>uploads, runs, review, visuals"]:::entry
+        cli["CLI Utilities<br/>saga_tools.py<br/>headless runs, exports, targeted tasks"]:::entry
+        providers["Provider Accounts<br/>Ollama / OpenAI / other credentials<br/>rotation and health state"]:::provider
+    end
+
+    subgraph runtime_layer["Runtime Orchestration"]
+        direction LR
+        api["FastAPI Runtime<br/>apps/dashboard_api/app.py<br/>HTTP endpoints, job control, stored queries"]:::infra
+        runsvc["DatabaseAnalysisRunService<br/>validates plans, resumes runs,<br/>stages work, persists progress"]:::infra
+    end
+
+    subgraph pipeline_layer["Canonical Analysis Pipeline"]
+        direction LR
+        ingest["Deterministic Ingestion<br/>EPUB/PDF processors<br/>chapter extraction<br/>SceneExtractor chunking"]:::pipeline
+        identity["Identity Bundle<br/>BookNLP-clean provider<br/>canonical names, aliases, narrator,<br/>reference entities"]:::pipeline
+        agents["DB Agent Stages<br/>events, entities, profiles<br/>visual baselines, scene states<br/>relationships, timeline<br/>stable states, world-state consolidation"]:::pipeline
+        promptprep["Prompt & Render Prep<br/>EntityVisualPromptService<br/>render dispatch manifests"]:::pipeline
+    end
+
+    subgraph storage_layer["Shared Storage & Downstream Consumers"]
+        direction LR
+        sqlite["SQLite Canon Store<br/>runs, books, chapters, scenes, entities,<br/>events, profiles, visual state, prompts,<br/>images, dashboard jobs, logs"]:::storage
+        review["Dashboard Review<br/>inspect runs, assets, prompts,<br/>providers, and canonical records"]:::output
+        decoder["Decoder & EPUB<br/>story generation grounded on stored canon<br/>export workflows"]:::output
+        comfy["ComfyUI Workflows<br/>character, location, and<br/>non-character renders"]:::output
+        assets["Asset Outputs<br/>images, thumbnails,<br/>prompt history, previews"]:::output
+        reuse["Shared Reuse<br/>retrieval and future tools read<br/>the same persisted canon"]:::output
+    end
+
+    dashboard -->|upload + start jobs| api
+    cli -->|headless invoke| api
+    books -->|source files + metadata| api
+    providers -->|runtime configuration| runsvc
+    api -->|run request| runsvc
+
+    runsvc -->|ingest books| ingest
+    runsvc -->|build identity context| identity
+    ingest -->|chapters + scenes| agents
+    identity -->|canonical identity bundle| agents
+    runsvc -->|orchestrate stages| agents
+    agents -->|compile prompts| promptprep
+
+    ingest -->|persist structure| sqlite
+    identity -->|persist identity| sqlite
+    agents -->|persist canon artifacts| sqlite
+    promptprep -->|store prompts + manifests| sqlite
+
+    sqlite -->|query persisted canon| review
+    review -->|launch render / edits| comfy
+    sqlite -->|grounded context| decoder
+    sqlite -->|prompt + entity data| comfy
+    comfy -->|generated images| assets
+    sqlite -->|shared canonical memory| reuse
