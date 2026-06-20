@@ -15,6 +15,8 @@ from .models import (
     CharacterVisualBaseline,
     CharacterVisualSceneState,
     Chapter,
+    AudiobookChapter,
+    AudiobookRun,
     CharacterProfile,
     CreatureVisualBaseline,
     Entity,
@@ -178,6 +180,187 @@ class SagaSQLiteStore:
             session.commit()
             return {"stored_images": stored_images, "stored_prompts": stored_prompts}
 
+    def create_audiobook_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self.session_factory() as session:
+            row = AudiobookRun(
+                series_id=str(payload.get("series_id") or "").strip() or None,
+                book_id=str(payload.get("book_id") or "").strip() or None,
+                scope_type=str(payload.get("scope_type") or "book").strip() or "book",
+                title=str(payload.get("title") or "").strip() or None,
+                status=str(payload.get("status") or "queued").strip() or "queued",
+                job_id=str(payload.get("job_id") or "").strip() or None,
+                source_provider=str(payload.get("source_provider") or "").strip() or None,
+                source_model=str(payload.get("source_model") or "").strip() or None,
+                tts_provider=str(payload.get("tts_provider") or "").strip() or None,
+                tts_app_name=str(payload.get("tts_app_name") or "").strip() or None,
+                provider_account_alias=str(payload.get("provider_account_alias") or "").strip() or None,
+                voice=str(payload.get("voice") or "").strip() or None,
+                lang_code=str(payload.get("lang_code") or "").strip() or None,
+                sample_rate=self._int_or_none(payload.get("sample_rate")),
+                audio_format=str(payload.get("audio_format") or "").strip() or None,
+                normalize_audio=self._bool_or_none(payload.get("normalize_audio")),
+                trim_silence=self._bool_or_none(payload.get("trim_silence")),
+                sentence_pause_ms=self._int_or_none(payload.get("sentence_pause_ms")),
+                total_books=self._int_or_none(payload.get("total_books")),
+                total_chapters=self._int_or_none(payload.get("total_chapters")),
+                completed_chapters=self._int_or_none(payload.get("completed_chapters")) or 0,
+                failed_chapters=self._int_or_none(payload.get("failed_chapters")) or 0,
+                transcript_storage_mode=str(payload.get("transcript_storage_mode") or "database").strip() or "database",
+                audio_storage_mode=str(payload.get("audio_storage_mode") or "path").strip() or "path",
+                progress_json=payload.get("progress") if isinstance(payload.get("progress"), (dict, list)) else None,
+                error=str(payload.get("error") or "").strip() or None,
+                metadata_json=payload.get("metadata") if isinstance(payload.get("metadata"), (dict, list)) else None,
+            )
+            session.add(row)
+            session.flush()
+            session.commit()
+            return self._audiobook_run_dict(row)
+
+    def upsert_audiobook_chapter(self, payload: dict[str, Any]) -> dict[str, Any]:
+        run_id = str(payload.get("run_id") or "").strip()
+        chapter_id = str(payload.get("chapter_id") or "").strip()
+        if not run_id or not chapter_id:
+            raise ValueError("run_id and chapter_id are required")
+        with self.session_factory() as session:
+            row = session.execute(
+                select(AudiobookChapter).where(
+                    AudiobookChapter.run_id == run_id,
+                    AudiobookChapter.chapter_id == chapter_id,
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = AudiobookChapter(
+                    run_id=run_id,
+                    book_id=str(payload.get("book_id") or "").strip(),
+                    chapter_id=chapter_id,
+                )
+                session.add(row)
+                session.flush()
+            row.series_id = str(payload.get("series_id") or row.series_id or "").strip() or row.series_id
+            row.book_index = self._int_or_none(payload.get("book_index"))
+            row.chapter_index = self._int_or_none(payload.get("chapter_index"))
+            row.chapter_title = str(payload.get("chapter_title") or row.chapter_title or "").strip() or row.chapter_title
+            row.transcript_status = str(payload.get("transcript_status") or row.transcript_status or "").strip() or row.transcript_status
+            row.audio_status = str(payload.get("audio_status") or row.audio_status or "").strip() or row.audio_status
+            row.transcript_text = str(payload.get("transcript_text") or row.transcript_text or "")
+            row.transcript_word_count = self._int_or_none(payload.get("transcript_word_count")) or self._word_count(row.transcript_text)
+            row.audio_path = str(payload.get("audio_path") or row.audio_path or "").strip() or row.audio_path
+            row.audio_mime_type = str(payload.get("audio_mime_type") or row.audio_mime_type or "").strip() or row.audio_mime_type
+            row.audio_byte_size = self._int_or_none(payload.get("audio_byte_size"))
+            row.duration_seconds = self._float_or_none(payload.get("duration_seconds"))
+            row.source_provider = str(payload.get("source_provider") or row.source_provider or "").strip() or row.source_provider
+            row.source_model = str(payload.get("source_model") or row.source_model or "").strip() or row.source_model
+            row.tts_provider = str(payload.get("tts_provider") or row.tts_provider or "").strip() or row.tts_provider
+            row.tts_app_name = str(payload.get("tts_app_name") or row.tts_app_name or "").strip() or row.tts_app_name
+            row.provider_account_alias = str(payload.get("provider_account_alias") or row.provider_account_alias or "").strip() or row.provider_account_alias
+            row.voice = str(payload.get("voice") or row.voice or "").strip() or row.voice
+            row.lang_code = str(payload.get("lang_code") or row.lang_code or "").strip() or row.lang_code
+            row.sample_rate = self._int_or_none(payload.get("sample_rate"))
+            row.audio_format = str(payload.get("audio_format") or row.audio_format or "").strip() or row.audio_format
+            row.error = str(payload.get("error") or row.error or "").strip() or row.error
+            row.metadata_json = payload.get("metadata") if isinstance(payload.get("metadata"), (dict, list)) else row.metadata_json
+
+            run = session.get(AudiobookRun, run_id)
+            if run is not None:
+                chapter_rows = session.execute(select(AudiobookChapter).where(AudiobookChapter.run_id == run_id)).scalars().all()
+                run.total_chapters = len(chapter_rows)
+                run.completed_chapters = sum(1 for item in chapter_rows if str(item.audio_status or "").lower() == "completed")
+                run.failed_chapters = sum(1 for item in chapter_rows if str(item.audio_status or "").lower() == "failed")
+                if run.failed_chapters:
+                    run.status = "partial" if run.completed_chapters else "failed"
+                elif run.total_chapters and run.completed_chapters >= run.total_chapters:
+                    run.status = "completed"
+                elif run.completed_chapters:
+                    run.status = "running"
+            session.commit()
+            return self._audiobook_chapter_dict(row)
+
+    def get_audiobook_runs(self, *, series_id: str | None = None, book_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        with self.session_factory() as session:
+            query = select(AudiobookRun).order_by(AudiobookRun.updated_at.desc())
+            if series_id:
+                query = query.where(AudiobookRun.series_id == str(series_id))
+            if book_id:
+                query = query.where(AudiobookRun.book_id == str(book_id))
+            rows = session.execute(query).scalars().all()
+            return [self._audiobook_run_dict(row) for row in rows[:limit]]
+
+    def get_audiobook_run(self, run_id: str) -> dict[str, Any] | None:
+        with self.session_factory() as session:
+            row = session.get(AudiobookRun, run_id)
+            if row is None:
+                return None
+            payload = self._audiobook_run_dict(row)
+            chapter_rows = session.execute(
+                select(AudiobookChapter)
+                .where(AudiobookChapter.run_id == row.id)
+                .order_by(AudiobookChapter.book_index.asc(), AudiobookChapter.chapter_index.asc())
+            ).scalars().all()
+            payload["chapters"] = [self._audiobook_chapter_dict(item) for item in chapter_rows]
+            return payload
+
+    def update_audiobook_run(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        with self.session_factory() as session:
+            row = session.get(AudiobookRun, run_id)
+            if row is None:
+                return None
+            if "series_id" in payload:
+                row.series_id = str(payload.get("series_id") or "").strip() or row.series_id
+            if "book_id" in payload:
+                row.book_id = str(payload.get("book_id") or "").strip() or None
+            if "scope_type" in payload:
+                row.scope_type = str(payload.get("scope_type") or row.scope_type or "book").strip() or "book"
+            if "title" in payload:
+                row.title = str(payload.get("title") or "").strip() or row.title
+            if "status" in payload:
+                row.status = str(payload.get("status") or row.status or "").strip() or row.status
+            if "job_id" in payload:
+                row.job_id = str(payload.get("job_id") or "").strip() or None
+            if "source_provider" in payload:
+                row.source_provider = str(payload.get("source_provider") or "").strip() or row.source_provider
+            if "source_model" in payload:
+                row.source_model = str(payload.get("source_model") or "").strip() or row.source_model
+            if "tts_provider" in payload:
+                row.tts_provider = str(payload.get("tts_provider") or "").strip() or row.tts_provider
+            if "tts_app_name" in payload:
+                row.tts_app_name = str(payload.get("tts_app_name") or "").strip() or row.tts_app_name
+            if "provider_account_alias" in payload:
+                row.provider_account_alias = str(payload.get("provider_account_alias") or "").strip() or row.provider_account_alias
+            if "voice" in payload:
+                row.voice = str(payload.get("voice") or "").strip() or row.voice
+            if "lang_code" in payload:
+                row.lang_code = str(payload.get("lang_code") or "").strip() or row.lang_code
+            if "sample_rate" in payload:
+                row.sample_rate = self._int_or_none(payload.get("sample_rate"))
+            if "audio_format" in payload:
+                row.audio_format = str(payload.get("audio_format") or "").strip() or row.audio_format
+            if "normalize_audio" in payload:
+                row.normalize_audio = self._bool_or_none(payload.get("normalize_audio"))
+            if "trim_silence" in payload:
+                row.trim_silence = self._bool_or_none(payload.get("trim_silence"))
+            if "sentence_pause_ms" in payload:
+                row.sentence_pause_ms = self._int_or_none(payload.get("sentence_pause_ms"))
+            if "total_books" in payload:
+                row.total_books = self._int_or_none(payload.get("total_books"))
+            if "total_chapters" in payload:
+                row.total_chapters = self._int_or_none(payload.get("total_chapters"))
+            if "completed_chapters" in payload:
+                row.completed_chapters = self._int_or_none(payload.get("completed_chapters")) or 0
+            if "failed_chapters" in payload:
+                row.failed_chapters = self._int_or_none(payload.get("failed_chapters")) or 0
+            if "transcript_storage_mode" in payload:
+                row.transcript_storage_mode = str(payload.get("transcript_storage_mode") or "").strip() or row.transcript_storage_mode
+            if "audio_storage_mode" in payload:
+                row.audio_storage_mode = str(payload.get("audio_storage_mode") or "").strip() or row.audio_storage_mode
+            if "progress" in payload:
+                row.progress_json = payload.get("progress") if isinstance(payload.get("progress"), (dict, list)) else row.progress_json
+            if "error" in payload:
+                row.error = str(payload.get("error") or "").strip() or None
+            if "metadata" in payload:
+                row.metadata_json = payload.get("metadata") if isinstance(payload.get("metadata"), (dict, list)) else row.metadata_json
+            session.commit()
+            return self._audiobook_run_dict(row)
+
     def persist_identity_bundle(
         self,
         *,
@@ -252,6 +435,24 @@ class SagaSQLiteStore:
             ).scalars().all()
             payload: list[dict[str, Any]] = []
             for row in rows:
+                chapter_count = int(
+                    session.execute(
+                        select(func.count()).select_from(Chapter).where(Chapter.book_id == row.id)
+                    ).scalar_one()
+                    or 0
+                )
+                scene_count = int(
+                    session.execute(
+                        select(func.count()).select_from(Scene).where(Scene.book_id == row.id)
+                    ).scalar_one()
+                    or 0
+                )
+                generated_story_count = int(
+                    session.execute(
+                        select(func.count()).select_from(GeneratedStory).where(GeneratedStory.book_id == row.id)
+                    ).scalar_one()
+                    or 0
+                )
                 payload.append(
                     {
                         "book_id": row.id,
@@ -261,6 +462,9 @@ class SagaSQLiteStore:
                         "source_path": row.source_path or "",
                         "run_status": row.run_status or "",
                         "identity_provider": row.identity_provider or "",
+                        "chapter_count": chapter_count,
+                        "scene_count": scene_count,
+                        "generated_story_count": generated_story_count,
                         "scene_analysis_quality": row.scene_analysis_quality if isinstance(row.scene_analysis_quality, dict) else {},
                         "metadata": row.metadata_json if isinstance(row.metadata_json, dict) else {},
                     }
@@ -879,6 +1083,73 @@ class SagaSQLiteStore:
             "log_tail": log_tail or [],
         }
 
+    def _audiobook_run_dict(self, row: AudiobookRun) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "series_id": row.series_id or "",
+            "book_id": row.book_id or "",
+            "scope_type": row.scope_type,
+            "title": row.title or "",
+            "status": row.status or "",
+            "job_id": row.job_id or "",
+            "source_provider": row.source_provider or "",
+            "source_model": row.source_model or "",
+            "tts_provider": row.tts_provider or "",
+            "tts_app_name": row.tts_app_name or "",
+            "provider_account_alias": row.provider_account_alias or "",
+            "voice": row.voice or "",
+            "lang_code": row.lang_code or "",
+            "sample_rate": row.sample_rate,
+            "audio_format": row.audio_format or "",
+            "normalize_audio": row.normalize_audio,
+            "trim_silence": row.trim_silence,
+            "sentence_pause_ms": row.sentence_pause_ms,
+            "total_books": row.total_books,
+            "total_chapters": row.total_chapters,
+            "completed_chapters": row.completed_chapters,
+            "failed_chapters": row.failed_chapters,
+            "transcript_storage_mode": row.transcript_storage_mode or "",
+            "audio_storage_mode": row.audio_storage_mode or "",
+            "progress": row.progress_json if isinstance(row.progress_json, dict) else {},
+            "error": row.error or "",
+            "metadata": row.metadata_json if isinstance(row.metadata_json, (dict, list)) else {},
+            "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+            "updated_at": row.updated_at.isoformat() if getattr(row, "updated_at", None) else "",
+        }
+
+    def _audiobook_chapter_dict(self, row: AudiobookChapter) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "run_id": row.run_id,
+            "series_id": row.series_id or "",
+            "book_id": row.book_id,
+            "chapter_id": row.chapter_id,
+            "book_index": row.book_index,
+            "chapter_index": row.chapter_index,
+            "chapter_title": row.chapter_title or "",
+            "transcript_status": row.transcript_status or "",
+            "audio_status": row.audio_status or "",
+            "transcript_text": row.transcript_text or "",
+            "transcript_word_count": row.transcript_word_count,
+            "audio_path": row.audio_path or "",
+            "audio_mime_type": row.audio_mime_type or "",
+            "audio_byte_size": row.audio_byte_size,
+            "duration_seconds": row.duration_seconds,
+            "source_provider": row.source_provider or "",
+            "source_model": row.source_model or "",
+            "tts_provider": row.tts_provider or "",
+            "tts_app_name": row.tts_app_name or "",
+            "provider_account_alias": row.provider_account_alias or "",
+            "voice": row.voice or "",
+            "lang_code": row.lang_code or "",
+            "sample_rate": row.sample_rate,
+            "audio_format": row.audio_format or "",
+            "error": row.error or "",
+            "metadata": row.metadata_json if isinstance(row.metadata_json, (dict, list)) else {},
+            "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+            "updated_at": row.updated_at.isoformat() if getattr(row, "updated_at", None) else "",
+        }
+
     def _upsert_provider_config(self, session: Session, *, provider_name: str, payload: dict[str, Any]) -> ProviderConfig:
         provider_key = str(provider_name or "").strip().lower()
         existing = session.execute(select(ProviderConfig).where(ProviderConfig.provider_name == provider_key)).scalar_one_or_none()
@@ -950,7 +1221,13 @@ class SagaSQLiteStore:
             }
             for account in normalized_accounts
         ]
-        return {
+        stored_payload = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+        extra_payload = {
+            key: value
+            for key, value in stored_payload.items()
+            if key not in {"provider_name", "active_index", "transport", "accounts", "metadata"}
+        }
+        base_payload = {
             "provider_name": row.provider_name,
             "active_index": active_index,
             "transport": row.transport or "",
@@ -961,6 +1238,10 @@ class SagaSQLiteStore:
                 "accounts": metadata_accounts,
             },
         }
+        base_payload.update(extra_payload)
+        if isinstance(base_payload.get("metadata"), dict) and extra_payload:
+            base_payload["metadata"] = {**base_payload["metadata"], **extra_payload}
+        return base_payload
 
     def _normalized_provider_account_payload(self, account: ProviderAccount, *, fallback_index: int) -> dict[str, Any]:
         raw = account.metadata_json if isinstance(account.metadata_json, dict) else {}

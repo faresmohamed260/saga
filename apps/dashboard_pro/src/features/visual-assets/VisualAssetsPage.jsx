@@ -264,6 +264,13 @@ export function VisualAssetsPage() {
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [page, setPage] = useState(1);
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkState, setBulkState] = useState({
+    rendering: false,
+    deleting: false,
+    message: "",
+    error: "",
+  });
   const seriesSummary = useAsync(() => runtimeApi.assetSeriesSummary(), []);
 
   const seriesCards = useMemo(
@@ -291,6 +298,11 @@ export function VisualAssetsPage() {
     setPage(1);
   }, [selectedSeriesId, entityType, query]);
 
+  useEffect(() => {
+    setSelectedIds([]);
+    setBulkState({ rendering: false, deleting: false, message: "", error: "" });
+  }, [selectedSeriesId]);
+
   const assets = useAsync(
     () =>
       runtimeApi.assets({
@@ -312,12 +324,70 @@ export function VisualAssetsPage() {
   const filteredAssets = assets.value?.entities || [];
   const totalAssets = Number(assets.value?.total || 0);
   const totalPages = Math.max(1, Math.ceil(totalAssets / PAGE_SIZE));
+  const selectedCount = selectedIds.length;
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   useEffect(() => {
     if (page > totalPages) {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  function toggleSelectedAsset(entityId) {
+    setSelectedIds((current) => (
+      current.includes(entityId)
+        ? current.filter((item) => item !== entityId)
+        : [...current, entityId]
+    ));
+  }
+
+  async function handleRenderSelected() {
+    if (!selectedIds.length) return;
+    const idsToRender = [...selectedIds];
+    setSelectedIds([]);
+    setBulkState({ rendering: true, deleting: false, message: "", error: "" });
+    try {
+      await runtimeApi.renderBatch({ entity_ids: idsToRender });
+      setBulkState({
+        rendering: false,
+        deleting: false,
+        message: `Queued saved renders for ${idsToRender.length} selected asset${idsToRender.length === 1 ? "" : "s"}.`,
+        error: "",
+      });
+    } catch (exc) {
+      setBulkState({
+        rendering: false,
+        deleting: false,
+        message: "",
+        error: exc.message || String(exc),
+      });
+    }
+    assets.reload();
+    seriesSummary.reload();
+  }
+
+  async function handleDeleteSelected() {
+    if (!selectedIds.length) return;
+    const confirmed = window.confirm(`Delete ${selectedIds.length} selected asset${selectedIds.length === 1 ? "" : "s"} from the system? This removes each entity and its saved prompts/images.`);
+    if (!confirmed) return;
+    const idsToDelete = [...selectedIds];
+    setSelectedIds([]);
+    setBulkState({ rendering: false, deleting: true, message: "", error: "" });
+    const results = await Promise.allSettled(idsToDelete.map((entityId) => runtimeApi.deleteAssetEntity(entityId)));
+    const succeededIds = idsToDelete.filter((_, index) => results[index]?.status === "fulfilled");
+    const failed = results.length - succeededIds.length;
+    if (selectedAssetId && succeededIds.includes(selectedAssetId)) {
+      setSelectedAssetId("");
+    }
+    setBulkState({
+      rendering: false,
+      deleting: false,
+      message: succeededIds.length ? `Deleted ${succeededIds.length} selected asset${succeededIds.length === 1 ? "" : "s"}.` : "",
+      error: failed ? `Failed to delete ${failed} selected asset${failed === 1 ? "" : "s"}.` : "",
+    });
+    assets.reload();
+    seriesSummary.reload();
+  }
 
   return (
     <div className="space-y-5">
@@ -384,6 +454,17 @@ export function VisualAssetsPage() {
         subtitle="Thumbnail-first browsing keeps initial load fast. Select a card to inspect the full asset and prompt details."
         action={filteredAssets.length ? (
           <div className="flex items-center gap-2">
+            {selectedCount ? (
+              <>
+                <Badge tone="blue">{`${selectedCount} selected`}</Badge>
+                <Button onClick={handleRenderSelected} variant="secondary" disabled={bulkState.rendering || bulkState.deleting}>
+                  {bulkState.rendering ? "Rendering..." : "Render selected"}
+                </Button>
+                <Button onClick={handleDeleteSelected} variant="danger" disabled={bulkState.rendering || bulkState.deleting}>
+                  {bulkState.deleting ? "Deleting..." : "Delete selected"}
+                </Button>
+              </>
+            ) : null}
             <Button onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
               Previous
             </Button>
@@ -394,10 +475,18 @@ export function VisualAssetsPage() {
           </div>
         ) : null}
       >
+        {bulkState.error ? <StatusBanner tone="red" message={bulkState.error} /> : null}
+        {bulkState.message ? <div className="mb-4"><StatusBanner tone="green" message={bulkState.message} /></div> : null}
         {filteredAssets.length ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {filteredAssets.map((entity) => (
-              <AssetCard key={entity.id} entity={entity} onOpen={() => setSelectedAssetId(entity.id)} />
+              <AssetCard
+                key={entity.id}
+                entity={entity}
+                selected={selectedIdSet.has(entity.id)}
+                onToggleSelect={() => toggleSelectedAsset(entity.id)}
+                onOpen={() => setSelectedAssetId(entity.id)}
+              />
             ))}
           </div>
         ) : (
@@ -415,10 +504,13 @@ export function VisualAssetsPage() {
               selectedAsset.setData(assetPayload);
             }
             assets.reload();
+            seriesSummary.reload();
           }}
           onDeleted={() => {
             setSelectedAssetId("");
+            setSelectedIds((current) => current.filter((item) => item !== selectedAssetId));
             assets.reload();
+            seriesSummary.reload();
           }}
           onClose={() => setSelectedAssetId("")}
         />
@@ -427,17 +519,38 @@ export function VisualAssetsPage() {
   );
 }
 
-function AssetCard({ entity, onOpen }) {
+function AssetCard({ entity, selected, onToggleSelect, onOpen }) {
   const thumbnailPath = entity.generated_thumbnail_path || entity.generated_image_path;
   const hasImage = !!thumbnailPath;
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/55 text-left transition hover:border-sky-500/50 hover:bg-sky-500/5"
+    <div
+      className={[
+        "overflow-hidden rounded-3xl border bg-slate-950/55 text-left transition",
+        selected
+          ? "border-emerald-400/55 shadow-lg shadow-emerald-950/20"
+          : "border-slate-800 hover:border-sky-500/50 hover:bg-sky-500/5",
+      ].join(" ")}
     >
-      <div className={`${STANDARD_ASSET_RATIO_CLASS} border-b border-slate-800 bg-black/40`}>
+      <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+        <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
+          />
+          Select
+        </label>
+        <Badge tone={selected ? "green" : toneFor(entity.render_status)}>{selected ? "selected" : (entity.render_status || "not rendered")}</Badge>
+      </div>
+
+      <button
+        type="button"
+        onClick={onOpen}
+        className="block w-full text-left"
+      >
+        <div className={`${STANDARD_ASSET_RATIO_CLASS} border-b border-slate-800 bg-black/40`}>
         {hasImage ? (
           <img
             src={assetImageUrl(thumbnailPath)}
@@ -451,24 +564,25 @@ function AssetCard({ entity, onOpen }) {
             <EmptyState title="No image">Render pending</EmptyState>
           </div>
         )}
-      </div>
+        </div>
 
-      <div className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-black text-white">{entity.name}</h3>
-            <p className="mt-1 text-sm text-slate-400">{entity.book_title || entity.series_title || entity.series_id || entity.book_id}</p>
+        <div className="space-y-3 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-black text-white">{entity.name}</h3>
+              <p className="mt-1 text-sm text-slate-400">{entity.book_title || entity.series_title || entity.series_id || entity.book_id}</p>
+            </div>
+            <Badge tone={toneFor(entity.render_status)}>{entity.render_status || "not rendered"}</Badge>
           </div>
-          <Badge tone={toneFor(entity.render_status)}>{entity.render_status || "not rendered"}</Badge>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="blue">{entity.entity_type}</Badge>
-          <Badge>{entity.prompt_count || 0} prompts</Badge>
-          <Badge tone={entity.image_count ? "green" : "amber"}>{entity.image_count || 0} images</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="blue">{entity.entity_type}</Badge>
+            <Badge>{entity.prompt_count || 0} prompts</Badge>
+            <Badge tone={entity.image_count ? "green" : "amber"}>{entity.image_count || 0} images</Badge>
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -505,6 +619,8 @@ function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onClose })
     message: "",
   });
   const [activePromptTab, setActivePromptTab] = useState("positive");
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const fullImagePath = activeImage.output_path || entity.generated_image_path;
   const displayedImagePath = previewState.imagePath || fullImagePath;
 
@@ -554,7 +670,9 @@ function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onClose })
       message: "",
     });
     setActivePromptTab("positive");
-  }, [entity.id, entity.entity_type, latestPrompt.positive_prompt, latestPrompt.negative_prompt, entity.baseline_visual_prompt, promptEditor]);
+    setRenameDraft(entity.name || "");
+    setRenaming(false);
+  }, [entity.id, entity.name, entity.entity_type, latestPrompt.positive_prompt, latestPrompt.negative_prompt, entity.baseline_visual_prompt, promptEditor]);
 
   const resolvedPositivePrompt = composePrompt(editorState.positivePrefix, editorState.positiveBody, editorState.positiveSuffix);
   const resolvedNegativePrompt = composeNegativePrompt(editorState.negativeBase, editorState.negativeTail);
@@ -571,6 +689,7 @@ function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onClose })
     ? positivePromptSegments(editorState, entity.entity_type)
     : negativePromptSegments(editorState, entity.entity_type);
   const compiledPrompt = activePromptTab === "positive" ? resolvedPositivePrompt : resolvedNegativePrompt;
+  const renameDirty = String(renameDraft || "").trim() && String(renameDraft || "").trim() !== String(entity.name || "").trim();
 
   async function handleRender() {
     setPreviewState((current) => ({ ...current, rendering: true, saving: false, error: "", message: "" }));
@@ -648,6 +767,31 @@ function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onClose })
     }
   }
 
+  async function handleRename() {
+    const nextName = String(renameDraft || "").trim();
+    if (!nextName || nextName === String(entity.name || "").trim()) return;
+    setRenaming(true);
+    setPreviewState((current) => ({ ...current, error: "", message: "" }));
+    try {
+      const result = await runtimeApi.renameAssetEntity(entityId, { name: nextName });
+      setRenameDraft(result.new_name || nextName);
+      setPreviewState((current) => ({
+        ...current,
+        error: "",
+        message: "Entity renamed across the system.",
+      }));
+      onSaved?.(result.asset || null);
+    } catch (exc) {
+      setPreviewState((current) => ({
+        ...current,
+        error: exc.message || String(exc),
+        message: "",
+      }));
+    } finally {
+      setRenaming(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
       <div className="max-h-[92vh] w-full max-w-7xl overflow-hidden rounded-3xl border border-slate-800 bg-[#050816] shadow-2xl shadow-black/50">
@@ -665,16 +809,16 @@ function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onClose })
                 Download
               </a>
             ) : null}
-            <Button onClick={handleDelete} variant="danger" disabled={previewState.rendering || previewState.saving || previewState.deleting}>
+            <Button onClick={handleDelete} variant="danger" disabled={previewState.rendering || previewState.saving || previewState.deleting || renaming}>
               {previewState.deleting ? "Deleting..." : "Delete"}
             </Button>
-            <Button onClick={handleRender} variant="secondary" disabled={previewState.rendering || previewState.saving || previewState.deleting}>
+            <Button onClick={handleRender} variant="secondary" disabled={previewState.rendering || previewState.saving || previewState.deleting || renaming}>
               {previewState.rendering ? "Rendering..." : "Render"}
             </Button>
-            <Button onClick={handleSave} variant="primary" disabled={!canSave || previewState.deleting}>
+            <Button onClick={handleSave} variant="primary" disabled={!canSave || previewState.deleting || renaming}>
               {previewState.saving ? "Saving..." : "Save"}
             </Button>
-            <Button onClick={onClose} disabled={previewState.deleting}>Close</Button>
+            <Button onClick={onClose} disabled={previewState.deleting || renaming}>Close</Button>
           </div>
         </div>
 
@@ -698,6 +842,22 @@ function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onClose })
           </div>
 
           <div className="space-y-4 p-5">
+            <div className="rounded-2xl border border-slate-800 bg-black/25 p-4">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Entity name</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  value={renameDraft}
+                  onChange={(event) => setRenameDraft(event.target.value)}
+                  placeholder="Rename entity..."
+                  className="min-w-[18rem] flex-1 rounded-xl border border-slate-700/80 bg-slate-950/85 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500/55 focus:ring-1 focus:ring-sky-500/35 placeholder:text-slate-600"
+                />
+                <Button onClick={handleRename} variant="secondary" disabled={!renameDirty || renaming || previewState.deleting}>
+                  {renaming ? "Renaming..." : "Rename"}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500">This updates the canonical entity name and the stored visual/analysis references linked to it.</p>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Badge tone="blue">{entity.entity_type || "entity"}</Badge>
               <Badge>{prompts.length} prompts</Badge>

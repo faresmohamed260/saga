@@ -97,6 +97,7 @@ class EntityVisualPromptService:
         "running",
         "vault 700",
     }
+    VISUAL_PROMPT_INSUFFICIENCY_FLAG = "insufficient_visual_traits_for_prompt"
 
     def __init__(self, sqlite_store: SagaSQLiteStore | None = None) -> None:
         self.sqlite_store = sqlite_store or SagaSQLiteStore()
@@ -114,10 +115,13 @@ class EntityVisualPromptService:
             ).scalars().all()
             if requested_entity_types:
                 entities = [row for row in entities if str(row.entity_type or "").strip().lower() in requested_entity_types]
-            prompt_map = {
-                (str(row.entity_id or ""), str(row.prompt_type or "").strip().lower()): row
-                for row in session.execute(select(VisualPrompt).where(VisualPrompt.book_id == book.id)).scalars().all()
-            }
+            prompt_rows = session.execute(select(VisualPrompt).where(VisualPrompt.book_id == book.id)).scalars().all()
+            prompt_rows_by_entity: dict[str, list[VisualPrompt]] = {}
+            for row in prompt_rows:
+                key = str(row.entity_id or "").strip()
+                if not key:
+                    continue
+                prompt_rows_by_entity.setdefault(key, []).append(row)
             char_map = {
                 row.entity_id: row
                 for row in session.execute(select(CharacterVisualBaseline).where(CharacterVisualBaseline.book_id == book.id)).scalars().all()
@@ -139,6 +143,11 @@ class EntityVisualPromptService:
             updated = 0
             skipped = 0
             for entity in entities:
+                existing_rows = sorted(
+                    prompt_rows_by_entity.get(str(entity.id), []),
+                    key=lambda row: row.updated_at or row.created_at,
+                    reverse=True,
+                )
                 compiled = self._build_entity_prompt_payload(
                     entity=entity,
                     character_baseline=char_map.get(entity.id),
@@ -147,10 +156,16 @@ class EntityVisualPromptService:
                     location_baseline=location_map.get(entity.id),
                 )
                 if not compiled:
+                    self._mark_entity_prompt_insufficiency(entity, True)
+                    for row in existing_rows:
+                        session.delete(row)
+                    entity.baseline_visual_prompt = ""
+                    prompt_rows_by_entity[str(entity.id)] = []
                     skipped += 1
                     continue
+                self._mark_entity_prompt_insufficiency(entity, False)
                 prompt_type = str(compiled["prompt_type"]).lower()
-                prompt_row = prompt_map.get((entity.id, prompt_type))
+                prompt_row = self._select_primary_prompt_row(existing_rows, prompt_type)
                 if prompt_row is None:
                     prompt_row = VisualPrompt(
                         book_id=book.id,
@@ -160,13 +175,20 @@ class EntityVisualPromptService:
                         prompt_type=compiled["prompt_type"],
                     )
                     session.add(prompt_row)
+                    session.flush()
                     written += 1
-                elif not overwrite and str(prompt_row.positive_prompt or "").strip():
-                    skipped += 1
-                    continue
                 else:
+                    extras = [row for row in existing_rows if row.id != prompt_row.id]
+                    for row in extras:
+                        session.delete(row)
+                    if not overwrite and str(prompt_row.positive_prompt or "").strip():
+                        entity.baseline_visual_prompt = str(prompt_row.positive_prompt or "").strip()
+                        prompt_rows_by_entity[str(entity.id)] = [prompt_row]
+                        skipped += 1
+                        continue
                     updated += 1
 
+                prompt_row.prompt_type = compiled["prompt_type"]
                 prompt_row.visual_bucket = compiled["visual_bucket"]
                 prompt_row.positive_prompt = compiled["positive_prompt"]
                 prompt_row.negative_prompt = compiled["negative_prompt"]
@@ -178,6 +200,7 @@ class EntityVisualPromptService:
                 prompt_row.details_json = compiled["details"]
                 prompt_row.metadata_json = {"origin": "entity_visual_prompt_service"}
                 entity.baseline_visual_prompt = compiled["positive_prompt"]
+                prompt_rows_by_entity[str(entity.id)] = [prompt_row]
 
             session.commit()
             prompts_total = len(session.execute(select(VisualPrompt).where(VisualPrompt.book_id == book.id)).scalars().all())
@@ -324,6 +347,28 @@ class EntityVisualPromptService:
                 self._recent_visual_change_summary(entity),
             )
         )
+        if not self._noncharacter_prompt_ready(
+            identity=species_kind,
+            detail_fields=[
+                size_class,
+                body_plan,
+                surface_covering,
+                coloration,
+                head_features,
+                eyes,
+                limbs_appendages,
+                natural_weapons,
+                wings,
+                tail,
+                magical_features,
+                world_genre_cues,
+            ],
+            baseline_description=baseline_description,
+            current_state=current_state,
+            entity=entity,
+            cleaner="noncharacter",
+        ):
+            return None
         prompt = compile_creature_concept_prompt(
             display_name=entity.canonical_name,
             species_kind=species_kind,
@@ -409,6 +454,27 @@ class EntityVisualPromptService:
                 self._recent_visual_change_summary(entity),
             )
         )
+        if not self._noncharacter_prompt_ready(
+            identity=object_class,
+            detail_fields=[
+                function_text,
+                size_scale,
+                shape_form,
+                primary_material,
+                secondary_materials,
+                color_finish,
+                surface_texture,
+                condition_default,
+                symbolic_markings,
+                magical_properties,
+                world_genre_cues,
+            ],
+            baseline_description=baseline_description,
+            current_state=current_state,
+            entity=entity,
+            cleaner="noncharacter",
+        ):
+            return None
         prompt = compile_object_concept_prompt(
             display_name=entity.canonical_name,
             object_class=object_class,
@@ -502,6 +568,27 @@ class EntityVisualPromptService:
             notable_features=notable_features,
             view_archetype=view_archetype,
         )
+        if not self._noncharacter_prompt_ready(
+            identity=location_class or environment_type,
+            detail_fields=[
+                indoor_outdoor,
+                environment_type,
+                region_or_domain,
+                architecture_or_terrain_style,
+                dominant_materials,
+                lighting_default,
+                weather_exposure,
+                atmosphere,
+                magic_or_tech_presence,
+                world_cues,
+                *focus_features,
+            ],
+            baseline_description=baseline_description,
+            current_state=current_description,
+            entity=entity,
+            cleaner="location",
+        ):
+            return None
         prompt = compile_location_concept_prompt(
             display_name=entity.canonical_name,
             view_archetype=view_archetype,
@@ -715,10 +802,12 @@ class EntityVisualPromptService:
         return self._join_nonempty(cleaned_typed, evidence)
 
     def _clean_noncharacter_prompt_seed(self, value: Any) -> str:
+        import re as regex
+
         text = self._sanitized_baseline_text(value)
         if not text:
             return ""
-        fragments = [chunk.strip(" .") for chunk in re.split(r"[,\n;]+", text)]
+        fragments = [chunk.strip(" .") for chunk in regex.split(r"[,\n;]+", text)]
         keep: list[str] = []
         for fragment in fragments:
             cleaned = self._clean_noncharacter_slot(fragment)
@@ -731,6 +820,105 @@ class EntityVisualPromptService:
                 continue
             keep.append(cleaned)
         return self._join_nonempty(*keep)
+
+    def _seed_fragments(self, value: Any, *, cleaner: str) -> list[str]:
+        if cleaner == "location":
+            text = self._clean_location_prompt_seed(value)
+        else:
+            text = self._clean_noncharacter_prompt_seed(value)
+        if not text:
+            return []
+        return self._split_features(text)
+
+    def _entity_noncharacter_trait_hints(self, entity: Entity, *, cleaner: str) -> list[str]:
+        hints: list[str] = []
+        for payload in (
+            entity.initial_physical_description or {},
+            entity.first_appearance_profile or {},
+            entity.typed_attributes or {},
+            entity.latest_world_state or {},
+        ):
+            if isinstance(payload, dict):
+                hints.extend(self._collect_payload_strings(payload))
+        descriptions = entity.descriptions or []
+        if isinstance(descriptions, list):
+            for item in descriptions:
+                if isinstance(item, dict):
+                    hints.extend(self._collect_payload_strings(item))
+        hints.append(str(entity.entity_context or ""))
+        fragments: list[str] = []
+        seen: set[str] = set()
+        for value in hints:
+            for fragment in self._seed_fragments(value, cleaner=cleaner):
+                lowered = fragment.lower()
+                if lowered in seen:
+                    continue
+                seen.add(lowered)
+                fragments.append(fragment)
+        return fragments
+
+    def _collect_payload_strings(self, payload: Any) -> list[str]:
+        rows: list[str] = []
+        if isinstance(payload, dict):
+            for value in payload.values():
+                rows.extend(self._collect_payload_strings(value))
+            return rows
+        if isinstance(payload, list):
+            for value in payload:
+                rows.extend(self._collect_payload_strings(value))
+            return rows
+        text = str(payload or "").strip()
+        return [text] if text else []
+
+    def _noncharacter_prompt_ready(
+        self,
+        *,
+        identity: str,
+        detail_fields: list[str],
+        baseline_description: str,
+        current_state: str,
+        entity: Entity,
+        cleaner: str,
+    ) -> bool:
+        identity_text = str(identity or "").strip().lower()
+        if not identity_text:
+            return False
+        structured_details: list[str] = []
+        for value in detail_fields:
+            structured_details.extend(self._seed_fragments(value, cleaner=cleaner))
+        candidates: list[str] = []
+        candidates.extend(structured_details)
+        candidates.extend(self._seed_fragments(baseline_description, cleaner=cleaner))
+        candidates.extend(self._seed_fragments(current_state, cleaner=cleaner))
+        candidates.extend(self._entity_noncharacter_trait_hints(entity, cleaner=cleaner))
+        informative: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            lowered = candidate.lower()
+            if not lowered or lowered == identity_text or lowered in seen:
+                continue
+            seen.add(lowered)
+            informative.append(candidate)
+        structured_lookup = {item.lower() for item in structured_details}
+        structured_informative = [candidate for candidate in informative if candidate.lower() in structured_lookup]
+        return bool(structured_informative)
+
+    def _select_primary_prompt_row(self, rows: list[VisualPrompt], expected_prompt_type: str) -> VisualPrompt | None:
+        expected = str(expected_prompt_type or "").strip().lower()
+        for row in rows:
+            if str(row.prompt_type or "").strip().lower() == expected:
+                return row
+        return rows[0] if rows else None
+
+    def _mark_entity_prompt_insufficiency(self, entity: Entity, enabled: bool) -> None:
+        flags = entity.analysis_quality_flags or []
+        if not isinstance(flags, list):
+            flags = [str(flags)]
+        normalized = [str(flag or "").strip() for flag in flags if str(flag or "").strip()]
+        filtered = [flag for flag in normalized if flag != self.VISUAL_PROMPT_INSUFFICIENCY_FLAG]
+        if enabled:
+            filtered.append(self.VISUAL_PROMPT_INSUFFICIENCY_FLAG)
+        entity.analysis_quality_flags = filtered
 
     def _compact_dict(self, payload: dict[str, Any]) -> dict[str, Any]:
         compact: dict[str, Any] = {}

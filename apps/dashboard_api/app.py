@@ -12,7 +12,8 @@ import traceback
 import uuid
 import webbrowser
 import hashlib
-from datetime import datetime, timezone
+import wave
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -39,11 +40,15 @@ from saga.services.comfyui_character_sheet_service import (
     render_manifest_path_for_contract,
     render_output_dir_for_contract,
 )
+from integrations.comfyui.token_pool import load_tokens as load_modal_tokens
+from integrations.kokoro_tts.pool_manager import ModalTTSPoolManager
+from integrations.kokoro_tts.workspace_client import ensure_urls as ensure_tts_modal_urls
 from saga.agents.visual_prompt_schema import (
     compile_creature_negative_prompt,
     compile_location_negative_prompt,
     compile_object_negative_prompt,
 )
+from saga.services.audiobook_generation_service import AudiobookGenerationService
 from saga.services.database_analysis_run_service import DatabaseAnalysisRunService
 from saga.services.database_decoder_service import DatabaseDecoderService
 from saga.services.generated_story_epub_service import GeneratedStoryEpubService
@@ -51,6 +56,7 @@ from saga.services.image_thumbnail_service import ensure_thumbnail
 from saga.storage.database import get_database_url
 from saga.storage.persistence import SagaSQLiteStore
 from saga.storage.models import Book as SqlBook
+from saga.storage.models import AudiobookChapter as SqlAudiobookChapter
 from saga.storage.models import CharacterProfile as SqlCharacterProfile
 from saga.storage.models import CharacterVisualBaseline as SqlCharacterVisualBaseline
 from saga.storage.models import CharacterVisualSceneState as SqlCharacterVisualSceneState
@@ -90,6 +96,7 @@ STORY_EXPORTS_DIR = Path(os.environ.get("SAGA_STORY_EXPORTS_DIR") or (DASHBOARD_
 OLLAMA_ACCOUNTS_FILE = ROOT / "deploy" / "ollama" / "accounts.local.json"
 CODEX_ACCOUNTS_FILE = ROOT / "deploy" / "openai" / "accounts.local.json"
 GENERAL_COMPUTE_ACCOUNTS_FILE = ROOT / "deploy" / "general_compute" / "accounts.local.json"
+DEFAULT_TTS_MODAL_APP_NAME = "graduation-kokoro-tts"
 
 DEFAULT_BOOKS = [
     r"D:\Books\Ebooks\Sarah J. Maas\A Court of Thorns and Roses\A Court of Thorns and Roses.epub",
@@ -165,6 +172,19 @@ class CodexProviderConfig(BaseModel):
 class GeneralComputeProviderConfig(BaseModel):
     active_index: int = 0
     accounts: list[ProviderAccount] = Field(default_factory=list)
+
+
+class TTSModalProviderConfig(BaseModel):
+    app_name: str = DEFAULT_TTS_MODAL_APP_NAME
+    api_url: str = ""
+    default_voice: str = "af_bella"
+    default_lang_code: str = "a"
+    default_sample_rate: int = 24000
+    default_audio_format: str = "wav"
+    default_normalize_audio: bool = True
+    default_trim_silence: bool = False
+    default_sentence_pause_ms: int = 0
+    timeout_seconds: int = 300
 
 
 def _is_placeholder_analysis_value(value: Any) -> bool:
@@ -302,7 +322,7 @@ def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str
         remaining = lines[1:]
         while remaining and remaining[0].startswith(legacy_prefix_starts):
             prefix_lines.append(remaining.pop(0))
-        prefix_lines = [first_line, *prefix_lines]
+        editable_lines = [first_line]
         while remaining and (
             remaining[-1] in LOCATION_SUFFIX_LINES
             or remaining[-1].startswith("Use a wide ")
@@ -314,7 +334,7 @@ def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str
             suffix_lines.insert(0, remaining.pop())
         return {
             "locked_prefix": "\n".join(prefix_lines),
-            "editable_body": "\n".join(remaining),
+            "editable_body": "\n".join([*editable_lines, *remaining]),
             "locked_suffix": "\n".join(suffix_lines),
         }
 
@@ -329,7 +349,7 @@ def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str
         remaining = lines[1:]
         while remaining and remaining[0].startswith(legacy_prefix_starts):
             prefix_lines.append(remaining.pop(0))
-        prefix_lines = [first_line, *prefix_lines]
+        editable_lines = [first_line]
         while remaining and (
             remaining[-1] in CREATURE_SUFFIX_LINES
             or remaining[-1].startswith("Keep the framing observational and documentary")
@@ -337,7 +357,7 @@ def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str
             suffix_lines.insert(0, remaining.pop())
         return {
             "locked_prefix": "\n".join(prefix_lines),
-            "editable_body": "\n".join(remaining),
+            "editable_body": "\n".join([*editable_lines, *remaining]),
             "locked_suffix": "\n".join(suffix_lines),
         }
 
@@ -352,7 +372,7 @@ def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str
         remaining = lines[1:]
         while remaining and remaining[0].startswith(legacy_prefix_starts):
             prefix_lines.append(remaining.pop(0))
-        prefix_lines = [first_line, *prefix_lines]
+        editable_lines = [first_line]
         while remaining and (
             remaining[-1] in OBJECT_SUFFIX_LINES
             or remaining[-1].startswith("Keep the framing observational and documentary")
@@ -360,7 +380,7 @@ def _split_positive_prompt_for_editor(prompt: str, entity_type: str) -> dict[str
             suffix_lines.insert(0, remaining.pop())
         return {
             "locked_prefix": "\n".join(prefix_lines),
-            "editable_body": "\n".join(remaining),
+            "editable_body": "\n".join([*editable_lines, *remaining]),
             "locked_suffix": "\n".join(suffix_lines),
         }
 
@@ -382,6 +402,20 @@ def _build_prompt_editor_payload(positive_prompt: str, negative_prompt: str, ent
         "compiled_positive": compiled_positive,
         "compiled_negative": compiled_negative,
     }
+
+
+def _canonical_prompt_rows(prompt_rows: list[SqlVisualPrompt]) -> list[SqlVisualPrompt]:
+    if not prompt_rows:
+        return []
+    sorted_rows = sorted(prompt_rows, key=lambda row: row.updated_at or row.created_at, reverse=True)
+    preferred_types = {
+        str(row.prompt_type or "").strip().lower()
+        for row in sorted_rows
+        if str(row.prompt_type or "").strip().lower().startswith("initial_")
+    }
+    if preferred_types:
+        sorted_rows = [row for row in sorted_rows if str(row.prompt_type or "").strip().lower() in preferred_types]
+    return sorted_rows[:1]
 
 
 def _summarize_analysis_fields(payload: dict[str, Any], keys: list[str], *, limit: int = 8) -> str:
@@ -469,11 +503,16 @@ class AssetSaveRenderRequest(BaseModel):
     preview_image_path: str
 
 
+class EntityRenameRequest(BaseModel):
+    name: str
+
+
 class RenderBatchRequest(BaseModel):
     book_ref: str = ""
     series_id: str = ""
     scope: str = "missing"
     entity_types: list[str] = Field(default_factory=list)
+    entity_ids: list[str] = Field(default_factory=list)
     overwrite: bool = False
     limit: int = 0
 
@@ -488,6 +527,24 @@ class DecoderPlanRequest(BaseModel):
     primary_pov_character: str = ""
     continuity_anchor: str = ""
     divergence_anchor: str = ""
+
+
+class AudiobookStageRequest(BaseModel):
+    scope: str = "book"
+    series_id: str
+    book_ref: str = ""
+    tone: str = "classic"
+    rewrite_provider: str = "ollama"
+    rewrite_fallback_mode: str = "strict_rewrite"
+    voice: str = "af_bella"
+    lang_code: str = "a"
+    sample_rate: int = 24000
+    audio_format: str = "wav"
+    normalize_audio: bool = True
+    trim_silence: bool = False
+    sentence_pause_ms: int = 0
+    store_transcript: bool = True
+    store_audio: bool = True
 
 
 
@@ -555,6 +612,451 @@ def _safe_db(default: Any, operation: str, func_call) -> Any:
     except Exception as exc:
         print(f"[apps.dashboard_api] unexpected operation failure: {operation}: {exc}", file=sys.stderr)
         return default
+
+
+def _audiobook_audio_path(*, run_id: str, series_id: str, book_index: int | None, chapter_index: int | None, audio_format: str) -> str:
+    safe_series = slugify(series_id or "series")
+    extension = "flac" if str(audio_format or "").strip().lower() == "flac" else "wav"
+    filename = f"book_{int(book_index or 0):02d}_chapter_{int(chapter_index or 0):03d}.{extension}"
+    return str((DASHBOARD_DIR / "audiobooks" / safe_series / run_id / "audio" / filename).resolve())
+
+
+def _audiobook_recovery_log_tail(run_id: str, *, limit: int = 40) -> list[str]:
+    candidates = [
+        DASHBOARD_DIR / "logs" / f"audiobook-recovery-{run_id}.log",
+        DASHBOARD_DIR / "logs" / f"audiobook-recovery-{str(run_id)[:8]}.log",
+        DASHBOARD_DIR / "logs" / "audiobook-recovery.log",
+    ]
+    for target in candidates:
+        if not target.exists() or not target.is_file():
+            continue
+        try:
+            raw = target.read_bytes()
+            text = ""
+            for encoding in ("utf-8", "utf-16", "utf-16-le", "utf-16-be"):
+                try:
+                    text = raw.decode(encoding)
+                    if text:
+                        break
+                except Exception:
+                    continue
+            if not text:
+                text = raw.decode("utf-8", errors="replace")
+            return [line.replace("\x00", "") for line in text.splitlines() if str(line).replace("\x00", "").strip()][-limit:]
+        except Exception:
+            continue
+    return []
+
+
+def _augment_audiobook_run_from_outputs(run_payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run_payload, dict):
+        return run_payload
+    chapters = run_payload.get("chapters") if isinstance(run_payload.get("chapters"), list) else []
+    if not chapters:
+        return run_payload
+
+    completed_count = 0
+    failed_count = int(run_payload.get("failed_chapters") or 0)
+    next_pending: dict[str, Any] | None = None
+    latest_mtime = ""
+    for chapter in chapters:
+        audio_path_raw = str(chapter.get("audio_path") or "").strip()
+        audio_path = Path(audio_path_raw).resolve() if audio_path_raw else None
+        exists = bool(audio_path and audio_path.exists() and audio_path.is_file() and audio_path.stat().st_size > 0)
+        if exists:
+            completed_count += 1
+            chapter["audio_status"] = "completed"
+            latest_mtime = max(latest_mtime, datetime.fromtimestamp(audio_path.stat().st_mtime, tz=timezone.utc).isoformat())
+            if not chapter.get("audio_byte_size"):
+                chapter["audio_byte_size"] = int(audio_path.stat().st_size)
+        elif next_pending is None:
+            next_pending = chapter
+
+    total_chapters = int(run_payload.get("total_chapters") or len(chapters) or 0)
+    run_payload["completed_chapters"] = completed_count
+    run_payload["failed_chapters"] = failed_count
+    if total_chapters and completed_count >= total_chapters and failed_count == 0:
+        run_payload["status"] = "completed"
+        run_payload["progress"] = _job_progress_payload(
+            stage="complete",
+            current=completed_count,
+            total=total_chapters,
+            label="Audiobook pipeline completed",
+            status="completed",
+            details={"run_id": str(run_payload.get("id") or ""), "chapter_count": total_chapters, "phase": "tts", "failed_chapters": failed_count},
+        )
+    elif next_pending is not None:
+        next_title = str(next_pending.get("chapter_title") or "").strip() or f"Chapter {int(next_pending.get('chapter_index') or 0)}"
+        run_payload["status"] = "running"
+        run_payload["progress"] = _job_progress_payload(
+            stage="tts",
+            current=completed_count,
+            total=total_chapters,
+            label=f"Synthesizing {next_title}",
+            status="running",
+            details={
+                "run_id": str(run_payload.get("id") or ""),
+                "chapter_count": total_chapters,
+                "phase": "tts",
+                "chapter_number": int(next_pending.get("chapter_index") or 0),
+                "book_index": int(next_pending.get("book_index") or 1),
+                "chapter_index": int(next_pending.get("chapter_index") or 0),
+                "chapter_title": next_title,
+                "failed_chapters": failed_count,
+            },
+        )
+    if latest_mtime:
+        run_payload["updated_at"] = latest_mtime
+    run_payload["available_audio_files"] = completed_count
+    return run_payload
+
+
+def _list_audiobook_audio_rows(run_id: str) -> list[SqlAudiobookChapter]:
+    with SQLITE_STORE.session_factory() as session:
+        return session.execute(
+            select(SqlAudiobookChapter)
+            .where(SqlAudiobookChapter.run_id == run_id)
+            .order_by(SqlAudiobookChapter.book_index.asc(), SqlAudiobookChapter.chapter_index.asc())
+        ).scalars().all()
+
+
+def _resolve_audiobook_bundle_path(run_id: str) -> Path:
+    return (DASHBOARD_DIR / "audiobooks" / "bundles" / f"{run_id}.wav").resolve()
+
+
+def _build_audiobook_bundle(run_id: str) -> Path:
+    rows = _list_audiobook_audio_rows(run_id)
+    if not rows:
+        raise HTTPException(status_code=404, detail="Audiobook run not found.")
+
+    ready_rows: list[SqlAudiobookChapter] = []
+    newest_source_mtime = 0.0
+    for row in rows:
+        audio_path = Path(str(row.audio_path or "")).resolve() if str(row.audio_path or "").strip() else None
+        if audio_path is None or not audio_path.exists() or not audio_path.is_file():
+            continue
+        if audio_path.suffix.lower() != ".wav":
+            raise HTTPException(status_code=409, detail="Full audiobook download currently requires WAV chapter outputs.")
+        ready_rows.append(row)
+        newest_source_mtime = max(newest_source_mtime, audio_path.stat().st_mtime)
+
+    if not ready_rows:
+        raise HTTPException(status_code=404, detail="No completed audiobook chapter files are available for bundling.")
+
+    bundle_path = _resolve_audiobook_bundle_path(run_id)
+    if bundle_path.exists() and bundle_path.is_file() and bundle_path.stat().st_mtime >= newest_source_mtime:
+        return bundle_path
+
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    params = None
+    with wave.open(str(bundle_path), "wb") as writer:
+        for row in ready_rows:
+            audio_path = Path(str(row.audio_path or "")).resolve()
+            with wave.open(str(audio_path), "rb") as reader:
+                current_params = (
+                    reader.getnchannels(),
+                    reader.getsampwidth(),
+                    reader.getframerate(),
+                    reader.getcomptype(),
+                    reader.getcompname(),
+                )
+                if params is None:
+                    params = current_params
+                    writer.setnchannels(current_params[0])
+                    writer.setsampwidth(current_params[1])
+                    writer.setframerate(current_params[2])
+                    writer.setcomptype(current_params[3], current_params[4])
+                elif current_params != params:
+                    raise HTTPException(status_code=409, detail="Chapter WAV files are incompatible for full audiobook bundling.")
+                writer.writeframes(reader.readframes(reader.getnframes()))
+    return bundle_path
+
+
+def _resolve_audiobook_scope(request: AudiobookStageRequest) -> dict[str, Any]:
+    scope = str(request.scope or "book").strip().lower()
+    if scope not in {"book", "series"}:
+        raise HTTPException(status_code=400, detail="scope must be 'book' or 'series'.")
+    if not str(request.series_id or "").strip():
+        raise HTTPException(status_code=400, detail="series_id is required.")
+
+    selected_book_id = parse_db_book_ref(request.book_ref)
+    if scope == "book" and not selected_book_id:
+        raise HTTPException(status_code=400, detail="book_ref is required for book scope.")
+
+    with SQLITE_STORE.session_factory() as session:
+        series = session.execute(select(SqlSeries).where(SqlSeries.series_id == str(request.series_id))).scalar_one_or_none()
+        if series is None:
+            raise HTTPException(status_code=404, detail="Series not found.")
+
+        book_query = (
+            select(SqlBook)
+            .where(SqlBook.series_id == str(request.series_id))
+            .order_by(SqlBook.book_index.asc(), SqlBook.title.asc())
+        )
+        if scope == "book":
+            book_query = book_query.where(SqlBook.id == selected_book_id)
+        books = session.execute(book_query).scalars().all()
+        if not books:
+            raise HTTPException(status_code=404, detail="No books found for the selected audiobook scope.")
+
+        chapters_by_book: dict[str, list[SqlChapter]] = {}
+        total_chapters = 0
+        for book in books:
+            chapter_rows = session.execute(
+                select(SqlChapter)
+                .where(SqlChapter.book_id == book.id)
+                .order_by(SqlChapter.chapter_index.asc())
+            ).scalars().all()
+            chapters_by_book[book.id] = chapter_rows
+            total_chapters += len(chapter_rows)
+
+        if total_chapters <= 0:
+            raise HTTPException(status_code=409, detail="The selected audiobook scope has no chapter rows in the database.")
+
+        return {
+            "series": series,
+            "books": books,
+            "chapters_by_book": chapters_by_book,
+            "total_chapters": total_chapters,
+        }
+
+
+def _build_audiobook_run_title(*, request: AudiobookStageRequest, scope_payload: dict[str, Any]) -> str:
+    series = scope_payload["series"]
+    books = scope_payload["books"]
+    if str(request.scope or "").strip().lower() == "series":
+        return f"{str(series.title or request.series_id).strip() or request.series_id} audiobook"
+    selected = books[0]
+    return str(selected.title or f"Book {selected.book_index or 0}").strip() or "Audiobook run"
+
+
+def _resolve_chapter_source_text(chapter_row: SqlChapter | None, *, session=None) -> str:
+    if chapter_row is None:
+        return ""
+
+    direct_text = str(getattr(chapter_row, "text", "") or "").strip()
+    if direct_text:
+        return direct_text
+
+    metadata = getattr(chapter_row, "metadata_json", None)
+    if isinstance(metadata, dict):
+        metadata_text = str(metadata.get("content") or metadata.get("text") or "").strip()
+        if metadata_text:
+            return metadata_text
+
+    close_session = False
+    active_session = session
+    if active_session is None:
+        active_session = SQLITE_STORE.session_factory()
+        close_session = True
+    try:
+        scene_rows = active_session.execute(
+            select(SqlScene)
+            .where(SqlScene.chapter_id == chapter_row.id)
+            .order_by(SqlScene.scene_index.asc(), SqlScene.id.asc())
+        ).scalars().all()
+        scene_texts = [str(scene.text or "").strip() for scene in scene_rows if str(scene.text or "").strip()]
+        if scene_texts:
+            return "\n\n".join(scene_texts)
+        scene_summaries = [str(scene.summary or "").strip() for scene in scene_rows if str(scene.summary or "").strip()]
+        if scene_summaries:
+            return "\n\n".join(scene_summaries)
+    finally:
+        if close_session:
+            active_session.close()
+
+    return ""
+
+
+def _audiobook_llm_mode(provider_name: str) -> str:
+    value = str(provider_name or "ollama").strip().lower()
+    if value == "general_compute":
+        return LLMClient.MODE_GENERAL_COMPUTE
+    if value == "codex":
+        return LLMClient.MODE_CODEX
+    if value == "mistral":
+        return LLMClient.MODE_MISTRAL
+    if value == "gemini":
+        return LLMClient.MODE_GEMINI
+    return LLMClient.MODE_GPT_OSS
+
+
+def _create_staged_audiobook_run(request: AudiobookStageRequest) -> dict[str, Any]:
+    if not request.store_transcript and not request.store_audio:
+        raise HTTPException(status_code=400, detail="At least one storage target must be enabled.")
+
+    scope_payload = _resolve_audiobook_scope(request)
+    books = scope_payload["books"]
+    chapters_by_book = scope_payload["chapters_by_book"]
+    run_title = _build_audiobook_run_title(request=request, scope_payload=scope_payload)
+    run = _safe_db(
+        None,
+        "create_audiobook_run",
+        lambda: SQLITE_STORE.create_audiobook_run(
+            {
+                "series_id": request.series_id,
+                "book_id": books[0].id if str(request.scope or "").strip().lower() == "book" else None,
+                "scope_type": str(request.scope or "book").strip().lower(),
+                "title": run_title,
+                "status": "staged",
+                "source_provider": "ollama",
+                "tts_provider": "tts_modal",
+                "tts_app_name": DEFAULT_TTS_MODAL_APP_NAME,
+                "voice": request.voice,
+                "lang_code": request.lang_code,
+                "sample_rate": request.sample_rate,
+                "audio_format": request.audio_format,
+                "normalize_audio": request.normalize_audio,
+                "trim_silence": request.trim_silence,
+                "sentence_pause_ms": request.sentence_pause_ms,
+                "total_books": len(books),
+                "total_chapters": scope_payload["total_chapters"],
+                "transcript_storage_mode": "database" if request.store_transcript else "disabled",
+                "audio_storage_mode": "path" if request.store_audio else "disabled",
+                "progress": {"current": 0, "total": scope_payload["total_chapters"], "phase": "staged"},
+                "metadata": {
+                    "tone": request.tone,
+                    "rewrite_provider": str(request.rewrite_provider or "ollama").strip().lower() or "ollama",
+                    "rewrite_fallback_mode": str(request.rewrite_fallback_mode or "strict_rewrite").strip().lower() or "strict_rewrite",
+                    "scope_label": str(request.scope or "book").strip().lower(),
+                    "book_ids": [book.id for book in books],
+                    "staged_at": utc_now(),
+                    "source": "dashboard_pro",
+                },
+            }
+        ),
+    )
+    if run is None:
+        raise HTTPException(status_code=500, detail="Failed to create audiobook run.")
+
+    for book in books:
+        for chapter in chapters_by_book.get(book.id, []):
+            transcript_text = str(chapter.text or "").strip() if request.store_transcript else ""
+            audio_path = (
+                _audiobook_audio_path(
+                    run_id=str(run["id"]),
+                    series_id=request.series_id,
+                    book_index=book.book_index,
+                    chapter_index=chapter.chapter_index,
+                    audio_format=request.audio_format,
+                )
+                if request.store_audio
+                else ""
+            )
+            _safe_db(
+                None,
+                "upsert_audiobook_chapter",
+                lambda payload={
+                    "run_id": run["id"],
+                    "series_id": request.series_id,
+                    "book_id": book.id,
+                    "chapter_id": chapter.id,
+                    "book_index": book.book_index,
+                    "chapter_index": chapter.chapter_index,
+                    "chapter_title": chapter.title or f"Chapter {chapter.chapter_index}",
+                    "transcript_status": "staged" if request.store_transcript else "skipped",
+                    "audio_status": "staged" if request.store_audio else "skipped",
+                    "transcript_text": transcript_text,
+                    "transcript_word_count": chapter.word_count,
+                    "audio_path": audio_path,
+                    "audio_mime_type": "audio/flac" if str(request.audio_format).lower() == "flac" else "audio/wav",
+                    "source_provider": "ollama",
+                    "tts_provider": "tts_modal",
+                    "tts_app_name": DEFAULT_TTS_MODAL_APP_NAME,
+                    "voice": request.voice,
+                    "lang_code": request.lang_code,
+                    "sample_rate": request.sample_rate,
+                    "audio_format": request.audio_format,
+                    "metadata": {
+                        "tone": request.tone,
+                        "rewrite_provider": str(request.rewrite_provider or "ollama").strip().lower() or "ollama",
+                        "rewrite_fallback_mode": str(request.rewrite_fallback_mode or "strict_rewrite").strip().lower() or "strict_rewrite",
+                        "source_text_staged": bool(transcript_text),
+                        "book_title": book.title,
+                    },
+                }: SQLITE_STORE.upsert_audiobook_chapter(payload),
+            )
+
+    payload = _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(str(run["id"])))
+    if payload is None:
+        raise HTTPException(status_code=500, detail="Failed to load staged audiobook run.")
+    return payload
+
+
+def _queue_audiobook_run(run_id: str, *, retry_of: str = "") -> dict[str, Any]:
+    run = _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Audiobook run not found.")
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+    active_jobs = []
+    for job in list_jobs():
+        if str((job.get("artifacts") or {}).get("audiobook_run_id") or "") != str(run_id):
+            continue
+        if str(job.get("status") or "").lower() not in {"queued", "starting", "running"}:
+            continue
+        if str(job.get("type") or "") == "audiobook-pipeline":
+            run_updated_at_raw = str(run.get("updated_at") or "").strip()
+            job_started_at_raw = str(job.get("started_at") or job.get("created_at") or "").strip()
+            try:
+                run_updated_at = datetime.fromisoformat(run_updated_at_raw.replace("Z", "+00:00")) if run_updated_at_raw else None
+            except ValueError:
+                run_updated_at = None
+            try:
+                job_started_at = datetime.fromisoformat(job_started_at_raw.replace("Z", "+00:00")) if job_started_at_raw else None
+            except ValueError:
+                job_started_at = None
+            if run_updated_at and (run_updated_at.tzinfo is None):
+                run_updated_at = run_updated_at.replace(tzinfo=timezone.utc)
+            if job_started_at and (job_started_at.tzinfo is None):
+                job_started_at = job_started_at.replace(tzinfo=timezone.utc)
+            if (run_updated_at and run_updated_at < stale_cutoff) or (job_started_at and job_started_at < stale_cutoff):
+                continue
+        active_jobs.append(job)
+    if active_jobs:
+        return active_jobs[0]
+
+    job_id = f"audiobook_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    progress = _job_progress_payload(
+        stage="queued",
+        current=0,
+        total=int(run.get("total_chapters") or len(run.get("chapters") or []) or 1),
+        label="Queued audiobook pipeline",
+        status="queued",
+        details={
+            "run_id": run_id,
+            "chapter_count": int(run.get("total_chapters") or len(run.get("chapters") or []) or 0),
+            "scope_type": run.get("scope_type") or "book",
+            "title": run.get("title") or "Audiobook run",
+        },
+    )
+    payload = {
+        "id": job_id,
+        "type": "audiobook-pipeline",
+        "status": "queued",
+        "status_reason": f"Queued audiobook run {run_id}",
+        "created_at": utc_now(),
+        "request": {"run_id": run_id},
+        "artifacts": {"audiobook_run_id": run_id, "retry_of": retry_of} if retry_of else {"audiobook_run_id": run_id},
+        "progress": progress,
+        "command": f"db-audiobook:{run_id}",
+    }
+    save_job(payload)
+    _safe_db(
+        None,
+        "update_audiobook_run",
+        lambda: SQLITE_STORE.update_audiobook_run(
+            run_id,
+            {
+                "job_id": job_id,
+                "status": "queued",
+                "progress": progress,
+            },
+        ),
+    )
+    SQLITE_STORE.append_dashboard_job_log(job_id, f"AUDIOBOOK_PIPELINE_QUEUED run_id={run_id}", level="INFO")
+    thread = threading.Thread(target=run_audiobook_job, args=(job_id, run_id), daemon=True)
+    thread.start()
+    return load_job(job_id)
 
 
 def tail_lines(path: Path, limit: int = 80) -> list[str]:
@@ -1077,6 +1579,64 @@ def merge_and_save_general_compute_accounts(config: GeneralComputeProviderConfig
     return _save_provider_config("general_compute", payload)
 
 
+def read_tts_modal_provider(mask: bool = True) -> dict[str, Any]:
+    stored = SQLITE_STORE.get_provider_config("tts_modal")
+    payload = {
+        "provider_name": "tts_modal",
+        "active_index": 0,
+        "transport": "modal_api",
+        "accounts": list((stored or {}).get("accounts") or []),
+        "app_name": str((stored or {}).get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+        "api_url": str((stored or {}).get("api_url") or ""),
+        "default_voice": str((stored or {}).get("default_voice") or "af_bella"),
+        "default_lang_code": str((stored or {}).get("default_lang_code") or "a"),
+        "default_sample_rate": int((stored or {}).get("default_sample_rate") or 24000),
+        "default_audio_format": str((stored or {}).get("default_audio_format") or "wav"),
+        "default_normalize_audio": bool((stored or {}).get("default_normalize_audio", True)),
+        "default_trim_silence": bool((stored or {}).get("default_trim_silence", False)),
+        "default_sentence_pause_ms": int((stored or {}).get("default_sentence_pause_ms") or 0),
+        "timeout_seconds": int((stored or {}).get("timeout_seconds") or 300),
+    }
+    payload["metadata"] = {
+        "provider_name": payload["provider_name"],
+        "transport": payload["transport"],
+        "app_name": payload["app_name"],
+        "api_url": payload["api_url"],
+        "default_voice": payload["default_voice"],
+        "default_lang_code": payload["default_lang_code"],
+        "default_sample_rate": payload["default_sample_rate"],
+        "default_audio_format": payload["default_audio_format"],
+        "default_normalize_audio": payload["default_normalize_audio"],
+        "default_trim_silence": payload["default_trim_silence"],
+        "default_sentence_pause_ms": payload["default_sentence_pause_ms"],
+        "timeout_seconds": payload["timeout_seconds"],
+    }
+    if mask:
+        return payload
+    return payload
+
+
+def save_tts_modal_provider(config: TTSModalProviderConfig) -> dict[str, Any]:
+    payload = {
+        "provider_name": "tts_modal",
+        "active_index": 0,
+        "transport": "modal_api",
+        "accounts": [],
+        "app_name": str(config.app_name or DEFAULT_TTS_MODAL_APP_NAME).strip() or DEFAULT_TTS_MODAL_APP_NAME,
+        "api_url": str(config.api_url or "").strip(),
+        "default_voice": str(config.default_voice or "af_bella").strip() or "af_bella",
+        "default_lang_code": str(config.default_lang_code or "a").strip() or "a",
+        "default_sample_rate": max(8000, int(config.default_sample_rate or 24000)),
+        "default_audio_format": str(config.default_audio_format or "wav").strip().lower() or "wav",
+        "default_normalize_audio": bool(config.default_normalize_audio),
+        "default_trim_silence": bool(config.default_trim_silence),
+        "default_sentence_pause_ms": max(0, int(config.default_sentence_pause_ms or 0)),
+        "timeout_seconds": max(30, int(config.timeout_seconds or 300)),
+    }
+    SQLITE_STORE.upsert_provider_config("tts_modal", payload)
+    return read_tts_modal_provider(mask=True)
+
+
 def read_prompts() -> list[dict[str, Any]]:
     prompts = []
     for relative in PROMPT_FILES:
@@ -1204,11 +1764,64 @@ def _safe_probe_codex_account(account: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _safe_probe_tts_modal_provider(config: dict[str, Any]) -> dict[str, Any]:
+    app_name = str(config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME).strip() or DEFAULT_TTS_MODAL_APP_NAME
+    api_url = str(config.get("api_url") or "").strip()
+    detail_parts: list[str] = []
+    probe_status = "unconfigured"
+    if api_url:
+        probe_status = "ready"
+        detail_parts.append("Configured Modal TTS API URL is present.")
+
+    try:
+        tokens = load_modal_tokens()
+    except Exception as exc:
+        tokens = []
+        detail_parts.append(f"Modal token pool unavailable: {type(exc).__name__}")
+
+    if not api_url and tokens:
+        try:
+            api_url = ensure_tts_modal_urls(tokens[0], app_name).api_url
+            probe_status = "ready"
+            detail_parts.append(f"Resolved Modal TTS API URL from token '{tokens[0].name}'.")
+        except Exception as exc:
+            probe_status = "error"
+            detail_parts.append(f"Modal URL resolution failed: {type(exc).__name__}")
+    elif not api_url and not tokens:
+        detail_parts.append("No explicit API URL and no Modal tokens were available.")
+
+    resolved_model = f"{str(config.get('default_voice') or 'af_bella')}/{str(config.get('default_lang_code') or 'a')}"
+    return {
+        "provider_name": "tts_modal",
+        "label": app_name,
+        "probe_status": probe_status,
+        "transport": "modal_api",
+        "resolved_model": resolved_model,
+        "quota_source": "modal_token_pool",
+        "credits_remaining": "unknown",
+        "detail": " ".join(detail_parts).strip() or "No provider detail recorded.",
+        "last_checked_at_utc": _utc_now_iso(),
+        "payload": {
+            "app_name": app_name,
+            "api_url": api_url,
+            "default_voice": str(config.get("default_voice") or "af_bella"),
+            "default_lang_code": str(config.get("default_lang_code") or "a"),
+            "default_sample_rate": int(config.get("default_sample_rate") or 24000),
+            "default_audio_format": str(config.get("default_audio_format") or "wav"),
+            "default_normalize_audio": bool(config.get("default_normalize_audio", True)),
+            "default_trim_silence": bool(config.get("default_trim_silence", False)),
+            "default_sentence_pause_ms": int(config.get("default_sentence_pause_ms") or 0),
+            "timeout_seconds": int(config.get("timeout_seconds") or 300),
+        },
+    }
+
+
 def refresh_provider_statuses() -> dict[str, Any]:
     provider_payloads = {
         "ollama": _read_provider_config("ollama", mask=False),
         "general_compute": _read_provider_config("general_compute", mask=False),
         "codex": _read_provider_config("codex", mask=False),
+        "tts_modal": read_tts_modal_provider(mask=False),
     }
     results: dict[str, Any] = {}
     for provider_name, payload in provider_payloads.items():
@@ -1222,14 +1835,17 @@ def refresh_provider_statuses() -> dict[str, Any]:
                 "active": True,
             }]
         rows = []
-        for account in accounts:
-            if provider_name == "ollama":
-                status = _safe_probe_ollama_account(account)
-            elif provider_name == "general_compute":
-                status = _safe_probe_general_compute_account(account)
-            else:
-                status = _safe_probe_codex_account(account)
-            rows.append(status)
+        if provider_name == "tts_modal":
+            rows.append(_safe_probe_tts_modal_provider(payload))
+        else:
+            for account in accounts:
+                if provider_name == "ollama":
+                    status = _safe_probe_ollama_account(account)
+                elif provider_name == "general_compute":
+                    status = _safe_probe_general_compute_account(account)
+                else:
+                    status = _safe_probe_codex_account(account)
+                rows.append(status)
         SQLITE_STORE.replace_provider_statuses(provider_name, rows)
         results[provider_name] = {
             "active_index": int(payload.get("active_index", 0) or 0),
@@ -1237,6 +1853,8 @@ def refresh_provider_statuses() -> dict[str, Any]:
             "statuses": SQLITE_STORE.get_provider_statuses(provider_name),
             "refreshed_at_utc": _utc_now_iso(),
         }
+        if provider_name == "tts_modal":
+            results[provider_name]["config"] = read_tts_modal_provider(mask=True)
     return results
 
 
@@ -2142,7 +2760,13 @@ def _normalize_job_payload(payload: dict[str, Any], *, persist: bool = False) ->
     pid = payload.get("pid")
     job_type = str(payload.get("type") or "").strip().lower()
     request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+    artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
     series_id = str(request.get("series_id") or "").strip()
+    audiobook_run_id = str(
+        request.get("run_id")
+        or artifacts.get("audiobook_run_id")
+        or ""
+    ).strip()
     should_sync_pipeline_run = False
     latest_run = _safe_db(
         None,
@@ -2157,6 +2781,33 @@ def _normalize_job_payload(payload: dict[str, Any], *, persist: bool = False) ->
             latest_update_age = max(0.0, time.time() - float(latest_run.get("mtime") or 0.0))
         except Exception:
             latest_update_age = None
+    audiobook_run = _safe_db(
+        None,
+        "get_audiobook_run",
+        lambda: SQLITE_STORE.get_audiobook_run(audiobook_run_id),
+    ) if (job_type == "audiobook-pipeline" and audiobook_run_id) else None
+    audiobook_run = _augment_audiobook_run_from_outputs(audiobook_run) if isinstance(audiobook_run, dict) else audiobook_run
+    audiobook_run_status = str((audiobook_run or {}).get("status") or "").strip().lower()
+    if isinstance(audiobook_run, dict):
+        run_progress = audiobook_run.get("progress") if isinstance(audiobook_run.get("progress"), dict) else {}
+        if run_progress:
+            payload["progress"] = run_progress
+        if audiobook_run_status in {"staged", "queued", "running", "partial", "completed", "failed", "cancelled"}:
+            payload["status"] = "running" if audiobook_run_status == "partial" else audiobook_run_status
+        if audiobook_run.get("error"):
+            payload["error"] = str(audiobook_run.get("error") or "")
+        if payload.get("status") in {"completed", "failed", "cancelled"}:
+            payload["finished_at"] = payload.get("finished_at") or str(audiobook_run.get("updated_at") or utc_now())
+        else:
+            payload.pop("finished_at", None)
+            if payload.get("error") == "stale_dashboard_thread_no_heartbeat":
+                payload.pop("error", None)
+            if _is_stale_status_reason(str(payload.get("status_reason") or "")):
+                payload.pop("status_reason", None)
+        recovery_log_tail = _audiobook_recovery_log_tail(audiobook_run_id, limit=40)
+        if recovery_log_tail:
+            existing_tail = payload.get("log_tail") if isinstance(payload.get("log_tail"), list) else []
+            payload["log_tail"] = [*existing_tail, *recovery_log_tail][-120:]
     if isinstance(latest_run, dict):
         if latest_run_status in {"running", "blocked_rate_limit", "failed", "completed"}:
             progress = latest_run.get("progress") if isinstance(latest_run.get("progress"), dict) else None
@@ -2196,6 +2847,8 @@ def _normalize_job_payload(payload: dict[str, Any], *, persist: bool = False) ->
         if persist:
             save_job(payload)
     if _current_status() == "running" and pid in (None, "", 0, "0"):
+        if job_type == "audiobook-pipeline" and audiobook_run_status == "running":
+            return payload
         progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
         progress_age = _iso_age_seconds(progress.get("updated_at")) if isinstance(progress, dict) else None
         started_age = _iso_age_seconds(payload.get("started_at"))
@@ -2694,6 +3347,22 @@ def _asset_render_row(entity_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         "book_id": entity.book_id,
         "book_title": str(book.title or "") if book else "",
     }
+
+
+def _replace_name_in_text(value: str | None, old_name: str, new_name: str) -> str | None:
+    if value is None:
+        return None
+    return str(value).replace(old_name, new_name)
+
+
+def _replace_name_in_payload(value: Any, old_name: str, new_name: str) -> Any:
+    if isinstance(value, dict):
+        return {key: _replace_name_in_payload(item, old_name, new_name) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_name_in_payload(item, old_name, new_name) for item in value]
+    if isinstance(value, str):
+        return value.replace(old_name, new_name)
+    return value
 
 
 def resolve_identity_output_root(request: EncodeRequest) -> Path:
@@ -3221,6 +3890,96 @@ def run_series_character_render_job(job_id: str, request: SeriesCharacterRenderR
         save_job(payload)
 
 
+def run_selected_entity_render_job(
+    job_id: str,
+    entity_groups: list[dict[str, Any]],
+    *,
+    overwrite: bool = False,
+    limit: int = 0,
+    fallback_entity_types: list[str] | None = None,
+) -> None:
+    payload = load_job(job_id)
+    payload.update({"status": "running", "started_at": utc_now(), "pid": None})
+    save_job(payload)
+    log = DashboardJobLogHandle(job_id)
+    append_stage_log(log, "visual_render", "selected entity render batch started", groups=len(entity_groups))
+    total = len(entity_groups)
+    try:
+        for index, group in enumerate(entity_groups, start=1):
+            contract_path = str(group.get("book_ref") or "").strip()
+            entity_ids = [str(item or "").strip() for item in group.get("entity_ids") or [] if str(item or "").strip()]
+            entity_types = [str(item or "").strip() for item in group.get("entity_types") or [] if str(item or "").strip()]
+            if not contract_path or not entity_ids:
+                continue
+            contract_name = Path(contract_path).name
+            update_job_progress(
+                job_id,
+                stage="visual_render",
+                current=index - 1,
+                total=total,
+                label=f"queueing {contract_name}",
+                status="running",
+                details={"contract_path": contract_path, "entity_ids": entity_ids},
+            )
+            append_job_log(log, f"\n# Selected entity render {index}/{total}: {contract_path} ({len(entity_ids)} entities)\n")
+            service = ComfyUICharacterSheetService()
+            manifest = service.render_from_contract(
+                contract_path,
+                overwrite=overwrite,
+                limit=limit,
+                entity_types=set(entity_types or list(fallback_entity_types or ["character", "creature", "object", "location"])),
+                entity_ids=set(entity_ids),
+            )
+            rendered_rows = list((manifest.get("render_report") or {}).get("renders") or manifest.get("renders") or [])
+            failed_rows = [row for row in rendered_rows if str(row.get("status") or "").strip().lower() == "failed"]
+            summary = {
+                "rendered": sum(1 for row in rendered_rows if str(row.get("status") or "").strip().lower() == "rendered"),
+                "skipped_existing": sum(1 for row in rendered_rows if str(row.get("status") or "").strip().lower() == "skipped_existing"),
+                "failed": len(failed_rows),
+            }
+            append_job_log(log, f"Rendered summary: {json.dumps(summary, ensure_ascii=False)}\n")
+            update_job_progress(
+                job_id,
+                stage="visual_render",
+                current=index,
+                total=total,
+                label=f"{contract_name} complete",
+                status="running" if index < total else "completed",
+                details={
+                    "contract_path": contract_path,
+                    "contract_name": contract_name,
+                    "contract_index": index,
+                    "contract_total": total,
+                    "selected_entity_ids": entity_ids,
+                    "summary": summary,
+                },
+            )
+            if failed_rows:
+                raise RuntimeError(f"Selected entity render failed for {contract_name}: {failed_rows[0].get('last_error') or failed_rows[0].get('status')}")
+
+        update_job_progress(job_id, stage="visual_render", current=total, total=total, label="selected entity renders complete", status="completed")
+        payload = load_job(job_id)
+        payload.update(
+            {
+                "status": "completed",
+                "return_code": 0,
+                "finished_at": utc_now(),
+                "artifacts": {
+                    "groups": entity_groups,
+                    "entity_ids": [entity_id for group in entity_groups for entity_id in (group.get("entity_ids") or [])],
+                },
+            }
+        )
+        save_job(payload)
+        append_stage_log(log, "visual_render", "selected entity render batch completed", groups=len(entity_groups))
+    except Exception as exc:
+        append_stage_log(log, "visual_render", "selected entity render batch failed", error=repr(exc), groups=len(entity_groups))
+        append_job_log(log, traceback.format_exc() + "\n")
+        payload = load_job(job_id)
+        payload.update({"status": "failed", "return_code": -1, "finished_at": utc_now(), "error": repr(exc)})
+        save_job(payload)
+
+
 def run_decoder_job(job_id: str, request: DecoderRequest) -> None:
     resolved_book_ref = _resolve_decoder_book_ref(series_id=request.series_id, book_ref=request.book_ref)
     request = request.model_copy(update={"book_ref": resolved_book_ref})
@@ -3402,6 +4161,706 @@ def run_job(job_id: str, command: list[str]) -> None:
         save_job(payload)
 
 
+def run_audiobook_job(job_id: str, run_id: str) -> None:
+    payload = load_job(job_id)
+    payload.update({"status": "running", "started_at": utc_now(), "pid": None})
+    save_job(payload)
+    log = DashboardJobLogHandle(job_id)
+    append_stage_log(log, "audiobook", "audiobook job started", job_id=job_id, run_id=run_id)
+
+    run_payload = _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(run_id))
+    if run_payload is None:
+        append_stage_log(log, "audiobook", "run missing", run_id=run_id)
+        payload = load_job(job_id)
+        payload.update({"status": "failed", "return_code": -1, "finished_at": utc_now(), "error": "audiobook_run_missing"})
+        save_job(payload)
+        return
+
+    tts_config = read_tts_modal_provider(mask=False)
+    run_metadata = run_payload.get("metadata") if isinstance(run_payload.get("metadata"), dict) else {}
+    rewrite_provider = str(run_metadata.get("rewrite_provider") or "ollama").strip().lower() or "ollama"
+    rewrite_fallback_mode = str(run_metadata.get("rewrite_fallback_mode") or "strict_rewrite").strip().lower() or "strict_rewrite"
+    tts_pool = ModalTTSPoolManager(
+        app_name=str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+        request_timeout_seconds=max(30, int(tts_config.get("timeout_seconds") or 300)),
+    )
+    rewrite_llm = LLMClient(mode=_audiobook_llm_mode(rewrite_provider), allow_cross_provider_fallback=False)
+    service = AudiobookGenerationService(llm_client=rewrite_llm, tts_pool=tts_pool)
+    total_chapters = len(run_payload.get("chapters") or [])
+    completed = 0
+    failed = 0
+    existing_chapters = {
+        str(chapter.get("chapter_id") or ""): chapter
+        for chapter in (run_payload.get("chapters") or [])
+        if str(chapter.get("chapter_id") or "").strip()
+    }
+    completed_chapter_ids: set[str] = set()
+    failed_chapter_ids: set[str] = set()
+    for chapter_id, chapter in existing_chapters.items():
+        audio_status = str(chapter.get("audio_status") or "").strip().lower()
+        transcript_status = str(chapter.get("transcript_status") or "").strip().lower()
+        audio_path = Path(str(chapter.get("audio_path") or "")).resolve() if str(chapter.get("audio_path") or "").strip() else None
+        audio_exists = bool(audio_path and audio_path.exists() and audio_path.is_file())
+        if audio_status == "completed" and audio_exists:
+            completed_chapter_ids.add(chapter_id)
+        elif audio_status == "failed" or transcript_status == "failed":
+            failed_chapter_ids.add(chapter_id)
+    completed = len(completed_chapter_ids)
+    failed = len(failed_chapter_ids)
+
+    _safe_db(
+        None,
+        "update_audiobook_run",
+        lambda: SQLITE_STORE.update_audiobook_run(
+            run_id,
+            {
+                "job_id": job_id,
+                "status": "running",
+                "progress": _job_progress_payload(
+                    stage="starting",
+                    current=0,
+                    total=total_chapters,
+                    label="Starting audiobook pipeline",
+                    status="running",
+                    details={"run_id": run_id, "chapter_count": total_chapters},
+                ),
+            },
+        ),
+    )
+
+    try:
+        transcript_results: list[dict[str, Any]] = []
+
+        for chapter_number, chapter in enumerate(run_payload.get("chapters") or [], start=1):
+            fresh_job = load_job(job_id)
+            if str(((fresh_job.get("artifacts") or {}).get("control_requested") or "")).lower() == "cancel":
+                append_stage_log(log, "audiobook", "cancellation requested", chapter_number=chapter_number, total_chapters=total_chapters)
+                _safe_db(
+                    None,
+                    "update_audiobook_run",
+                    lambda: SQLITE_STORE.update_audiobook_run(
+                        run_id,
+                        {
+                            "status": "cancelled",
+                            "progress": _job_progress_payload(
+                                stage="cancelled",
+                                current=completed,
+                                total=total_chapters,
+                                label="Audiobook run cancelled",
+                                status="cancelled",
+                                details={"run_id": run_id, "chapter_count": total_chapters, "failed_chapters": failed},
+                            ),
+                            "failed_chapters": failed,
+                            "completed_chapters": completed,
+                        },
+                    ),
+                )
+                fresh_job.update({"status": "cancelled", "finished_at": utc_now(), "status_reason": "Cancelled from dashboard."})
+                save_job(fresh_job)
+                return
+
+            chapter_id = str(chapter.get("chapter_id") or "")
+            chapter_title = str(chapter.get("chapter_title") or f"Chapter {chapter_number}").strip() or f"Chapter {chapter_number}"
+            chapter_index = int(chapter.get("chapter_index") or chapter_number)
+            book_index = int(chapter.get("book_index") or 0)
+            existing_chapter = existing_chapters.get(chapter_id, {})
+            stored_transcript_text = str(existing_chapter.get("transcript_text") or "").strip()
+            transcript_already_completed = str(existing_chapter.get("transcript_status") or "").strip().lower() == "completed" and bool(stored_transcript_text)
+            if transcript_already_completed:
+                append_stage_log(
+                    log,
+                    "narration",
+                    "reusing stored transcript",
+                    chapter_number=chapter_number,
+                    total_chapters=total_chapters,
+                    book_index=book_index,
+                    chapter_index=chapter_index,
+                    chapter_title=chapter_title,
+                    transcript_chars=len(stored_transcript_text),
+                )
+                transcript_results.append(
+                    {
+                        "chapter": {**chapter, **existing_chapter},
+                        "chapter_id": chapter_id,
+                        "chapter_number": chapter_number,
+                        "chapter_title": chapter_title,
+                        "chapter_index": chapter_index,
+                        "book_index": book_index,
+                        "transcript_text": stored_transcript_text,
+                        "rewrite": {
+                            "source_provider": existing_chapter.get("source_provider") or run_payload.get("source_provider") or rewrite_provider,
+                            "source_model": existing_chapter.get("source_model") or run_payload.get("source_model") or "",
+                            "metadata": existing_chapter.get("metadata") if isinstance(existing_chapter.get("metadata"), dict) else {},
+                        },
+                    }
+                )
+                continue
+            update_job_progress(
+                job_id,
+                stage="transcript",
+                current=completed + failed,
+                total=total_chapters,
+                label=f"Rewriting {chapter_title}",
+                status="running",
+                details={
+                    "run_id": run_id,
+                    "chapter_count": total_chapters,
+                    "phase": "transcript",
+                    "chapter_number": chapter_number,
+                    "book_index": book_index,
+                    "chapter_index": chapter_index,
+                    "chapter_title": chapter_title,
+                },
+            )
+            append_stage_log(
+                log,
+                "narration",
+                "chapter started",
+                chapter_number=chapter_number,
+                total_chapters=total_chapters,
+                book_index=book_index,
+                chapter_index=chapter_index,
+                chapter_title=chapter_title,
+            )
+
+            with SQLITE_STORE.session_factory() as session:
+                chapter_row = session.get(SqlChapter, chapter_id)
+                source_text = _resolve_chapter_source_text(chapter_row, session=session)
+                if not source_text:
+                    raise RuntimeError(f"Chapter source text is missing for chapter_id={chapter_id}.")
+
+            try:
+                try:
+                    rewrite = service.rewrite_chapter_text(
+                        chapter_title=chapter_title,
+                        chapter_text=source_text,
+                        tone=str((run_payload.get("metadata") or {}).get("tone") or "classic"),
+                        fallback_mode=rewrite_fallback_mode,
+                    )
+                except Exception as exc:
+                    if rewrite_fallback_mode == "fallback_to_source":
+                        append_stage_log(log, "narration", "rewrite failed; falling back to source text", chapter_id=chapter_id, error=repr(exc))
+                        rewrite = {
+                            "transcript_text": source_text,
+                            "source_provider": rewrite_provider,
+                            "source_model": "fallback_source_text",
+                            "metadata": {"rewrite_mode": "source_passthrough_error", "rewrite_error": repr(exc), "fallback_mode": rewrite_fallback_mode},
+                        }
+                    else:
+                        raise
+
+                transcript_text = str(rewrite.get("transcript_text") or "").strip() or source_text
+                transcript_to_store = transcript_text if str(run_payload.get("transcript_storage_mode") or "").lower() != "disabled" else ""
+                _safe_db(
+                    None,
+                    "upsert_audiobook_chapter",
+                    lambda payload={
+                        "run_id": run_id,
+                        "series_id": run_payload.get("series_id") or "",
+                        "book_id": chapter.get("book_id") or "",
+                        "chapter_id": chapter_id,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "transcript_status": "completed",
+                        "transcript_text": transcript_to_store,
+                        "transcript_word_count": len(transcript_text.split()),
+                        "source_provider": rewrite.get("source_provider") or run_payload.get("source_provider") or "ollama",
+                        "source_model": rewrite.get("source_model") or "",
+                        "metadata": {
+                            **(chapter.get("metadata") if isinstance(chapter.get("metadata"), dict) else {}),
+                            **(rewrite.get("metadata") if isinstance(rewrite.get("metadata"), dict) else {}),
+                        },
+                    }: SQLITE_STORE.upsert_audiobook_chapter(payload),
+                )
+                transcript_results.append(
+                    {
+                        "chapter": chapter,
+                        "chapter_id": chapter_id,
+                        "chapter_number": chapter_number,
+                        "chapter_title": chapter_title,
+                        "chapter_index": chapter_index,
+                        "book_index": book_index,
+                        "transcript_text": transcript_text,
+                        "rewrite": rewrite,
+                    }
+                )
+                if str(run_payload.get("audio_storage_mode") or "").lower() == "disabled":
+                    completed_chapter_ids.add(chapter_id)
+                completed = len(completed_chapter_ids)
+                failed = len(failed_chapter_ids)
+                run_progress = _job_progress_payload(
+                    stage="transcript_completed",
+                    current=completed + failed,
+                    total=total_chapters,
+                    label=f"Prepared transcript for {chapter_title}",
+                    status="running",
+                    details={
+                        "run_id": run_id,
+                        "chapter_count": total_chapters,
+                        "phase": "transcript",
+                        "chapter_number": chapter_number,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "failed_chapters": failed,
+                    },
+                )
+                _safe_db(
+                    None,
+                    "update_audiobook_run",
+                    lambda: SQLITE_STORE.update_audiobook_run(
+                        run_id,
+                        {
+                            "status": "running",
+                            "job_id": job_id,
+                            "progress": run_progress,
+                            "completed_chapters": completed,
+                            "failed_chapters": failed,
+                            "source_provider": rewrite.get("source_provider") or run_payload.get("source_provider") or "ollama",
+                            "source_model": rewrite.get("source_model") or run_payload.get("source_model") or "",
+                            "tts_provider": "tts_modal",
+                            "tts_app_name": str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+                        },
+                    ),
+                )
+                update_job_progress(
+                    job_id,
+                    stage="transcript_completed",
+                    current=completed + failed,
+                    total=total_chapters,
+                    label=f"Prepared transcript for {chapter_title}",
+                    status="running",
+                    details={
+                        "run_id": run_id,
+                        "chapter_count": total_chapters,
+                        "phase": "transcript",
+                        "chapter_number": chapter_number,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "failed_chapters": failed,
+                    },
+                )
+            except Exception as exc:
+                failed_chapter_ids.add(chapter_id)
+                completed = len(completed_chapter_ids)
+                failed = len(failed_chapter_ids)
+                append_stage_log(log, "audiobook", "chapter failed", chapter_number=chapter_number, chapter_title=chapter_title, error=repr(exc))
+                append_job_log(log, traceback.format_exc() + "\n")
+                _safe_db(
+                    None,
+                    "upsert_audiobook_chapter",
+                    lambda payload={
+                        "run_id": run_id,
+                        "series_id": run_payload.get("series_id") or "",
+                        "book_id": chapter.get("book_id") or "",
+                        "chapter_id": chapter_id,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "transcript_status": "failed",
+                        "audio_status": "failed" if str(run_payload.get("audio_storage_mode") or "").lower() != "disabled" else "skipped",
+                        "error": repr(exc),
+                    }: SQLITE_STORE.upsert_audiobook_chapter(payload),
+                )
+                run_progress = _job_progress_payload(
+                    stage="transcript_failed",
+                    current=completed + failed,
+                    total=total_chapters,
+                    label=f"Transcript failed for {chapter_title}",
+                    status="running",
+                    details={
+                        "run_id": run_id,
+                        "chapter_count": total_chapters,
+                        "phase": "transcript",
+                        "chapter_number": chapter_number,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "failed_chapters": failed,
+                    },
+                )
+                _safe_db(
+                    None,
+                    "update_audiobook_run",
+                    lambda: SQLITE_STORE.update_audiobook_run(
+                        run_id,
+                        {
+                            "status": "running",
+                            "job_id": job_id,
+                            "progress": run_progress,
+                            "completed_chapters": completed,
+                            "failed_chapters": failed,
+                            "error": repr(exc),
+                        },
+                    ),
+                )
+                update_job_progress(
+                    job_id,
+                    stage="transcript_failed",
+                    current=completed + failed,
+                    total=total_chapters,
+                    label=f"Transcript failed for {chapter_title}",
+                    status="running",
+                    details={
+                        "run_id": run_id,
+                        "chapter_count": total_chapters,
+                        "phase": "transcript",
+                        "chapter_number": chapter_number,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "failed_chapters": failed,
+                    },
+                )
+                continue
+
+        if str(run_payload.get("audio_storage_mode") or "").lower() != "disabled" and transcript_results:
+            live = service.tts_pool.ensure_live()
+            append_stage_log(
+                log,
+                "audiobook",
+                "tts app ready",
+                token_name=live.get("token_name"),
+                api_url=live.get("api_url"),
+                app_name=tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME,
+                rewrite_provider=rewrite_provider,
+                rewrite_fallback_mode=rewrite_fallback_mode,
+            )
+
+            for transcript_result in transcript_results:
+                chapter = transcript_result["chapter"]
+                chapter_id = str(transcript_result["chapter_id"])
+                chapter_number = int(transcript_result["chapter_number"])
+                chapter_title = str(transcript_result["chapter_title"])
+                chapter_index = int(transcript_result["chapter_index"])
+                book_index = int(transcript_result["book_index"])
+                transcript_text = str(transcript_result["transcript_text"])
+                rewrite = transcript_result["rewrite"] if isinstance(transcript_result.get("rewrite"), dict) else {}
+                existing_chapter = existing_chapters.get(chapter_id, {})
+                existing_audio_path_raw = str(existing_chapter.get("audio_path") or chapter.get("audio_path") or "").strip()
+                existing_audio_path = Path(existing_audio_path_raw).resolve() if existing_audio_path_raw else None
+                existing_audio_status = str(existing_chapter.get("audio_status") or "").strip().lower()
+                if existing_audio_status == "completed" and existing_audio_path and existing_audio_path.exists() and existing_audio_path.is_file():
+                    append_stage_log(
+                        log,
+                        "tts",
+                        "reusing existing audio output",
+                        chapter_number=chapter_number,
+                        total_chapters=total_chapters,
+                        chapter_title=chapter_title,
+                        audio_path=str(existing_audio_path),
+                        audio_bytes=existing_audio_path.stat().st_size,
+                    )
+                    completed_chapter_ids.add(chapter_id)
+                    failed_chapter_ids.discard(chapter_id)
+                    completed = len(completed_chapter_ids)
+                    failed = len(failed_chapter_ids)
+                    update_job_progress(
+                        job_id,
+                        stage="chapter_completed",
+                        current=completed,
+                        total=total_chapters,
+                        label=f"Completed {chapter_title}",
+                        status="running",
+                        details={
+                            "run_id": run_id,
+                            "chapter_count": total_chapters,
+                            "phase": "tts",
+                            "chapter_number": chapter_number,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "failed_chapters": failed,
+                            "resumed": True,
+                        },
+                    )
+                    continue
+
+                update_job_progress(
+                    job_id,
+                    stage="tts",
+                    current=completed,
+                    total=total_chapters,
+                    label=f"Synthesizing {chapter_title}",
+                    status="running",
+                    details={
+                        "run_id": run_id,
+                        "chapter_count": total_chapters,
+                        "phase": "tts",
+                        "chapter_number": chapter_number,
+                        "book_index": book_index,
+                        "chapter_index": chapter_index,
+                        "chapter_title": chapter_title,
+                        "transcripts_ready": len(transcript_results),
+                    },
+                )
+                try:
+                    def log_tts_event(event_name: str, **fields: Any) -> None:
+                        append_stage_log(
+                            log,
+                            "tts",
+                            event_name,
+                            chapter_number=chapter_number,
+                            total_chapters=total_chapters,
+                            book_index=book_index,
+                            chapter_index=chapter_index,
+                            chapter_title=chapter_title,
+                            **fields,
+                        )
+
+                    audio_result = service.synthesize_audio(
+                        transcript_text=transcript_text,
+                        voice=str(run_payload.get("voice") or tts_config.get("default_voice") or "af_bella"),
+                        lang_code=str(run_payload.get("lang_code") or tts_config.get("default_lang_code") or "a"),
+                        sample_rate=int(run_payload.get("sample_rate") or tts_config.get("default_sample_rate") or 24000),
+                        audio_format=str(run_payload.get("audio_format") or tts_config.get("default_audio_format") or "wav"),
+                        normalize_audio=bool(run_payload.get("normalize_audio") if run_payload.get("normalize_audio") is not None else tts_config.get("default_normalize_audio", True)),
+                        trim_silence=bool(run_payload.get("trim_silence") if run_payload.get("trim_silence") is not None else tts_config.get("default_trim_silence", False)),
+                        sentence_pause_ms=int(run_payload.get("sentence_pause_ms") or tts_config.get("default_sentence_pause_ms") or 0),
+                        progress_logger=log_tts_event,
+                    )
+                    audio_path = Path(str(chapter.get("audio_path") or "")).resolve()
+                    audio_path.parent.mkdir(parents=True, exist_ok=True)
+                    audio_bytes = audio_result.get("audio_bytes") or b""
+                    audio_path.write_bytes(audio_bytes)
+                    _safe_db(
+                        None,
+                        "upsert_audiobook_chapter",
+                        lambda payload={
+                            "run_id": run_id,
+                            "series_id": run_payload.get("series_id") or "",
+                            "book_id": chapter.get("book_id") or "",
+                            "chapter_id": chapter_id,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "audio_status": "completed",
+                            "audio_path": str(audio_path),
+                            "audio_mime_type": audio_result.get("media_type") or ("audio/flac" if audio_path.suffix.lower() == ".flac" else "audio/wav"),
+                            "audio_byte_size": len(audio_bytes),
+                            "duration_seconds": float(audio_result.get("duration_seconds") or 0.0),
+                            "tts_provider": "tts_modal",
+                            "tts_app_name": str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+                            "provider_account_alias": str(audio_result.get("token_name") or ""),
+                            "voice": audio_result.get("voice") or run_payload.get("voice") or "",
+                            "lang_code": audio_result.get("lang_code") or run_payload.get("lang_code") or "",
+                            "sample_rate": int(audio_result.get("sample_rate") or run_payload.get("sample_rate") or 24000),
+                            "audio_format": audio_result.get("audio_format") or run_payload.get("audio_format") or "wav",
+                        }: SQLITE_STORE.upsert_audiobook_chapter(payload),
+                    )
+                    append_stage_log(
+                        log,
+                        "tts",
+                        "chapter audio completed",
+                        chapter_number=chapter_number,
+                        total_chapters=total_chapters,
+                        chapter_title=chapter_title,
+                        audio_path=str(audio_path),
+                        duration_seconds=audio_result.get("duration_seconds"),
+                        token_name=audio_result.get("token_name"),
+                    )
+                    completed_chapter_ids.add(chapter_id)
+                    completed = len(completed_chapter_ids)
+                    failed = len(failed_chapter_ids)
+                    run_progress = _job_progress_payload(
+                        stage="chapter_completed",
+                        current=completed,
+                        total=total_chapters,
+                        label=f"Completed {chapter_title}",
+                        status="running",
+                        details={
+                            "run_id": run_id,
+                            "chapter_count": total_chapters,
+                            "phase": "tts",
+                            "chapter_number": chapter_number,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "failed_chapters": failed,
+                        },
+                    )
+                    _safe_db(
+                        None,
+                        "update_audiobook_run",
+                        lambda: SQLITE_STORE.update_audiobook_run(
+                            run_id,
+                            {
+                                "status": "running",
+                                "job_id": job_id,
+                                "progress": run_progress,
+                                "completed_chapters": completed,
+                                "failed_chapters": failed,
+                                "source_provider": rewrite.get("source_provider") or run_payload.get("source_provider") or "ollama",
+                                "source_model": rewrite.get("source_model") or run_payload.get("source_model") or "",
+                                "tts_provider": "tts_modal",
+                                "tts_app_name": str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+                            },
+                        ),
+                    )
+                    update_job_progress(
+                        job_id,
+                        stage="chapter_completed",
+                        current=completed,
+                        total=total_chapters,
+                        label=f"Completed {chapter_title}",
+                        status="running",
+                        details={
+                            "run_id": run_id,
+                            "chapter_count": total_chapters,
+                            "phase": "tts",
+                            "chapter_number": chapter_number,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "failed_chapters": failed,
+                        },
+                    )
+                except Exception as exc:
+                    failed_chapter_ids.add(chapter_id)
+                    completed_chapter_ids.discard(chapter_id)
+                    completed = len(completed_chapter_ids)
+                    failed = len(failed_chapter_ids)
+                    append_stage_log(log, "audiobook", "chapter failed", chapter_number=chapter_number, chapter_title=chapter_title, error=repr(exc))
+                    append_job_log(log, traceback.format_exc() + "\n")
+                    _safe_db(
+                        None,
+                        "upsert_audiobook_chapter",
+                        lambda payload={
+                            "run_id": run_id,
+                            "series_id": run_payload.get("series_id") or "",
+                            "book_id": chapter.get("book_id") or "",
+                            "chapter_id": chapter_id,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "audio_status": "failed",
+                            "error": repr(exc),
+                        }: SQLITE_STORE.upsert_audiobook_chapter(payload),
+                    )
+                    run_progress = _job_progress_payload(
+                        stage="chapter_failed",
+                        current=completed,
+                        total=total_chapters,
+                        label=f"Audio failed for {chapter_title}",
+                        status="running",
+                        details={
+                            "run_id": run_id,
+                            "chapter_count": total_chapters,
+                            "phase": "tts",
+                            "chapter_number": chapter_number,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "failed_chapters": failed,
+                        },
+                    )
+                    _safe_db(
+                        None,
+                        "update_audiobook_run",
+                        lambda: SQLITE_STORE.update_audiobook_run(
+                            run_id,
+                            {
+                                "status": "running",
+                                "job_id": job_id,
+                                "progress": run_progress,
+                                "completed_chapters": completed,
+                                "failed_chapters": failed,
+                                "error": repr(exc),
+                            },
+                        ),
+                    )
+                    update_job_progress(
+                        job_id,
+                        stage="chapter_failed",
+                        current=completed,
+                        total=total_chapters,
+                        label=f"Audio failed for {chapter_title}",
+                        status="running",
+                        details={
+                            "run_id": run_id,
+                            "chapter_count": total_chapters,
+                            "phase": "tts",
+                            "chapter_number": chapter_number,
+                            "book_index": book_index,
+                            "chapter_index": chapter_index,
+                            "chapter_title": chapter_title,
+                            "failed_chapters": failed,
+                        },
+                    )
+                    continue
+
+        completed = len(completed_chapter_ids)
+        failed = len(failed_chapter_ids)
+
+        final_status = "completed" if failed == 0 else ("partial" if completed > 0 else "failed")
+        final_progress = _job_progress_payload(
+            stage="complete" if final_status == "completed" else final_status,
+            current=completed,
+            total=total_chapters,
+            label="Audiobook pipeline completed" if final_status == "completed" else "Audiobook pipeline completed with failures",
+            status="completed" if final_status == "completed" else final_status,
+            details={"run_id": run_id, "chapter_count": total_chapters, "failed_chapters": failed},
+        )
+        _safe_db(
+            None,
+            "update_audiobook_run",
+            lambda: SQLITE_STORE.update_audiobook_run(
+                run_id,
+                {
+                    "status": final_status,
+                    "job_id": job_id,
+                    "progress": final_progress,
+                    "completed_chapters": completed,
+                    "failed_chapters": failed,
+                },
+            ),
+        )
+        payload = load_job(job_id)
+        payload.update(
+            {
+                "status": "completed" if final_status == "completed" else "failed",
+                "return_code": 0 if final_status == "completed" else 2,
+                "finished_at": utc_now(),
+                "status_reason": "Audiobook pipeline finished." if final_status == "completed" else "Audiobook pipeline finished with chapter failures.",
+                "progress": final_progress,
+            }
+        )
+        save_job(payload)
+        append_stage_log(log, "audiobook", "audiobook job finished", run_id=run_id, completed_chapters=completed, failed_chapters=failed, final_status=final_status)
+    except Exception as exc:
+        failed += 1
+        append_stage_log(log, "audiobook", "audiobook job failed", run_id=run_id, error=repr(exc))
+        append_job_log(log, traceback.format_exc() + "\n")
+        final_progress = _job_progress_payload(
+            stage="failed",
+            current=completed,
+            total=total_chapters,
+            label=f"Audiobook pipeline failed: {type(exc).__name__}",
+            status="failed",
+            details={"run_id": run_id, "chapter_count": total_chapters, "failed_chapters": failed},
+        )
+        _safe_db(
+            None,
+            "update_audiobook_run",
+            lambda: SQLITE_STORE.update_audiobook_run(
+                run_id,
+                {
+                    "status": "failed" if completed == 0 else "partial",
+                    "job_id": job_id,
+                    "progress": final_progress,
+                    "completed_chapters": completed,
+                    "failed_chapters": failed,
+                    "error": repr(exc),
+                },
+            ),
+        )
+        payload = load_job(job_id)
+        payload.update({"status": "failed", "return_code": -1, "finished_at": utc_now(), "error": repr(exc), "progress": final_progress})
+        save_job(payload)
+
+
 app = FastAPI(title="S.A.G.A. Local Web Runtime")
 
 
@@ -3417,6 +4876,7 @@ def runtime_state() -> dict[str, Any]:
         "ollama": SQLITE_STORE.get_provider_statuses("ollama"),
         "general_compute": SQLITE_STORE.get_provider_statuses("general_compute"),
         "codex": SQLITE_STORE.get_provider_statuses("codex"),
+        "tts_modal": SQLITE_STORE.get_provider_statuses("tts_modal"),
     }
     uploads = _safe_db([], "get_uploaded_sources", lambda: SQLITE_STORE.get_uploaded_sources(limit=100))
     return {
@@ -3653,6 +5113,75 @@ def runtime_series_books(series_id: str) -> dict[str, Any]:
     return {"books": SQLITE_STORE.get_series_books(series_id)}
 
 
+@app.get("/runtime/audiobook/runs")
+def runtime_audiobook_runs(series_id: str = "", book_id: str = "", limit: int = 100) -> dict[str, Any]:
+    rows = _safe_db(
+        [],
+        "get_audiobook_runs",
+        lambda: SQLITE_STORE.get_audiobook_runs(
+            series_id=str(series_id or "").strip() or None,
+            book_id=str(book_id or "").strip() or None,
+            limit=max(1, min(limit, 500)),
+        ),
+    )
+    return {"runs": [_augment_audiobook_run_from_outputs(item) for item in rows]}
+
+
+@app.get("/runtime/audiobook/runs/{run_id}")
+def runtime_audiobook_run(run_id: str) -> dict[str, Any]:
+    payload = _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(run_id))
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Audiobook run not found.")
+    return _augment_audiobook_run_from_outputs(payload)
+
+
+@app.get("/runtime/audiobook/runs/{run_id}/chapters/{chapter_id}/audio")
+def runtime_audiobook_chapter_audio(run_id: str, chapter_id: str):
+    with SQLITE_STORE.session_factory() as session:
+        row = session.execute(
+            select(SqlAudiobookChapter)
+            .where(SqlAudiobookChapter.run_id == run_id, SqlAudiobookChapter.chapter_id == chapter_id)
+        ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Audiobook chapter not found.")
+    audio_path = Path(str(row.audio_path or "")).resolve() if str(row.audio_path or "").strip() else None
+    if audio_path is None or not audio_path.exists() or not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Audio output is not available for this chapter.")
+    media_type = str(row.audio_mime_type or "").strip() or ("audio/flac" if audio_path.suffix.lower() == ".flac" else "audio/wav")
+    return FileResponse(audio_path, media_type=media_type, filename=audio_path.name)
+
+
+@app.get("/runtime/audiobook/runs/{run_id}/audio")
+def runtime_audiobook_run_audio(run_id: str):
+    run = _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Audiobook run not found.")
+    bundle_path = _build_audiobook_bundle(run_id)
+    safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", str((run or {}).get("title") or "audiobook").strip()).strip("_") or "audiobook"
+    return FileResponse(bundle_path, media_type="audio/wav", filename=f"{safe_title}.wav")
+
+
+@app.post("/runtime/audiobook/runs/stage")
+def runtime_stage_audiobook_run(request: AudiobookStageRequest) -> dict[str, Any]:
+    return {"run": _create_staged_audiobook_run(request)}
+
+
+@app.post("/runtime/audiobook/jobs")
+def runtime_start_audiobook_job(request: AudiobookStageRequest) -> dict[str, Any]:
+    run = _create_staged_audiobook_run(request)
+    job = _queue_audiobook_run(str(run.get("id") or ""))
+    return {"run": _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(str(run.get("id") or ""))), "job": job}
+
+
+@app.post("/runtime/audiobook/runs/{run_id}/start")
+def runtime_start_existing_audiobook_run(run_id: str) -> dict[str, Any]:
+    job = _queue_audiobook_run(run_id)
+    run = _safe_db(None, "get_audiobook_run", lambda: SQLITE_STORE.get_audiobook_run(run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Audiobook run not found.")
+    return {"run": run, "job": job}
+
+
 @app.get("/runtime/books/{book_ref:path}/analysis")
 def runtime_book_analysis(book_ref: str, limit: int = 1000, section: str | None = None) -> dict[str, Any]:
     payload = _db_contract_view(book_ref, limit=max(20, min(limit, 1000)), section=section)
@@ -3708,6 +5237,11 @@ def runtime_job_control(job_id: str, action: str) -> dict[str, Any]:
         thread = threading.Thread(target=_run_import_plan_analysis_job, args=(retry_id, retry_job.get("request") or {}), daemon=True)
         thread.start()
         return load_job(retry_id)
+    if action == "retry" and status in {"failed", "cancelled"} and str(payload.get("type") or "") == "audiobook-pipeline":
+        run_id = str((payload.get("artifacts") or {}).get("audiobook_run_id") or "").strip()
+        if not run_id:
+            raise HTTPException(status_code=409, detail="Audiobook retry is missing the persisted run_id artifact.")
+        return _queue_audiobook_run(run_id, retry_of=job_id)
     raise HTTPException(status_code=409, detail=f"{action} is not safe for this job type/status in the current runtime.")
 
 
@@ -3974,13 +5508,15 @@ def runtime_assets_entities(entity_type: str = "", q: str = "", book_id: str = "
         image_counts: dict[str, int] = {}
         latest_images: dict[str, dict[str, Any]] = {}
         if entity_ids:
-            prompt_counts = dict(
-                session.execute(
-                    select(SqlVisualPrompt.entity_id, func.count(SqlVisualPrompt.id))
+            prompt_counts = {
+                str(row[0]): 1
+                for row in session.execute(
+                    select(SqlVisualPrompt.entity_id)
                     .where(SqlVisualPrompt.entity_id.in_(entity_ids))
                     .group_by(SqlVisualPrompt.entity_id)
                 ).all()
-            )
+                if str(row[0] or "").strip()
+            }
             image_counts = dict(
                 session.execute(
                     select(SqlGeneratedImage.entity_id, func.count(SqlGeneratedImage.id))
@@ -4044,6 +5580,7 @@ def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="Entity not found.")
         book = session.get(SqlBook, entity.book_id)
         prompts = session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id).order_by(SqlVisualPrompt.updated_at.desc())).scalars().all()
+        prompts = _canonical_prompt_rows(prompts)
         images = session.execute(select(SqlGeneratedImage).where(SqlGeneratedImage.entity_id == entity.id).order_by(SqlGeneratedImage.updated_at.desc())).scalars().all()
         entity_payload = {
             "id": entity.id,
@@ -4059,6 +5596,7 @@ def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
             "baseline_visual_prompt": entity.baseline_visual_prompt or "",
             "generated_image_path": entity.generated_image_path or "",
             "generated_thumbnail_path": _ensure_runtime_thumbnail(entity.generated_image_path or "", entity.generated_thumbnail_path or ""),
+            "analysis_quality_flags": entity.analysis_quality_flags or [],
         }
         prompt_rows = [
             {
@@ -4100,6 +5638,96 @@ def runtime_asset_entity(entity_id: str) -> dict[str, Any]:
             str(entity.entity_type or "").strip().lower(),
         ),
     }
+
+
+@app.patch("/runtime/assets/entities/{entity_id}")
+def runtime_rename_asset_entity(entity_id: str, request: EntityRenameRequest) -> dict[str, Any]:
+    new_name = str(request.name or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="name is required.")
+
+    with SQLITE_STORE.session_factory() as session:
+        entity = session.get(SqlEntity, entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="Entity not found.")
+
+        old_name = str(entity.canonical_name or "").strip()
+        if not old_name:
+            raise HTTPException(status_code=400, detail="Entity has no canonical name to rename.")
+        if new_name == old_name:
+            session.commit()
+            return {"renamed": True, "entity_id": entity_id, "old_name": old_name, "new_name": new_name, "asset": runtime_asset_entity(entity_id)}
+
+        conflict = session.execute(
+            select(SqlEntity).where(
+                SqlEntity.book_id == entity.book_id,
+                SqlEntity.entity_type == entity.entity_type,
+                SqlEntity.canonical_name == new_name,
+                SqlEntity.id != entity.id,
+            )
+        ).scalar_one_or_none()
+        if conflict is not None:
+            raise HTTPException(status_code=409, detail="Another entity with this name and type already exists in the same book.")
+
+        entity.canonical_name = new_name
+        entity.entity_context = _replace_name_in_text(entity.entity_context, old_name, new_name)
+        entity.initial_physical_description = _replace_name_in_payload(entity.initial_physical_description, old_name, new_name)
+        entity.first_appearance_profile = _replace_name_in_payload(entity.first_appearance_profile, old_name, new_name)
+        entity.typed_attributes = _replace_name_in_payload(entity.typed_attributes, old_name, new_name)
+        entity.latest_world_state = _replace_name_in_payload(entity.latest_world_state, old_name, new_name)
+        entity.narrative_roles = _replace_name_in_payload(entity.narrative_roles, old_name, new_name)
+        entity.descriptions = _replace_name_in_payload(entity.descriptions, old_name, new_name)
+        entity.state_changes = _replace_name_in_payload(entity.state_changes, old_name, new_name)
+        entity.event_links = _replace_name_in_payload(entity.event_links, old_name, new_name)
+        entity.visual_change_log = _replace_name_in_payload(entity.visual_change_log, old_name, new_name)
+        entity.analysis_quality_flags = _replace_name_in_payload(entity.analysis_quality_flags, old_name, new_name)
+        entity.baseline_visual_prompt = _replace_name_in_text(entity.baseline_visual_prompt, old_name, new_name)
+        entity.metadata_json = _replace_name_in_payload(entity.metadata_json, old_name, new_name)
+
+        for row in session.execute(select(SqlCharacterProfile).where(SqlCharacterProfile.entity_id == entity.id)).scalars().all():
+            row.character_name = new_name
+            row.payload_json = _replace_name_in_payload(row.payload_json, old_name, new_name)
+
+        for row in session.execute(select(SqlStableCharacterState).where(SqlStableCharacterState.entity_id == entity.id)).scalars().all():
+            row.character_name = new_name
+            row.payload_json = _replace_name_in_payload(row.payload_json, old_name, new_name)
+
+        for row in session.execute(select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id)).scalars().all():
+            row.entity_name = new_name
+            row.positive_prompt = _replace_name_in_text(row.positive_prompt, old_name, new_name)
+            row.negative_prompt = _replace_name_in_text(row.negative_prompt, old_name, new_name)
+            row.source_evidence = _replace_name_in_text(row.source_evidence, old_name, new_name)
+            row.details_json = _replace_name_in_payload(row.details_json, old_name, new_name)
+            row.metadata_json = _replace_name_in_payload(row.metadata_json, old_name, new_name)
+
+        for row in session.execute(select(SqlGeneratedImage).where(SqlGeneratedImage.entity_id == entity.id)).scalars().all():
+            row.entity_name = new_name
+            row.manifest_json = _replace_name_in_payload(row.manifest_json, old_name, new_name)
+
+        for row in session.execute(select(SqlEvent).where(SqlEvent.book_id == entity.book_id)).scalars().all():
+            row.entities_involved = _replace_name_in_payload(row.entities_involved, old_name, new_name)
+            row.payload_json = _replace_name_in_payload(row.payload_json, old_name, new_name)
+
+        for row in session.execute(select(SqlScene).where(SqlScene.book_id == entity.book_id)).scalars().all():
+            if str(entity.entity_type or "").strip().lower() == "location":
+                row.location_name = _replace_name_in_text(row.location_name, old_name, new_name)
+                row.location_description = _replace_name_in_text(row.location_description, old_name, new_name)
+            row.payload_json = _replace_name_in_payload(row.payload_json, old_name, new_name)
+
+        for row in session.execute(select(SqlTimelineRow).where(SqlTimelineRow.book_id == entity.book_id)).scalars().all():
+            row.payload_json = _replace_name_in_payload(row.payload_json, old_name, new_name)
+
+        for row in session.execute(select(SqlGeneratedStory).where(SqlGeneratedStory.book_id == entity.book_id)).scalars().all():
+            row.primary_pov_character = _replace_name_in_text(row.primary_pov_character, old_name, new_name)
+            row.output_text = _replace_name_in_text(row.output_text, old_name, new_name)
+            row.blueprint_json = _replace_name_in_payload(row.blueprint_json, old_name, new_name)
+            row.progress_json = _replace_name_in_payload(row.progress_json, old_name, new_name)
+            row.verification_json = _replace_name_in_payload(row.verification_json, old_name, new_name)
+            row.metadata_json = _replace_name_in_payload(row.metadata_json, old_name, new_name)
+
+        session.commit()
+
+    return {"renamed": True, "entity_id": entity_id, "old_name": old_name, "new_name": new_name, "asset": runtime_asset_entity(entity_id)}
 
 
 @app.delete("/runtime/assets/entities/{entity_id}")
@@ -4182,21 +5810,35 @@ def runtime_create_prompt_version(entity_id: str, request: PromptVersionRequest)
             raise HTTPException(status_code=404, detail="Entity not found.")
         if not request.positive_prompt.strip():
             raise HTTPException(status_code=400, detail="positive_prompt is required.")
-        prompt = SqlVisualPrompt(
-            book_id=entity.book_id,
-            entity_id=entity.id,
-            entity_name=entity.canonical_name,
-            entity_type=entity.entity_type,
-            prompt_type=f"{entity.entity_type}_baseline",
-            visual_bucket="baseline",
-            positive_prompt=request.positive_prompt.strip(),
-            negative_prompt=request.negative_prompt.strip(),
-            source_evidence="dashboard prompt edit",
-            confidence="manual",
-            details_json=request.details,
-            metadata_json={"source": request.source, "created_from_dashboard": True, "created_at": utc_now()},
-        )
-        session.add(prompt)
+        prompt_rows = session.execute(
+            select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id).order_by(SqlVisualPrompt.updated_at.desc())
+        ).scalars().all()
+        prompt_rows = _canonical_prompt_rows(prompt_rows)
+        prompt = prompt_rows[0] if prompt_rows else None
+        if prompt is None:
+            prompt = SqlVisualPrompt(
+                book_id=entity.book_id,
+                entity_id=entity.id,
+                entity_name=entity.canonical_name,
+                entity_type=entity.entity_type,
+            )
+            session.add(prompt)
+            session.flush()
+        prompt.entity_name = entity.canonical_name
+        prompt.entity_type = entity.entity_type
+        prompt.prompt_type = prompt.prompt_type or f"initial_{entity.entity_type}_description"
+        prompt.visual_bucket = prompt.visual_bucket or ("locations" if entity.entity_type == "location" else ("objects_creatures" if entity.entity_type in {"creature", "object"} else "initial_characters"))
+        prompt.positive_prompt = request.positive_prompt.strip()
+        prompt.negative_prompt = request.negative_prompt.strip()
+        prompt.source_evidence = "dashboard prompt edit"
+        prompt.confidence = "manual"
+        prompt.details_json = request.details
+        prompt.metadata_json = {"source": request.source, "created_from_dashboard": True, "updated_at": utc_now()}
+        extra_prompt_ids = [row.id for row in session.execute(
+            select(SqlVisualPrompt).where(SqlVisualPrompt.entity_id == entity.id, SqlVisualPrompt.id != prompt.id)
+        ).scalars().all()]
+        if extra_prompt_ids:
+            session.execute(delete(SqlVisualPrompt).where(SqlVisualPrompt.id.in_(extra_prompt_ids)))
         if request.activate:
             entity.baseline_visual_prompt = request.positive_prompt.strip()
         session.commit()
@@ -4414,6 +6056,80 @@ def runtime_save_render_entity(entity_id: str, request: AssetSaveRenderRequest) 
 
 @app.post("/runtime/assets/render-batch")
 def runtime_render_batch(request: RenderBatchRequest) -> dict[str, Any]:
+    normalized_entity_ids = [str(item or "").strip() for item in request.entity_ids if str(item or "").strip()]
+    if normalized_entity_ids:
+        with SQLITE_STORE.session_factory() as session:
+            rows = session.execute(
+                select(
+                    SqlEntity.id.label("entity_id"),
+                    SqlEntity.book_id.label("book_id"),
+                    SqlEntity.entity_type.label("entity_type"),
+                    SqlBook.book_index.label("book_index"),
+                )
+                .join(SqlBook, SqlEntity.book_id == SqlBook.id)
+                .where(SqlEntity.id.in_(normalized_entity_ids))
+            ).mappings().all()
+        row_map = {
+            str(row.get("entity_id") or "").strip(): {
+                "book_id": str(row.get("book_id") or "").strip(),
+                "entity_type": str(row.get("entity_type") or "").strip(),
+                "book_index": int(row.get("book_index") or 0),
+            }
+            for row in rows
+            if str(row.get("entity_id") or "").strip() and str(row.get("book_id") or "").strip()
+        }
+        missing_ids = [entity_id for entity_id in normalized_entity_ids if entity_id not in row_map]
+        if missing_ids:
+            raise HTTPException(status_code=404, detail=f"Some selected entities were not found: {', '.join(missing_ids[:6])}")
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for entity_id in normalized_entity_ids:
+            row = row_map[entity_id]
+            book_id = row["book_id"]
+            grouped.setdefault(
+                book_id,
+                {
+                    "book_ref": f"db://book/{book_id}",
+                    "book_index": row["book_index"],
+                    "entity_ids": [],
+                    "entity_types": [],
+                },
+            )
+            grouped[book_id]["entity_ids"].append(entity_id)
+            entity_type = row["entity_type"]
+            if entity_type and entity_type not in grouped[book_id]["entity_types"]:
+                grouped[book_id]["entity_types"].append(entity_type)
+
+        entity_groups = sorted(grouped.values(), key=lambda item: int(item.get("book_index") or 0))
+        job_id = f"entity_render_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        payload = {
+            "id": job_id,
+            "type": "render-selected-assets",
+            "status": "queued",
+            "created_at": utc_now(),
+            "command": f"selected-asset-render:{len(normalized_entity_ids)}",
+            "request": {
+                "entity_ids": normalized_entity_ids,
+                "entity_groups": entity_groups,
+                "overwrite": request.overwrite,
+                "limit": request.limit,
+                "entity_types": request.entity_types or ["character", "creature", "object", "location"],
+            },
+        }
+        save_job(payload)
+        thread = threading.Thread(
+            target=run_selected_entity_render_job,
+            args=(job_id, entity_groups),
+            kwargs={
+                "overwrite": request.overwrite,
+                "limit": request.limit,
+                "fallback_entity_types": request.entity_types or ["character", "creature", "object", "location"],
+            },
+            daemon=True,
+        )
+        thread.start()
+        return load_job(job_id)
+
     if request.series_id:
         return start_series_character_render(
             SeriesCharacterRenderRequest(
@@ -4430,6 +6146,7 @@ def runtime_render_batch(request: RenderBatchRequest) -> dict[str, Any]:
                 limit=request.limit,
                 overwrite=request.overwrite,
                 entity_types=request.entity_types or ["character", "creature", "object", "location"],
+                entity_ids=normalized_entity_ids,
             )
         )
     raise HTTPException(status_code=400, detail="book_ref or series_id is required.")
@@ -4480,6 +6197,11 @@ def save_codex_provider(config: CodexProviderConfig) -> dict[str, Any]:
     return {"codex": merge_and_save_codex_accounts(config)}
 
 
+@app.post("/runtime/providers/tts-modal")
+def save_tts_modal_provider_route(config: TTSModalProviderConfig) -> dict[str, Any]:
+    return {"tts_modal": save_tts_modal_provider(config)}
+
+
 @app.get("/runtime/providers/status")
 def get_provider_statuses(refresh: bool = False) -> dict[str, Any]:
     if refresh:
@@ -4497,6 +6219,10 @@ def get_provider_statuses(refresh: bool = False) -> dict[str, Any]:
             "codex": {
                 "config": read_codex_accounts(mask=True),
                 "statuses": SQLITE_STORE.get_provider_statuses("codex"),
+            },
+            "tts_modal": {
+                "config": read_tts_modal_provider(mask=True),
+                "statuses": SQLITE_STORE.get_provider_statuses("tts_modal"),
             },
         },
         "refreshed_at": utc_now(),

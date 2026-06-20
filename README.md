@@ -43,6 +43,15 @@ Used for:
 - inspecting scenes, entities, events, states, visuals, and providers
 - launching decoder and rendering workflows
 
+### Narraverse Website
+
+Primary public website surface:
+
+- [apps/narraverse_web](B:\Documents\PyCharm\graduationProject\apps\narraverse_web)
+- [docs/narraverse_web.md](B:\Documents\PyCharm\graduationProject\docs\narraverse_web.md)
+
+Hosted locally as the `NarraverseWebsite` Windows service on `127.0.0.1:8676` and exposed publicly at `https://narraverse.faresuniform.uk` through the same Cloudflare Tunnel pattern used for the other `faresuniform.uk` services.
+
 ### CLI
 
 Primary CLI entrypoint:

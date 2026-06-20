@@ -72,6 +72,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="How long a successful render keeps a token marked as warm.",
     )
     parser.add_argument(
+        "--command-timeout-seconds",
+        type=int,
+        default=180,
+        help="Maximum seconds to wait for the wrapped command before treating it as a failed token attempt.",
+    )
+    parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
         help="Command to run. Example: modal run integrations/comfyui/modal_app.py --prompt \"test\"",
@@ -120,51 +126,74 @@ def main() -> int:
         env["PYTHONIOENCODING"] = "utf-8"
 
         print(f"[modal-pool] trying token '{token.name}'", file=sys.stderr)
-        result = subprocess.run(
-            command,
-            env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        try:
+            result = subprocess.run(
+                command,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=max(1, int(args.command_timeout_seconds or 180)),
+            )
 
-        emit_text(sys.stdout, result.stdout)
-        emit_text(sys.stderr, result.stderr)
+            emit_text(sys.stdout, result.stdout)
+            emit_text(sys.stderr, result.stderr)
 
-        if result.returncode == 0:
-            save_next_index(index + 1, args.state_file)
-            update_token_stat(token.name, state_path=args.state_file, health_ok=True, last_error="")
-            if args.mark_render_success:
-                mark_render_success(
-                    token.name,
-                    state_path=args.state_file,
-                    warm_ttl_seconds=args.warm_ttl_seconds,
+            if result.returncode == 0:
+                save_next_index(index + 1, args.state_file)
+                update_token_stat(token.name, state_path=args.state_file, health_ok=True, last_error="")
+                if args.mark_render_success:
+                    mark_render_success(
+                        token.name,
+                        state_path=args.state_file,
+                        warm_ttl_seconds=args.warm_ttl_seconds,
+                    )
+                print(f"[modal-pool] succeeded with token '{token.name}'", file=sys.stderr)
+                return 0
+
+            last_returncode = result.returncode
+            tail_error = (result.stderr or result.stdout).strip().splitlines()
+            update_token_stat(
+                token.name,
+                state_path=args.state_file,
+                health_ok=False,
+                last_error=tail_error[-1] if tail_error else f"returncode={result.returncode}",
+            )
+            should_retry = args.retry_any_error or is_credit_failure(result.stdout, result.stderr)
+            if should_retry:
+                print(
+                    f"[modal-pool] token '{token.name}' failed with a retryable error, rotating...",
+                    file=sys.stderr,
                 )
-            print(f"[modal-pool] succeeded with token '{token.name}'", file=sys.stderr)
-            return 0
+                continue
 
-        last_returncode = result.returncode
-        tail_error = (result.stderr or result.stdout).strip().splitlines()
-        update_token_stat(
-            token.name,
-            state_path=args.state_file,
-            health_ok=False,
-            last_error=tail_error[-1] if tail_error else f"returncode={result.returncode}",
-        )
-        should_retry = args.retry_any_error or is_credit_failure(result.stdout, result.stderr)
-        if should_retry:
             print(
-                f"[modal-pool] token '{token.name}' failed with a retryable error, rotating...",
+                f"[modal-pool] token '{token.name}' failed with a non-retryable error, stopping.",
                 file=sys.stderr,
             )
-            continue
-
-        print(
-            f"[modal-pool] token '{token.name}' failed with a non-retryable error, stopping.",
-            file=sys.stderr,
-        )
-        return result.returncode
+            return result.returncode
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            emit_text(sys.stdout, stdout)
+            emit_text(sys.stderr, stderr)
+            timeout_message = f"[modal-pool] token '{token.name}' timed out after {max(1, int(args.command_timeout_seconds or 180))}s"
+            print(timeout_message, file=sys.stderr)
+            update_token_stat(
+                token.name,
+                state_path=args.state_file,
+                health_ok=False,
+                last_error=timeout_message,
+            )
+            last_returncode = 124
+            if args.retry_any_error:
+                print(
+                    f"[modal-pool] token '{token.name}' timed out, rotating...",
+                    file=sys.stderr,
+                )
+                continue
+            return last_returncode
 
     print("[modal-pool] all tokens failed.", file=sys.stderr)
     return last_returncode

@@ -1,0 +1,103 @@
+"use client";
+
+import { Cormorant_Garamond } from "next/font/google";
+import { useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronDown } from "@fortawesome/free-solid-svg-icons";
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+export default function MiddleBox() {
+  const [storyType, setStoryType] = useState("");
+  return (
+    <div className="flex flex-col justify-between">
+      <div className=" rounded-2xl border border-[rgba(180,160,255,0.25)] bg-[#00000080] py-5 px-10 w-fit h-fit">
+        <div className="flex items-center gap-6 justify-center">
+          <span className="border border-transparent p-1.5 bg-[#6745af] w-7 h-7 rounded-full  flex items-center justify-center">
+            2
+          </span>
+          <p className={`${cormorant.className} text-[25px]`}>
+            Select Story Type
+          </p>
+        </div>
+
+        <div>
+          <p className="text-white/70 text-sm mb-8 mt-4">
+            Select the type of story you want to generate
+          </p>
+          <div className="relative mb-10">
+            <div className="relative">
+              <select
+                value={storyType}
+                onChange={(e) => setStoryType(e.target.value)}
+                className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(180,160,255,0.25)] rounded-xl px-4 py-4 text-white appearance-none outline-none cursor-pointer"
+              >
+                <option value="sequel" className="bg-[#1a1a2e]">
+                  Sequel
+                </option>
+                <option value="prequel" className="bg-[#1a1a2e]">
+                  Prequel
+                </option>
+                <option value="shat-if" className="bg-[#1a1a2e]">
+                  What-if
+                </option>
+                <option value="mid-canon" className="bg-[#1a1a2e]">
+                  Mid-canon
+                </option>
+                <option value="genre-swapping" className="bg-[#1a1a2e]">
+                  Genre Swapping
+                </option>
+                <option value="character-pov" className="bg-[#1a1a2e]">
+                  Character Pov
+                </option>
+              </select>
+
+              <FontAwesomeIcon
+                icon={faChevronDown}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none"
+              />
+            </div>
+            {storyType === "genre-swapping" && (
+              <div className="relative mt-6">
+                <select className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(180,160,255,0.25)] rounded-xl px-4 py-4 text-white appearance-none outline-none cursor-pointer">
+                  <option value="rom-com" className="bg-[#1a1a2e]">
+                    Rom-Com
+                  </option>
+                  <option value="thriller" className="bg-[#1a1a2e]">
+                    Thriller
+                  </option>
+                  <option value="fantasy" className="bg-[#1a1a2e]">
+                    Fantasy
+                  </option>
+                </select>
+
+                <FontAwesomeIcon
+                  icon={faChevronDown}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-center mb-[30px]">
+        <button
+          className="px-[100px] py-2 rounded-full text-white cursor-pointer"
+          style={{
+            background:
+              "linear-gradient(to right, rgba(93, 56, 167, 0), rgba(102, 102, 102, 0.45))",
+            border: "1px solid rgba(180, 160, 255, 0.5)",
+            boxShadow:
+              "0 0 15px rgba(180, 160, 255, 0.4), 0 0 30px rgba(180, 160, 255, 0.2)",
+          }}
+        >
+          Generate Book
+        </button>
+      </div>
+    </div>
+  );
+}

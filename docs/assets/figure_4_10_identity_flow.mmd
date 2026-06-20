@@ -1,0 +1,13 @@
+%%{init: {'theme':'base','themeVariables':{'fontSize':'24px','fontFamily':'Arial','primaryColor':'#f8fafc','primaryBorderColor':'#64748b','lineColor':'#475569','primaryTextColor':'#0f172a'}}}%%
+flowchart LR
+    A["Uploaded source"] --> B["Books, chapters, and scenes"]
+    B --> C["Identity pipeline"]
+    C --> D["Identity bundle"]
+    B --> E["Events component"]
+    B --> F["Entities component"]
+    D --> E
+    D --> F
+    E --> G["Events table"]
+    F --> H["Entities table"]
+    G --> I["Later analysis stages"]
+    H --> I

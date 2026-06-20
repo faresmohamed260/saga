@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from saga.services.comfyui_character_sheet_service import ComfyUICharacterSheetService
 from saga.services.entity_visual_prompt_service import EntityVisualPromptService
@@ -320,3 +321,73 @@ def test_db_render_manifest_can_target_one_exact_entity_id(tmp_path):
     assert manifest["renders"][0]["prompt_id"] == target_prompt_id
     assert manifest["renders"][0]["entity_name"] == "Hermione Granger"
     assert manifest["renders"][0]["positive_prompt"] == "selected hermione prompt"
+
+
+def test_render_single_payload_uses_live_api_for_character_sheet(monkeypatch, tmp_path):
+    captured = {}
+
+    class _Response:
+        headers = {"Content-Type": "image/png"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"png-bytes"
+
+    def _fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr("saga.services.comfyui_character_sheet_service.urllib.request.urlopen", _fake_urlopen)
+    monkeypatch.setattr(
+        ComfyUICharacterSheetService,
+        "_active_modal_api_url",
+        lambda self: "https://example.modal.run",
+    )
+
+    output_path = tmp_path / "character.png"
+    row = {
+        "positive_prompt": "hero turnaround",
+        "negative_prompt": "bad anatomy",
+        "workflow_mode": "character_sheet",
+        "output_path": str(output_path),
+        "seed": 7,
+        "steps": 11,
+        "cfg": 1.5,
+        "width": 1504,
+        "height": 1024,
+    }
+
+    result = ComfyUICharacterSheetService().render_single_payload(row)
+
+    assert result["status"] == "rendered"
+    assert output_path.read_bytes() == b"png-bytes"
+    assert "workflow_mode=character_sheet" in captured["url"]
+    assert "prompt=hero+turnaround" in captured["url"]
+    assert captured["timeout"] == 600
+
+
+def test_active_modal_api_url_refreshes_state_when_missing(monkeypatch, tmp_path):
+    pool_state_path = tmp_path / "pool_state.json"
+
+    class _Token:
+        name = "member-01"
+
+    monkeypatch.setattr("saga.services.comfyui_character_sheet_service.POOL_STATE", pool_state_path)
+    monkeypatch.setattr("saga.services.comfyui_character_sheet_service.load_tokens", lambda: [_Token()])
+    monkeypatch.setattr(
+        "saga.services.comfyui_character_sheet_service.ensure_urls",
+        lambda token, app_name: type("Urls", (), {"api_url": "https://example.modal.run/api"})(),
+    )
+
+    api_url = ComfyUICharacterSheetService()._active_modal_api_url()
+
+    assert api_url == "https://example.modal.run/api"
+    saved = json.loads(pool_state_path.read_text(encoding="utf-8"))
+    assert saved["active_api_url"] == "https://example.modal.run/api"
+    assert saved["token_stats"]["member-01"]["api_url"] == "https://example.modal.run/api"

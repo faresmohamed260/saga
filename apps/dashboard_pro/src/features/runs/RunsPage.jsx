@@ -71,7 +71,7 @@ export function RunsPage() {
   const status = String(job?.status || "").toLowerCase();
   const type = String(job?.type || job?.job_type || "");
   const canCancel = ["queued", "running", "starting", "staging", "validated", "blocked"].includes(status);
-  const canRetry = ["failed", "cancelled"].includes(status) && type === "db-native-analysis";
+  const canRetry = ["failed", "cancelled"].includes(status) && ["db-native-analysis", "audiobook-pipeline"].includes(type);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[420px_1fr]">

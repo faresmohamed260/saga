@@ -33,7 +33,8 @@ $managedHostnames = @(
     "hermes.faresuniform.uk",
     "robotics.faresuniform.uk",
     "jarvis.faresuniform.uk",
-    "saga.faresuniform.uk"
+    "saga.faresuniform.uk",
+    "narraverse.faresuniform.uk"
 )
 
 $preservedIngress = @()
@@ -68,6 +69,11 @@ $managedIngress = @(
     @{
         hostname = "saga.faresuniform.uk"
         service = "http://localhost:8675"
+        originRequest = @{}
+    },
+    @{
+        hostname = "narraverse.faresuniform.uk"
+        service = "http://localhost:8676"
         originRequest = @{}
     }
 )
@@ -117,5 +123,6 @@ foreach ($hostname in $managedHostnames) {
     }
 }
 
-Write-Host "Updated faresuniform tunnel ingress for hermes, robotics, jarvis, and saga." -ForegroundColor Green
+Write-Host "Updated faresuniform tunnel ingress for hermes, robotics, jarvis, saga, and narraverse." -ForegroundColor Green
 Write-Host "SAGA route -> http://localhost:8675"
+Write-Host "Narraverse route -> http://localhost:8676"

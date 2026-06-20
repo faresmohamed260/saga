@@ -14,7 +14,34 @@ const apiMock = vi.hoisted(() => ({
   job: vi.fn(async () => ({ id: "job-1", status: "completed", progress: { label: "done" }, log_tail: ["job finished"] })),
   jobLogs: vi.fn(async () => ({ lines: ["job finished"] })),
   series: vi.fn(async () => ({ series: [{ series_id: "series-1", title: "Series One", book_count: 1 }] })),
-  seriesBooks: vi.fn(async () => ({ books: [{ book_id: "book-1", title: "Book One", run_status: "success" }] })),
+  seriesBooks: vi.fn(async () => ({ books: [{ book_id: "book-1", title: "Book One", run_status: "success", chapter_count: 3, scene_count: 5 }] })),
+  audiobookRuns: vi.fn(async () => ({ runs: [{ id: "audio-run-1", title: "Book One audiobook", scope_type: "book", total_chapters: 3, voice: "af_bella", audio_format: "wav", status: "staged", updated_at: "2026-06-20T00:00:00Z" }] })),
+  audiobookRun: vi.fn(async () => ({
+    id: "audio-run-1",
+    title: "Book One audiobook",
+    scope_type: "book",
+    total_books: 1,
+    total_chapters: 3,
+    transcript_storage_mode: "database",
+    audio_storage_mode: "path",
+    voice: "af_bella",
+    audio_format: "wav",
+    status: "staged",
+    metadata: { rewrite_provider: "ollama", rewrite_fallback_mode: "strict_rewrite" },
+    chapters: [
+      { id: "audio-chapter-1", chapter_id: "chapter-1", book_id: "book-1", book_index: 1, chapter_index: 1, chapter_title: "Chapter 1", transcript_status: "staged", audio_status: "staged", transcript_text: "Chapter one transcript preview.", audio_path: "B:/audio/chapter1.wav" },
+    ],
+  })),
+  stageAudiobookRun: vi.fn(async () => ({ run: { id: "audio-run-2", title: "Staged audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "path", voice: "af_bella", audio_format: "wav", status: "staged", chapters: [] } })),
+  startAudiobookJob: vi.fn(async () => ({
+    run: { id: "audio-run-3", title: "Queued audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "path", voice: "af_bella", audio_format: "wav", status: "queued", job_id: "audiobook-job-1", chapters: [] },
+    job: { id: "audiobook-job-1", status: "queued" },
+  })),
+  startAudiobookRun: vi.fn(async () => ({
+    run: { id: "audio-run-1", title: "Book One audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "path", voice: "af_bella", audio_format: "wav", status: "queued", job_id: "audiobook-job-2", chapters: [] },
+    job: { id: "audiobook-job-2", status: "queued" },
+  })),
+  audiobookChapterAudioUrl: vi.fn((runId, chapterId) => `/runtime/audiobook/runs/${runId}/chapters/${chapterId}/audio`),
   bookAnalysis: vi.fn(async () => ({
     book: { id: "book-1", title: "Book One" },
     sections: {
@@ -60,6 +87,23 @@ test("renders the production dashboard shell", async () => {
   render(<BrowserRouter><App /></BrowserRouter>);
   expect(await screen.findByText("S.A.G.A. Operations Console")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
+  expect(screen.getByText("Audiobook")).toBeInTheDocument();
+});
+
+test("renders the audiobook subsystem in its own tab", async () => {
+  window.history.pushState({}, "", "/audiobook");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  expect(await screen.findByText("Audiobook Controls")).toBeInTheDocument();
+  expect(screen.getByText("Single book")).toBeInTheDocument();
+  expect(screen.getByText("Entire series")).toBeInTheDocument();
+  expect(screen.getByText("Stage outputs")).toBeInTheDocument();
+  expect(screen.getAllByText("Staged Outputs").length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.getByText("Stage outputs")).not.toBeDisabled());
+  fireEvent.click(screen.getByText("Stage outputs"));
+  await waitFor(() => expect(apiMock.stageAudiobookRun).toHaveBeenCalled());
+  fireEvent.click(screen.getByText("Queue audiobook pipeline"));
+  await waitFor(() => expect(apiMock.startAudiobookRun.mock.calls.length + apiMock.startAudiobookJob.mock.calls.length).toBeGreaterThan(0));
 });
 
 test("renders import workflow controls backed by upload and plan APIs", async () => {

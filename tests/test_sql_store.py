@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from saga.storage.models import Book, Entity, GeneratedImage, IdentityAlias, IdentityCharacter, IdentitySeries, Scene, VisualPrompt
+from saga.storage.models import AudiobookChapter, AudiobookRun, Book, Chapter, Entity, GeneratedImage, IdentityAlias, IdentityCharacter, IdentitySeries, Scene, VisualPrompt
 from saga.storage.persistence import SagaSQLiteStore
 
 
@@ -274,3 +274,115 @@ def test_sql_store_resplits_book_scenes_and_clears_dependents(tmp_path: Path) ->
         assert len(scenes) >= 2
         assert not entities
         assert all((row.payload_json or {}).get("final_status") == "pending_analysis" for row in scenes)
+
+
+def test_sql_store_persists_audiobook_run_and_chapter_outputs(tmp_path: Path) -> None:
+    db_path = tmp_path / "saga.sqlite3"
+    store = SagaSQLiteStore(db_path)
+    contract_result = store.persist_contract(_sample_contract(tmp_path), contract_path=None)
+
+    run = store.create_audiobook_run(
+        {
+            "series_id": "acotar",
+            "book_id": contract_result["book_id"],
+            "scope_type": "book",
+            "title": "ACOTAR Book 1 Audiobook",
+            "status": "queued",
+            "tts_provider": "tts_modal",
+            "tts_app_name": "graduation-kokoro-tts",
+            "provider_account_alias": "member-01",
+            "voice": "af_bella",
+            "lang_code": "a",
+            "sample_rate": 24000,
+            "audio_format": "wav",
+            "normalize_audio": True,
+            "trim_silence": False,
+            "sentence_pause_ms": 80,
+            "transcript_storage_mode": "database",
+            "audio_storage_mode": "path",
+            "total_books": 1,
+        }
+    )
+
+    with store.session_factory() as session:
+        chapter = session.execute(select(Chapter).where(Chapter.book_id == contract_result["book_id"])).scalars().first()
+        assert chapter is not None
+        chapter_id = chapter.id
+
+    chapter_payload = store.upsert_audiobook_chapter(
+        {
+            "run_id": run["id"],
+            "series_id": "acotar",
+            "book_id": contract_result["book_id"],
+            "chapter_id": chapter_id,
+            "book_index": 1,
+            "chapter_index": 1,
+            "chapter_title": "Chapter 1",
+            "transcript_status": "completed",
+            "audio_status": "completed",
+            "transcript_text": "Feyre moved through the woods with practiced silence.",
+            "audio_path": str(tmp_path / "audio" / "chapter_01.wav"),
+            "audio_mime_type": "audio/wav",
+            "audio_byte_size": 123456,
+            "duration_seconds": 12.5,
+            "tts_provider": "tts_modal",
+            "tts_app_name": "graduation-kokoro-tts",
+            "provider_account_alias": "member-01",
+            "voice": "af_bella",
+            "lang_code": "a",
+            "sample_rate": 24000,
+            "audio_format": "wav",
+        }
+    )
+
+    assert chapter_payload["transcript_text"].startswith("Feyre moved")
+    assert chapter_payload["audio_path"].endswith("chapter_01.wav")
+
+    stored_run = store.get_audiobook_run(run["id"])
+    assert stored_run is not None
+    assert stored_run["status"] == "completed"
+    assert len(stored_run["chapters"]) == 1
+    assert stored_run["chapters"][0]["transcript_word_count"] == 8
+
+    with store.session_factory() as session:
+        assert session.execute(select(AudiobookRun)).scalars().all()
+        assert session.execute(select(AudiobookChapter)).scalars().all()
+
+
+def test_sql_store_persists_series_level_audiobook_run(tmp_path: Path) -> None:
+    db_path = tmp_path / "saga.sqlite3"
+    store = SagaSQLiteStore(db_path)
+    contract_result = store.persist_contract(_sample_contract(tmp_path), contract_path=None)
+
+    run = store.create_audiobook_run(
+        {
+            "series_id": "acotar",
+            "scope_type": "series",
+            "title": "ACOTAR Full Series Audiobook",
+            "status": "running",
+            "tts_provider": "tts_modal",
+            "tts_app_name": "graduation-kokoro-tts",
+            "provider_account_alias": "member-02",
+            "voice": "af_bella",
+            "lang_code": "a",
+            "sample_rate": 32000,
+            "audio_format": "flac",
+            "normalize_audio": False,
+            "trim_silence": True,
+            "sentence_pause_ms": 200,
+            "transcript_storage_mode": "database",
+            "audio_storage_mode": "path",
+            "total_books": 5,
+            "total_chapters": 42,
+            "completed_chapters": 10,
+            "failed_chapters": 1,
+        }
+    )
+
+    assert run["scope_type"] == "series"
+    assert run["book_id"] == ""
+    assert run["audio_format"] == "flac"
+    assert run["trim_silence"] is True
+
+    runs = store.get_audiobook_runs(series_id="acotar")
+    assert any(item["id"] == run["id"] for item in runs)

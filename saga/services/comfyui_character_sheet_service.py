@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -29,10 +27,16 @@ from saga.storage.models import Entity as SqlEntity
 from saga.storage.models import GeneratedImage as SqlGeneratedImage
 from saga.storage.models import VisualPrompt as SqlVisualPrompt
 
+try:
+    from integrations.comfyui.token_pool import load_tokens
+    from integrations.comfyui.workspace_client import ensure_urls
+except ImportError:  # pragma: no cover
+    from token_pool import load_tokens
+    from workspace_client import ensure_urls
+
 ROOT = Path(__file__).resolve().parents[2]
 ANALYSIS_OUTPUTS = ROOT / "analysis_outputs"
 RENDER_ROOT = ANALYSIS_OUTPUTS / "visual_state" / "character_sheet_renders"
-RENDER_CLIENT = ROOT / "integrations" / "comfyui" / "render_client.py"
 POSE_IMAGE = ROOT / "integrations" / "comfyui" / "assets" / "pose-sheet.png"
 POOL_STATE = ROOT / "integrations" / "comfyui" / "pool_state.json"
 STANDARD_RENDER_WIDTH = 1504
@@ -316,7 +320,7 @@ class ComfyUICharacterSheetService:
 
     def _active_modal_api_url(self) -> str:
         if not POOL_STATE.exists():
-            raise RuntimeError(f"Modal pool state file is missing: {POOL_STATE}")
+            return self._refresh_modal_api_url()
         payload = json.loads(POOL_STATE.read_text(encoding="utf-8"))
         active_url = str(payload.get("active_api_url") or "").strip()
         if active_url:
@@ -330,9 +334,31 @@ class ComfyUICharacterSheetService:
                     return str(stats["api_url"]).strip()
                 if str(stats.get("api_url") or "").strip():
                     return str(stats["api_url"]).strip()
-        raise RuntimeError("No active Modal ComfyUI API URL is available in pool_state.json.")
+        return self._refresh_modal_api_url()
 
-    def _render_default_via_live_api(
+    def _refresh_modal_api_url(self) -> str:
+        tokens = load_tokens()
+        if not tokens:
+            raise RuntimeError("No Modal tokens are configured for ComfyUI rendering.")
+        urls = ensure_urls(tokens[0], "graduation-comfyui")
+        payload: dict[str, Any] = {}
+        if POOL_STATE.exists():
+            try:
+                payload = json.loads(POOL_STATE.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                payload = {}
+        payload["active_api_url"] = urls.api_url
+        payload.setdefault("token_stats", {})
+        token_stats = payload["token_stats"]
+        if isinstance(token_stats, dict):
+            stats = token_stats.setdefault(tokens[0].name, {})
+            if isinstance(stats, dict):
+                stats["api_url"] = urls.api_url
+                stats.setdefault("last_render_ok", True)
+        POOL_STATE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return urls.api_url
+
+    def _render_via_live_api(
         self,
         *,
         positive_prompt: str,
@@ -342,6 +368,7 @@ class ComfyUICharacterSheetService:
         cfg: float,
         width: int,
         height: int,
+        workflow_mode: str,
         output_path: Path,
     ) -> None:
         api_url = self._active_modal_api_url().rstrip("/")
@@ -354,7 +381,7 @@ class ComfyUICharacterSheetService:
                 "cfg": float(cfg),
                 "width": int(width),
                 "height": int(height),
-                "workflow_mode": "default",
+                "workflow_mode": str(workflow_mode or "default").strip().lower() or "default",
             }
         )
         request = urllib.request.Request(f"{api_url}?{query}", method="GET")
@@ -392,41 +419,17 @@ class ComfyUICharacterSheetService:
         if not str(target_path):
             raise ValueError("output_path is required for preview rendering.")
 
-        if workflow_mode == "default":
-            self._render_default_via_live_api(
-                positive_prompt=positive_prompt,
-                negative_prompt=resolved_negative_prompt,
-                seed=resolved_seed,
-                steps=resolved_steps,
-                cfg=resolved_cfg,
-                width=resolved_width,
-                height=resolved_height,
-                output_path=target_path,
-            )
-        else:
-            command = [
-                sys.executable,
-                str(RENDER_CLIENT),
-                "--workflow-mode",
-                workflow_mode,
-                "--prompt",
-                positive_prompt,
-                "--negative-prompt",
-                resolved_negative_prompt,
-                "--seed",
-                str(resolved_seed),
-                "--steps",
-                str(resolved_steps),
-                "--cfg",
-                str(resolved_cfg),
-                "--width",
-                str(resolved_width),
-                "--height",
-                str(resolved_height),
-                "--output",
-                str(target_path),
-            ]
-            subprocess.run(command, cwd=ROOT, check=True)
+        self._render_via_live_api(
+            positive_prompt=positive_prompt,
+            negative_prompt=resolved_negative_prompt,
+            seed=resolved_seed,
+            steps=resolved_steps,
+            cfg=resolved_cfg,
+            width=resolved_width,
+            height=resolved_height,
+            workflow_mode=workflow_mode,
+            output_path=target_path,
+        )
 
         render_row["output_path"] = str(target_path)
         render_row["negative_prompt"] = resolved_negative_prompt
@@ -961,56 +964,19 @@ class ComfyUICharacterSheetService:
                 resolved_height = int(row.get("height") or height)
                 print(f"RENDER_PROGRESS|{index}|{total}|{entity_name}|starting", flush=True)
                 try:
-                    if workflow_mode == "default":
-                        self._render_default_via_live_api(
-                            positive_prompt=positive_prompt,
-                            negative_prompt=resolved_negative_prompt,
-                            seed=resolved_seed,
-                            steps=resolved_steps,
-                            cfg=resolved_cfg,
-                            width=resolved_width,
-                            height=resolved_height,
-                            output_path=output_path,
-                        )
-                    else:
-                        command = [
-                            sys.executable,
-                            str(RENDER_CLIENT),
-                            "--workflow-mode",
-                            workflow_mode,
-                            "--prompt",
-                            positive_prompt,
-                            "--negative-prompt",
-                            resolved_negative_prompt,
-                            "--seed",
-                            str(resolved_seed),
-                            "--steps",
-                            str(resolved_steps),
-                            "--cfg",
-                            str(resolved_cfg),
-                            "--width",
-                            str(resolved_width),
-                            "--height",
-                            str(resolved_height),
-                            "--output",
-                            str(output_path),
-                        ]
-                        subprocess.run(command, cwd=ROOT, check=True)
+                    self._render_via_live_api(
+                        positive_prompt=positive_prompt,
+                        negative_prompt=resolved_negative_prompt,
+                        seed=resolved_seed,
+                        steps=resolved_steps,
+                        cfg=resolved_cfg,
+                        width=resolved_width,
+                        height=resolved_height,
+                        workflow_mode=workflow_mode,
+                        output_path=output_path,
+                    )
                     render_status = "rendered"
                     print(f"RENDER_PROGRESS|{index}|{total}|{entity_name}|{render_status}", flush=True)
-                except subprocess.CalledProcessError as exc:
-                    render_status = "failed"
-                    row["last_error"] = f"render_client exit code {exc.returncode}"
-                    print(f"RENDER_PROGRESS|{index}|{total}|{entity_name}|{render_status}|exit={exc.returncode}", flush=True)
-                    row["status"] = render_status
-                    report_rows.append(dict(row))
-                    manifest["renders"][index - 1] = dict(row)
-                    manifest["render_report"] = {"renders": report_rows}
-                    manifest["manifest_path"] = str(manifest_path.relative_to(ROOT))
-                    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-                    report_path.write_text(json.dumps({"renders": report_rows}, ensure_ascii=False, indent=2), encoding="utf-8")
-                    self.sqlite_store.persist_render_manifest({"contract_path": manifest["contract_path"], "workflow_path": manifest["workflow_path"], "renders": [row]})
-                    raise
                 except Exception as exc:
                     render_status = "failed"
                     row["last_error"] = repr(exc)

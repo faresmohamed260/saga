@@ -132,7 +132,8 @@ def test_entity_visual_prompt_service_scrubs_creature_prompt_placeholders_and_pl
                 book_id=book.id,
                 entity_id=griphook.id,
                 species_kind="goblin",
-                body_plan="not_explicitly_stated_in_text",
+                body_plan="small wiry humanoid frame",
+                head_features="sharp ears and a narrow hooked nose",
                 magical_features="not_explicitly_stated_in_text",
                 world_genre_cues="not_explicitly_stated_in_text",
                 evidence_excerpt=(
@@ -160,3 +161,53 @@ def test_entity_visual_prompt_service_scrubs_creature_prompt_placeholders_and_pl
         assert "show no people" not in positive
         assert "people" in negative
         assert "characters" in negative
+
+
+def test_entity_visual_prompt_service_skips_and_cleans_creatures_with_insufficient_traits(tmp_path):
+    db_path = tmp_path / "creature_visuals_insufficient.sqlite3"
+    store = SagaSQLiteStore(db_path)
+    with store.session_factory() as session:
+        book = Book(series_id="hp1", book_index=1, title="HP1")
+        session.add(book)
+        session.flush()
+
+        griphook = Entity(
+            book_id=book.id,
+            canonical_name="Griphook",
+            entity_type="creature",
+            entity_context="goblin banker at Gringotts",
+        )
+        session.add(griphook)
+        session.flush()
+
+        session.add(
+            CreatureVisualBaseline(
+                book_id=book.id,
+                entity_id=griphook.id,
+                species_kind="goblin",
+                evidence_excerpt="Griphook was yet another goblin.",
+            )
+        )
+        session.add(
+            VisualPrompt(
+                book_id=book.id,
+                entity_id=griphook.id,
+                entity_name="Griphook",
+                entity_type="creature",
+                prompt_type="initial_creature_description",
+                positive_prompt="stale prompt",
+            )
+        )
+        session.commit()
+
+    service = EntityVisualPromptService(store)
+    result = service.build_book_prompts(f"db://book/{book.id}", overwrite=True)
+    assert result.prompts_total == 0
+
+    with store.session_factory() as session:
+        entity = session.get(Entity, griphook.id)
+        prompts = session.execute(select(VisualPrompt).where(VisualPrompt.entity_id == griphook.id)).scalars().all()
+        assert prompts == []
+        assert entity is not None
+        assert entity.baseline_visual_prompt in {"", None}
+        assert "insufficient_visual_traits_for_prompt" in (entity.analysis_quality_flags or [])
