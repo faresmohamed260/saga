@@ -58,6 +58,7 @@ analysis_outputs/vector_indices/
 
 # Local runtime artifacts and generated outputs
 analysis_outputs/
+!deploy/sqlite/saga_team_seed.sqlite3
 
 # Local reference repo only
 external/Narraverse/
