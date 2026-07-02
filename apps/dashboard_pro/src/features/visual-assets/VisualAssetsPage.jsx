@@ -14,10 +14,9 @@ import {
   splitNegativePrompt,
   splitPositivePrompt,
 } from "./promptTemplates";
+import { AssetFiltersPanel, AssetGridPanel, AssetSeriesPanel } from "./components/AssetBrowserPanels";
 
-const ENTITY_FILTERS = ["all", "character", "location", "creature", "object", "organization"];
 const PAGE_SIZE = 48;
-const STANDARD_ASSET_RATIO_CLASS = "aspect-[47/32]";
 
 function assetImageUrl(path) {
   return path ? `/runtime/file?path=${encodeURIComponent(path)}` : "";
@@ -156,108 +155,29 @@ export function VisualAssetsPage() {
 
   return (
     <div className="space-y-5">
-      <Panel
-        title="Visual Asset Browser"
-        subtitle="Browse by series first, then load lightweight thumbnail pages instead of the full asset library at once."
-      >
-        {seriesCards.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {seriesCards.map((item) => {
-              const selected = item.seriesId === selectedSeriesId;
-              return (
-                <button
-                  key={item.seriesId}
-                  type="button"
-                  onClick={() => setSelectedSeriesId(item.seriesId)}
-                  className={[
-                    "rounded-2xl border p-4 text-left transition",
-                    selected
-                      ? "border-sky-500/70 bg-sky-500/10 shadow-lg shadow-sky-950/30"
-                      : "border-slate-800 bg-slate-950/45 hover:border-sky-500/40 hover:bg-sky-500/5",
-                  ].join(" ")}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">{item.seriesId}</p>
-                      <h3 className="mt-2 text-xl font-black text-white">{item.seriesTitle}</h3>
-                    </div>
-                    <Badge tone={selected ? "blue" : "slate"}>{item.assetCount} assets</Badge>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge tone="green">{item.renderedCount} rendered</Badge>
-                    <Badge>{Math.max(item.assetCount - item.renderedCount, 0)} pending</Badge>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyState title="No series with visual assets found">Run visual generation first, then the browser will group assets by series.</EmptyState>
-        )}
-      </Panel>
-
-      <Panel
-        title={selectedSeriesId ? `Assets for ${selectedSeriesId}` : "Asset inventory"}
-        subtitle="The grid loads paged thumbnails only. Full prompts and original images open on demand."
-      >
-        <div className="mb-4 flex flex-wrap gap-2">
-          {ENTITY_FILTERS.map((item) => (
-            <Button
-              key={item}
-              onClick={() => setEntityType(item)}
-              variant={entityType === item ? "primary" : "secondary"}
-            >
-              {item}
-            </Button>
-          ))}
-        </div>
-        <SearchBox value={query} onChange={setQuery} placeholder="Search entity name..." />
-      </Panel>
-
-      <Panel
-        title={`${totalAssets} asset${totalAssets === 1 ? "" : "s"}`}
-        subtitle="Thumbnail-first browsing keeps initial load fast. Select a card to inspect the full asset and prompt details."
-        action={filteredAssets.length ? (
-          <div className="flex items-center gap-2">
-            {selectedCount ? (
-              <>
-                <Badge tone="blue">{`${selectedCount} selected`}</Badge>
-                <Button onClick={handleRenderSelected} variant="secondary" disabled={bulkState.rendering || bulkState.deleting}>
-                  {bulkState.rendering ? "Rendering..." : "Render selected"}
-                </Button>
-                <Button onClick={handleDeleteSelected} variant="danger" disabled={bulkState.rendering || bulkState.deleting}>
-                  {bulkState.deleting ? "Deleting..." : "Delete selected"}
-                </Button>
-              </>
-            ) : null}
-            <Button onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
-              Previous
-            </Button>
-            <Badge tone="blue">{`Page ${page}/${totalPages}`}</Badge>
-            <Button onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-              Next
-            </Button>
-          </div>
-        ) : null}
-      >
-        {bulkState.error ? <StatusBanner tone="red" message={bulkState.error} /> : null}
-        {bulkState.message ? <div className="mb-4"><StatusBanner tone="green" message={bulkState.message} /></div> : null}
-        {filteredAssets.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {filteredAssets.map((entity) => (
-              <AssetCard
-                key={entity.id}
-                entity={entity}
-                selected={selectedIdSet.has(entity.id)}
-                onToggleSelect={() => toggleSelectedAsset(entity.id)}
-                onOpen={() => setSelectedAssetId(entity.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No assets match the current filters">Try another series, entity type, or character/location name.</EmptyState>
-        )}
-      </Panel>
+      <AssetSeriesPanel seriesCards={seriesCards} selectedSeriesId={selectedSeriesId} onSelectSeries={setSelectedSeriesId} />
+      <AssetFiltersPanel
+        selectedSeriesId={selectedSeriesId}
+        entityType={entityType}
+        onEntityTypeChange={setEntityType}
+        query={query}
+        onQueryChange={setQuery}
+      />
+      <AssetGridPanel
+        totalAssets={totalAssets}
+        filteredAssets={filteredAssets}
+        page={page}
+        totalPages={totalPages}
+        selectedCount={selectedCount}
+        bulkState={bulkState}
+        selectedIdSet={selectedIdSet}
+        onRenderSelected={handleRenderSelected}
+        onDeleteSelected={handleDeleteSelected}
+        onPreviousPage={() => setPage((current) => Math.max(1, current - 1))}
+        onNextPage={() => setPage((current) => Math.min(totalPages, current + 1))}
+        onToggleSelect={toggleSelectedAsset}
+        onOpen={setSelectedAssetId}
+      />
 
       {selectedAssetId ? (
         <AssetModal
@@ -280,73 +200,6 @@ export function VisualAssetsPage() {
           onClose={() => setSelectedAssetId("")}
         />
       ) : null}
-    </div>
-  );
-}
-
-function AssetCard({ entity, selected, onToggleSelect, onOpen }) {
-  const thumbnailPath = entity.generated_thumbnail_path || entity.generated_image_path;
-  const hasImage = !!thumbnailPath;
-
-  return (
-    <div
-      className={[
-        "overflow-hidden rounded-3xl border bg-slate-950/55 text-left transition",
-        selected
-          ? "border-emerald-400/55 shadow-lg shadow-emerald-950/20"
-          : "border-slate-800 hover:border-sky-500/50 hover:bg-sky-500/5",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-        <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggleSelect}
-            className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-400 focus:ring-emerald-400"
-          />
-          Select
-        </label>
-        <Badge tone={selected ? "green" : toneFor(entity.render_status)}>{selected ? "selected" : (entity.render_status || "not rendered")}</Badge>
-      </div>
-
-      <button
-        type="button"
-        onClick={onOpen}
-        className="block w-full text-left"
-      >
-        <div className={`${STANDARD_ASSET_RATIO_CLASS} border-b border-slate-800 bg-black/40`}>
-        {hasImage ? (
-          <img
-            src={assetImageUrl(thumbnailPath)}
-            alt={entity.name}
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full bg-[#050816] object-contain"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center p-6">
-            <EmptyState title="No image">Render pending</EmptyState>
-          </div>
-        )}
-        </div>
-
-        <div className="space-y-3 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-black text-white">{entity.name}</h3>
-              <p className="mt-1 text-sm text-slate-400">{entity.book_title || entity.series_title || entity.series_id || entity.book_id}</p>
-            </div>
-            <Badge tone={toneFor(entity.render_status)}>{entity.render_status || "not rendered"}</Badge>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="blue">{entity.entity_type}</Badge>
-            <Badge>{entity.prompt_count || 0} prompts</Badge>
-            <Badge tone={entity.image_count ? "green" : "amber"}>{entity.image_count || 0} images</Badge>
-          </div>
-        </div>
-      </button>
     </div>
   );
 }
