@@ -3,9 +3,9 @@ setlocal
 set "ROOT=%~dp0..\.."
 pushd "%ROOT%" >nul
 
-if not exist "apps/dashboard_web\node_modules" (
+if not exist "apps/dashboard_pro\node_modules" (
   echo Installing dashboard dependencies...
-  pushd "%ROOT%\apps/dashboard_web" >nul
+  pushd "%ROOT%\apps/dashboard_pro" >nul
   call npm install
   popd >nul
   if errorlevel 1 (
@@ -16,7 +16,7 @@ if not exist "apps/dashboard_web\node_modules" (
 )
 
 echo Building S.A.G.A. dashboard...
-pushd "%ROOT%\apps/dashboard_web" >nul
+pushd "%ROOT%\apps/dashboard_pro" >nul
 call npm run build
 set "BUILD_CODE=%ERRORLEVEL%"
 popd >nul

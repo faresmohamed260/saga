@@ -139,7 +139,7 @@ Responsibility:
 
 ## Dashboard Surfaces
 
-- [apps/dashboard_web](/B:/Documents/PyCharm/graduationProject/apps/dashboard_web)
+- [apps/dashboard_pro](/B:/Documents/PyCharm/graduationProject/apps/dashboard_pro)
 - [apps.dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api/app.py)
 
 Responsibility:

@@ -177,7 +177,7 @@ PARAGRAPH_UPDATES: dict[int, str] = {
     1672: "Visual assets must remain easy to inspect after generation, so thumbnails, manifests, and persistent references are treated as part of the workflow rather than post-processing afterthoughts.",
     1680: "4.5 Deployment and Local Operation",
     1681: "4.5.1 Dashboard Structure and User Interface",
-    1682: "The current S.A.G.A. interface is a local dashboard surface composed of a React frontend and a FastAPI runtime. The primary frontend is Dashboard Pro, with an older fallback dashboard surface still available in some environments. Main pages include Overview, Import, Runs, Library, Analysis, Decoder, Visual Assets, Providers, and Diagnostics.",
+    1682: "The current S.A.G.A. interface is a local dashboard surface composed of a React frontend and a FastAPI runtime. The frontend is Dashboard Pro. Main pages include Overview, Import, Runs, Library, Analysis, Decoder, Visual Assets, Providers, and Diagnostics.",
     1683: "This interface is designed for operator review and workflow control rather than for a public consumer-facing website. Navigation focuses on ingesting books, inspecting canonical memory, launching downstream workflows, and monitoring runtime health.",
     1684: "4.5.2 Runtime and Service Management",
     1685: "Local execution is provided through Windows launcher scripts and an optional background service configuration. The runtime can be started directly for development use or registered as a local service for persistent operation.",

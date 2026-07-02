@@ -29,7 +29,19 @@ from sqlalchemy.orm import defer
 from saga.domain.builders.relationship_profile_builder import RelationshipProfileBuilder
 from saga.providers.codex_session_store import CodexSessionStore
 from saga.providers.general_compute_account_rotator import GeneralComputeAccountRotator
+from saga.providers.llm_provider_registry import (
+    GENERAL_COMPUTE_PROVIDER,
+    OLLAMA_PROVIDER,
+    read_llm_provider_config,
+    save_llm_provider_config,
+)
 from saga.providers.llm_client import LLMClient
+from saga.providers.status.service import (
+    read_latest_inference_status_payload,
+    read_latest_provider_status_payload,
+    refresh_latest_provider_statuses as refresh_provider_statuses_service,
+)
+from saga.providers.status.shared import MODAL_POOL_PROVIDER
 from saga.identity.series_identity_provider import (
     build_series_pipeline_identity,
     generate_book_identity_bundle,
@@ -40,9 +52,22 @@ from saga.services.comfyui_character_sheet_service import (
     render_manifest_path_for_contract,
     render_output_dir_for_contract,
 )
-from integrations.comfyui.token_pool import load_tokens as load_modal_tokens
-from integrations.kokoro_tts.pool_manager import ModalTTSPoolManager
-from integrations.kokoro_tts.workspace_client import ensure_urls as ensure_tts_modal_urls
+from saga.providers.inference_registry import (
+    COREF_CAPABILITY,
+    IMAGE_CAPABILITY,
+    MODAL_COMFYUI_PROVIDER,
+    MODAL_KOKORO_PROVIDER,
+    MODAL_XCORE_PROVIDER,
+    SPEECH_CAPABILITY,
+    active_provider_name_for_capability,
+    provider_capability,
+    read_inference_provider_config,
+    read_inference_selection,
+    resolve_provider,
+    save_inference_provider_config,
+    save_inference_selection,
+)
+from saga.providers.inference_smoke import run_provider_smoke
 from saga.agents.visual_prompt_schema import (
     compile_creature_negative_prompt,
     compile_location_negative_prompt,
@@ -87,15 +112,12 @@ from saga.storage.models import VisualPrompt as SqlVisualPrompt
 
 ROOT = Path(__file__).resolve().parents[2]
 PRO_DIST_DIR = ROOT / "apps" / "dashboard_pro" / "dist"
-FALLBACK_DIST_DIR = ROOT / "apps" / "dashboard_web" / "dist"
-DIST_DIR = PRO_DIST_DIR if PRO_DIST_DIR.exists() else FALLBACK_DIST_DIR
+DIST_DIR = PRO_DIST_DIR
 OUTPUTS_DIR = Path(os.environ.get("SAGA_OUTPUTS_DIR") or (ROOT / "analysis_outputs")).resolve()
 DASHBOARD_DIR = Path(os.environ.get("SAGA_DASHBOARD_DIR") or (OUTPUTS_DIR / "dashboard")).resolve()
 UPLOADS_DIR = Path(os.environ.get("SAGA_UPLOADS_DIR") or (DASHBOARD_DIR / "uploads")).resolve()
 STORY_EXPORTS_DIR = Path(os.environ.get("SAGA_STORY_EXPORTS_DIR") or (DASHBOARD_DIR / "story_exports")).resolve()
-OLLAMA_ACCOUNTS_FILE = ROOT / "deploy" / "ollama" / "accounts.local.json"
 CODEX_ACCOUNTS_FILE = ROOT / "deploy" / "openai" / "accounts.local.json"
-GENERAL_COMPUTE_ACCOUNTS_FILE = ROOT / "deploy" / "general_compute" / "accounts.local.json"
 DEFAULT_TTS_MODAL_APP_NAME = "graduation-kokoro-tts"
 
 DEFAULT_BOOKS = [
@@ -157,6 +179,9 @@ class ProviderAccount(BaseModel):
     email: str = ""
     password: str = ""
     api_key: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    limits: dict[str, Any] = Field(default_factory=dict)
+    usage: dict[str, Any] = Field(default_factory=dict)
 
 
 class OllamaProviderConfig(BaseModel):
@@ -185,6 +210,36 @@ class TTSModalProviderConfig(BaseModel):
     default_trim_silence: bool = False
     default_sentence_pause_ms: int = 0
     timeout_seconds: int = 300
+
+
+class InferenceModalAccountConfig(BaseModel):
+    label: str
+    token_id: str = ""
+    token_secret: str = ""
+    app_name_override: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class InferenceProviderConfig(BaseModel):
+    provider_name: str
+    app_name: str = ""
+    api_url: str = ""
+    health_url: str = ""
+    ui_url: str = ""
+    request_timeout_seconds: int = 300
+    default_voice: str = ""
+    default_lang_code: str = ""
+    default_sample_rate: int = 24000
+    default_audio_format: str = "wav"
+    default_normalize_audio: bool = True
+    default_trim_silence: bool = False
+    default_sentence_pause_ms: int = 0
+    model_name: str = ""
+    accounts: list[InferenceModalAccountConfig] = Field(default_factory=list)
+
+
+class InferenceSelectionConfig(BaseModel):
+    provider_name: str
 
 
 def _is_placeholder_analysis_value(value: Any) -> bool:
@@ -889,6 +944,8 @@ def _create_staged_audiobook_run(request: AudiobookStageRequest) -> dict[str, An
     books = scope_payload["books"]
     chapters_by_book = scope_payload["chapters_by_book"]
     run_title = _build_audiobook_run_title(request=request, scope_payload=scope_payload)
+    tts_provider_name = active_provider_name_for_capability(SPEECH_CAPABILITY, store=SQLITE_STORE)
+    tts_provider_config = read_inference_provider_config(tts_provider_name, store=SQLITE_STORE, mask=False)
     run = _safe_db(
         None,
         "create_audiobook_run",
@@ -900,8 +957,8 @@ def _create_staged_audiobook_run(request: AudiobookStageRequest) -> dict[str, An
                 "title": run_title,
                 "status": "staged",
                 "source_provider": "ollama",
-                "tts_provider": "tts_modal",
-                "tts_app_name": DEFAULT_TTS_MODAL_APP_NAME,
+                "tts_provider": tts_provider_name,
+                "tts_app_name": str(tts_provider_config.get("app_name") or ""),
                 "voice": request.voice,
                 "lang_code": request.lang_code,
                 "sample_rate": request.sample_rate,
@@ -961,8 +1018,8 @@ def _create_staged_audiobook_run(request: AudiobookStageRequest) -> dict[str, An
                     "audio_path": audio_path,
                     "audio_mime_type": "audio/flac" if str(request.audio_format).lower() == "flac" else "audio/wav",
                     "source_provider": "ollama",
-                    "tts_provider": "tts_modal",
-                    "tts_app_name": DEFAULT_TTS_MODAL_APP_NAME,
+                    "tts_provider": tts_provider_name,
+                    "tts_app_name": str(tts_provider_config.get("app_name") or ""),
                     "voice": request.voice,
                     "lang_code": request.lang_code,
                     "sample_rate": request.sample_rate,
@@ -1435,9 +1492,7 @@ def database_summary() -> dict[str, Any]:
 
 def _provider_file(provider_name: str) -> Path:
     mapping = {
-        "ollama": OLLAMA_ACCOUNTS_FILE,
         "codex": CODEX_ACCOUNTS_FILE,
-        "general_compute": GENERAL_COMPUTE_ACCOUNTS_FILE,
     }
     return mapping[str(provider_name).strip().lower()]
 
@@ -1466,6 +1521,8 @@ def _masked_provider_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _read_provider_config(provider_name: str, *, mask: bool = True) -> dict[str, Any]:
     provider_key = str(provider_name).strip().lower()
+    if provider_key in {OLLAMA_PROVIDER, GENERAL_COMPUTE_PROVIDER}:
+        return read_llm_provider_config(provider_key, store=SQLITE_STORE, mask=mask)
     stored = SQLITE_STORE.get_provider_config(provider_key)
     if not isinstance(stored, dict):
         stored = {"provider_name": provider_key, "active_index": 0, "accounts": []}
@@ -1473,7 +1530,7 @@ def _read_provider_config(provider_name: str, *, mask: bool = True) -> dict[str,
 
 
 def _seed_provider_configs_from_local_files() -> None:
-    for provider_key in ("ollama", "general_compute", "codex"):
+    for provider_key in ("codex",):
         existing = SQLITE_STORE.get_provider_config(provider_key)
         if isinstance(existing, dict) and (existing.get("accounts") or []):
             continue
@@ -1518,11 +1575,19 @@ def _merge_provider_payload(provider_name: str, incoming_accounts: list[Provider
             "api_key": account.api_key or str(previous.get("api_key") or ""),
             "auth_mode": str(previous.get("auth_mode") or ""),
             "account_id": str(previous.get("account_id") or ""),
-            "metadata": dict(previous.get("metadata") or {}) if isinstance(previous.get("metadata"), dict) else {},
+            "metadata": {
+                **(dict(previous.get("metadata") or {}) if isinstance(previous.get("metadata"), dict) else {}),
+                **(dict(account.metadata or {}) if isinstance(account.metadata, dict) else {}),
+            },
+            "limits": dict(account.limits or previous.get("limits") or {}) if isinstance(account.limits or previous.get("limits") or {}, dict) else {},
+            "usage": dict(account.usage or previous.get("usage") or {}) if isinstance(account.usage or previous.get("usage") or {}, dict) else {},
         }
         if provider_name == "codex" and not merged["api_key"] and CODEX_SESSION_STORE.active_session():
             merged["auth_mode"] = CODEX_SESSION_STORE.active_session().auth_mode or "codex_session"
             merged["account_id"] = CODEX_SESSION_STORE.active_session().account_id or ""
+        if provider_name == GENERAL_COMPUTE_PROVIDER:
+            merged.pop("email", None)
+            merged.pop("password", None)
         if merged.get("api_key") or merged.get("password") or merged.get("auth_mode"):
             accounts.append(merged)
     bounded_index = max(0, min(int(active_index or 0), max(len(accounts) - 1, 0)))
@@ -1532,6 +1597,8 @@ def _merge_provider_payload(provider_name: str, incoming_accounts: list[Provider
 
 
 def _save_provider_config(provider_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if provider_name in {OLLAMA_PROVIDER, GENERAL_COMPUTE_PROVIDER}:
+        return save_llm_provider_config(provider_name, payload, store=SQLITE_STORE)
     SQLITE_STORE.upsert_provider_config(provider_name, payload)
     return _read_provider_config(provider_name, mask=True)
 
@@ -1580,48 +1647,14 @@ def merge_and_save_general_compute_accounts(config: GeneralComputeProviderConfig
 
 
 def read_tts_modal_provider(mask: bool = True) -> dict[str, Any]:
-    stored = SQLITE_STORE.get_provider_config("tts_modal")
-    payload = {
-        "provider_name": "tts_modal",
-        "active_index": 0,
-        "transport": "modal_api",
-        "accounts": list((stored or {}).get("accounts") or []),
-        "app_name": str((stored or {}).get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
-        "api_url": str((stored or {}).get("api_url") or ""),
-        "default_voice": str((stored or {}).get("default_voice") or "af_bella"),
-        "default_lang_code": str((stored or {}).get("default_lang_code") or "a"),
-        "default_sample_rate": int((stored or {}).get("default_sample_rate") or 24000),
-        "default_audio_format": str((stored or {}).get("default_audio_format") or "wav"),
-        "default_normalize_audio": bool((stored or {}).get("default_normalize_audio", True)),
-        "default_trim_silence": bool((stored or {}).get("default_trim_silence", False)),
-        "default_sentence_pause_ms": int((stored or {}).get("default_sentence_pause_ms") or 0),
-        "timeout_seconds": int((stored or {}).get("timeout_seconds") or 300),
-    }
-    payload["metadata"] = {
-        "provider_name": payload["provider_name"],
-        "transport": payload["transport"],
-        "app_name": payload["app_name"],
-        "api_url": payload["api_url"],
-        "default_voice": payload["default_voice"],
-        "default_lang_code": payload["default_lang_code"],
-        "default_sample_rate": payload["default_sample_rate"],
-        "default_audio_format": payload["default_audio_format"],
-        "default_normalize_audio": payload["default_normalize_audio"],
-        "default_trim_silence": payload["default_trim_silence"],
-        "default_sentence_pause_ms": payload["default_sentence_pause_ms"],
-        "timeout_seconds": payload["timeout_seconds"],
-    }
-    if mask:
-        return payload
+    payload = read_inference_provider_config(MODAL_KOKORO_PROVIDER, store=SQLITE_STORE, mask=mask)
+    payload["timeout_seconds"] = int(payload.get("request_timeout_seconds") or 300)
     return payload
 
 
 def save_tts_modal_provider(config: TTSModalProviderConfig) -> dict[str, Any]:
     payload = {
-        "provider_name": "tts_modal",
-        "active_index": 0,
-        "transport": "modal_api",
-        "accounts": [],
+        "provider_name": MODAL_KOKORO_PROVIDER,
         "app_name": str(config.app_name or DEFAULT_TTS_MODAL_APP_NAME).strip() or DEFAULT_TTS_MODAL_APP_NAME,
         "api_url": str(config.api_url or "").strip(),
         "default_voice": str(config.default_voice or "af_bella").strip() or "af_bella",
@@ -1631,9 +1664,11 @@ def save_tts_modal_provider(config: TTSModalProviderConfig) -> dict[str, Any]:
         "default_normalize_audio": bool(config.default_normalize_audio),
         "default_trim_silence": bool(config.default_trim_silence),
         "default_sentence_pause_ms": max(0, int(config.default_sentence_pause_ms or 0)),
-        "timeout_seconds": max(30, int(config.timeout_seconds or 300)),
+        "request_timeout_seconds": max(30, int(config.timeout_seconds or 300)),
+        "accounts": [],
     }
-    SQLITE_STORE.upsert_provider_config("tts_modal", payload)
+    save_inference_provider_config(MODAL_KOKORO_PROVIDER, payload, store=SQLITE_STORE)
+    save_inference_selection(SPEECH_CAPABILITY, MODAL_KOKORO_PROVIDER, store=SQLITE_STORE)
     return read_tts_modal_provider(mask=True)
 
 
@@ -1712,7 +1747,7 @@ def _safe_probe_ollama_account(account: dict[str, Any]) -> dict[str, Any]:
 
 def _safe_probe_general_compute_account(account: dict[str, Any]) -> dict[str, Any]:
     rotator = GeneralComputeAccountRotator()
-    raw = load_json(GENERAL_COMPUTE_ACCOUNTS_FILE)
+    raw = read_llm_provider_config(GENERAL_COMPUTE_PROVIDER, store=SQLITE_STORE, mask=False)
     raw_accounts = list((raw or {}).get("accounts") or []) if isinstance(raw, dict) else []
     raw_match = next((row for row in raw_accounts if str(row.get("label") or "") == str(account.get("label") or "")), {})
     api_key = str(account.get("api_key") or "").strip() or None
@@ -1764,38 +1799,46 @@ def _safe_probe_codex_account(account: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _safe_probe_tts_modal_provider(config: dict[str, Any]) -> dict[str, Any]:
-    app_name = str(config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME).strip() or DEFAULT_TTS_MODAL_APP_NAME
+def _safe_probe_inference_provider(provider_name: str, config: dict[str, Any]) -> dict[str, Any]:
+    provider_key = str(provider_name or "").strip().lower()
+    app_name = str(config.get("app_name") or "").strip()
     api_url = str(config.get("api_url") or "").strip()
     detail_parts: list[str] = []
     probe_status = "unconfigured"
     if api_url:
         probe_status = "ready"
-        detail_parts.append("Configured Modal TTS API URL is present.")
+        detail_parts.append("Configured provider API URL is present.")
 
-    try:
-        tokens = load_modal_tokens()
-    except Exception as exc:
-        tokens = []
-        detail_parts.append(f"Modal token pool unavailable: {type(exc).__name__}")
-
-    if not api_url and tokens:
+    accounts = list(config.get("accounts") or [])
+    if not api_url and accounts:
         try:
-            api_url = ensure_tts_modal_urls(tokens[0], app_name).api_url
+            provider = resolve_provider(provider_name=provider_key, store=SQLITE_STORE)
+            live = provider.ensure_live()
+            api_url = str(live.get("api_url") or "").strip()
             probe_status = "ready"
-            detail_parts.append(f"Resolved Modal TTS API URL from token '{tokens[0].name}'.")
+            token_name = str(live.get("token_name") or "").strip()
+            if token_name:
+                detail_parts.append(f"Resolved provider API URL from account '{token_name}'.")
+            else:
+                detail_parts.append("Resolved provider API URL from the active pool.")
         except Exception as exc:
             probe_status = "error"
-            detail_parts.append(f"Modal URL resolution failed: {type(exc).__name__}")
-    elif not api_url and not tokens:
-        detail_parts.append("No explicit API URL and no Modal tokens were available.")
+            detail_parts.append(f"Provider probe failed: {type(exc).__name__}")
+    elif not api_url and not accounts:
+        detail_parts.append("No explicit API URL and no provider accounts were available.")
 
-    resolved_model = f"{str(config.get('default_voice') or 'af_bella')}/{str(config.get('default_lang_code') or 'a')}"
+    resolved_model = ""
+    if provider_key == MODAL_KOKORO_PROVIDER:
+        resolved_model = f"{str(config.get('default_voice') or 'af_bella')}/{str(config.get('default_lang_code') or 'a')}"
+    elif provider_key == MODAL_XCORE_PROVIDER:
+        resolved_model = str(config.get("model_name") or "sapienzanlp/xcore-litbank")
+    elif provider_key == MODAL_COMFYUI_PROVIDER:
+        resolved_model = str(config.get("app_name") or "graduation-comfyui")
     return {
-        "provider_name": "tts_modal",
-        "label": app_name,
+        "provider_name": provider_key,
+        "label": app_name or provider_key,
         "probe_status": probe_status,
-        "transport": "modal_api",
+        "transport": str(config.get("transport") or "modal_api"),
         "resolved_model": resolved_model,
         "quota_source": "modal_token_pool",
         "credits_remaining": "unknown",
@@ -1804,58 +1847,23 @@ def _safe_probe_tts_modal_provider(config: dict[str, Any]) -> dict[str, Any]:
         "payload": {
             "app_name": app_name,
             "api_url": api_url,
-            "default_voice": str(config.get("default_voice") or "af_bella"),
-            "default_lang_code": str(config.get("default_lang_code") or "a"),
-            "default_sample_rate": int(config.get("default_sample_rate") or 24000),
-            "default_audio_format": str(config.get("default_audio_format") or "wav"),
-            "default_normalize_audio": bool(config.get("default_normalize_audio", True)),
-            "default_trim_silence": bool(config.get("default_trim_silence", False)),
-            "default_sentence_pause_ms": int(config.get("default_sentence_pause_ms") or 0),
-            "timeout_seconds": int(config.get("timeout_seconds") or 300),
+            "health_url": str(config.get("health_url") or ""),
+            "ui_url": str(config.get("ui_url") or ""),
+            "request_timeout_seconds": int(config.get("request_timeout_seconds") or config.get("timeout_seconds") or 300),
         },
     }
 
 
+def _safe_probe_tts_modal_provider(config: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(config or {})
+    payload.setdefault("provider_name", MODAL_KOKORO_PROVIDER)
+    payload.setdefault("request_timeout_seconds", int(payload.get("timeout_seconds") or 300))
+    return _safe_probe_inference_provider(MODAL_KOKORO_PROVIDER, payload)
+
+
 def refresh_provider_statuses() -> dict[str, Any]:
-    provider_payloads = {
-        "ollama": _read_provider_config("ollama", mask=False),
-        "general_compute": _read_provider_config("general_compute", mask=False),
-        "codex": _read_provider_config("codex", mask=False),
-        "tts_modal": read_tts_modal_provider(mask=False),
-    }
-    results: dict[str, Any] = {}
-    for provider_name, payload in provider_payloads.items():
-        accounts = list(payload.get("accounts") or [])
-        if provider_name == "codex" and not accounts and CODEX_SESSION_STORE.active_session():
-            session = CODEX_SESSION_STORE.active_session()
-            accounts = [{
-                "label": "codex-session",
-                "auth_mode": session.auth_mode or "codex_session",
-                "account_id": session.account_id or "",
-                "active": True,
-            }]
-        rows = []
-        if provider_name == "tts_modal":
-            rows.append(_safe_probe_tts_modal_provider(payload))
-        else:
-            for account in accounts:
-                if provider_name == "ollama":
-                    status = _safe_probe_ollama_account(account)
-                elif provider_name == "general_compute":
-                    status = _safe_probe_general_compute_account(account)
-                else:
-                    status = _safe_probe_codex_account(account)
-                rows.append(status)
-        SQLITE_STORE.replace_provider_statuses(provider_name, rows)
-        results[provider_name] = {
-            "active_index": int(payload.get("active_index", 0) or 0),
-            "accounts": _masked_provider_payload(payload).get("accounts", []) if accounts else [],
-            "statuses": SQLITE_STORE.get_provider_statuses(provider_name),
-            "refreshed_at_utc": _utc_now_iso(),
-        }
-        if provider_name == "tts_modal":
-            results[provider_name]["config"] = read_tts_modal_provider(mask=True)
-    return results
+    payload = refresh_provider_statuses_service(store=SQLITE_STORE)
+    return dict(payload.get("providers") or {})
 
 
 def reduce_contract_row(row: Any) -> dict[str, Any]:
@@ -4176,16 +4184,14 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
         save_job(payload)
         return
 
-    tts_config = read_tts_modal_provider(mask=False)
+    tts_provider_name = active_provider_name_for_capability(SPEECH_CAPABILITY, store=SQLITE_STORE)
+    tts_config = read_inference_provider_config(tts_provider_name, store=SQLITE_STORE, mask=False)
     run_metadata = run_payload.get("metadata") if isinstance(run_payload.get("metadata"), dict) else {}
     rewrite_provider = str(run_metadata.get("rewrite_provider") or "ollama").strip().lower() or "ollama"
     rewrite_fallback_mode = str(run_metadata.get("rewrite_fallback_mode") or "strict_rewrite").strip().lower() or "strict_rewrite"
-    tts_pool = ModalTTSPoolManager(
-        app_name=str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
-        request_timeout_seconds=max(30, int(tts_config.get("timeout_seconds") or 300)),
-    )
+    tts_provider = resolve_provider(provider_name=tts_provider_name, store=SQLITE_STORE)
     rewrite_llm = LLMClient(mode=_audiobook_llm_mode(rewrite_provider), allow_cross_provider_fallback=False)
-    service = AudiobookGenerationService(llm_client=rewrite_llm, tts_pool=tts_pool)
+    service = AudiobookGenerationService(llm_client=rewrite_llm, tts_provider=tts_provider)
     total_chapters = len(run_payload.get("chapters") or [])
     completed = 0
     failed = 0
@@ -4419,8 +4425,8 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
                             "failed_chapters": failed,
                             "source_provider": rewrite.get("source_provider") or run_payload.get("source_provider") or "ollama",
                             "source_model": rewrite.get("source_model") or run_payload.get("source_model") or "",
-                            "tts_provider": "tts_modal",
-                            "tts_app_name": str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+                            "tts_provider": tts_provider_name,
+                            "tts_app_name": str(tts_config.get("app_name") or ""),
                         },
                     ),
                 )
@@ -4517,14 +4523,14 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
                 continue
 
         if str(run_payload.get("audio_storage_mode") or "").lower() != "disabled" and transcript_results:
-            live = service.tts_pool.ensure_live()
+            live = service.tts_provider.ensure_live()
             append_stage_log(
                 log,
                 "audiobook",
                 "tts app ready",
                 token_name=live.get("token_name"),
                 api_url=live.get("api_url"),
-                app_name=tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME,
+                app_name=tts_config.get("app_name") or "",
                 rewrite_provider=rewrite_provider,
                 rewrite_fallback_mode=rewrite_fallback_mode,
             )
@@ -4641,8 +4647,8 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
                             "audio_mime_type": audio_result.get("media_type") or ("audio/flac" if audio_path.suffix.lower() == ".flac" else "audio/wav"),
                             "audio_byte_size": len(audio_bytes),
                             "duration_seconds": float(audio_result.get("duration_seconds") or 0.0),
-                            "tts_provider": "tts_modal",
-                            "tts_app_name": str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+                            "tts_provider": tts_provider_name,
+                            "tts_app_name": str(tts_config.get("app_name") or ""),
                             "provider_account_alias": str(audio_result.get("token_name") or ""),
                             "voice": audio_result.get("voice") or run_payload.get("voice") or "",
                             "lang_code": audio_result.get("lang_code") or run_payload.get("lang_code") or "",
@@ -4694,8 +4700,8 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
                                 "failed_chapters": failed,
                                 "source_provider": rewrite.get("source_provider") or run_payload.get("source_provider") or "ollama",
                                 "source_model": rewrite.get("source_model") or run_payload.get("source_model") or "",
-                                "tts_provider": "tts_modal",
-                                "tts_app_name": str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME),
+                                "tts_provider": tts_provider_name,
+                                "tts_app_name": str(tts_config.get("app_name") or ""),
                             },
                         ),
                     )
@@ -4876,7 +4882,11 @@ def runtime_state() -> dict[str, Any]:
         "ollama": SQLITE_STORE.get_provider_statuses("ollama"),
         "general_compute": SQLITE_STORE.get_provider_statuses("general_compute"),
         "codex": SQLITE_STORE.get_provider_statuses("codex"),
-        "tts_modal": SQLITE_STORE.get_provider_statuses("tts_modal"),
+        MODAL_POOL_PROVIDER: SQLITE_STORE.get_provider_statuses(MODAL_POOL_PROVIDER),
+        MODAL_KOKORO_PROVIDER: [],
+        MODAL_COMFYUI_PROVIDER: [],
+        MODAL_XCORE_PROVIDER: [],
+        "tts_modal": SQLITE_STORE.get_provider_statuses(MODAL_POOL_PROVIDER),
     }
     uploads = _safe_db([], "get_uploaded_sources", lambda: SQLITE_STORE.get_uploaded_sources(limit=100))
     return {
@@ -6202,30 +6212,81 @@ def save_tts_modal_provider_route(config: TTSModalProviderConfig) -> dict[str, A
     return {"tts_modal": save_tts_modal_provider(config)}
 
 
+@app.get("/runtime/inference/providers/{provider_name}")
+def get_inference_provider(provider_name: str) -> dict[str, Any]:
+    return {"provider": read_inference_provider_config(provider_name, store=SQLITE_STORE, mask=True)}
+
+
+@app.post("/runtime/inference/providers/{provider_name}")
+def save_inference_provider_route(provider_name: str, config: InferenceProviderConfig) -> dict[str, Any]:
+    payload = {
+        "provider_name": provider_name,
+        "app_name": config.app_name,
+        "api_url": config.api_url,
+        "health_url": config.health_url,
+        "ui_url": config.ui_url,
+        "request_timeout_seconds": config.request_timeout_seconds,
+        "default_voice": config.default_voice,
+        "default_lang_code": config.default_lang_code,
+        "default_sample_rate": config.default_sample_rate,
+        "default_audio_format": config.default_audio_format,
+        "default_normalize_audio": config.default_normalize_audio,
+        "default_trim_silence": config.default_trim_silence,
+        "default_sentence_pause_ms": config.default_sentence_pause_ms,
+        "model_name": config.model_name,
+        "accounts": [
+            {
+                "label": account.label,
+                "token_id": account.token_id,
+                "token_secret": account.token_secret,
+                "app_name_override": account.app_name_override,
+                "metadata": account.metadata,
+            }
+            for account in config.accounts
+        ],
+    }
+    saved = save_inference_provider_config(provider_name, payload, store=SQLITE_STORE)
+    capability = str(saved.get("capability") or "").strip().lower()
+    if capability in {SPEECH_CAPABILITY, IMAGE_CAPABILITY, COREF_CAPABILITY}:
+        save_inference_selection(capability, str(saved.get("provider_name") or provider_name), store=SQLITE_STORE)
+    return {"provider": saved}
+
+
+@app.get("/runtime/inference/capabilities/{capability}")
+def get_inference_selection_route(capability: str) -> dict[str, Any]:
+    return {"selection": read_inference_selection(capability, store=SQLITE_STORE)}
+
+
+@app.post("/runtime/inference/capabilities/{capability}")
+def save_inference_selection_route(capability: str, config: InferenceSelectionConfig) -> dict[str, Any]:
+    return {"selection": save_inference_selection(capability, config.provider_name, store=SQLITE_STORE)}
+
+
+@app.post("/runtime/inference/providers/{provider_name}/smoke")
+def run_inference_provider_smoke_route(provider_name: str) -> dict[str, Any]:
+    capability = provider_capability(provider_name)
+    return {"smoke": run_provider_smoke(capability=capability, provider_name=provider_name, store=SQLITE_STORE)}
+
+
+@app.get("/runtime/inference/status")
+def get_inference_statuses(refresh: bool = False) -> dict[str, Any]:
+    payload = refresh_provider_statuses_service(store=SQLITE_STORE) if refresh else read_latest_inference_status_payload(store=SQLITE_STORE)
+    return {
+        "providers": payload.get("providers") or {},
+        "selections": payload.get("selections") or {},
+        "refreshed_at": str(payload.get("refreshed_at") or utc_now()),
+    }
+
+
 @app.get("/runtime/providers/status")
 def get_provider_statuses(refresh: bool = False) -> dict[str, Any]:
     if refresh:
-        return {"providers": refresh_provider_statuses(), "refreshed_at": utc_now()}
+        payload = refresh_provider_statuses_service(store=SQLITE_STORE)
+    else:
+        payload = read_latest_provider_status_payload(store=SQLITE_STORE)
     return {
-        "providers": {
-            "ollama": {
-                "config": read_ollama_accounts(mask=True),
-                "statuses": SQLITE_STORE.get_provider_statuses("ollama"),
-            },
-            "general_compute": {
-                "config": read_general_compute_accounts(mask=True),
-                "statuses": SQLITE_STORE.get_provider_statuses("general_compute"),
-            },
-            "codex": {
-                "config": read_codex_accounts(mask=True),
-                "statuses": SQLITE_STORE.get_provider_statuses("codex"),
-            },
-            "tts_modal": {
-                "config": read_tts_modal_provider(mask=True),
-                "statuses": SQLITE_STORE.get_provider_statuses("tts_modal"),
-            },
-        },
-        "refreshed_at": utc_now(),
+        "providers": payload.get("providers") or {},
+        "refreshed_at": str(payload.get("refreshed_at") or utc_now()),
     }
 
 
@@ -6246,7 +6307,7 @@ def runtime_file(path: str):
 
 
 def _active_dist_dir() -> Path:
-    return PRO_DIST_DIR if PRO_DIST_DIR.exists() else FALLBACK_DIST_DIR
+    return PRO_DIST_DIR
 
 
 ACTIVE_DIST_DIR = _active_dist_dir()

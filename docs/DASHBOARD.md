@@ -4,7 +4,7 @@
 
 The current local dashboard stack is:
 
-- frontend: [apps/dashboard_web](/B:/Documents/PyCharm/graduationProject/apps/dashboard_web)
+- frontend: [apps/dashboard_pro](/B:/Documents/PyCharm/graduationProject/apps/dashboard_pro)
 - runtime: [apps.dashboard_api/app.py](/B:/Documents/PyCharm/graduationProject/apps.dashboard_api/app.py)
 
 ## Recommended Launch Path
@@ -43,12 +43,14 @@ The dashboard is intended to help with:
 Typical main tabs or sections include:
 
 - `Overview`
-- `Encode Runs`
+- `Import`
+- `Runs`
+- `Library`
 - `Analysis`
-- `Prompt Inspector`
-- `Retrieval Context`
+- `Decoder`
+- `Visual Assets`
 - `Providers`
-- `Reports`
+- `Diagnostics`
 
 Exact tab composition may vary as the frontend evolves.
 

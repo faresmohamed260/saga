@@ -1,6 +1,6 @@
 # S.A.G.A. Dashboard Pro
 
-`apps/dashboard_pro` is the modular React dashboard intended to replace the older dashboard prototype. It is served by `apps.dashboard_api.app` when `apps/dashboard_pro/dist` exists; otherwise the runtime falls back to `apps/dashboard_web/dist`.
+`apps/dashboard_pro` is the active modular React dashboard for S.A.G.A. It is the only dashboard frontend served by `apps.dashboard_api.app`.
 
 ## Current Capabilities
 
