@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
-import { Badge, Button, EmptyState, Field, Panel, toneFor } from "../../components/ui/primitives";
 import { useAsync } from "../../hooks/useAsync";
+import { ImportPlanPanel, StageBooksPanel } from "./components/ImportWorkflow";
 
 export function ImportPage() {
   const uploads = useAsync(() => runtimeApi.uploads(), []);
@@ -119,103 +119,32 @@ export function ImportPage() {
     window.location.href = `/runs/${encodeURIComponent(job.id)}`;
   }
 
-  const canStart = validation?.can_start;
   return (
     <div className="space-y-5">
-      <Panel title="Stage Books" subtitle="Upload one or more local book files into the database-backed staging area.">
-        <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-          <input type="file" multiple accept=".epub,.pdf,.txt" onChange={(event) => setFiles(event.target.files)} className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100" />
-          <Button onClick={upload} disabled={busy || !files.length} variant="primary">{busy ? "Uploading..." : "Upload files"}</Button>
-        </div>
-      </Panel>
-
-      <Panel title="Import Plan" subtitle="Review order, titles, book indices, duplicates, and analysis depth before starting a database-native job.">
-        <div className="mb-4 grid gap-3 md:grid-cols-3">
-          <Field label="Existing series">
-            <select onChange={useExistingSeries} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
-              <option value="">Create or keep custom series</option>
-              {(series.value?.series || []).map((row) => <option key={row.series_id} value={row.series_id}>{row.title || row.series_id}</option>)}
-            </select>
-          </Field>
-          <Field label="Series title">
-            <input value={seriesTitle} onChange={(event) => { setSeriesTitle(event.target.value); resetPlanState(); }} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm" />
-          </Field>
-          <Field label="Series id">
-            <input value={seriesId} onChange={(event) => { setSeriesId(event.target.value); resetPlanState(); }} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm" />
-          </Field>
-        </div>
-
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
-          <Field label="Scene target words">
-            <input type="number" min="200" max="2000" value={sceneTargetWords} onChange={(event) => { setSceneTargetWords(event.target.value); resetPlanState(); }} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm" />
-          </Field>
-          <Field label="Analysis model">
-            <select value={analysisModel} onChange={(event) => { setAnalysisModel(event.target.value); resetPlanState(); }} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
-              <option value="gpt_oss">gpt_oss</option>
-              <option value="codex">codex</option>
-              <option value="general_compute">general_compute</option>
-            </select>
-          </Field>
-          <Field label="Provider mode">
-            <select value={providerMode} onChange={(event) => { setProviderMode(event.target.value); resetPlanState(); }} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
-              <option value="same_provider_rotating">same provider rotating</option>
-              <option value="single_provider">single provider</option>
-              <option value="cross_provider_fallback">cross-provider fallback</option>
-            </select>
-          </Field>
-          <Field label="Pipeline depth">
-            <label className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
-              <input type="checkbox" checked={runAgents} onChange={(event) => { setRunAgents(event.target.checked); resetPlanState(); }} />
-              Run DB agents
-            </label>
-          </Field>
-        </div>
-
-        {bookRows.length ? (
-          <div className="space-y-3">
-            {bookRows.map((row, index) => (
-              <div key={row.source_id} className="rounded-2xl border border-slate-800 bg-slate-900/45 p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-black text-white">{row.source_name}</p>
-                    <p className="mt-1 text-sm text-slate-500">{((row.size_bytes || 0) / 1024 / 1024).toFixed(2)} MB</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => moveRow(row.source_id, -1)} disabled={index === 0}>Move up</Button>
-                    <Button onClick={() => moveRow(row.source_id, 1)} disabled={index === bookRows.length - 1}>Move down</Button>
-                    <Button variant="danger" onClick={() => removeUpload(row.source_id)}>Remove</Button>
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-[120px_1fr_160px]">
-                  <Field label="Include">
-                    <input type="checkbox" checked={row.selected} onChange={(event) => updateRow(row.source_id, { selected: event.target.checked })} />
-                  </Field>
-                  <Field label="Target title">
-                    <input value={row.target_title} onChange={(event) => updateRow(row.source_id, { target_title: event.target.value })} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm" />
-                  </Field>
-                  <Field label="Book index">
-                    <input type="number" min="1" value={row.book_index} onChange={(event) => updateRow(row.source_id, { book_index: event.target.value })} className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm" />
-                  </Field>
-                </div>
-              </div>
-            ))}
-
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={createPlan}>Create and validate plan</Button>
-              <Button onClick={start} disabled={!canStart} variant="primary">Start analysis job</Button>
-            </div>
-
-            {validation ? (
-              <div className="rounded-2xl border border-slate-800 bg-black/25 p-4">
-                <Badge tone={toneFor(validation.status)}>{validation.status}</Badge>
-                <p className="mt-3 text-sm text-slate-300">{validation.summary}</p>
-                {(validation.errors || []).map((item) => <p key={item} className="mt-2 text-sm text-red-200">{item}</p>)}
-                {(validation.warnings || []).map((item) => <p key={item} className="mt-2 text-sm text-amber-200">{item}</p>)}
-              </div>
-            ) : null}
-          </div>
-        ) : <EmptyState title="No staged uploads">Upload ACOTAR EPUBs, then review their order before starting analysis.</EmptyState>}
-      </Panel>
+      <StageBooksPanel busy={busy} files={files} onFilesChange={(event) => setFiles(event.target.files)} onUpload={upload} />
+      <ImportPlanPanel
+        seriesRows={series.value?.series || []}
+        bookRows={bookRows}
+        seriesTitle={seriesTitle}
+        seriesId={seriesId}
+        runAgents={runAgents}
+        sceneTargetWords={sceneTargetWords}
+        analysisModel={analysisModel}
+        providerMode={providerMode}
+        validation={validation}
+        onExistingSeries={useExistingSeries}
+        onSeriesTitleChange={(event) => { setSeriesTitle(event.target.value); resetPlanState(); }}
+        onSeriesIdChange={(event) => { setSeriesId(event.target.value); resetPlanState(); }}
+        onRunAgentsChange={(event) => { setRunAgents(event.target.checked); resetPlanState(); }}
+        onSceneTargetWordsChange={(event) => { setSceneTargetWords(event.target.value); resetPlanState(); }}
+        onAnalysisModelChange={(event) => { setAnalysisModel(event.target.value); resetPlanState(); }}
+        onProviderModeChange={(event) => { setProviderMode(event.target.value); resetPlanState(); }}
+        onUpdateRow={updateRow}
+        onMoveRow={moveRow}
+        onRemoveUpload={removeUpload}
+        onCreatePlan={createPlan}
+        onStart={start}
+      />
     </div>
   );
 }
