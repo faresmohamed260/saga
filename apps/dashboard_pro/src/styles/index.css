@@ -4,18 +4,31 @@
 
 :root {
   color: #f8fafc;
-  background: #05080d;
+  background: #05070b;
   font-family: "Aptos", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(120deg, rgba(4, 47, 46, 0.32), transparent 38%),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.16), transparent 30%),
-    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.1), transparent 32%),
-    #05080d;
+    linear-gradient(135deg, rgba(6, 78, 59, 0.28) 0%, transparent 32%),
+    linear-gradient(215deg, rgba(15, 23, 42, 0.86) 0%, rgba(5, 7, 11, 0.98) 48%, rgba(17, 24, 39, 0.92) 100%),
+    #05070b;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, black, transparent 76%);
 }
 
 button,
@@ -31,5 +44,11 @@ pre {
 }
 
 * {
-  scrollbar-color: rgba(56, 189, 248, 0.6) rgba(2, 6, 23, 0.9);
+  box-sizing: border-box;
+  scrollbar-color: rgba(45, 212, 191, 0.55) rgba(2, 6, 23, 0.9);
+}
+
+::selection {
+  background: rgba(45, 212, 191, 0.35);
+  color: #f8fafc;
 }
