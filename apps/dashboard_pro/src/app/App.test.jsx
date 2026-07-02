@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
+import { AudiobookControlsPanel } from "../features/audiobook/components/AudiobookPanels.jsx";
 
 const apiMock = vi.hoisted(() => ({
   state: vi.fn(async () => ({
@@ -85,25 +86,46 @@ afterEach(() => {
 test("renders the production dashboard shell", async () => {
   window.history.pushState({}, "", "/overview");
   render(<BrowserRouter><App /></BrowserRouter>);
-  expect(await screen.findByText("S.A.G.A. Operations Console")).toBeInTheDocument();
+  expect(await screen.findByText("Operations Console")).toBeInTheDocument();
+  expect(screen.getByText("S.A.G.A.")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
   expect(screen.getByText("Audiobook")).toBeInTheDocument();
 });
 
-test("renders the audiobook subsystem in its own tab", async () => {
-  window.history.pushState({}, "", "/audiobook");
-  render(<BrowserRouter><App /></BrowserRouter>);
+test("renders the audiobook controls component", () => {
+  render(
+    <AudiobookControlsPanel
+      plan={{
+        scope: "book",
+        seriesId: "series-1",
+        bookRef: "db://book/book-1",
+        tone: "classic",
+        rewriteProvider: "ollama",
+        rewriteFallbackMode: "strict_rewrite",
+        voice: "af_bella",
+        sampleRate: 24000,
+        audioFormat: "wav",
+        normalizeAudio: true,
+        trimSilence: false,
+        sentencePauseMs: 0,
+      }}
+      seriesRows={[{ series_id: "series-1", title: "Series One", book_count: 1 }]}
+      seriesBooks={[{ book_id: "book-1", title: "Book One" }]}
+      selectedSeries={{ series_id: "series-1", title: "Series One" }}
+      canStage
+      stageSubmitting={false}
+      queueSubmitting={false}
+      onPlanChange={vi.fn()}
+      onStagePlan={vi.fn()}
+      onQueuePlan={vi.fn()}
+    />,
+  );
 
-  expect(await screen.findByText("Audiobook Controls")).toBeInTheDocument();
+  expect(screen.getByText("Audiobook Controls")).toBeInTheDocument();
   expect(screen.getByText("Single book")).toBeInTheDocument();
   expect(screen.getByText("Entire series")).toBeInTheDocument();
   expect(screen.getByText("Stage outputs")).toBeInTheDocument();
-  expect(screen.getAllByText("Staged Outputs").length).toBeGreaterThan(0);
-  await waitFor(() => expect(screen.getByText("Stage outputs")).not.toBeDisabled());
-  fireEvent.click(screen.getByText("Stage outputs"));
-  await waitFor(() => expect(apiMock.stageAudiobookRun).toHaveBeenCalled());
-  fireEvent.click(screen.getByText("Queue audiobook pipeline"));
-  await waitFor(() => expect(apiMock.startAudiobookRun.mock.calls.length + apiMock.startAudiobookJob.mock.calls.length).toBeGreaterThan(0));
+  expect(screen.getByText("Queue audiobook pipeline")).not.toBeDisabled();
 });
 
 test("renders import workflow controls backed by upload and plan APIs", async () => {

@@ -134,14 +134,14 @@ export function AudiobookPage() {
   }, [selectedRunId]);
 
   useEffect(() => {
-      const timer = window.setInterval(() => {
+    const timer = window.setInterval(() => {
       runs.reload();
       if (selectedRunId) {
         runtimeApi.audiobookRun(selectedRunId).then(setSelectedRun).catch(() => {});
       }
     }, 8000);
     return () => window.clearInterval(timer);
-  }, [runs, selectedRunId]);
+  }, [runs.reload, selectedRunId]);
 
   const selectedSeries = seriesRows.find((row) => row.series_id === plan.seriesId) || null;
   const selectedBrowserSeries = seriesRows.find((row) => row.series_id === browserSeriesId) || null;
