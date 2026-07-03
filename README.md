@@ -2,6 +2,8 @@
 
 # S.A.G.A.
 
+[![Dashboard Pro CI](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml/badge.svg?branch=main)](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml)
+
 S.A.G.A. is a local, database-backed narrative analysis and generation workspace for books. It ingests source novels, builds canonical structured memory, exposes the results through a dashboard, and supports visual and decoder workflows on top of the same stored data.
 
 ## Repository Status
@@ -42,6 +44,16 @@ Used for:
 - starting analysis jobs
 - inspecting scenes, entities, events, states, visuals, and providers
 - launching decoder and rendering workflows
+
+## GitHub Workflow
+
+Dashboard Pro frontend work now follows a GitHub PR flow:
+
+- code ownership is defined in [.github/CODEOWNERS](B:\Documents\PyCharm\graduationProject\.github\CODEOWNERS)
+- pull requests use [.github/pull_request_template.md](B:\Documents\PyCharm\graduationProject\.github\pull_request_template.md)
+- frontend tasks can be opened from [.github/ISSUE_TEMPLATE/dashboard-pro-task.yml](B:\Documents\PyCharm\graduationProject\.github\ISSUE_TEMPLATE\dashboard-pro-task.yml)
+- CI for Dashboard Pro runs from [.github/workflows/dashboard-pro-ci.yml](B:\Documents\PyCharm\graduationProject\.github\workflows\dashboard-pro-ci.yml)
+- contributor guidance lives in [CONTRIBUTING.md](B:\Documents\PyCharm\graduationProject\CONTRIBUTING.md)
 
 ### Narraverse Website
 

@@ -1,0 +1,40 @@
+name: Dashboard Pro task
+description: Track a frontend task for Dashboard Pro.
+title: "[Dashboard Pro] "
+labels:
+  - dashboard-pro
+  - frontend
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the frontend problem or feature request.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List the exact conditions that define done.
+      placeholder: |
+        - Page loads without console errors
+        - Component matches the intended UX
+        - Dashboard Pro production build succeeds
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or references
+      description: Link mockups, screenshots, or existing pages when relevant.
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
