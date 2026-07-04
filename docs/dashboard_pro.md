@@ -5,6 +5,8 @@
 ## Current Capabilities
 
 - Routed pages for Overview, Import, Runs, Library, Analysis, Visual Assets, Decoder, Providers, and Diagnostics.
+- Public Landing, Sign In, and Sign Up routes are available at `/`, `/signin`, and `/signup`.
+- Sign Up and Sign In call FastAPI auth endpoints under `/api/auth/*`; account records are stored in MongoDB.
 - Database-backed runtime reads for jobs, books, analysis sections, provider health, generated stories, visual assets, uploads, and prompt metadata.
 - Import staging and validation are implemented against SQLite uploaded-source records.
 - Starting a validated import plan delegates to `saga.services.database_analysis_run_service.DatabaseAnalysisRunService`, not an embedded API-only pipeline.
@@ -43,6 +45,16 @@ Verify:
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8675/runtime/state
 Invoke-WebRequest -UseBasicParsing https://saga.faresuniform.uk
 ```
+
+MongoDB auth configuration:
+
+```powershell
+$env:SAGA_MONGODB_URI="mongodb://127.0.0.1:27017"
+$env:SAGA_MONGODB_DATABASE="saga"
+$env:SAGA_MONGODB_USERS_COLLECTION="users"
+```
+
+`SAGA_MONGODB_URI` can also be supplied as `MONGODB_URI`. The auth endpoints create a unique email index on the users collection before inserting a new signup record.
 
 ## Known Limitations
 
