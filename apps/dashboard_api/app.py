@@ -5082,6 +5082,16 @@ def on_startup() -> None:
     _seed_provider_configs_from_local_files()
 
 
+@app.post("/api/auth/signup")
+def auth_signup(request: SignUpRequest) -> dict[str, Any]:
+    return {"user": _create_auth_user(request)}
+
+
+@app.post("/api/auth/signin")
+def auth_signin(request: SignInRequest) -> dict[str, Any]:
+    return {"user": _authenticate_auth_user(request)}
+
+
 @app.get("/runtime/state")
 def runtime_state() -> dict[str, Any]:
     provider_statuses = {
