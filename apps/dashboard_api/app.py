@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import json
+import base64
+import hmac
 import os
 import re
 import shutil
@@ -12,6 +14,7 @@ import traceback
 import uuid
 import webbrowser
 import hashlib
+import secrets
 import wave
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -242,6 +245,75 @@ class InferenceProviderConfig(BaseModel):
 
 class InferenceSelectionConfig(BaseModel):
     provider_name: str
+
+
+class SignUpRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    workspace_name: str = ""
+
+
+class SignInRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthUserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    workspace_name: str = ""
+    created_at: str
+
+
+PASSWORD_HASH_ALGORITHM = "pbkdf2_sha256"
+PASSWORD_HASH_ITERATIONS = 310_000
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_auth_email(email: str) -> str:
+    return str(email or "").strip().lower()
+
+
+def _validate_auth_email(email: str) -> str:
+    normalized = _normalize_auth_email(email)
+    if not EMAIL_PATTERN.match(normalized):
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    return normalized
+
+
+def _validate_password(password: str) -> str:
+    value = str(password or "")
+    if len(value) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    return value
+
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_HASH_ITERATIONS)
+    return "$".join(
+        [
+            PASSWORD_HASH_ALGORITHM,
+            str(PASSWORD_HASH_ITERATIONS),
+            base64.b64encode(salt).decode("ascii"),
+            base64.b64encode(digest).decode("ascii"),
+        ]
+    )
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        algorithm, iterations, salt_text, digest_text = str(password_hash or "").split("$", 3)
+        if algorithm != PASSWORD_HASH_ALGORITHM:
+            return False
+        salt = base64.b64decode(salt_text.encode("ascii"))
+        expected = base64.b64decode(digest_text.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac("sha256", str(password or "").encode("utf-8"), salt, int(iterations))
+    except (ValueError, TypeError, OSError):
+        return False
+    return hmac.compare_digest(actual, expected)
 
 
 def _is_placeholder_analysis_value(value: Any) -> bool:
