@@ -74,8 +74,17 @@ const apiMock = vi.hoisted(() => ({
   providerStatuses: vi.fn(async () => ({ providers: [{ provider_name: "ollama", accounts: [], status: "ok" }] })),
 }));
 
+const authMock = vi.hoisted(() => ({
+  signUp: vi.fn(async () => ({ user: { id: "user-1", name: "Saga Operator", email: "operator@saga.dev", workspace_name: "Canon Studio", created_at: "2026-07-04T00:00:00Z" } })),
+  signIn: vi.fn(async () => ({ user: { id: "user-1", name: "Saga Operator", email: "operator@saga.dev", workspace_name: "Canon Studio", created_at: "2026-07-04T00:00:00Z" } })),
+}));
+
 vi.mock("../api/runtimeApi", () => ({
   runtimeApi: apiMock,
+}));
+
+vi.mock("../api/authApi", () => ({
+  authApi: authMock,
 }));
 
 afterEach(() => {
@@ -90,6 +99,35 @@ test("renders the production studio shell", async () => {
   expect(screen.getByText("S.A.G.A.")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
   expect(screen.getByText("Audiobook")).toBeInTheDocument();
+});
+
+test("renders the public landing page", () => {
+  window.history.pushState({}, "", "/");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  expect(screen.getByRole("heading", { name: "Story Production Studio" })).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "Start building" })[0]).toHaveAttribute("href", "/signup");
+  expect(screen.getByText("A cleaner path from source text to production output.")).toBeInTheDocument();
+});
+
+test("submits the signup form through the auth api", async () => {
+  window.history.pushState({}, "", "/signup");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Saga Operator" } });
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "operator@saga.dev" } });
+  fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Canon Studio" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "strong-password" } });
+  fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "strong-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+  await waitFor(() => expect(authMock.signUp).toHaveBeenCalledWith({
+    name: "Saga Operator",
+    email: "operator@saga.dev",
+    password: "strong-password",
+    workspace_name: "Canon Studio",
+  }));
+  expect(await screen.findByText("Workspace created")).toBeInTheDocument();
 });
 
 test("renders the audiobook controls component", () => {
