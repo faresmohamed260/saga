@@ -4,8 +4,8 @@ import { Badge, Button, DataCard, EmptyState, Panel, Toolbar, shortRef, toneFor 
 export function OperationsPanel({ jobs }) {
   return (
     <Panel
-      title="Current Operations"
-      subtitle="Latest persisted dashboard jobs, with direct links into the run monitor."
+      title="Active Work"
+      subtitle="Recent work with direct links into detailed progress."
       action={<Button asLink="/import/new" variant="primary">New import</Button>}
     >
       {jobs.length ? (
@@ -27,7 +27,7 @@ function OperationCard({ job }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-black text-white" title={job.id}>{job.id}</p>
-          <p className="mt-1 text-sm text-slate-400">{job.type || job.job_type || "job"} - {job.progress?.label || "no active progress"}</p>
+          <p className="mt-1 text-sm text-slate-400">{job.type || job.job_type || "job"} - {job.progress?.label || "waiting for progress"}</p>
         </div>
         <Badge tone={toneFor(job.status)}>{job.status || "unknown"}</Badge>
       </div>
@@ -37,7 +37,7 @@ function OperationCard({ job }) {
 
 export function CanonLibraryPanel({ books }) {
   return (
-    <Panel title="Canon Library" subtitle="Database-backed books available for inspection and decoder context.">
+    <Panel title="Canon Library" subtitle="Imported books ready for analysis, visual work, and story context.">
       {books.length ? (
         <div className="grid gap-3">
           {books.slice(0, 8).map((book) => (
@@ -45,7 +45,7 @@ export function CanonLibraryPanel({ books }) {
           ))}
         </div>
       ) : (
-        <EmptyState title="No books in the database yet">Use the Import workflow to stage and validate source books.</EmptyState>
+        <EmptyState title="No books yet">Use Import to stage and validate source books.</EmptyState>
       )}
     </Panel>
   );

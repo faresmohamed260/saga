@@ -225,17 +225,17 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-7xl overflow-hidden rounded-2xl border border-white/10 bg-[#050816] shadow-2xl shadow-black/50">
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+      <div className="max-h-[92vh] w-full max-w-7xl overflow-hidden rounded-lg border border-white/10 bg-[#050816] shadow-2xl shadow-black/50">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
           <div>
             <h3 className="text-2xl font-black text-white">{entity.name || "Loading asset"}</h3>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {displayedImagePath ? (
               <a
                 href={assetImageUrl(displayedImagePath)}
                 download
-                className="rounded-xl border border-emerald-400/50 bg-emerald-400/10 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
+                className="rounded-lg border border-emerald-400/50 bg-emerald-400/10 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
               >
                 Download
               </a>
@@ -253,7 +253,7 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
           </div>
         </div>
 
-        <div className="grid max-h-[calc(92vh-5rem)] gap-0 overflow-auto xl:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)]">
+        <div className="grid max-h-[calc(92vh-5rem)] gap-0 overflow-auto xl:grid-cols-[minmax(0,1.02fr)_minmax(0,.98fr)]">
           <div className="border-b border-white/10 bg-black/40 xl:border-b-0 xl:border-r">
             {loading ? (
               <div className="flex min-h-[32rem] items-center justify-center p-8 text-slate-400">Loading full asset details...</div>
@@ -262,7 +262,7 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
                 <img
                   src={assetImageUrl(displayedImagePath)}
                   alt={entity.name || entityId}
-                  className="max-h-[78vh] w-full rounded-2xl object-contain"
+                  className="max-h-[78vh] w-full rounded-lg object-contain"
                 />
               </div>
             ) : (
@@ -273,14 +273,14 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
           </div>
 
           <div className="space-y-4 p-5">
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="rounded-lg border border-white/10 bg-black/25 p-4">
               <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Entity name</p>
               <div className="flex flex-wrap items-center gap-3">
                 <input
                   value={renameDraft}
                   onChange={(event) => setRenameDraft(event.target.value)}
                   placeholder="Rename entity..."
-                  className="min-w-[18rem] flex-1 rounded-xl border border-white/10 bg-slate-950/85 px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-400/55 focus:ring-1 focus:ring-cyan-400/35"
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/85 px-4 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-400/55 focus:ring-1 focus:ring-cyan-400/35"
                 />
                 <Button onClick={handleRename} variant="secondary" disabled={!renameDirty || renaming || previewState.deleting}>
                   {renaming ? "Renaming..." : "Rename"}
@@ -350,7 +350,7 @@ function PromptTab({ active, dirty, onClick, children }) {
       type="button"
       onClick={onClick}
       className={[
-        "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
+        "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition",
         active ? "border-cyan-400/60 bg-cyan-400/12 text-white" : "border-white/10 bg-slate-950/55 text-slate-300 hover:border-cyan-400/35",
       ].join(" ")}
     >
@@ -368,7 +368,7 @@ function StructuredPromptEditor({ label, helper = "", compiledPrompt, segments, 
   }, [label]);
 
   return (
-    <div className={large ? "rounded-2xl border border-white/10 bg-black/25 p-5" : "rounded-2xl border border-white/10 bg-black/25 p-4"}>
+    <div className={large ? "rounded-lg border border-white/10 bg-black/25 p-5" : "rounded-lg border border-white/10 bg-black/25 p-4"}>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p>
         <button
@@ -381,12 +381,12 @@ function StructuredPromptEditor({ label, helper = "", compiledPrompt, segments, 
       </div>
       {helper ? <p className="mb-3 text-[11px] leading-5 text-slate-500">{helper}</p> : null}
       {showCompiled ? (
-        <div className="mb-3 rounded-xl border border-white/10 bg-slate-950/75 px-3 py-3">
+        <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/75 px-3 py-3">
           <p className="mb-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">Compiled prompt</p>
           <pre className="whitespace-pre-wrap break-words text-[12px] leading-[1.55] text-slate-300">{compiledPrompt || "No prompt compiled yet."}</pre>
         </div>
       ) : null}
-      <div className="rounded-2xl border border-white/10 bg-slate-950/80 transition focus-within:border-cyan-400/45 focus-within:ring-1 focus-within:ring-cyan-400/35">
+      <div className="rounded-lg border border-white/10 bg-slate-950/80 transition focus-within:border-cyan-400/45 focus-within:ring-1 focus-within:ring-cyan-400/35">
         <div className="space-y-2 p-3">
           {segments.map((segment) => (
             segment.kind === "locked" ? (

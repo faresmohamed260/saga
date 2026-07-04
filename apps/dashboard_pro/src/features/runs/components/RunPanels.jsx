@@ -4,7 +4,7 @@ import { Badge, Button, DataCard, EmptyState, Field, Panel, shortRef, toneFor } 
 
 export function RunsListPanel({ jobs }) {
   return (
-    <Panel title="Runs" subtitle="One card per persisted dashboard job.">
+    <Panel title="Runs" subtitle="Recent work items and queued jobs.">
       {jobs.length ? (
         <div className="space-y-3">
           {jobs.map((job) => (
@@ -56,7 +56,7 @@ export function RunDetailsPanel({ job, progress, logs, failureSummary, canRetry,
             <Field label="Return code">{job.return_code ?? "n/a"}</Field>
           </div>
           {failureSummary ? <FailureSummary summary={failureSummary} /> : null}
-          <Panel title="Structured log tail" subtitle="Most recent persisted job logs. Errors are highlighted; full tracebacks stay scrollable for debugging.">
+          <Panel title="Run log" subtitle="Most recent job logs. Errors are highlighted for review.">
             <LogViewer lines={logs} />
           </Panel>
         </div>
@@ -69,7 +69,7 @@ export function RunDetailsPanel({ job, progress, logs, failureSummary, canRetry,
 
 function FailureSummary({ summary }) {
   return (
-    <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm text-amber-100">
+    <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-4 text-sm text-amber-100">
       <p className="font-black text-amber-50">Failure summary</p>
       <p className="mt-2">{summary.reason}</p>
       {summary.exception && summary.exception !== summary.reason ? <p className="mt-2 text-amber-200/80">{summary.exception}</p> : null}

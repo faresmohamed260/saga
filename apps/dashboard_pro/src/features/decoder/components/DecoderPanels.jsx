@@ -16,7 +16,7 @@ export function DecoderControlsPanel({
   return (
     <Panel title="Decoder Controls" subtitle="Validate a series-level generation plan before starting a story job.">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid gap-2 sm:grid-cols-2">
           {modes.map((mode) => (
             <Button
               key={mode}
@@ -56,21 +56,27 @@ export function DecoderControlsPanel({
           </SelectInput>
         </Field>
 
-        <TextInput
-          type="number"
-          min="1"
-          max="60"
-          value={payload.chapter_count}
-          onChange={(event) => onPayloadChange({ ...payload, chapter_count: Number(event.target.value) })}
-        />
+        <Field label="Chapter count">
+          <TextInput
+            type="number"
+            min="1"
+            max="60"
+            value={payload.chapter_count}
+            onChange={(event) => onPayloadChange({ ...payload, chapter_count: Number(event.target.value) })}
+          />
+        </Field>
 
-        <TextInput
-          placeholder="Primary POV character"
-          value={payload.primary_pov_character}
-          onChange={(event) => onPayloadChange({ ...payload, primary_pov_character: event.target.value })}
-        />
+        <Field label="Primary POV character">
+          <TextInput
+            placeholder="Character name"
+            value={payload.primary_pov_character}
+            onChange={(event) => onPayloadChange({ ...payload, primary_pov_character: event.target.value })}
+          />
+        </Field>
 
-        <TextArea value={payload.user_prompt} onChange={(event) => onPayloadChange({ ...payload, user_prompt: event.target.value })} className="min-h-[180px]" />
+        <Field label="Story direction">
+          <TextArea value={payload.user_prompt} onChange={(event) => onPayloadChange({ ...payload, user_prompt: event.target.value })} className="min-h-[180px]" />
+        </Field>
 
         <Toolbar>
           <Button onClick={onValidate} disabled={!payload.series_id || !payload.provider}>
@@ -123,7 +129,7 @@ function GeneratedStoryCard({ story }) {
         {story.story_mode} / {story.primary_pov_character || "POV n/a"} / {story.series_id || story.series_title || "series n/a"}
       </p>
       <a
-        className="mt-3 inline-flex rounded-xl border border-emerald-400/50 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
+        className="mt-3 inline-flex rounded-lg border border-emerald-400/50 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
         href={`/runtime/export-generated-story-epub?story_id=${encodeURIComponent(story.id)}`}
       >
         Export EPUB

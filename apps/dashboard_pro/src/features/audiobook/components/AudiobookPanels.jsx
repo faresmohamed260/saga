@@ -22,10 +22,10 @@ export function AudiobookControlsPanel({
   return (
     <Panel
       title="Audiobook Controls"
-      subtitle="Select a series, scope it to one book or a full series, then stage or run the audiobook pipeline directly from the database."
+      subtitle="Select a series, scope it to one book or a full series, then stage or run audiobook production."
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid gap-2 sm:grid-cols-2">
           <Button onClick={() => onPlanChange((current) => ({ ...current, scope: "book" }))} variant={plan.scope === "book" ? "primary" : "secondary"}>
             Single book
           </Button>
@@ -59,7 +59,7 @@ export function AudiobookControlsPanel({
         ) : (
           <Field label="Series scope">
             {seriesBooks.length
-              ? `${seriesBooks.length} books from ${selectedSeries?.title || plan.seriesId} will be narrated in database order.`
+              ? `${seriesBooks.length} books from ${selectedSeries?.title || plan.seriesId} will be narrated in library order.`
               : "No books are currently available for the selected series."}
           </Field>
         )}
@@ -113,7 +113,7 @@ export function AudiobookControlsPanel({
         <Field label="Normalization">
           <SelectInput value={plan.normalizeAudio ? "on" : "off"} onChange={(event) => onPlanChange((current) => ({ ...current, normalizeAudio: event.target.value === "on" }))}>
             <option value="on">normalize audio</option>
-            <option value="off">leave raw levels</option>
+            <option value="off">keep original levels</option>
           </SelectInput>
         </Field>
 
@@ -261,7 +261,7 @@ export function AudiobookOutputsPanel({
           )}
         </div>
       ) : runLoading ? (
-        <EmptyState title="Loading run">Fetching the selected audiobook run from the database.</EmptyState>
+        <EmptyState title="Loading run">Fetching the selected audiobook run.</EmptyState>
       ) : (
         <EmptyState title="No staged outputs">
           Select a stored run or stage a new audiobook scope to access playable audio files.
@@ -283,7 +283,7 @@ function OutputsHeader({ selectedRun, playableChapters }) {
           <a
             href={runtimeApi.audiobookRunBundleUrl(selectedRun.id)}
             download={`${selectedRun.title || "audiobook"}.wav`}
-            className="rounded-xl border border-cyan-400/50 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-400/20"
+            className="rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-400/20"
           >
             Download full audiobook
           </a>
@@ -352,7 +352,7 @@ function ChapterOutputCard({ selectedRun, chapter, expanded, onToggle }) {
           <a
             href={audioUrl}
             download={filename}
-            className="rounded-xl border border-emerald-400/50 bg-emerald-400/10 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
+            className="rounded-lg border border-emerald-400/50 bg-emerald-400/10 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
           >
             Download
           </a>

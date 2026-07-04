@@ -2,9 +2,9 @@ import { Badge, Button, DataCard, EmptyState, Field, Panel, SelectInput, StatusB
 
 export function StageBooksPanel({ busy, files, onFilesChange, onUpload }) {
   return (
-    <Panel title="Stage Books" subtitle="Upload one or more local book files into the database-backed staging area.">
+    <Panel title="Stage Books" subtitle="Upload one or more local book files into the staging area.">
       <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-        <input type="file" multiple accept=".epub,.pdf,.txt" onChange={onFilesChange} className="w-full rounded-2xl border border-white/10 bg-slate-950/70 p-3 text-sm text-slate-100" />
+        <input type="file" multiple accept=".epub,.pdf,.txt" onChange={onFilesChange} className="w-full rounded-lg border border-white/10 bg-slate-950/70 p-3 text-sm text-slate-100" />
         <Button onClick={onUpload} disabled={busy || !files.length} variant="primary">{busy ? "Uploading..." : "Upload files"}</Button>
       </div>
     </Panel>
@@ -36,7 +36,7 @@ export function ImportPlanPanel({
 }) {
   const canStart = validation?.can_start;
   return (
-    <Panel title="Import Plan" subtitle="Review order, titles, book indices, duplicates, and analysis depth before starting a database-native job.">
+    <Panel title="Import Plan" subtitle="Review order, titles, book indices, duplicates, and analysis depth before starting analysis.">
       <ImportPlanSettings
         seriesRows={seriesRows}
         seriesTitle={seriesTitle}
@@ -64,7 +64,7 @@ export function ImportPlanPanel({
           <ValidationSummary validation={validation} />
         </div>
       ) : (
-        <EmptyState title="No staged uploads">Upload ACOTAR EPUBs, then review their order before starting analysis.</EmptyState>
+        <EmptyState title="No staged uploads">Upload EPUB, PDF, or TXT files, then review their order before starting analysis.</EmptyState>
       )}
     </Panel>
   );
@@ -122,9 +122,9 @@ function ImportPlanSettings({
           </SelectInput>
         </Field>
         <Field label="Pipeline depth">
-          <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-950/70 p-3 text-sm">
+          <label className="flex items-center gap-3 rounded-lg border border-white/10 bg-slate-950/70 p-3 text-sm">
             <input type="checkbox" checked={runAgents} onChange={onRunAgentsChange} />
-            Run DB agents
+            Run full analysis pipeline
           </label>
         </Field>
       </div>

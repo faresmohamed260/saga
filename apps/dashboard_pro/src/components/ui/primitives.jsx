@@ -13,7 +13,7 @@ const toneStyles = {
   red: "border-rose-400/50 bg-rose-400/10 text-rose-100",
 };
 
-const inputBase = "w-full rounded-xl border border-white/10 bg-slate-950/70 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 hover:border-white/20 focus:border-cyan-400/65 focus:ring-2 focus:ring-cyan-400/15";
+const inputBase = "w-full rounded-lg border border-white/10 bg-slate-950/70 px-3.5 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 hover:border-white/20 focus:border-cyan-400/65 focus:ring-2 focus:ring-cyan-400/15";
 
 export function toneFor(status) {
   const value = String(status || "").toLowerCase();
@@ -39,7 +39,7 @@ export function Button({ children, variant = "secondary", className = "", asLink
     danger: "border-rose-300/45 bg-rose-400/10 text-rose-50 hover:bg-rose-400/20",
     ghost: "border-transparent bg-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white",
   };
-  const classes = cx("inline-flex min-h-10 items-center justify-center rounded-xl border px-4 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-50", variants[variant], className);
+  const classes = cx("inline-flex min-h-10 items-center justify-center rounded-lg border px-4 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-50", variants[variant], className);
   if (asLink) return <Link to={asLink} className={classes}>{children}</Link>;
   return <button className={classes} {...props}>{children}</button>;
 }
@@ -48,7 +48,7 @@ export function Surface({ as: Component = "div", className = "", children, ...pr
   return (
     <Component
       className={cx(
-        "rounded-2xl border border-white/10 bg-slate-950/55 shadow-xl shadow-black/15 backdrop-blur",
+        "rounded-lg border border-white/10 bg-slate-950/55 shadow-xl shadow-black/15 backdrop-blur",
         className,
       )}
       {...props}
@@ -85,7 +85,7 @@ export function Metric({ label, value, detail = "live", tone = "slate" }) {
 
 export function EmptyState({ title = "Nothing here yet", children }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-slate-400">
+    <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-slate-400">
       <p className="font-bold text-slate-200">{title}</p>
       {children ? <div className="mt-2 leading-6">{children}</div> : null}
     </div>
@@ -94,7 +94,7 @@ export function EmptyState({ title = "Nothing here yet", children }) {
 
 export function Field({ label, children }) {
   return (
-    <div className="rounded-2xl border border-white/5 bg-black/20 p-4">
+    <div className="rounded-lg border border-white/5 bg-black/20 p-4">
       <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <div className="text-sm leading-6 text-slate-100">{children}</div>
     </div>
@@ -107,7 +107,7 @@ export function SearchBox({ value, onChange, placeholder = "Search..." }) {
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={cx(inputBase, "rounded-2xl px-4 py-3")}
+      className={cx(inputBase, "rounded-lg px-4 py-3")}
     />
   );
 }
@@ -144,7 +144,7 @@ export function SectionHeading({ title, subtitle, className = "" }) {
 export function StatusBanner({ tone = "slate", message, children }) {
   if (!message && !children) return null;
   return (
-    <div className={cx("rounded-xl border px-4 py-3 text-sm leading-6", toneStyles[tone] || toneStyles.slate)}>
+    <div className={cx("rounded-lg border px-4 py-3 text-sm leading-6", toneStyles[tone] || toneStyles.slate)}>
       {message || children}
     </div>
   );
@@ -154,7 +154,7 @@ export function DataCard({ as: Component = "article", className = "", children, 
   return (
     <Component
       className={cx(
-        "rounded-2xl border border-white/10 bg-slate-950/45 p-4 shadow-lg shadow-black/10",
+        "rounded-lg border border-white/10 bg-slate-950/45 p-4 shadow-lg shadow-black/10",
         interactive ? "transition hover:border-cyan-300/45 hover:bg-cyan-300/5" : "",
         className,
       )}

@@ -3,7 +3,7 @@ import { Badge, DataCard, EmptyState, Panel, Toolbar, shortRef, toneFor } from "
 
 export function LibraryGrid({ books }) {
   return (
-    <Panel title="Library" subtitle="Books available in SQLite. Open one to inspect structured analysis.">
+    <Panel title="Library" subtitle="Imported books ready for structured analysis.">
       {books.length ? (
         <div className="grid gap-3 xl:grid-cols-2">
           {books.map((book) => (
@@ -11,7 +11,7 @@ export function LibraryGrid({ books }) {
           ))}
         </div>
       ) : (
-        <EmptyState title="No books found" />
+        <EmptyState title="No books yet" />
       )}
     </Panel>
   );

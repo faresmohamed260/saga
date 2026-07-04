@@ -30,7 +30,7 @@ export function AnalysisPage() {
     return (raw || []).filter((row) => searchableLabelFor(section, row).toLowerCase().includes(q));
   }, [outputs, section, query]);
 
-  if (!bookRef) return <EmptyState title="No database-backed books found">Import or seed a book first.</EmptyState>;
+  if (!bookRef) return <EmptyState title="No books found">Import or seed a book first.</EmptyState>;
   if (analysis.loading) return <EmptyState title="Loading analysis" />;
   if (analysis.error) return <EmptyState title="Analysis failed to load">{analysis.error}</EmptyState>;
 

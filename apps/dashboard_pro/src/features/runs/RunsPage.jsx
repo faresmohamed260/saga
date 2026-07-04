@@ -73,7 +73,7 @@ export function RunsPage() {
   const canRetry = ["failed", "cancelled"].includes(status) && ["db-native-analysis", "audiobook-pipeline"].includes(type);
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
       <RunsListPanel jobs={jobs} />
       <RunDetailsPanel
         job={job}

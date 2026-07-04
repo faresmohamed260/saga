@@ -32,7 +32,7 @@ function SeriesCard({ item, selected, onSelect }) {
       type="button"
       onClick={onSelect}
       className={[
-        "rounded-2xl border p-4 text-left transition",
+        "rounded-lg border p-4 text-left transition",
         selected
           ? "border-cyan-300/60 bg-cyan-300/10 shadow-lg shadow-cyan-950/30"
           : "border-white/10 bg-slate-950/45 hover:border-cyan-300/40 hover:bg-cyan-300/5",
@@ -95,7 +95,7 @@ export function AssetGridPanel({
       title={`${totalAssets} asset${totalAssets === 1 ? "" : "s"}`}
       subtitle="Thumbnail-first browsing keeps initial load fast. Select a card to inspect the full asset and prompt details."
       action={filteredAssets.length ? (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedCount ? (
             <>
               <Badge tone="blue">{`${selectedCount} selected`}</Badge>
@@ -145,7 +145,7 @@ function AssetCard({ entity, selected, onToggleSelect, onOpen }) {
   return (
     <div
       className={[
-        "overflow-hidden rounded-2xl border bg-slate-950/55 text-left shadow-lg shadow-black/10 transition",
+        "overflow-hidden rounded-lg border bg-slate-950/55 text-left shadow-lg shadow-black/10 transition",
         selected
           ? "border-emerald-300/55 shadow-emerald-950/20"
           : "border-white/10 hover:border-cyan-300/50 hover:bg-cyan-300/5",

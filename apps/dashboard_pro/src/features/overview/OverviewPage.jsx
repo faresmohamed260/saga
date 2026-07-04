@@ -14,10 +14,10 @@ export function OverviewPage() {
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Books" value={books.length} detail="database" tone="green" />
+        <Metric label="Books" value={books.length} detail="library" tone="green" />
         <Metric label="Jobs" value={jobs.length} detail={latestJob?.status || "idle"} tone={toneFor(latestJob?.status)} />
         <Metric label="Stories" value={storyCount} detail="generated" tone="blue" />
-        <Metric label="Prompts" value={state?.prompts?.length || 0} detail="inspectable" tone="slate" />
+        <Metric label="Prompts" value={state?.prompts?.length || 0} detail="available" tone="slate" />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">

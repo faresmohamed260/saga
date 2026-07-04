@@ -21,7 +21,7 @@ export function Progress({ job }) {
     status,
   });
   return (
-    <div className="rounded-2xl border border-slate-800 bg-[#10141d] p-4">
+    <div className="rounded-lg border border-slate-800 bg-[#10141d] p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-bold text-white">{progress.label || job?.status_reason || job?.type || "No active step"}</p>
@@ -115,9 +115,9 @@ function computeCounterLabel({ current, total, details, stage, status }) {
 }
 
 export function LogViewer({ lines = [] }) {
-  if (!lines.length) return <div className="rounded-2xl border border-dashed border-slate-800 bg-black/40 p-4 text-sm text-slate-400">No logs yet.</div>;
+  if (!lines.length) return <div className="rounded-lg border border-dashed border-slate-800 bg-black/40 p-4 text-sm text-slate-400">No logs yet.</div>;
   return (
-    <div className="max-h-[520px] overflow-auto rounded-2xl border border-slate-800 bg-black p-3 font-mono text-xs">
+    <div className="max-h-[520px] overflow-auto rounded-lg border border-slate-800 bg-black p-3 font-mono text-xs">
       {lines.map((line, index) => {
         const raw = typeof line === "string" ? line : line?.line_text || JSON.stringify(line);
         const isError = /error|failed|traceback|exception/i.test(raw);

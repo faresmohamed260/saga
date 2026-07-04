@@ -18,7 +18,7 @@ export function AnalysisSectionTabs({ bookRef, section, view }) {
         <Link
           key={key}
           to={`/books/${encodeURIComponent(bookRef)}/analysis/${key}`}
-          className={`rounded-xl border px-3 py-2 text-sm font-black transition ${section === key ? "border-cyan-300/60 bg-cyan-300/15 text-white" : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-white/20"}`}
+          className={`rounded-lg border px-3 py-2 text-sm font-black transition ${section === key ? "border-cyan-300/60 bg-cyan-300/15 text-white" : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-white/20"}`}
         >
           {label} - {countFor(view, key)}
         </Link>
@@ -29,13 +29,13 @@ export function AnalysisSectionTabs({ bookRef, section, view }) {
 
 export function AnalysisRowsPanel({ rows, section }) {
   return (
-    <Panel title={`${rows.length} ${section}`} subtitle="Structured SQLite rows rendered as inspectable cards.">
+    <Panel title={`${rows.length} ${section}`} subtitle="Structured analysis results presented as reviewable cards.">
       {rows.length ? (
         <div className="space-y-3">
           {rows.map((row, index) => renderRow(section, row, index))}
         </div>
       ) : (
-        <EmptyState title={`No ${section} rows`} />
+        <EmptyState title={`No ${section} entries`} />
       )}
     </Panel>
   );
@@ -126,7 +126,7 @@ function EntityCard({ row, visual }) {
         <div className="mt-4 space-y-3">
           <Field label="Prompt">{text(row.baseline_prompt || row.baseline_visual_prompt)}</Field>
           <Field label="Negative prompt">{text(row.negative_prompt)}</Field>
-          {row.generated_image_path ? <img src={`/runtime/file?path=${encodeURIComponent(row.generated_image_path)}`} alt={name} className="max-h-[520px] rounded-2xl border border-white/10 object-contain" /> : <Field label="Image">No image version recorded.</Field>}
+          {row.generated_image_path ? <img src={`/runtime/file?path=${encodeURIComponent(row.generated_image_path)}`} alt={name} className="max-h-[520px] rounded-lg border border-white/10 object-contain" /> : <Field label="Image">No image version recorded.</Field>}
         </div>
       ) : null}
     </DataCard>
@@ -152,7 +152,7 @@ function SceneCard({ row, world }) {
           <Field label="Relationship changes">{text(row.relationship_changes)}</Field>
         </div>
       ) : (
-        <div className="mt-4 whitespace-pre-wrap rounded-2xl border border-white/5 bg-black/25 p-4 text-sm leading-7 text-slate-100">{row.text || "No scene text stored."}</div>
+        <div className="mt-4 whitespace-pre-wrap rounded-lg border border-white/5 bg-black/25 p-4 text-sm leading-7 text-slate-100">{row.text || "No scene text stored."}</div>
       )}
     </DataCard>
   );
@@ -220,7 +220,7 @@ function StateCard({ row, index }) {
           <Field label="Agent metadata">{text(metadata)}</Field>
         </div>
       ) : (
-        <EmptyState title="No stable-state payload recorded">The database has a state row for this character, but the stable-state agent did not persist usable attributes.</EmptyState>
+        <EmptyState title="No stable character details recorded">A state entry exists for this character, but usable attributes were not saved yet.</EmptyState>
       )}
     </DataCard>
   );
@@ -230,11 +230,11 @@ function CompactList({ title, rows }) {
   const visible = (rows || []).slice(0, 5);
   if (!visible.length) return null;
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-4">
       <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{title}</p>
       <div className="space-y-2">
         {visible.map((row, index) => (
-          <div key={index} className="rounded-xl bg-black/25 p-3 text-sm leading-6 text-slate-200">{text(row)}</div>
+          <div key={index} className="rounded-lg bg-black/25 p-3 text-sm leading-6 text-slate-200">{text(row)}</div>
         ))}
       </div>
       {rows.length > visible.length ? <p className="mt-3 text-xs text-slate-500">Showing {visible.length} of {rows.length} entries.</p> : null}

@@ -83,10 +83,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("renders the production dashboard shell", async () => {
+test("renders the production studio shell", async () => {
   window.history.pushState({}, "", "/overview");
   render(<BrowserRouter><App /></BrowserRouter>);
-  expect(await screen.findByText("Operations Console")).toBeInTheDocument();
+  expect(await screen.findByText("Story Production Studio")).toBeInTheDocument();
   expect(screen.getByText("S.A.G.A.")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
   expect(screen.getByText("Audiobook")).toBeInTheDocument();
@@ -140,7 +140,7 @@ test("renders import workflow controls backed by upload and plan APIs", async ()
   expect((await screen.findAllByText("ready")).length).toBeGreaterThan(0);
 });
 
-test("renders runs page with persisted job state", async () => {
+test("renders runs page with job state", async () => {
   window.history.pushState({}, "", "/runs");
   render(<BrowserRouter><App /></BrowserRouter>);
 
@@ -159,7 +159,7 @@ test("renders decoder validation controls", async () => {
   await waitFor(() => expect(apiMock.validateDecoderPlan).toHaveBeenCalled());
 });
 
-test("renders visual assets with database-backed prompt content", async () => {
+test("renders visual assets with prompt content", async () => {
   window.history.pushState({}, "", "/assets");
   render(<BrowserRouter><App /></BrowserRouter>);
 
@@ -167,7 +167,7 @@ test("renders visual assets with database-backed prompt content", async () => {
   expect(await screen.findByText(/series one/i)).toBeInTheDocument();
 });
 
-test("renders diagnostics with prompt metadata instead of raw dumps", async () => {
+test("renders diagnostics with prompt metadata", async () => {
   window.history.pushState({}, "", "/diagnostics");
   render(<BrowserRouter><App /></BrowserRouter>);
 
