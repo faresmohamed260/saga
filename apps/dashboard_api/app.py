@@ -316,6 +316,101 @@ def _verify_password(password: str, password_hash: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+AUTH_MONGO_CLIENT: Any = None
+AUTH_MONGO_CLIENT_URI = ""
+AUTH_MONGO_LOCK = threading.Lock()
+
+
+def _auth_mongo_config() -> dict[str, str]:
+    return {
+        "uri": str(os.environ.get("SAGA_MONGODB_URI") or os.environ.get("MONGODB_URI") or "").strip(),
+        "database": str(os.environ.get("SAGA_MONGODB_DATABASE") or "saga").strip() or "saga",
+        "collection": str(os.environ.get("SAGA_MONGODB_USERS_COLLECTION") or "users").strip() or "users",
+    }
+
+
+def _load_mongo_client_class():
+    try:
+        from pymongo import MongoClient
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="pymongo is required for MongoDB signup storage.") from exc
+    return MongoClient
+
+
+def _get_auth_users_collection():
+    config = _auth_mongo_config()
+    if not config["uri"]:
+        raise HTTPException(status_code=503, detail="MongoDB is not configured. Set SAGA_MONGODB_URI or MONGODB_URI.")
+
+    global AUTH_MONGO_CLIENT, AUTH_MONGO_CLIENT_URI
+    with AUTH_MONGO_LOCK:
+        if AUTH_MONGO_CLIENT is None or AUTH_MONGO_CLIENT_URI != config["uri"]:
+            mongo_client = _load_mongo_client_class()
+            AUTH_MONGO_CLIENT = mongo_client(config["uri"], serverSelectionTimeoutMS=5000)
+            AUTH_MONGO_CLIENT_URI = config["uri"]
+    return AUTH_MONGO_CLIENT[config["database"]][config["collection"]]
+
+
+def _auth_user_response(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(document.get("id") or document.get("_id") or ""),
+        "name": str(document.get("name") or ""),
+        "email": str(document.get("email") or ""),
+        "workspace_name": str(document.get("workspace_name") or ""),
+        "created_at": str(document.get("created_at") or ""),
+    }
+
+
+def _create_auth_user(request: SignUpRequest) -> dict[str, Any]:
+    name = str(request.name or "").strip()
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters.")
+    email = _validate_auth_email(request.email)
+    password = _validate_password(request.password)
+    workspace_name = str(request.workspace_name or "").strip()
+    collection = _get_auth_users_collection()
+    now = utc_now()
+    document = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "email": email,
+        "workspace_name": workspace_name,
+        "password_hash": _hash_password(password),
+        "role": "operator",
+        "created_at": now,
+        "updated_at": now,
+    }
+    try:
+        collection.create_index("email", unique=True)
+        if collection.find_one({"email": email}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        collection.insert_one(document)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if exc.__class__.__name__ == "DuplicateKeyError":
+            raise HTTPException(status_code=409, detail="An account with this email already exists.") from exc
+        raise HTTPException(status_code=503, detail=f"MongoDB signup failed: {type(exc).__name__}.") from exc
+    return _auth_user_response(document)
+
+
+def _find_auth_user_by_email(email: str) -> dict[str, Any] | None:
+    collection = _get_auth_users_collection()
+    try:
+        return collection.find_one({"email": _validate_auth_email(email)})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"MongoDB signin failed: {type(exc).__name__}.") from exc
+
+
+def _authenticate_auth_user(request: SignInRequest) -> dict[str, Any]:
+    user = _find_auth_user_by_email(request.email)
+    if not user or not _verify_password(request.password, str(user.get("password_hash") or "")):
+        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+    return _auth_user_response(user)
+
+
 def _is_placeholder_analysis_value(value: Any) -> bool:
     text = str(value or "").strip()
     if not text:
