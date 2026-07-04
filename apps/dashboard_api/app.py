@@ -73,6 +73,7 @@ from saga.agents.visual_prompt_schema import (
     compile_location_negative_prompt,
     compile_object_negative_prompt,
 )
+from integrations.kokoro_tts.pool_manager import ModalTTSPoolManager
 from saga.services.audiobook_generation_service import AudiobookGenerationService
 from saga.services.database_analysis_run_service import DatabaseAnalysisRunService
 from saga.services.database_decoder_service import DatabaseDecoderService
@@ -118,6 +119,7 @@ DASHBOARD_DIR = Path(os.environ.get("SAGA_DASHBOARD_DIR") or (OUTPUTS_DIR / "das
 UPLOADS_DIR = Path(os.environ.get("SAGA_UPLOADS_DIR") or (DASHBOARD_DIR / "uploads")).resolve()
 STORY_EXPORTS_DIR = Path(os.environ.get("SAGA_STORY_EXPORTS_DIR") or (DASHBOARD_DIR / "story_exports")).resolve()
 CODEX_ACCOUNTS_FILE = ROOT / "deploy" / "openai" / "accounts.local.json"
+LEGACY_TTS_MODAL_PROVIDER = "tts_modal"
 DEFAULT_TTS_MODAL_APP_NAME = "graduation-kokoro-tts"
 
 DEFAULT_BOOKS = [
@@ -1647,7 +1649,22 @@ def merge_and_save_general_compute_accounts(config: GeneralComputeProviderConfig
 
 
 def read_tts_modal_provider(mask: bool = True) -> dict[str, Any]:
-    payload = read_inference_provider_config(MODAL_KOKORO_PROVIDER, store=SQLITE_STORE, mask=mask)
+    legacy = SQLITE_STORE.get_provider_config(LEGACY_TTS_MODAL_PROVIDER) or {}
+    if isinstance(legacy, dict) and legacy:
+        payload = dict(legacy)
+        if mask:
+            payload = dict(payload)
+            masked_accounts: list[dict[str, Any]] = []
+            for item in payload.get("accounts") or []:
+                if not isinstance(item, dict):
+                    continue
+                masked = dict(item)
+                if masked.get("token_secret"):
+                    masked["token_secret"] = "***"
+                masked_accounts.append(masked)
+            payload["accounts"] = masked_accounts
+    else:
+        payload = read_inference_provider_config(MODAL_KOKORO_PROVIDER, store=SQLITE_STORE, mask=mask)
     payload["timeout_seconds"] = int(payload.get("request_timeout_seconds") or 300)
     return payload
 
@@ -1666,8 +1683,16 @@ def save_tts_modal_provider(config: TTSModalProviderConfig) -> dict[str, Any]:
         "default_sentence_pause_ms": max(0, int(config.default_sentence_pause_ms or 0)),
         "request_timeout_seconds": max(30, int(config.timeout_seconds or 300)),
         "accounts": [],
+        "transport": "modal_api",
     }
     save_inference_provider_config(MODAL_KOKORO_PROVIDER, payload, store=SQLITE_STORE)
+    SQLITE_STORE.upsert_provider_config(
+        LEGACY_TTS_MODAL_PROVIDER,
+        {
+            **payload,
+            "provider_name": LEGACY_TTS_MODAL_PROVIDER,
+        },
+    )
     save_inference_selection(SPEECH_CAPABILITY, MODAL_KOKORO_PROVIDER, store=SQLITE_STORE)
     return read_tts_modal_provider(mask=True)
 
@@ -1856,9 +1881,20 @@ def _safe_probe_inference_provider(provider_name: str, config: dict[str, Any]) -
 
 def _safe_probe_tts_modal_provider(config: dict[str, Any]) -> dict[str, Any]:
     payload = dict(config or {})
-    payload.setdefault("provider_name", MODAL_KOKORO_PROVIDER)
+    payload.setdefault("provider_name", LEGACY_TTS_MODAL_PROVIDER)
     payload.setdefault("request_timeout_seconds", int(payload.get("timeout_seconds") or 300))
-    return _safe_probe_inference_provider(MODAL_KOKORO_PROVIDER, payload)
+    probe = _safe_probe_inference_provider(MODAL_KOKORO_PROVIDER, payload)
+    probe["provider_name"] = LEGACY_TTS_MODAL_PROVIDER
+    return probe
+
+
+def _tts_modal_status_payload(*, refresh: bool) -> dict[str, Any]:
+    config = read_tts_modal_provider(mask=True)
+    statuses = list(SQLITE_STORE.get_provider_statuses(LEGACY_TTS_MODAL_PROVIDER) or [])
+    if refresh:
+        probe = _safe_probe_tts_modal_provider(read_tts_modal_provider(mask=False))
+        statuses = SQLITE_STORE.replace_provider_statuses(LEGACY_TTS_MODAL_PROVIDER, [probe])
+    return {"config": config, "statuses": statuses}
 
 
 def refresh_provider_statuses() -> dict[str, Any]:
@@ -4189,9 +4225,12 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
     run_metadata = run_payload.get("metadata") if isinstance(run_payload.get("metadata"), dict) else {}
     rewrite_provider = str(run_metadata.get("rewrite_provider") or "ollama").strip().lower() or "ollama"
     rewrite_fallback_mode = str(run_metadata.get("rewrite_fallback_mode") or "strict_rewrite").strip().lower() or "strict_rewrite"
-    tts_provider = resolve_provider(provider_name=tts_provider_name, store=SQLITE_STORE)
+    tts_pool = ModalTTSPoolManager(
+        app_name=str(tts_config.get("app_name") or DEFAULT_TTS_MODAL_APP_NAME).strip() or DEFAULT_TTS_MODAL_APP_NAME,
+        request_timeout_seconds=max(30, int(tts_config.get("request_timeout_seconds") or tts_config.get("timeout_seconds") or 300)),
+    )
     rewrite_llm = LLMClient(mode=_audiobook_llm_mode(rewrite_provider), allow_cross_provider_fallback=False)
-    service = AudiobookGenerationService(llm_client=rewrite_llm, tts_provider=tts_provider)
+    service = AudiobookGenerationService(llm_client=rewrite_llm, tts_pool=tts_pool)
     total_chapters = len(run_payload.get("chapters") or [])
     completed = 0
     failed = 0
@@ -4523,7 +4562,7 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
                 continue
 
         if str(run_payload.get("audio_storage_mode") or "").lower() != "disabled" and transcript_results:
-            live = service.tts_provider.ensure_live()
+            live = service.tts_pool.ensure_live()
             append_stage_log(
                 log,
                 "audiobook",
@@ -6284,8 +6323,10 @@ def get_provider_statuses(refresh: bool = False) -> dict[str, Any]:
         payload = refresh_provider_statuses_service(store=SQLITE_STORE)
     else:
         payload = read_latest_provider_status_payload(store=SQLITE_STORE)
+    providers = dict(payload.get("providers") or {})
+    providers[LEGACY_TTS_MODAL_PROVIDER] = _tts_modal_status_payload(refresh=refresh)
     return {
-        "providers": payload.get("providers") or {},
+        "providers": providers,
         "refreshed_at": str(payload.get("refreshed_at") or utc_now()),
     }
 
