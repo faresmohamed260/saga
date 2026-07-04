@@ -1,0 +1,103 @@
+import { Button, Field, Panel, SelectInput, TextArea, TextInput, Toolbar } from "../primitives";
+
+export function DecoderControlsPanel({
+  modes,
+  payload,
+  seriesRows,
+  seriesBooks,
+  providerRows,
+  validation,
+  modeRows,
+  canStart,
+  onPayloadChange,
+  onValidate,
+  onStart,
+}) {
+  return (
+    <Panel title="Decoder Controls" subtitle="Validate a series-level generation plan before starting a story job.">
+      <div className="space-y-4">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {modes.map((mode) => (
+            <Button
+              key={mode}
+              onClick={() => onPayloadChange({ ...payload, story_mode: mode })}
+              variant={payload.story_mode === mode ? "primary" : "secondary"}
+            >
+              {mode.replaceAll("_", " ")}
+            </Button>
+          ))}
+        </div>
+
+        <Field label="Series">
+          <SelectInput value={payload.series_id} onChange={(event) => onPayloadChange({ ...payload, series_id: event.target.value })}>
+            {!seriesRows.length ? <option value="">No series available</option> : null}
+            {seriesRows.map((row) => (
+              <option key={row.series_id} value={row.series_id}>
+                {(row.title || row.series_id) + (row.book_count ? ` (${row.book_count} books)` : "")}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+
+        {seriesBooks.length ? (
+          <Field label="Series decoder scope">
+            {`${seriesBooks.length} book${seriesBooks.length === 1 ? "" : "s"} available in this series. Decoder anchor is resolved automatically.`}
+          </Field>
+        ) : null}
+
+        <Field label="Generation provider">
+          <SelectInput value={payload.provider} onChange={(event) => onPayloadChange({ ...payload, provider: event.target.value })}>
+            {!providerRows.length ? <option value="">No healthy providers available</option> : null}
+            {providerRows.map((row) => (
+              <option key={row.value} value={row.value}>
+                {row.label}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+
+        <Field label="Chapter count">
+          <TextInput
+            type="number"
+            min="1"
+            max="60"
+            value={payload.chapter_count}
+            onChange={(event) => onPayloadChange({ ...payload, chapter_count: Number(event.target.value) })}
+          />
+        </Field>
+
+        <Field label="Primary POV character">
+          <TextInput
+            placeholder="Character name"
+            value={payload.primary_pov_character}
+            onChange={(event) => onPayloadChange({ ...payload, primary_pov_character: event.target.value })}
+          />
+        </Field>
+
+        <Field label="Story direction">
+          <TextArea value={payload.user_prompt} onChange={(event) => onPayloadChange({ ...payload, user_prompt: event.target.value })} className="min-h-[180px]" />
+        </Field>
+
+        <Toolbar>
+          <Button onClick={onValidate} disabled={!payload.series_id || !payload.provider}>
+            Validate plan
+          </Button>
+          <Button onClick={onStart} disabled={!canStart} variant="primary">
+            Start generation
+          </Button>
+        </Toolbar>
+
+        {validation ? (
+          <Field label={`Validation: ${validation.valid ? "ready" : "blocked"}`}>
+            {[...(validation.errors || []), ...(validation.warnings || []), ...(modeRows.length ? [] : ["Decoder mode metadata unavailable."])]
+              .join(" | ") || "Plan is ready."}
+          </Field>
+        ) : null}
+
+        {!providerRows.length ? (
+          <Field label="Provider health">No decoder providers are currently available. Refresh provider status before generating.</Field>
+        ) : null}
+      </div>
+    </Panel>
+  );
+}

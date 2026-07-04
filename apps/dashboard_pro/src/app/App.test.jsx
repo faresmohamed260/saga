@@ -128,6 +128,19 @@ test("renders the audiobook controls component", () => {
   expect(screen.getByText("Queue audiobook pipeline")).not.toBeDisabled();
 });
 
+test("switches away from audiobook without keeping stale content mounted", async () => {
+  window.history.pushState({}, "", "/overview");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.click(await screen.findByRole("link", { name: "Audiobook" }));
+  expect(await screen.findByRole("heading", { name: "Audiobook Controls" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("link", { name: "Library" }));
+
+  expect(await screen.findByRole("heading", { name: "Library" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Audiobook Controls" })).not.toBeInTheDocument();
+});
+
 test("renders import workflow controls backed by upload and plan APIs", async () => {
   window.history.pushState({}, "", "/import/new");
   render(<BrowserRouter><App /></BrowserRouter>);

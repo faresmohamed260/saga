@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { StatusBanner } from "./primitives";
 import { useRuntimeState } from "../hooks/useRuntimeState";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -6,7 +6,9 @@ import { NAV_ITEMS } from "./navConfig";
 import { ShellHeader, ShellNav } from "./ShellHeader";
 
 export function AppShell() {
+  const location = useLocation();
   const { state, loading, error, reload } = useRuntimeState();
+  const routeKey = `${location.pathname}${location.search}`;
   const jobs = state?.jobs || [];
   const active = jobs.find((job) => ["running", "queued", "starting", "validating", "staging"].includes(String(job.status || "").toLowerCase()));
   const latestCompleted = jobs.find((job) => ["completed", "success"].includes(String(job.status || "").toLowerCase()));
@@ -20,7 +22,7 @@ export function AppShell() {
         {error ? <div className="mt-4"><StatusBanner tone="red" message={error} /></div> : null}
         <ShellNav items={NAV_ITEMS} />
         <main className="mt-5">
-          <ErrorBoundary>
+          <ErrorBoundary key={routeKey}>
             <Outlet context={{ state, reload }} />
           </ErrorBoundary>
         </main>

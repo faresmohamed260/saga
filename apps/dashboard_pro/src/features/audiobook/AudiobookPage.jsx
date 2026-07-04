@@ -6,6 +6,8 @@ import { useRuntimeState } from "../../hooks/useRuntimeState";
 import { buildPlanPayload, chapterLabel, filterSupersededRuns, normalizeBookRows, normalizeSeriesRows, runMatchesPlan } from "./audiobookUtils";
 import { AudiobookControlsPanel, AudiobookLibraryPanel, AudiobookNotice, AudiobookOutputsPanel } from "../../components/AudiobookPanels";
 
+const EMPTY_CHAPTERS = [];
+
 export function AudiobookPage() {
   const { state } = useRuntimeState();
   const series = useAsync(() => runtimeApi.series(), []);
@@ -151,9 +153,12 @@ export function AudiobookPage() {
   }, [plan.bookRef, plan.scope, seriesBooks]);
   const selectedBook = selectedBooks[0] || null;
   const existingOutputs = visibleRuns.length;
-  const selectedRunChapters = Array.isArray(selectedRun?.chapters) ? selectedRun.chapters : [];
+  const selectedRunChapters = Array.isArray(selectedRun?.chapters) ? selectedRun.chapters : EMPTY_CHAPTERS;
   useEffect(() => {
-    setExpandedChapterIds((current) => current.filter((chapterId) => selectedRunChapters.some((chapter) => chapter.chapter_id === chapterId)));
+    setExpandedChapterIds((current) => {
+      const next = current.filter((chapterId) => selectedRunChapters.some((chapter) => chapter.chapter_id === chapterId));
+      return next.length === current.length ? current : next;
+    });
   }, [selectedRunChapters]);
   const playableChapters = useMemo(
     () => selectedRunChapters.filter((chapter) => String(chapter?.audio_status || "").toLowerCase() === "completed"),
