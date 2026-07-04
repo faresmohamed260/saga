@@ -32,6 +32,94 @@ def _temp_runtime(monkeypatch, tmp_path):
     return store, TestClient(dashboard_api.app)
 
 
+class FakeAuthCollection:
+    def __init__(self):
+        self.documents = {}
+
+    def create_index(self, *args, **kwargs):
+        return "email_1"
+
+    def find_one(self, query, projection=None):
+        document = self.documents.get(str(query.get("email") or "").lower())
+        if not document:
+            return None
+        if projection == {"_id": 1}:
+            return {"_id": document["_id"]}
+        return dict(document)
+
+    def insert_one(self, document):
+        stored = dict(document)
+        stored["_id"] = stored["id"]
+        self.documents[stored["email"]] = stored
+        return type("InsertResult", (), {"inserted_id": stored["_id"]})()
+
+
+def _auth_test_client(monkeypatch, tmp_path):
+    _, client = _temp_runtime(monkeypatch, tmp_path)
+    collection = FakeAuthCollection()
+    monkeypatch.setattr(dashboard_api, "_get_auth_users_collection", lambda: collection)
+    return client, collection
+
+
+def test_auth_signup_stores_user_in_mongodb(monkeypatch, tmp_path):
+    client, collection = _auth_test_client(monkeypatch, tmp_path)
+
+    response = client.post(
+        "/api/auth/signup",
+        json={
+            "name": "Saga Operator",
+            "email": "OPERATOR@SAGA.dev",
+            "password": "strong-password",
+            "workspace_name": "Canon Studio",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["user"]
+    assert payload["name"] == "Saga Operator"
+    assert payload["email"] == "operator@saga.dev"
+    assert payload["workspace_name"] == "Canon Studio"
+    stored = collection.documents["operator@saga.dev"]
+    assert stored["password_hash"].startswith("pbkdf2_sha256$")
+    assert dashboard_api._verify_password("strong-password", stored["password_hash"])
+    assert "password" not in stored
+
+
+def test_auth_signup_rejects_duplicate_email(monkeypatch, tmp_path):
+    client, _ = _auth_test_client(monkeypatch, tmp_path)
+    payload = {
+        "name": "Saga Operator",
+        "email": "operator@saga.dev",
+        "password": "strong-password",
+        "workspace_name": "Canon Studio",
+    }
+
+    assert client.post("/api/auth/signup", json=payload).status_code == 200
+    duplicate = client.post("/api/auth/signup", json=payload)
+
+    assert duplicate.status_code == 409
+
+
+def test_auth_signin_validates_stored_password(monkeypatch, tmp_path):
+    client, _ = _auth_test_client(monkeypatch, tmp_path)
+    client.post(
+        "/api/auth/signup",
+        json={
+            "name": "Saga Operator",
+            "email": "operator@saga.dev",
+            "password": "strong-password",
+            "workspace_name": "Canon Studio",
+        },
+    )
+
+    success = client.post("/api/auth/signin", json={"email": "operator@saga.dev", "password": "strong-password"})
+    failure = client.post("/api/auth/signin", json={"email": "operator@saga.dev", "password": "wrong-password"})
+
+    assert success.status_code == 200
+    assert success.json()["user"]["email"] == "operator@saga.dev"
+    assert failure.status_code == 401
+
+
 def test_import_plan_start_writes_book_chapter_and_scene_rows(monkeypatch, tmp_path):
     store, client = _temp_runtime(monkeypatch, tmp_path)
     source_path = tmp_path / "book.txt"
