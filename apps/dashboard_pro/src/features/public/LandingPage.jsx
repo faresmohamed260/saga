@@ -91,12 +91,12 @@ function PublicNav() {
 export function LandingPage() {
   return (
     <main className="min-h-screen overflow-hidden">
-      <section className="relative min-h-[92vh] border-b border-white/10">
+      <section className="relative min-h-[86vh] border-b border-white/10 md:min-h-[92vh]">
         <ProductBackdrop />
         <PublicNav />
-        <div className="relative z-10 mx-auto grid min-h-[calc(92vh-5rem)] max-w-7xl content-center px-5 pb-20 pt-12 md:px-7">
+        <div className="relative z-10 mx-auto grid min-h-[calc(86vh-5rem)] max-w-7xl content-center px-5 pb-12 pt-8 md:min-h-[calc(92vh-5rem)] md:px-7 md:pb-20 md:pt-12">
           <div className="max-w-3xl">
-            <h1 className="text-5xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">Story Production Studio</h1>
+            <h1 className="text-4xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">Story Production Studio</h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
             Import books, inspect canon memory, manage visual assets, generate stories, and produce audiobooks from one connected workspace.
             </p>
@@ -108,7 +108,7 @@ export function LandingPage() {
                 View studio
               </Link>
             </div>
-            <div className="mt-10 grid max-w-2xl gap-3 sm:grid-cols-3">
+            <div className="mt-10 hidden max-w-2xl gap-3 sm:grid sm:grid-cols-3">
               {heroMetrics.map((metric) => (
                 <div key={metric.label} className="rounded-lg border border-white/10 bg-slate-950/45 p-4 backdrop-blur">
                   <p className="text-2xl font-black text-white">{metric.value}</p>
