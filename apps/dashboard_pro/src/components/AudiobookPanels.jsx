@@ -1,6 +1,6 @@
-import { runtimeApi } from "../../../api/runtimeApi";
-import { Badge, Button, DataCard, EmptyState, Field, Panel, SearchBox, SelectInput, StatusBanner, TextInput, Toolbar, toneFor } from "../../../components/ui/primitives";
-import { chapterLabel, formatRunLabel } from "../audiobookUtils";
+import { runtimeApi } from "../api/runtimeApi";
+import { Badge, Button, DataCard, EmptyState, Field, Panel, SearchBox, SelectInput, StatusBanner, TextInput, Toolbar, toneFor } from "./primitives";
+import { chapterLabel, formatRunLabel } from "../features/audiobook/audiobookUtils";
 
 export function AudiobookNotice({ notice }) {
   if (!notice?.text) return null;

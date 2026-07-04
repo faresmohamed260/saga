@@ -1,4 +1,4 @@
-import { EmptyState, Field, Panel } from "../../../components/ui/primitives";
+import { EmptyState, Field, Panel } from "./primitives";
 
 export function PromptFilesPanel({ prompts }) {
   return (

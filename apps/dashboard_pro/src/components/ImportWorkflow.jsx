@@ -1,4 +1,4 @@
-import { Badge, Button, DataCard, EmptyState, Field, Panel, SelectInput, StatusBanner, TextInput, Toolbar, toneFor } from "../../../components/ui/primitives";
+import { Badge, Button, DataCard, EmptyState, Field, Panel, SelectInput, StatusBanner, TextInput, Toolbar, toneFor } from "./primitives";
 
 export function StageBooksPanel({ busy, files, onFilesChange, onUpload }) {
   return (

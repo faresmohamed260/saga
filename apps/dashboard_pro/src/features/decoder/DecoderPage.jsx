@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
-import { DecoderControlsPanel, GeneratedStoriesPanel } from "./components/DecoderPanels";
+import { DecoderControlsPanel, GeneratedStoriesPanel } from "../../components/DecoderPanels";
 
 const MODES = ["pre_canon", "mid_canon", "post_canon", "alternate_universe"];
 

@@ -1,7 +1,7 @@
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { LatestJobDiagnosticsPanel, PromptFilesPanel } from "./components/DiagnosticsPanels";
+import { LatestJobDiagnosticsPanel, PromptFilesPanel } from "../../components/DiagnosticsPanels";
 
 export function DiagnosticsPage() {
   const { state } = useRuntimeState();

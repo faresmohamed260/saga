@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
-import { Metric } from "../../components/ui/primitives";
+import { Metric } from "../../components/primitives";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
 import { buildPlanPayload, chapterLabel, filterSupersededRuns, normalizeBookRows, normalizeSeriesRows, runMatchesPlan } from "./audiobookUtils";
-import { AudiobookControlsPanel, AudiobookLibraryPanel, AudiobookNotice, AudiobookOutputsPanel } from "./components/AudiobookPanels";
+import { AudiobookControlsPanel, AudiobookLibraryPanel, AudiobookNotice, AudiobookOutputsPanel } from "../../components/AudiobookPanels";
 
 export function AudiobookPage() {
   const { state } = useRuntimeState();

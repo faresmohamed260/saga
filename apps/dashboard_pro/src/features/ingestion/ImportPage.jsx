@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
-import { ImportPlanPanel, StageBooksPanel } from "./components/ImportWorkflow";
+import { ImportPlanPanel, StageBooksPanel } from "../../components/ImportWorkflow";
 
 export function ImportPage() {
   const uploads = useAsync(() => runtimeApi.uploads(), []);

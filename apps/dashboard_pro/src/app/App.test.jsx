@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
-import { AudiobookControlsPanel } from "../features/audiobook/components/AudiobookPanels.jsx";
+import { AudiobookControlsPanel } from "../components/AudiobookPanels.jsx";
 
 const apiMock = vi.hoisted(() => ({
   state: vi.fn(async () => ({

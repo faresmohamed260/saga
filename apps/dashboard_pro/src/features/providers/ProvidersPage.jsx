@@ -1,6 +1,6 @@
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
-import { ProviderHealthPanel } from "./components/ProviderCards";
+import { ProviderHealthPanel } from "../../components/ProviderCards";
 
 export function ProvidersPage() {
   const statuses = useAsync(() => runtimeApi.providerStatuses(false), []);

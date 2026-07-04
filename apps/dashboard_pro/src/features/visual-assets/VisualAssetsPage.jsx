@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
-import { AssetFiltersPanel, AssetGridPanel, AssetSeriesPanel } from "./components/AssetBrowserPanels";
-import { AssetModal } from "./components/AssetModal";
+import { AssetFiltersPanel, AssetGridPanel, AssetSeriesPanel } from "../../components/AssetBrowserPanels";
+import { AssetModal } from "../../components/AssetModal";
 
 const PAGE_SIZE = 48;
 

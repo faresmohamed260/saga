@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { LogViewer, Progress } from "../../../components/feedback/Progress";
-import { Badge, Button, DataCard, EmptyState, Field, Panel, shortRef, toneFor } from "../../../components/ui/primitives";
+import { LogViewer, Progress } from "./Progress";
+import { Badge, Button, DataCard, EmptyState, Field, Panel, shortRef, toneFor } from "./primitives";
 
 export function RunsListPanel({ jobs }) {
   return (

@@ -1,4 +1,4 @@
-import { Badge, Button, DataCard, EmptyState, Field, Panel, toneFor } from "../../../components/ui/primitives";
+import { Badge, Button, DataCard, EmptyState, Field, Panel, toneFor } from "./primitives";
 
 export function ProviderHealthPanel({ providers, onRefresh }) {
   const providerEntries = normalizeProviderEntries(providers);

@@ -1,4 +1,4 @@
-import { Badge, Button, EmptyState, Panel, SearchBox, StatusBanner, toneFor } from "../../../components/ui/primitives";
+import { Badge, Button, EmptyState, Panel, SearchBox, StatusBanner, toneFor } from "./primitives";
 
 const ENTITY_FILTERS = ["all", "character", "location", "creature", "object", "organization"];
 const STANDARD_ASSET_RATIO_CLASS = "aspect-[47/32]";

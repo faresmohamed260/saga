@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { runtimeApi } from "../../../api/runtimeApi";
-import { Badge, Button, EmptyState, StatusBanner, text } from "../../../components/ui/primitives";
+import { runtimeApi } from "../api/runtimeApi";
+import { Badge, Button, EmptyState, StatusBanner, text } from "./primitives";
 import {
   CHARACTER_NEGATIVE_PROMPT,
   composeNegativePrompt,
@@ -12,7 +12,7 @@ import {
   segmentLineCount,
   splitNegativePrompt,
   splitPositivePrompt,
-} from "../promptTemplates";
+} from "../features/visual-assets/promptTemplates";
 
 function assetImageUrl(path) {
   return path ? `/runtime/file?path=${encodeURIComponent(path)}` : "";

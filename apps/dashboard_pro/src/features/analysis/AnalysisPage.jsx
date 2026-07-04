@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { runtimeApi } from "../../api/runtimeApi";
-import { EmptyState, Panel, SearchBox } from "../../components/ui/primitives";
+import { EmptyState, Panel, SearchBox } from "../../components/primitives";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { AnalysisRowsPanel, AnalysisSectionTabs, searchableLabelFor } from "./components/AnalysisCards";
+import { AnalysisRowsPanel, AnalysisSectionTabs, searchableLabelFor } from "../../components/AnalysisCards";
 
 export function AnalysisPage() {
   const params = useParams();

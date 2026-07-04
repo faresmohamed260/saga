@@ -1,6 +1,6 @@
-import { Metric, toneFor } from "../../components/ui/primitives";
+import { Metric, toneFor } from "../../components/primitives";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { CanonLibraryPanel, OperationsPanel } from "./components/OverviewCards";
+import { CanonLibraryPanel, OperationsPanel } from "../../components/OverviewCards";
 
 export function OverviewPage() {
   const { state } = useRuntimeState();

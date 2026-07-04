@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Badge, Button, DataCard, EmptyState, Panel, Toolbar, shortRef, toneFor } from "../../../components/ui/primitives";
+import { Badge, Button, DataCard, EmptyState, Panel, Toolbar, shortRef, toneFor } from "./primitives";
 
 export function OperationsPanel({ jobs }) {
   return (

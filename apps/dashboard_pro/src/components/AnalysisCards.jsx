@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Badge, DataCard, EmptyState, Field, Panel, Toolbar, formatDisplayValue, text } from "../../../components/ui/primitives";
+import { Badge, DataCard, EmptyState, Field, Panel, Toolbar, formatDisplayValue, text } from "./primitives";
 
 export const ANALYSIS_SECTIONS = [
   ["scenes", "Scenes"],

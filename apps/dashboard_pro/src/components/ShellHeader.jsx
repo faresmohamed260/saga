@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Badge, Button, Surface, cx } from "../ui/primitives";
+import { Badge, Button, Surface, cx } from "./primitives";
 
 export function ShellHeader({ state, loading, latestLabel, latestDetail, onRefresh }) {
   return (

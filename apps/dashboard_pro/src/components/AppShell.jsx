@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
-import { StatusBanner } from "../ui/primitives";
-import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { ErrorBoundary } from "../feedback/ErrorBoundary";
+import { StatusBanner } from "./primitives";
+import { useRuntimeState } from "../hooks/useRuntimeState";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { NAV_ITEMS } from "./navConfig";
 import { ShellHeader, ShellNav } from "./ShellHeader";
 

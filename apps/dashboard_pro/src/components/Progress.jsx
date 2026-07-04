@@ -1,4 +1,4 @@
-import { Badge, toneFor } from "../ui/primitives";
+import { Badge, toneFor } from "./primitives";
 
 export function Progress({ job }) {
   const progress = job?.progress || {};

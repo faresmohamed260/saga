@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { RunDetailsPanel, RunsListPanel } from "./components/RunPanels";
+import { RunDetailsPanel, RunsListPanel } from "../../components/RunPanels";
 
 export function RunsPage() {
   const { jobId } = useParams();
