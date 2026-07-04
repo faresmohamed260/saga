@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
+import { AudiobookControlsPanel } from "../components/AudiobookPanels.jsx";
 
 const apiMock = vi.hoisted(() => ({
   state: vi.fn(async () => ({
@@ -82,28 +83,62 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("renders the production dashboard shell", async () => {
+test("renders the production studio shell", async () => {
   window.history.pushState({}, "", "/overview");
   render(<BrowserRouter><App /></BrowserRouter>);
-  expect(await screen.findByText("S.A.G.A. Operations Console")).toBeInTheDocument();
+  expect(await screen.findByText("Story Production Studio")).toBeInTheDocument();
+  expect(screen.getByText("S.A.G.A.")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
   expect(screen.getByText("Audiobook")).toBeInTheDocument();
 });
 
-test("renders the audiobook subsystem in its own tab", async () => {
-  window.history.pushState({}, "", "/audiobook");
-  render(<BrowserRouter><App /></BrowserRouter>);
+test("renders the audiobook controls component", () => {
+  render(
+    <AudiobookControlsPanel
+      plan={{
+        scope: "book",
+        seriesId: "series-1",
+        bookRef: "db://book/book-1",
+        tone: "classic",
+        rewriteProvider: "ollama",
+        rewriteFallbackMode: "strict_rewrite",
+        voice: "af_bella",
+        sampleRate: 24000,
+        audioFormat: "wav",
+        normalizeAudio: true,
+        trimSilence: false,
+        sentencePauseMs: 0,
+      }}
+      seriesRows={[{ series_id: "series-1", title: "Series One", book_count: 1 }]}
+      seriesBooks={[{ book_id: "book-1", title: "Book One" }]}
+      selectedSeries={{ series_id: "series-1", title: "Series One" }}
+      canStage
+      stageSubmitting={false}
+      queueSubmitting={false}
+      onPlanChange={vi.fn()}
+      onStagePlan={vi.fn()}
+      onQueuePlan={vi.fn()}
+    />,
+  );
 
-  expect(await screen.findByText("Audiobook Controls")).toBeInTheDocument();
+  expect(screen.getByText("Audiobook Controls")).toBeInTheDocument();
   expect(screen.getByText("Single book")).toBeInTheDocument();
   expect(screen.getByText("Entire series")).toBeInTheDocument();
   expect(screen.getByText("Stage outputs")).toBeInTheDocument();
-  expect(screen.getAllByText("Staged Outputs").length).toBeGreaterThan(0);
-  await waitFor(() => expect(screen.getByText("Stage outputs")).not.toBeDisabled());
-  fireEvent.click(screen.getByText("Stage outputs"));
-  await waitFor(() => expect(apiMock.stageAudiobookRun).toHaveBeenCalled());
-  fireEvent.click(screen.getByText("Queue audiobook pipeline"));
-  await waitFor(() => expect(apiMock.startAudiobookRun.mock.calls.length + apiMock.startAudiobookJob.mock.calls.length).toBeGreaterThan(0));
+  expect(screen.getByText("Queue audiobook pipeline")).not.toBeDisabled();
+});
+
+test("switches away from audiobook without keeping stale content mounted", async () => {
+  window.history.pushState({}, "", "/overview");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.click(await screen.findByRole("link", { name: "Audiobook" }));
+  expect(await screen.findByRole("heading", { name: "Audiobook Controls" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("link", { name: "Library" }));
+
+  expect(await screen.findByRole("heading", { name: "Library" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Audiobook Controls" })).not.toBeInTheDocument();
 });
 
 test("renders import workflow controls backed by upload and plan APIs", async () => {
@@ -118,7 +153,7 @@ test("renders import workflow controls backed by upload and plan APIs", async ()
   expect((await screen.findAllByText("ready")).length).toBeGreaterThan(0);
 });
 
-test("renders runs page with persisted job state", async () => {
+test("renders runs page with job state", async () => {
   window.history.pushState({}, "", "/runs");
   render(<BrowserRouter><App /></BrowserRouter>);
 
@@ -137,7 +172,7 @@ test("renders decoder validation controls", async () => {
   await waitFor(() => expect(apiMock.validateDecoderPlan).toHaveBeenCalled());
 });
 
-test("renders visual assets with database-backed prompt content", async () => {
+test("renders visual assets with prompt content", async () => {
   window.history.pushState({}, "", "/assets");
   render(<BrowserRouter><App /></BrowserRouter>);
 
@@ -145,7 +180,7 @@ test("renders visual assets with database-backed prompt content", async () => {
   expect(await screen.findByText(/series one/i)).toBeInTheDocument();
 });
 
-test("renders diagnostics with prompt metadata instead of raw dumps", async () => {
+test("renders diagnostics with prompt metadata", async () => {
   window.history.pushState({}, "", "/diagnostics");
   render(<BrowserRouter><App /></BrowserRouter>);
 

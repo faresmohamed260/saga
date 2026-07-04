@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
-import { Badge, Button, EmptyState, Field, Panel, toneFor } from "../../components/ui/primitives";
 import { useAsync } from "../../hooks/useAsync";
+import { DecoderControlsPanel, GeneratedStoriesPanel } from "../../components/DecoderPanels";
 
 const MODES = ["pre_canon", "mid_canon", "post_canon", "alternate_universe"];
 
@@ -104,125 +104,20 @@ export function DecoderPage() {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[520px_1fr]">
-      <Panel title="Decoder Controls" subtitle="Validate a series-level generation plan before starting a story job.">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            {MODES.map((mode) => (
-              <Button
-                key={mode}
-                onClick={() => setPayload({ ...payload, story_mode: mode })}
-                variant={payload.story_mode === mode ? "primary" : "secondary"}
-              >
-                {mode.replaceAll("_", " ")}
-              </Button>
-            ))}
-          </div>
-
-          <Field label="Series">
-            <select
-              value={payload.series_id}
-              onChange={(event) => setPayload({ ...payload, series_id: event.target.value })}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm"
-            >
-              {!seriesRows.length ? <option value="">No series available</option> : null}
-              {seriesRows.map((row) => (
-                <option key={row.series_id} value={row.series_id}>
-                  {(row.title || row.series_id) + (row.book_count ? ` (${row.book_count} books)` : "")}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {seriesBooks.length ? (
-            <Field label="Series decoder scope">
-              {`${seriesBooks.length} book${seriesBooks.length === 1 ? "" : "s"} available in this series. Decoder anchor is resolved automatically.`}
-            </Field>
-          ) : null}
-
-          <Field label="Generation provider">
-            <select
-              value={payload.provider}
-              onChange={(event) => setPayload({ ...payload, provider: event.target.value })}
-              className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm"
-            >
-              {!providerRows.length ? <option value="">No healthy providers available</option> : null}
-              {providerRows.map((row) => (
-                <option key={row.value} value={row.value}>
-                  {row.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <input
-            type="number"
-            min="1"
-            max="60"
-            value={payload.chapter_count}
-            onChange={(event) => setPayload({ ...payload, chapter_count: Number(event.target.value) })}
-            className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm"
-          />
-
-          <input
-            placeholder="Primary POV character"
-            value={payload.primary_pov_character}
-            onChange={(event) => setPayload({ ...payload, primary_pov_character: event.target.value })}
-            className="w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm"
-          />
-
-          <textarea
-            value={payload.user_prompt}
-            onChange={(event) => setPayload({ ...payload, user_prompt: event.target.value })}
-            className="min-h-[180px] w-full rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm"
-          />
-
-          <div className="flex gap-2">
-            <Button onClick={validate} disabled={!payload.series_id || !payload.provider}>
-              Validate plan
-            </Button>
-            <Button onClick={start} disabled={!canStart} variant="primary">
-              Start generation
-            </Button>
-          </div>
-
-          {validation ? (
-            <Field label={`Validation: ${validation.valid ? "ready" : "blocked"}`}>
-              {[...(validation.errors || []), ...(validation.warnings || []), ...(modeRows.length ? [] : ["Decoder mode metadata unavailable."])]
-                .join(" | ") || "Plan is ready."}
-            </Field>
-          ) : null}
-
-          {!providerRows.length ? (
-            <Field label="Provider health">No decoder providers are currently available. Refresh provider status before generating.</Field>
-          ) : null}
-        </div>
-      </Panel>
-
-      <Panel title="Generated Stories" subtitle="Persisted stories and export links.">
-        {storyRows.length ? (
-          <div className="space-y-3">
-            {storyRows.map((story) => (
-              <article key={story.id} className="rounded-2xl border border-slate-800 bg-slate-900/45 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-black text-white">{story.title || story.id}</h3>
-                  <Badge tone={toneFor(story.status)}>{story.status || "unknown"}</Badge>
-                </div>
-                <p className="mt-2 text-sm text-slate-400">
-                  {story.story_mode} · {story.primary_pov_character || "POV n/a"} · {story.series_id || story.series_title || "series n/a"}
-                </p>
-                <a
-                  className="mt-3 inline-block rounded-xl border border-emerald-500/50 px-3 py-2 text-sm font-bold text-emerald-100"
-                  href={`/runtime/export-generated-story-epub?story_id=${encodeURIComponent(story.id)}`}
-                >
-                  Export EPUB
-                </a>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No generated stories" />
-        )}
-      </Panel>
+      <DecoderControlsPanel
+        modes={MODES}
+        payload={payload}
+        seriesRows={seriesRows}
+        seriesBooks={seriesBooks}
+        providerRows={providerRows}
+        validation={validation}
+        modeRows={modeRows}
+        canStart={canStart}
+        onPayloadChange={setPayload}
+        onValidate={validate}
+        onStart={start}
+      />
+      <GeneratedStoriesPanel stories={storyRows} />
     </div>
   );
 }
