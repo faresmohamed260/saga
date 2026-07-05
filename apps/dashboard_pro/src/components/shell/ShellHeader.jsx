@@ -5,13 +5,13 @@ export function ShellHeader({ state, loading, latestLabel, latestDetail, onRefre
     <header className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/70 shadow-2xl shadow-black/20">
       <div className="grid gap-0 lg:grid-cols-[1fr_340px]">
         <div className="px-5 py-6 md:px-7 md:py-7">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap gap-2 pr-3">
               <Badge tone="blue">Live library</Badge>
               <Badge tone="green">Production ready</Badge>
               <Badge>Guided workflows</Badge>
             </div>
-            <Button className="min-h-8 px-3 py-1.5 text-xs" variant="ghost" onClick={onLogout}>
+            <Button className="min-h-9 px-3.5 py-2 text-xs" variant="secondary" onClick={onLogout}>
               Logout
             </Button>
           </div>
