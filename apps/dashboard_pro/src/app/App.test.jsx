@@ -101,6 +101,19 @@ test("renders the production studio shell", async () => {
   expect(screen.getByText("Audiobook")).toBeInTheDocument();
 });
 
+test("routes back to sign in from the shell logout button", async () => {
+  window.localStorage.setItem("saga-auth-user", "user-1");
+  window.sessionStorage.setItem("saga-auth-user", "user-1");
+  window.history.pushState({}, "", "/overview");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Logout" }));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  expect(window.localStorage.getItem("saga-auth-user")).toBeNull();
+  expect(window.sessionStorage.getItem("saga-auth-user")).toBeNull();
+});
+
 test("renders the public landing page", () => {
   window.history.pushState({}, "", "/");
   render(<BrowserRouter><App /></BrowserRouter>);
