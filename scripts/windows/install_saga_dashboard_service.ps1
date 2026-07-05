@@ -15,6 +15,9 @@ $python = Join-Path $root "venv\Scripts\python.exe"
 $logsDir = Join-Path $root "analysis_outputs\dashboard\logs"
 $stdoutLog = Join-Path $logsDir "saga-dashboard.out.log"
 $stderrLog = Join-Path $logsDir "saga-dashboard.err.log"
+$mongoUri = if ($env:SAGA_MONGODB_URI) { $env:SAGA_MONGODB_URI } elseif ($env:MONGODB_URI) { $env:MONGODB_URI } else { "mongodb://127.0.0.1:27017" }
+$mongoDatabase = if ($env:SAGA_MONGODB_DATABASE) { $env:SAGA_MONGODB_DATABASE } else { "saga" }
+$mongoUsersCollection = if ($env:SAGA_MONGODB_USERS_COLLECTION) { $env:SAGA_MONGODB_USERS_COLLECTION } else { "users" }
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
@@ -45,7 +48,14 @@ if (-not $serviceExists) {
 & $nssm set $serviceName AppRotateOnline 1 | Out-Null
 & $nssm set $serviceName AppRotateBytes 1048576 | Out-Null
 & $nssm set $serviceName AppStopMethodSkip 6 | Out-Null
-& $nssm set $serviceName AppEnvironmentExtra "SAGA_DASHBOARD_NO_BROWSER=1" "SAGA_DASHBOARD_HOST=127.0.0.1" "SAGA_DASHBOARD_PORT=8675" "SAGA_DASHBOARD_LOG_LEVEL=info" | Out-Null
+& $nssm set $serviceName AppEnvironmentExtra `
+    "SAGA_DASHBOARD_NO_BROWSER=1" `
+    "SAGA_DASHBOARD_HOST=127.0.0.1" `
+    "SAGA_DASHBOARD_PORT=8675" `
+    "SAGA_DASHBOARD_LOG_LEVEL=info" `
+    "SAGA_MONGODB_URI=$mongoUri" `
+    "SAGA_MONGODB_DATABASE=$mongoDatabase" `
+    "SAGA_MONGODB_USERS_COLLECTION=$mongoUsersCollection" | Out-Null
 
 Start-Service $serviceName
 Start-Sleep -Seconds 3

@@ -22,6 +22,25 @@ $env:SAGA_DASHBOARD_NO_BROWSER = "1"
 $env:SAGA_DASHBOARD_HOST = "127.0.0.1"
 $env:SAGA_DASHBOARD_PORT = "8675"
 $env:SAGA_DASHBOARD_LOG_LEVEL = "info"
+if (-not $env:SAGA_MONGODB_URI -and -not $env:MONGODB_URI) {
+    $env:SAGA_MONGODB_URI = "mongodb://127.0.0.1:27017"
+}
+if (-not $env:SAGA_MONGODB_DATABASE) {
+    $env:SAGA_MONGODB_DATABASE = "saga"
+}
+if (-not $env:SAGA_MONGODB_USERS_COLLECTION) {
+    $env:SAGA_MONGODB_USERS_COLLECTION = "users"
+}
+
+$listeners = Get-NetTCPConnection -LocalPort ([int]$env:SAGA_DASHBOARD_PORT) -State Listen -ErrorAction SilentlyContinue
+foreach ($listener in $listeners) {
+    if ($listener.OwningProcess -gt 0) {
+        Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
+}
+if ($listeners) {
+    Start-Sleep -Seconds 1
+}
 
 $process = Start-Process `
     -FilePath $python `

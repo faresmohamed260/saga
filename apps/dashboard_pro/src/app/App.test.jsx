@@ -74,13 +74,24 @@ const apiMock = vi.hoisted(() => ({
   providerStatuses: vi.fn(async () => ({ providers: [{ provider_name: "ollama", accounts: [], status: "ok" }] })),
 }));
 
+const authMock = vi.hoisted(() => ({
+  signUp: vi.fn(async () => ({ user: { id: "user-1", name: "Saga Operator", email: "operator@saga.dev", workspace_name: "Canon Studio", created_at: "2026-07-04T00:00:00Z" } })),
+  signIn: vi.fn(async () => ({ user: { id: "user-1", name: "Saga Operator", email: "operator@saga.dev", workspace_name: "Canon Studio", created_at: "2026-07-04T00:00:00Z" } })),
+}));
+
 vi.mock("../api/runtimeApi", () => ({
   runtimeApi: apiMock,
+}));
+
+vi.mock("../api/authApi", () => ({
+  authApi: authMock,
 }));
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 test("renders the production studio shell", async () => {
@@ -90,6 +101,67 @@ test("renders the production studio shell", async () => {
   expect(screen.getByText("S.A.G.A.")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
   expect(screen.getByText("Audiobook")).toBeInTheDocument();
+});
+
+test("routes back to sign in from the shell logout button", async () => {
+  window.localStorage.setItem("saga-auth-user", "user-1");
+  window.sessionStorage.setItem("saga-auth-user", "user-1");
+  window.history.pushState({}, "", "/overview");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Logout" }));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  expect(window.localStorage.getItem("saga-auth-user")).toBeNull();
+  expect(window.sessionStorage.getItem("saga-auth-user")).toBeNull();
+});
+
+test("renders the public landing page", () => {
+  window.history.pushState({}, "", "/");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  expect(screen.getByRole("heading", { name: "Story Production Studio" })).toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "Start building" })[0]).toHaveAttribute("href", "/signup");
+  expect(screen.getByText("A cleaner path from source material to production output.")).toBeInTheDocument();
+});
+
+test("submits the signup form through the auth api", async () => {
+  window.history.pushState({}, "", "/signup");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Saga Operator" } });
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "operator@saga.dev" } });
+  fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Canon Studio" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "strong-password" } });
+  fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "strong-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+  await waitFor(() => expect(authMock.signUp).toHaveBeenCalledWith({
+    name: "Saga Operator",
+    email: "operator@saga.dev",
+    password: "strong-password",
+    workspace_name: "Canon Studio",
+  }));
+  expect(await screen.findByText("Story Production Studio")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/overview");
+  expect(JSON.parse(window.localStorage.getItem("saga-auth-user")).email).toBe("operator@saga.dev");
+});
+
+test("submits the signin form and opens the dashboard", async () => {
+  window.history.pushState({}, "", "/signin");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "operator@saga.dev" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "strong-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+  await waitFor(() => expect(authMock.signIn).toHaveBeenCalledWith({
+    email: "operator@saga.dev",
+    password: "strong-password",
+  }));
+  expect(await screen.findByText("Story Production Studio")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/overview");
+  expect(JSON.parse(window.localStorage.getItem("saga-auth-user")).email).toBe("operator@saga.dev");
 });
 
 test("renders the audiobook controls component", () => {

@@ -17,6 +17,7 @@ dependencies = [
   "mistralai",
   "openai",
   "Pillow",
+  "pymongo",
   "python-multipart",
   "pypdf",
   "PyMuPDF",

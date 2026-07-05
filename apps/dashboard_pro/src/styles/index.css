@@ -4,7 +4,8 @@
 
 :root {
   color: #f8fafc;
-  background: #05070b;
+  background: #040812;
+  color-scheme: dark;
   font-family: "Aptos", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -14,9 +15,9 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(135deg, rgba(6, 78, 59, 0.28) 0%, transparent 32%),
-    linear-gradient(215deg, rgba(15, 23, 42, 0.86) 0%, rgba(5, 7, 11, 0.98) 48%, rgba(17, 24, 39, 0.92) 100%),
-    #05070b;
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.14), transparent 24%),
+    radial-gradient(circle at 80% 10%, rgba(34, 211, 238, 0.1), transparent 18%),
+    linear-gradient(180deg, rgba(5, 9, 16, 0.98) 0%, rgba(4, 8, 14, 1) 100%);
 }
 
 body::before {
@@ -25,10 +26,10 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: linear-gradient(to bottom, black, transparent 76%);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent 84%);
 }
 
 button,
@@ -36,6 +37,22 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  border-color: rgba(255, 255, 255, 0.12);
+  -webkit-text-fill-color: #e2e8f0;
+  caret-color: #f8fafc;
+  box-shadow: 0 0 0 1000px rgba(2, 6, 23, 0.94) inset;
+  transition: background-color 9999s ease-out;
 }
 
 pre {

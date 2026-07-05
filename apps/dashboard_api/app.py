@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import json
+import base64
+import hmac
 import os
 import re
 import shutil
@@ -12,7 +14,12 @@ import traceback
 import uuid
 import webbrowser
 import hashlib
+import secrets
+import socket
+import urllib.error
+import urllib.request
 import wave
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -242,6 +249,170 @@ class InferenceProviderConfig(BaseModel):
 
 class InferenceSelectionConfig(BaseModel):
     provider_name: str
+
+
+class SignUpRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    workspace_name: str = ""
+
+
+class SignInRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthUserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    workspace_name: str = ""
+    created_at: str
+
+
+PASSWORD_HASH_ALGORITHM = "pbkdf2_sha256"
+PASSWORD_HASH_ITERATIONS = 310_000
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_auth_email(email: str) -> str:
+    return str(email or "").strip().lower()
+
+
+def _validate_auth_email(email: str) -> str:
+    normalized = _normalize_auth_email(email)
+    if not EMAIL_PATTERN.match(normalized):
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    return normalized
+
+
+def _validate_password(password: str) -> str:
+    value = str(password or "")
+    if len(value) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    return value
+
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_HASH_ITERATIONS)
+    return "$".join(
+        [
+            PASSWORD_HASH_ALGORITHM,
+            str(PASSWORD_HASH_ITERATIONS),
+            base64.b64encode(salt).decode("ascii"),
+            base64.b64encode(digest).decode("ascii"),
+        ]
+    )
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        algorithm, iterations, salt_text, digest_text = str(password_hash or "").split("$", 3)
+        if algorithm != PASSWORD_HASH_ALGORITHM:
+            return False
+        salt = base64.b64decode(salt_text.encode("ascii"))
+        expected = base64.b64decode(digest_text.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac("sha256", str(password or "").encode("utf-8"), salt, int(iterations))
+    except (ValueError, TypeError, OSError):
+        return False
+    return hmac.compare_digest(actual, expected)
+
+
+AUTH_MONGO_CLIENT: Any = None
+AUTH_MONGO_CLIENT_URI = ""
+AUTH_MONGO_LOCK = threading.Lock()
+
+
+def _auth_mongo_config() -> dict[str, str]:
+    return {
+        "uri": str(os.environ.get("SAGA_MONGODB_URI") or os.environ.get("MONGODB_URI") or "").strip(),
+        "database": str(os.environ.get("SAGA_MONGODB_DATABASE") or "saga").strip() or "saga",
+        "collection": str(os.environ.get("SAGA_MONGODB_USERS_COLLECTION") or "users").strip() or "users",
+    }
+
+
+def _load_mongo_client_class():
+    try:
+        from pymongo import MongoClient
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="pymongo is required for MongoDB signup storage.") from exc
+    return MongoClient
+
+
+def _get_auth_users_collection():
+    config = _auth_mongo_config()
+    if not config["uri"]:
+        raise HTTPException(status_code=503, detail="MongoDB is not configured. Set SAGA_MONGODB_URI or MONGODB_URI.")
+
+    global AUTH_MONGO_CLIENT, AUTH_MONGO_CLIENT_URI
+    with AUTH_MONGO_LOCK:
+        if AUTH_MONGO_CLIENT is None or AUTH_MONGO_CLIENT_URI != config["uri"]:
+            mongo_client = _load_mongo_client_class()
+            AUTH_MONGO_CLIENT = mongo_client(config["uri"], serverSelectionTimeoutMS=5000)
+            AUTH_MONGO_CLIENT_URI = config["uri"]
+    return AUTH_MONGO_CLIENT[config["database"]][config["collection"]]
+
+
+def _auth_user_response(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(document.get("id") or document.get("_id") or ""),
+        "name": str(document.get("name") or ""),
+        "email": str(document.get("email") or ""),
+        "workspace_name": str(document.get("workspace_name") or ""),
+        "created_at": str(document.get("created_at") or ""),
+    }
+
+
+def _create_auth_user(request: SignUpRequest) -> dict[str, Any]:
+    name = str(request.name or "").strip()
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters.")
+    email = _validate_auth_email(request.email)
+    password = _validate_password(request.password)
+    workspace_name = str(request.workspace_name or "").strip()
+    collection = _get_auth_users_collection()
+    now = utc_now()
+    document = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "email": email,
+        "workspace_name": workspace_name,
+        "password_hash": _hash_password(password),
+        "role": "operator",
+        "created_at": now,
+        "updated_at": now,
+    }
+    try:
+        collection.create_index("email", unique=True)
+        if collection.find_one({"email": email}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        collection.insert_one(document)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if exc.__class__.__name__ == "DuplicateKeyError":
+            raise HTTPException(status_code=409, detail="An account with this email already exists.") from exc
+        raise HTTPException(status_code=503, detail=f"MongoDB signup failed: {type(exc).__name__}.") from exc
+    return _auth_user_response(document)
+
+
+def _find_auth_user_by_email(email: str) -> dict[str, Any] | None:
+    collection = _get_auth_users_collection()
+    try:
+        return collection.find_one({"email": _validate_auth_email(email)})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"MongoDB signin failed: {type(exc).__name__}.") from exc
+
+
+def _authenticate_auth_user(request: SignInRequest) -> dict[str, Any]:
+    user = _find_auth_user_by_email(request.email)
+    if not user or not _verify_password(request.password, str(user.get("password_hash") or "")):
+        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+    return _auth_user_response(user)
 
 
 def _is_placeholder_analysis_value(value: Any) -> bool:
@@ -4906,13 +5077,24 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
         save_job(payload)
 
 
-app = FastAPI(title="S.A.G.A. Local Web Runtime")
-
-
-@app.on_event("startup")
-def on_startup() -> None:
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
     ensure_dirs()
     _seed_provider_configs_from_local_files()
+    yield
+
+
+app = FastAPI(title="S.A.G.A. Local Web Runtime", lifespan=app_lifespan)
+
+
+@app.post("/api/auth/signup")
+def auth_signup(request: SignUpRequest) -> dict[str, Any]:
+    return {"user": _create_auth_user(request)}
+
+
+@app.post("/api/auth/signin")
+def auth_signin(request: SignInRequest) -> dict[str, Any]:
+    return {"user": _authenticate_auth_user(request)}
 
 
 @app.get("/runtime/state")
@@ -6373,8 +6555,30 @@ def main() -> None:
     host = os.environ.get("SAGA_DASHBOARD_HOST", "127.0.0.1")
     port = int(os.environ.get("SAGA_DASHBOARD_PORT", "8675"))
     log_level = os.environ.get("SAGA_DASHBOARD_LOG_LEVEL", "info")
+    no_browser = os.environ.get("SAGA_DASHBOARD_NO_BROWSER") == "1"
     url = f"http://{host}:{port}"
-    if os.environ.get("SAGA_DASHBOARD_NO_BROWSER") != "1":
+    runtime_state_url = f"{url}/runtime/state"
+    try:
+        with urllib.request.urlopen(runtime_state_url, timeout=1.5) as response:
+            if response.status == 200:
+                print(f"SAGA dashboard is already running at {url}")
+                if sys.stdin.isatty() and not no_browser:
+                    print("Keeping this terminal open. Press Ctrl+C to close it.")
+                    try:
+                        while True:
+                            time.sleep(1)
+                    except KeyboardInterrupt:
+                        print("\nExiting dashboard watcher.")
+                return
+    except urllib.error.URLError:
+        pass
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1.0)
+        if probe.connect_ex((host, port)) == 0:
+            print(f"Port {port} is already in use on {host}. Stop the existing listener or change SAGA_DASHBOARD_PORT.")
+            raise SystemExit(1)
+    if not no_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=host, port=port, log_level=log_level)
 

@@ -1,14 +1,19 @@
 import { Badge, Button, Surface } from "../primitives";
 
-export function ShellHeader({ state, loading, latestLabel, latestDetail, onRefresh }) {
+export function ShellHeader({ state, loading, latestLabel, latestDetail, onRefresh, onLogout }) {
   return (
     <header className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/70 shadow-2xl shadow-black/20">
       <div className="grid gap-0 lg:grid-cols-[1fr_340px]">
-        <div className="px-5 py-6 md:px-7 md:py-7">
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Badge tone="blue">Live library</Badge>
-            <Badge tone="green">Production ready</Badge>
-            <Badge>Guided workflows</Badge>
+        <div className="relative px-5 py-6 md:px-7 md:py-7">
+          <Button className="absolute right-5 top-6 z-10 min-h-9 border-cyan-300/45 bg-cyan-300/[0.12] px-3.5 py-2 text-xs text-cyan-50 shadow-lg shadow-cyan-950/30 hover:border-cyan-200/70 hover:bg-cyan-300/[0.2] md:right-7 md:top-7" variant="secondary" onClick={onLogout}>
+            Logout
+          </Button>
+          <div className="mb-4 flex flex-wrap items-start gap-3 pr-24">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="blue">Live library</Badge>
+              <Badge tone="green">Production ready</Badge>
+              <Badge>Guided workflows</Badge>
+            </div>
           </div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">S.A.G.A.</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-white md:text-4xl">Story Production Studio</h1>
