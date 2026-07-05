@@ -5,6 +5,7 @@
 :root {
   color: #f8fafc;
   background: #040812;
+  color-scheme: dark;
   font-family: "Aptos", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -36,6 +37,22 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  border-color: rgba(255, 255, 255, 0.12);
+  -webkit-text-fill-color: #e2e8f0;
+  caret-color: #f8fafc;
+  box-shadow: 0 0 0 1000px rgba(2, 6, 23, 0.94) inset;
+  transition: background-color 9999s ease-out;
 }
 
 pre {
