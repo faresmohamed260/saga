@@ -90,6 +90,8 @@ vi.mock("../api/authApi", () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 test("renders the production studio shell", async () => {
@@ -140,7 +142,26 @@ test("submits the signup form through the auth api", async () => {
     password: "strong-password",
     workspace_name: "Canon Studio",
   }));
-  expect(await screen.findByText("Workspace created")).toBeInTheDocument();
+  expect(await screen.findByText("Story Production Studio")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/overview");
+  expect(JSON.parse(window.localStorage.getItem("saga-auth-user")).email).toBe("operator@saga.dev");
+});
+
+test("submits the signin form and opens the dashboard", async () => {
+  window.history.pushState({}, "", "/signin");
+  render(<BrowserRouter><App /></BrowserRouter>);
+
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "operator@saga.dev" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "strong-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+  await waitFor(() => expect(authMock.signIn).toHaveBeenCalledWith({
+    email: "operator@saga.dev",
+    password: "strong-password",
+  }));
+  expect(await screen.findByText("Story Production Studio")).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/overview");
+  expect(JSON.parse(window.localStorage.getItem("saga-auth-user")).email).toBe("operator@saga.dev");
 });
 
 test("renders the audiobook controls component", () => {

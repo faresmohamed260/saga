@@ -5,7 +5,7 @@ export function ShellHeader({ state, loading, latestLabel, latestDetail, onRefre
     <header className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/70 shadow-2xl shadow-black/20">
       <div className="grid gap-0 lg:grid-cols-[1fr_340px]">
         <div className="relative px-5 py-6 md:px-7 md:py-7">
-          <Button className="absolute right-5 top-6 min-h-9 px-3.5 py-2 text-xs md:right-7 md:top-7" variant="secondary" onClick={onLogout}>
+          <Button className="absolute right-5 top-6 z-10 min-h-9 border-cyan-300/45 bg-cyan-300/[0.12] px-3.5 py-2 text-xs text-cyan-50 shadow-lg shadow-cyan-950/30 hover:border-cyan-200/70 hover:bg-cyan-300/[0.2] md:right-7 md:top-7" variant="secondary" onClick={onLogout}>
             Logout
           </Button>
           <div className="mb-4 flex flex-wrap items-start gap-3 pr-24">

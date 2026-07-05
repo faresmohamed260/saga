@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { authApi } from "../../api/authApi";
 import { AuthField } from "./AuthField";
 import { AuthLayout } from "./AuthLayout";
@@ -17,11 +17,11 @@ function validateSignInForm(form) {
 }
 
 export function SignInPage() {
+  const navigate = useNavigate();
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
-  const [signedInUser, setSignedInUser] = useState(null);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -42,8 +42,9 @@ export function SignInPage() {
         email: form.email.trim(),
         password: form.password,
       });
-      setSignedInUser(payload.user);
+      window.localStorage.setItem("saga-auth-user", JSON.stringify(payload.user));
       setForm(initialForm);
+      navigate("/overview", { replace: true });
     } catch (exc) {
       setServerError(exc.message || "Could not sign in.");
     } finally {
@@ -57,46 +58,34 @@ export function SignInPage() {
       subtitle="Return to your story production workspace."
       footer={<p className="text-sm text-slate-500">New to S.A.G.A.? <Link to="/signup" className="font-bold text-cyan-200 transition hover:text-cyan-100">Create an account</Link></p>}
     >
-      {signedInUser ? (
-        <div role="status" className="rounded-lg border border-cyan-300/28 bg-cyan-300/[0.08] p-5">
-          <p className="text-lg font-black text-white">Welcome back</p>
-          <p className="mt-2 text-sm leading-6 text-cyan-100/80">
-            {signedInUser.name} can continue in {signedInUser.workspace_name || "the S.A.G.A. workspace"}.
-          </p>
-          <Link to="/overview" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg border border-cyan-200/55 bg-cyan-300/[0.14] px-4 py-2 text-sm font-bold text-cyan-50 transition hover:bg-cyan-300/[0.22]">
-            Open studio
-          </Link>
-        </div>
-      ) : (
-        <form className="space-y-3.5" noValidate onSubmit={handleSubmit}>
-          <AuthField
-            id="signin-email"
-            label="Email"
-            type="email"
-            autoComplete="email"
-            value={form.email}
-            error={errors.email}
-            onChange={(event) => updateField("email", event.target.value)}
-          />
-          <AuthField
-            id="signin-password"
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            value={form.password}
-            error={errors.password}
-            onChange={(event) => updateField("password", event.target.value)}
-          />
-          {serverError ? <div role="alert" className="rounded-lg border border-rose-300/25 bg-rose-300/[0.08] px-4 py-3 text-sm font-bold text-rose-100">{serverError}</div> : null}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-cyan-300/30 bg-cyan-300/[0.1] px-4 py-2 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/55 hover:bg-cyan-300/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
-      )}
+      <form className="space-y-3.5" noValidate onSubmit={handleSubmit}>
+        <AuthField
+          id="signin-email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          value={form.email}
+          error={errors.email}
+          onChange={(event) => updateField("email", event.target.value)}
+        />
+        <AuthField
+          id="signin-password"
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          value={form.password}
+          error={errors.password}
+          onChange={(event) => updateField("password", event.target.value)}
+        />
+        {serverError ? <div role="alert" className="rounded-lg border border-rose-300/25 bg-rose-300/[0.08] px-4 py-3 text-sm font-bold text-rose-100">{serverError}</div> : null}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-cyan-300/30 bg-cyan-300/[0.1] px-4 py-2 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/55 hover:bg-cyan-300/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
     </AuthLayout>
   );
 }
