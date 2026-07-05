@@ -58,12 +58,12 @@ export function SignInPage() {
       footer={<p className="text-sm text-slate-500">New to S.A.G.A.? <Link to="/signup" className="font-bold text-cyan-200 hover:text-cyan-100">Create an account</Link></p>}
     >
       {signedInUser ? (
-        <div role="status" className="rounded-lg border border-cyan-300/35 bg-cyan-400/10 p-5">
+        <div role="status" className="rounded-2xl border border-cyan-300/28 bg-cyan-300/[0.08] p-5">
           <p className="text-lg font-black text-white">Welcome back</p>
           <p className="mt-2 text-sm leading-6 text-cyan-100/80">
             {signedInUser.name} can continue in {signedInUser.workspace_name || "the S.A.G.A. workspace"}.
           </p>
-          <Link to="/overview" className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-200/60 bg-cyan-300/15 px-4 py-2 text-sm font-bold text-cyan-50 transition hover:bg-cyan-300/25">
+          <Link to="/overview" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl border border-cyan-200/55 bg-cyan-300/15 px-4 py-2 text-sm font-bold text-cyan-50 transition hover:bg-cyan-300/25">
             Open studio
           </Link>
         </div>
@@ -87,11 +87,11 @@ export function SignInPage() {
             error={errors.password}
             onChange={(event) => updateField("password", event.target.value)}
           />
-          {serverError ? <div role="alert" className="rounded-lg border border-rose-300/35 bg-rose-400/10 px-4 py-3 text-sm font-bold text-rose-100">{serverError}</div> : null}
+          {serverError ? <div role="alert" className="rounded-2xl border border-rose-300/25 bg-rose-300/[0.08] px-4 py-3 text-sm font-bold text-rose-100">{serverError}</div> : null}
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-cyan-300/45 bg-cyan-400/15 px-4 py-2 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/70 hover:bg-cyan-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-cyan-300/30 bg-cyan-300/[0.1] px-4 py-2 text-sm font-bold text-cyan-50 transition hover:border-cyan-200/55 hover:bg-cyan-300/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Signing in..." : "Sign in"}
           </button>

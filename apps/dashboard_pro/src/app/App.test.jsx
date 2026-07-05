@@ -105,9 +105,9 @@ test("renders the public landing page", () => {
   window.history.pushState({}, "", "/");
   render(<BrowserRouter><App /></BrowserRouter>);
 
-  expect(screen.getByRole("heading", { name: "Story Production Studio" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Story production, without losing the system behind the story." })).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "Start building" })[0]).toHaveAttribute("href", "/signup");
-  expect(screen.getByText("A cleaner path from source text to production output.")).toBeInTheDocument();
+  expect(screen.getByText("A tighter path from source material to production output.")).toBeInTheDocument();
 });
 
 test("submits the signup form through the auth api", async () => {

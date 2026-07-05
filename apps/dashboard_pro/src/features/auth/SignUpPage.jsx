@@ -65,12 +65,12 @@ export function SignUpPage() {
       footer={<p className="text-sm text-slate-500">Already have an account? <Link to="/signin" className="font-bold text-cyan-200 hover:text-cyan-100">Sign in</Link></p>}
     >
       {createdUser ? (
-        <div role="status" className="rounded-lg border border-emerald-300/35 bg-emerald-400/10 p-5">
+        <div role="status" className="rounded-2xl border border-emerald-300/28 bg-emerald-300/[0.08] p-5">
           <p className="text-lg font-black text-white">Workspace created</p>
           <p className="mt-2 text-sm leading-6 text-emerald-100/80">
             {createdUser.name} is ready to use {createdUser.workspace_name || "the S.A.G.A. workspace"}.
           </p>
-          <Link to="/overview" className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-200/70 bg-emerald-300/20 px-4 py-2 text-sm font-bold text-emerald-50 transition hover:bg-emerald-300/30">
+          <Link to="/overview" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl border border-emerald-200/55 bg-emerald-300/20 px-4 py-2 text-sm font-bold text-emerald-50 transition hover:bg-emerald-300/30">
             Open studio
           </Link>
         </div>
@@ -121,11 +121,11 @@ export function SignUpPage() {
               onChange={(event) => updateField("confirmPassword", event.target.value)}
             />
           </div>
-          {serverError ? <div role="alert" className="rounded-lg border border-rose-300/35 bg-rose-400/10 px-4 py-3 text-sm font-bold text-rose-100">{serverError}</div> : null}
+          {serverError ? <div role="alert" className="rounded-2xl border border-rose-300/25 bg-rose-300/[0.08] px-4 py-3 text-sm font-bold text-rose-100">{serverError}</div> : null}
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-emerald-300/45 bg-emerald-400/15 px-4 py-2 text-sm font-bold text-emerald-50 transition hover:border-emerald-200/70 hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-emerald-300/30 bg-emerald-300/[0.12] px-4 py-2 text-sm font-bold text-emerald-50 transition hover:border-emerald-200/55 hover:bg-emerald-300/[0.2] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Creating account..." : "Create account"}
           </button>
