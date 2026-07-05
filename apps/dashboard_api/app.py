@@ -6555,12 +6555,20 @@ def main() -> None:
     host = os.environ.get("SAGA_DASHBOARD_HOST", "127.0.0.1")
     port = int(os.environ.get("SAGA_DASHBOARD_PORT", "8675"))
     log_level = os.environ.get("SAGA_DASHBOARD_LOG_LEVEL", "info")
+    no_browser = os.environ.get("SAGA_DASHBOARD_NO_BROWSER") == "1"
     url = f"http://{host}:{port}"
     runtime_state_url = f"{url}/runtime/state"
     try:
         with urllib.request.urlopen(runtime_state_url, timeout=1.5) as response:
             if response.status == 200:
                 print(f"SAGA dashboard is already running at {url}")
+                if sys.stdin.isatty() and not no_browser:
+                    print("Keeping this terminal open. Press Ctrl+C to close it.")
+                    try:
+                        while True:
+                            time.sleep(1)
+                    except KeyboardInterrupt:
+                        print("\nExiting dashboard watcher.")
                 return
     except urllib.error.URLError:
         pass
@@ -6570,7 +6578,7 @@ def main() -> None:
         if probe.connect_ex((host, port)) == 0:
             print(f"Port {port} is already in use on {host}. Stop the existing listener or change SAGA_DASHBOARD_PORT.")
             raise SystemExit(1)
-    if os.environ.get("SAGA_DASHBOARD_NO_BROWSER") != "1":
+    if not no_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=host, port=port, log_level=log_level)
 
