@@ -15,6 +15,9 @@ import uuid
 import webbrowser
 import hashlib
 import secrets
+import socket
+import urllib.error
+import urllib.request
 import wave
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -6553,6 +6556,20 @@ def main() -> None:
     port = int(os.environ.get("SAGA_DASHBOARD_PORT", "8675"))
     log_level = os.environ.get("SAGA_DASHBOARD_LOG_LEVEL", "info")
     url = f"http://{host}:{port}"
+    runtime_state_url = f"{url}/runtime/state"
+    try:
+        with urllib.request.urlopen(runtime_state_url, timeout=1.5) as response:
+            if response.status == 200:
+                print(f"SAGA dashboard is already running at {url}")
+                return
+    except urllib.error.URLError:
+        pass
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1.0)
+        if probe.connect_ex((host, port)) == 0:
+            print(f"Port {port} is already in use on {host}. Stop the existing listener or change SAGA_DASHBOARD_PORT.")
+            raise SystemExit(1)
     if os.environ.get("SAGA_DASHBOARD_NO_BROWSER") != "1":
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=host, port=port, log_level=log_level)
