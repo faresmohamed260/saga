@@ -16,6 +16,7 @@ import webbrowser
 import hashlib
 import secrets
 import wave
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -5073,13 +5074,14 @@ def run_audiobook_job(job_id: str, run_id: str) -> None:
         save_job(payload)
 
 
-app = FastAPI(title="S.A.G.A. Local Web Runtime")
-
-
-@app.on_event("startup")
-def on_startup() -> None:
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
     ensure_dirs()
     _seed_provider_configs_from_local_files()
+    yield
+
+
+app = FastAPI(title="S.A.G.A. Local Web Runtime", lifespan=app_lifespan)
 
 
 @app.post("/api/auth/signup")
