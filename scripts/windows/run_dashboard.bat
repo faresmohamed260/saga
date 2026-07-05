@@ -27,6 +27,9 @@ if not "%BUILD_CODE%"=="0" (
 )
 
 echo Starting S.A.G.A. local web runtime at http://127.0.0.1:8675 ...
+if not defined SAGA_MONGODB_URI if not defined MONGODB_URI set "SAGA_MONGODB_URI=mongodb://127.0.0.1:27017"
+if not defined SAGA_MONGODB_DATABASE set "SAGA_MONGODB_DATABASE=saga"
+if not defined SAGA_MONGODB_USERS_COLLECTION set "SAGA_MONGODB_USERS_COLLECTION=users"
 call "%ROOT%\venv\Scripts\python.exe" -m apps.dashboard_api.app
 set "EXIT_CODE=%ERRORLEVEL%"
 popd >nul
