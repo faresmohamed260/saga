@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -11,9 +14,6 @@ permissions:
 concurrency:
   group: dashboard-pro-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-  push:
-    branches:
-      - main
 
 jobs:
   dashboard-pro:
