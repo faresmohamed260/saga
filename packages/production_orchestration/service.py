@@ -144,7 +144,8 @@ class ProductionOrchestrationService:
         from packages.visual_generation import VisualGenerationRunRequest, VisualGenerationService
         VisualGenerationService.from_env().run(VisualGenerationRunRequest(
             series_id=request.series_id, story_id=_resolved_story_id(request, outcomes),
-            thread_id=f"{request.run_id}-visual", max_attempts=request.max_attempts,
+            thread_id=f"{request.run_id}-visual",
+            max_attempts=request.execution_limits.max_visual_attempts or request.max_attempts,
             include_types=tuple(request.execution_limits.visual_include_types),
             max_renders_per_type=request.execution_limits.max_visual_renders_per_type,
         ))
