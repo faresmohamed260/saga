@@ -1,0 +1,151 @@
+name: Publish Runtime Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Immutable semantic release version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: publish-runtime-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate immutable release input
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          python - <<'PY'
+          import os, re
+          pattern = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$")
+          if not pattern.fullmatch(os.environ["RELEASE_VERSION"]):
+              raise SystemExit("version must be valid semantic versioning without a leading 'v'")
+          PY
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+      - run: uv sync --frozen --extra dev
+      - run: test "$(uv run alembic heads | wc -l)" -eq 1
+      - run: uv run pytest -q
+      - working-directory: apps/dashboard_pro
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm test -- --run
+          npm run build
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production-images
+    strategy:
+      matrix:
+        include:
+          - component: runtime
+            dockerfile: deploy/production/Dockerfile.runtime
+          - component: dashboard
+            dockerfile: deploy/production/Dockerfile.frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Refuse an existing version tag
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.component }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "Refusing to overwrite immutable tag $IMAGE:$RELEASE_VERSION" >&2
+            exit 1
+          fi
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-${{ matrix.component }}:${{ inputs.version }}
+            ghcr.io/${{ github.repository }}-${{ matrix.component }}:sha-${{ github.sha }}
+          build-args: |
+            SAGA_RELEASE_VERSION=${{ inputs.version }}
+            SAGA_GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ inputs.version }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}-${{ matrix.component }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Write component release record
+        env:
+          COMPONENT: ${{ matrix.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          printf '{"component":"%s","digest":"%s","git_sha":"%s","version":"%s"}\n' \
+            "$COMPONENT" "$DIGEST" "$GITHUB_SHA" "$RELEASE_VERSION" > "release-$COMPONENT.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.component }}
+          path: release-${{ matrix.component }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  manifest:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+      - name: Assemble immutable release manifest
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          records = [json.load(open(path, encoding="utf-8")) for path in sorted(glob.glob("release-*.json"))]
+          if {item["component"] for item in records} != {"runtime", "dashboard"}:
+              raise SystemExit("Both runtime and dashboard digests are required.")
+          payload = {"version": os.environ["RELEASE_VERSION"], "git_sha": os.environ["GITHUB_SHA"], "components": records}
+          with open("release-manifest.json", "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ inputs.version }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 365

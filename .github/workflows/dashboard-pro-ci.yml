@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-pro-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
   push:
     branches:
       - main
@@ -11,6 +18,7 @@ on:
 jobs:
   dashboard-pro:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/dashboard_pro
@@ -27,6 +35,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Test Dashboard Pro
+        run: npm test -- --run
 
       - name: Build Dashboard Pro
         run: npm run build

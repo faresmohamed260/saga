@@ -29,7 +29,8 @@ def main() -> int:
     create = release_commands.add_parser("create")
     create.add_argument("--version", required=True)
     create.add_argument("--git-sha", required=True)
-    create.add_argument("--image-digest", default="")
+    create.add_argument("--image-digest", required=True)
+    create.add_argument("--component-digest", action="append", default=[], metavar="NAME=SHA256")
     create.add_argument("--source-state", choices=("clean", "dirty"), default=str(os.getenv("SAGA_SOURCE_STATE") or "clean"))
     transition = release_commands.add_parser("transition")
     transition.add_argument("--release-id", required=True)
@@ -103,14 +104,27 @@ def main() -> int:
 
     releases = ReleaseRuntime(store=client.deployments)
     if args.release_action == "create":
+        components = _parse_component_digests(args.component_digest)
         manifest = create_release_manifest(version=args.version, git_sha=args.git_sha, image_digest=args.image_digest,
-            components={"api": args.version, "worker": args.version, "scheduler": args.version, "observability": args.version, "source_state": args.source_state},
+            source_state=args.source_state, components=components,
             configuration={"queue_name": str(os.getenv("SAGA_EXECUTION_QUEUE_NAME") or "production-orchestration")})
         payload = releases.register(manifest)
     else:
         payload = releases.transition(args.release_id, args.status)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
+
+
+def _parse_component_digests(values: list[str]) -> dict[str, str]:
+    components: dict[str, str] = {}
+    for value in values:
+        name, separator, digest = str(value or "").partition("=")
+        if not separator or not name.strip() or not digest.strip():
+            raise ValueError("Each --component-digest must use NAME=SHA256 format.")
+        if name.strip() in components:
+            raise ValueError(f"Duplicate component digest '{name.strip()}'.")
+        components[name.strip()] = digest.strip()
+    return components
 
 
 if __name__ == "__main__":

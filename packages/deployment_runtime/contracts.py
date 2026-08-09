@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 ProcessRole = Literal["api", "worker", "scheduler", "observability"]
 ReleaseStatus = Literal["candidate", "staging", "production", "rolled_back", "failed"]
+SourceState = Literal["clean", "dirty"]
 
 
 class ReleaseManifest(BaseModel):
@@ -20,6 +21,7 @@ class ReleaseManifest(BaseModel):
     status: ReleaseStatus = "candidate"
     built_at_ms: int
     configuration_fingerprint: str
+    source_state: SourceState = "clean"
     components: dict[str, str] = Field(default_factory=dict)
 
 

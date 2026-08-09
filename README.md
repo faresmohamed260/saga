@@ -1,209 +1,93 @@
-![S.A.G.A. Logo](docs/assets/saga-logo.svg)
-
 # S.A.G.A.
 
+[![Backend Architecture CI](https://github.com/faresmohamed260/saga/actions/workflows/backend-ci.yml/badge.svg?branch=main)](https://github.com/faresmohamed260/saga/actions/workflows/backend-ci.yml)
 [![Dashboard Pro CI](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml/badge.svg?branch=main)](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml)
 
-S.A.G.A. is a narrative analysis and generation workspace for books. It ingests source novels, builds canonical structured memory, exposes the results through a dashboard, and supports visual, retrieval, decoder, and audiobook workflows on top of a unified runtime-backed persistence layer.
+S.A.G.A. analyzes source books into evidence-backed canon, generates grounded stories and visual assets, synthesizes audited audiobooks, and packages release artifacts. The active implementation is a contract-driven collection of reusable runtimes rather than a monolithic application.
 
-## Repository Status
+## Architecture
 
-The repository is being rebuilt around the current production path:
+The active source tree has four primary surfaces:
 
-- unified persistence/storage runtime instead of filesystem-first contracts
-- Supabase/Postgres + object storage as the active persistence provider path
-- runtime-native analysis agents for events, entities, profiles, timelines, states, and visuals
-- React + FastAPI dashboard as the main operator surface
-- independently deployable API, worker, scheduler, and observability roles
-- Alembic-owned PostgreSQL migrations and provider-neutral database/artifact recovery
-- runtime-backed visual prompt, render, and decoder story workflows
+- `packages/`: independent runtime packages for agents, reasoning, retrieval, persistence, execution, identity, media generation, observability, lineage, qualification, and deployment.
+- `integrations/`: provider implementations for ComfyUI, Kokoro TTS, and XCore LitBank on Modal.
+- `apps/dashboard_api/`: stateless FastAPI control and query surface.
+- `apps/dashboard_pro/`: React operator dashboard.
 
-The earlier legacy/prototype architecture is being isolated out of the active tree. The target direction is the unified runtime architecture described in `docs/storage_architecture.md`.
+Supabase Postgres, pgvector, and object storage are persistence providers behind `packages/persistence_runtime`. LangGraph execution is owned by `packages/agent_runtime`. Provider credentials remain in persistence or deployment secret stores and are injected into runtimes; they are not committed to source control.
 
-Production build, rollout, rollback, health, and disaster-recovery procedures are documented in `docs/deployment_operations.md`.
+The historical implementation is inert reference material under `backup/reference/`. Active code is prohibited from importing it by an automated architecture-boundary test.
 
-## What Changed In The Repo
+## Pipeline
 
-Recent structural changes reflected in this repo:
+The production orchestration path covers:
 
-- the main application code is now centered under [saga](B:\Documents\PyCharm\graduationProject\saga)
-- the dashboard frontend lives under [apps/dashboard_pro](B:\Documents\PyCharm\graduationProject\apps\dashboard_pro)
-- the dashboard runtime/backend lives under [apps/dashboard_api](B:\Documents\PyCharm\graduationProject\apps\dashboard_api)
-- persistence, identity, providers, analysis agents, visuals, and decoder code are being cut over to the unified runtime
-- legacy top-level clutter was reduced so the repo is organized around application package, apps, configs, deploy assets, scripts, tests, and docs
+1. source ingestion and analysis foundation
+2. Modal XCore LitBank identity resolution
+3. canon extraction
+4. character and world modeling
+5. generation planning
+6. narrative generation and semantic support
+7. visual generation and image QA
+8. audiobook synthesis and transcription QA
+9. EPUB, manifest, lineage, and qualification reporting
 
-## Main Surfaces
+See `docs/system_agent_roadmap.md` and `docs/production_qualification.md` for current implementation and qualification status.
 
-### Dashboard
+## Development
 
-Primary operator UI:
+Python dependencies are locked with `uv`:
 
-- [apps/dashboard_pro](B:\Documents\PyCharm\graduationProject\apps\dashboard_pro)
-- [apps/dashboard_api/app.py](B:\Documents\PyCharm\graduationProject\apps\dashboard_api\app.py)
+```powershell
+uv sync --frozen --extra dev
+uv run pytest -q
+```
 
-Used for:
+Dashboard development:
 
-- staging books
-- validating import plans
-- starting analysis jobs
-- inspecting scenes, entities, events, states, visuals, and providers
-- launching decoder and rendering workflows
+```powershell
+cd apps\dashboard_pro
+npm ci
+npm test -- --run
+npm run build
+```
 
-## GitHub Workflow
+Run the API after configuring the Supabase environment:
 
-Dashboard Pro frontend work now follows a GitHub PR flow:
+```powershell
+uv run saga-runtime-api
+```
 
-- code ownership is defined in [.github/CODEOWNERS](B:\Documents\PyCharm\graduationProject\.github\CODEOWNERS)
-- pull requests use [.github/pull_request_template.md](B:\Documents\PyCharm\graduationProject\.github\pull_request_template.md)
-- frontend tasks can be opened from [.github/ISSUE_TEMPLATE/dashboard-pro-task.yml](B:\Documents\PyCharm\graduationProject\.github\ISSUE_TEMPLATE\dashboard-pro-task.yml)
-- CI for Dashboard Pro runs from [.github/workflows/dashboard-pro-ci.yml](B:\Documents\PyCharm\graduationProject\.github\workflows\dashboard-pro-ci.yml)
-- contributor guidance lives in [CONTRIBUTING.md](B:\Documents\PyCharm\graduationProject\CONTRIBUTING.md)
+## Production
 
-### CLI
+Production topology and operations are defined under `deploy/production/` and documented in `docs/deployment_operations.md`. API, workers, scheduler, observability, frontend, migrations, and telemetry collector are separate processes.
 
-Primary CLI entrypoint:
+```powershell
+$env:SAGA_ENV_FILE = ".env"
+docker compose -f deploy\production\compose.yaml config
+docker compose -f deploy\production\compose.yaml up -d
+```
 
-- [saga_tools.py](B:\Documents\PyCharm\graduationProject\saga_tools.py)
-
-Used for:
-
-- targeted local runs
-- utilities
-- development workflows
-- rendering and export tasks
-
-### Application Package
-
-Core package:
-
-- [saga](B:\Documents\PyCharm\graduationProject\saga)
-
-Contains:
-
-- agents
-- identity pipeline
-- provider infrastructure
-- storage and persistence
-- services
-- retrieval/query logic
-- decoder support
-- visual generation support
+Container bases and the OpenTelemetry collector are pinned by digest. CI publishes runtime and dashboard images from `main`, refuses existing version tags, creates provenance attestations, and stores a release manifest containing the commit and image digests. Production promotion additionally fails closed unless the deployment manifest has clean committed source provenance.
 
 ## Repository Layout
 
-- [apps](B:\Documents\PyCharm\graduationProject\apps)
-  Frontend and backend application surfaces.
-- [configs](B:\Documents\PyCharm\graduationProject\configs)
-  Configuration assets.
-- [deploy](B:\Documents\PyCharm\graduationProject\deploy)
-  Local deployment and provider-account assets.
-- [docs](B:\Documents\PyCharm\graduationProject\docs)
-  Architecture, schema, dashboard, and testing documentation.
-- [integrations](B:\Documents\PyCharm\graduationProject\integrations)
-  Integration-specific helpers.
-- [saga](B:\Documents\PyCharm\graduationProject\saga)
-  Main application code.
-- [scripts](B:\Documents\PyCharm\graduationProject\scripts)
-  Local scripts and Windows launch/install helpers.
-- [tests](B:\Documents\PyCharm\graduationProject\tests)
-  Automated tests.
+- `apps/`: API and dashboard application surfaces
+- `backup/reference/`: isolated, non-importable historical implementation
+- `deploy/production/`: production container topology
+- `docs/`: active architecture and operations documentation
+- `integrations/`: external provider implementations
+- `migrations/`: Alembic-owned PostgreSQL migrations
+- `packages/`: reusable runtime packages
+- `scripts/`: bounded runtime and validation entrypoints
+- `supabase/`: Supabase project schema assets
+- `tests/`: active architecture and behavior tests
 
-## Installation
+## Operational References
 
-```powershell
-python -m venv venv
-venv\Scripts\activate
-pip install -e .[dev]
-```
-
-Optional extras:
-
-```powershell
-pip install -e .[graph]
-```
-
-Frontend dependencies:
-
-```powershell
-npm install
-cd apps\dashboard_pro
-npm install
-```
-
-## Run The Dashboard
-
-Recommended local launcher:
-
-```powershell
-scripts\windows\run_dashboard.bat
-```
-
-Default local URL:
-
-- `http://127.0.0.1:8675`
-
-Background Windows service install:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\install_saga_dashboard_service.ps1
-```
-
-## Current Runtime Stack
-
-- frontend: React
-- backend/runtime: FastAPI
-- storage abstraction: `packages/persistence_runtime`
-- active provider path: Supabase Postgres + pgvector + Supabase Storage
-- generation/render orchestration: decoupled provider runtimes + dashboard/runtime surfaces
-
-## Key Current Components
-
-### Storage
-
-- [saga/storage/models.py](B:\Documents\PyCharm\graduationProject\saga\storage\models.py)
-- [saga/storage/persistence.py](B:\Documents\PyCharm\graduationProject\saga\storage\persistence.py)
-
-### Identity
-
-- [saga/identity/booknlp_identity_adapter.py](B:\Documents\PyCharm\graduationProject\saga\identity\booknlp_identity_adapter.py)
-- [saga/identity/series_identity_provider.py](B:\Documents\PyCharm\graduationProject\saga\identity\series_identity_provider.py)
-
-### Analysis
-
-- [saga/services/database_analysis_run_service.py](B:\Documents\PyCharm\graduationProject\saga\services\database_analysis_run_service.py)
-- [saga/agents](B:\Documents\PyCharm\graduationProject\saga\agents)
-
-### Decoder
-
-- [saga/services/database_decoder_service.py](B:\Documents\PyCharm\graduationProject\saga\services\database_decoder_service.py)
-- [saga/services/generated_story_epub_service.py](B:\Documents\PyCharm\graduationProject\saga\services\generated_story_epub_service.py)
-
-### Visuals
-
-- [saga/services/entity_visual_prompt_service.py](B:\Documents\PyCharm\graduationProject\saga\services\entity_visual_prompt_service.py)
-- [saga/services/comfyui_character_sheet_service.py](B:\Documents\PyCharm\graduationProject\saga\services\comfyui_character_sheet_service.py)
-
-## Documentation
-
-Top-level methodology / implementation comparison:
-
-- [SYSTEM_METHODOLOGY_AND_IMPLEMENTATION.md](B:\Documents\PyCharm\graduationProject\SYSTEM_METHODOLOGY_AND_IMPLEMENTATION.md)
-
-Additional docs:
-
-- [docs/ARCHITECTURE.md](B:\Documents\PyCharm\graduationProject\docs\ARCHITECTURE.md)
-- [docs/AGENT_PIPELINE_DATAFLOW.md](B:\Documents\PyCharm\graduationProject\docs\AGENT_PIPELINE_DATAFLOW.md)
-- [docs/DASHBOARD.md](B:\Documents\PyCharm\graduationProject\docs\DASHBOARD.md)
-- [docs/SQLITE_SCHEMA.md](B:\Documents\PyCharm\graduationProject\docs\SQLITE_SCHEMA.md)
-- [docs/TARGET_SYSTEM.md](B:\Documents\PyCharm\graduationProject\docs\TARGET_SYSTEM.md)
-- [docs/TESTING.md](B:\Documents\PyCharm\graduationProject\docs\TESTING.md)
-
-## Local-Only Data
-
-Local temp/cache data is not source-of-truth persistence. Durable artifacts belong in the unified runtime object storage path.
-
-## Notes
-
-- The dashboard/runtime path is the main operational path.
-- The active storage architecture is the unified persistence runtime. Supabase is a provider, not the abstraction.
-- Methodology and implementation comparison is intentionally kept in the separate top-level document so the README can stay repository-focused.
+- `docs/deployment_operations.md`: build, rollout, rollback, backup, and recovery
+- `docs/runtime_secrets.md`: provider credential ownership
+- `docs/storage_architecture.md`: persistence contracts and provider boundaries
+- `docs/production_orchestration_runtime.md`: end-to-end orchestration
+- `docs/production_qualification.md`: accepted real-book qualification evidence
+- `docs/architecture_hardening_audit.md`: architecture integrity audit

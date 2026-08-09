@@ -20,8 +20,8 @@ def main() -> int:
     releases = []
     for index in range(2):
         manifest = create_release_manifest(
-            version=f"{args.prefix}.{index}",
-            git_sha=f"{index + 1:07x}validation",
+            version=f"0.0.0-validation.{int(time.time())}.{index}",
+            git_sha=f"{index + 1:040x}",
             image_digest=f"sha256:{index + 1:064x}",
         )
         runtime.register(manifest)

@@ -22,6 +22,8 @@ Thumbs.db
 .coverage
 coverage.xml
 htmlcov/
+/tmp/
+/tmp_live_*/
 
 # Build and packaging artifacts
 build/
@@ -53,12 +55,21 @@ deploy/ollama/accounts.local.json
 # Local General Compute key rotation credentials
 deploy/general_compute/accounts.local.json
 
+# Production deployment secrets and backups
+deploy/production/.env
+deploy/production/backups/
+
 # Local hybrid retrieval vector indices
 analysis_outputs/vector_indices/
 
 # Local runtime artifacts and generated outputs
 analysis_outputs/
 !deploy/sqlite/saga_team_seed.sqlite3
+
+# Local Codex inputs and generated project presentation artifacts
+/.codex-remote-attachments/
+/Graduation Project Documentation 2.docx
+/encoder_canva_slides.html
 
 # Local reference repo only
 external/Narraverse/
