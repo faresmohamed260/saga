@@ -8,6 +8,7 @@ import logging
 import re
 import secrets
 import time
+import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, TypedDict
 
@@ -260,7 +261,8 @@ class VisualPlanningAgent:
 
         if hasattr(self.reasoning_runtime, "clone"):
             with ThreadPoolExecutor(max_workers=len(categories), thread_name_prefix="visual-planning") as executor:
-                rows = list(executor.map(lambda item: execute(*item), categories.items()))
+                futures = [executor.submit(contextvars.copy_context().run, execute, *item) for item in categories.items()]
+                rows = [future.result() for future in futures]
         else:
             rows = [execute(*item) for item in categories.items()]
         by_category = {category: payload for category, payload, _ in rows}
@@ -293,7 +295,8 @@ class VisualPlanningAgent:
             repair_jobs.append(("scenes", 2200, {"selected_scenes": [item for item in scenes if item.source_scene_id in missing_scene_ids]}))
         if repair_jobs:
             with ThreadPoolExecutor(max_workers=len(repair_jobs), thread_name_prefix="visual-planning-repair") as executor:
-                repaired = list(executor.map(lambda item: execute(item[0], item[1], **item[2]), repair_jobs))
+                futures = [executor.submit(contextvars.copy_context().run, execute, item[0], item[1], **item[2]) for item in repair_jobs]
+                repaired = [future.result() for future in futures]
             metadata.extend(item for _, _, item in repaired)
             for category, payload, _ in repaired:
                 if category == "characters":

@@ -42,6 +42,8 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen --extra dev
       - run: test "$(uv run alembic heads | wc -l)" -eq 1
+      - run: uv run python -m scripts.check_source_secrets
+      - run: uv run pytest -q tests/test_architecture_boundaries.py
       - run: uv run pytest -q
       - working-directory: apps/dashboard_pro
         run: |
@@ -124,28 +126,53 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+      - run: uv sync --frozen --extra dev
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           merge-multiple: true
-      - name: Assemble immutable release manifest
+      - name: Assemble immutable release candidate and CI evidence
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           python - <<'PY'
-          import glob, json, os
+          import glob, json, os, subprocess, time
           records = [json.load(open(path, encoding="utf-8")) for path in sorted(glob.glob("release-*.json"))]
           if {item["component"] for item in records} != {"runtime", "dashboard"}:
               raise SystemExit("Both runtime and dashboard digests are required.")
-          payload = {"version": os.environ["RELEASE_VERSION"], "git_sha": os.environ["GITHUB_SHA"], "components": records}
-          with open("release-manifest.json", "w", encoding="utf-8") as handle:
-              json.dump(payload, handle, indent=2, sort_keys=True)
+          digests = {item["component"]: item["digest"] for item in records}
+          subprocess.run([
+              "uv", "run", "python", "-m", "scripts.create_release_candidate",
+              "--version", os.environ["RELEASE_VERSION"],
+              "--runtime-digest", digests["runtime"],
+              "--dashboard-digest", digests["dashboard"],
+              "--output", "release-candidate.json",
+          ], check=True)
+          candidate = json.load(open("release-candidate.json", encoding="utf-8"))
+          evidence = {
+              "gate": "ci", "status": "passed", "source": "github-actions",
+              "observed_at_ms": int(time.time() * 1000), "expires_at_ms": 0,
+              "details": {
+                  "git_sha": os.environ["GITHUB_SHA"], "backend_tests_passed": True,
+                  "frontend_tests_passed": True, "containers_built": True,
+                  "architecture_boundaries_passed": True, "secret_scan_passed": True,
+              },
+              "artifact_reference": {"candidate_sha256": candidate["candidate_sha256"]},
+          }
+          with open("ci-gate-evidence.json", "w", encoding="utf-8") as handle:
+              json.dump(evidence, handle, indent=2, sort_keys=True)
               handle.write("\n")
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: release-manifest-${{ inputs.version }}
-          path: release-manifest.json
+          name: release-candidate-${{ inputs.version }}
+          path: |
+            release-candidate.json
+            ci-gate-evidence.json
           if-no-files-found: error
           retention-days: 365

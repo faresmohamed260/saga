@@ -41,6 +41,9 @@ export const runtimeApi = {
   deleteAssetEntity: (entityId) => request(`/runtime/assets/entities/${encodeURIComponent(entityId)}`, { method: "DELETE" }),
   renderBatch: (payload) => request("/runtime/assets/render-batch", { method: "POST", body: JSON.stringify(payload) }),
   providerStatuses: (refresh = false) => request(`/runtime/providers/status${refresh ? "?refresh=1" : ""}`),
+  usageSummary: (params = {}) => request(`/runtime/usage/summary${toQuery(params)}`),
+  saveUsageBudget: (policyId, payload) =>
+    request(`/runtime/usage/budgets/${encodeURIComponent(policyId)}`, { method: "POST", body: JSON.stringify(payload) }),
   inferenceProvider: (providerName) => request(`/runtime/inference/providers/${encodeURIComponent(providerName)}`),
   saveInferenceProvider: (providerName, payload) =>
     request(`/runtime/inference/providers/${encodeURIComponent(providerName)}`, { method: "POST", body: JSON.stringify(payload) }),

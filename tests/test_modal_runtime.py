@@ -174,6 +174,7 @@ def test_modal_endpoint_pool_fails_over_and_updates_operational_state() -> None:
     assert pool.success_updates[0][2]["upstream_trace_id"] == "upstream-member-02"
     assert execution.metadata.component == "modal_runtime"
     assert execution.metadata.provider == "modal"
+    assert execution.metadata.usage["request_count"] == 1
     assert execution.metadata.trace_id
     assert execution.metadata.run_id == "modal-run-1"
     assert execution.metadata.upstream_trace_id == "upstream-member-02"

@@ -62,6 +62,7 @@ class PersistenceRuntimeClient:
         self.execution_queue = self.provider.execution_queue
         self.lineage = self.provider.lineage
         self.observability = self.provider.observability
+        self.usage = self.provider.usage
         self.deployments = self.provider.deployments
         self.stories = self.provider.stories
         self.audiobooks = self.provider.audiobooks

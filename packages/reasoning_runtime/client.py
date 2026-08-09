@@ -30,7 +30,14 @@ except ImportError:  # pragma: no cover
 from packages.reasoning_runtime.contracts import ReasoningJsonResult, ReasoningRequestMetadata, ReasoningTextResult
 from packages.reasoning_runtime.models import ReasoningProfile, ReasoningRuntimeConfig
 from packages.reasoning_runtime.pools import GeneralComputePool, SimpleRotationPool
-from packages.runtime_common import build_structured_runtime_tool, create_trace, current_trace_context
+from packages.runtime_common import (
+    ProviderUsage,
+    build_structured_runtime_tool,
+    create_trace,
+    current_trace_context,
+    reserve_usage,
+    settle_usage,
+)
 
 
 class ReasoningRuntimeClient:
@@ -58,6 +65,7 @@ class ReasoningRuntimeClient:
         self._pending_response_format_type = ""
         self._pending_tool_mode = ""
         self._request_account_alias = ""
+        self._request_usage = ProviderUsage(request_count=0)
         self._ollama_pool = SimpleRotationPool(
             accounts=self.config.ollama_accounts,
             active_index=self.config.ollama_active_index,
@@ -192,16 +200,21 @@ class ReasoningRuntimeClient:
         self._pending_tool_mode = ""
         self._begin_request_tracking()
         try:
-            response = self._mistral_client_instance().audio.transcriptions.complete(
-                model=self.resolved_model_name(),
-                file={
-                    "fileName": str(filename or "audio.wav"),
-                    "content": audio_bytes,
-                    "Content-Type": "audio/wav",
-                },
-                language=str(language or "en"),
-                context_bias=list(context_bias or []),
-                diarize=False,
+            response = self._metered_call(
+                lambda: self._mistral_client_instance().audio.transcriptions.complete(
+                    model=self.resolved_model_name(),
+                    file={
+                        "fileName": str(filename or "audio.wav"),
+                        "content": audio_bytes,
+                        "Content-Type": "audio/wav",
+                    },
+                    language=str(language or "en"),
+                    context_bias=list(context_bias or []),
+                    diarize=False,
+                ),
+                projected=ProviderUsage(request_count=1, audio_seconds=0, source="declared"),
+                operation="audio_transcription",
+                usage_extractor=_mistral_usage,
             )
             return {
                 "text": str(getattr(response, "text", "") or "").strip(),
@@ -413,19 +426,15 @@ class ReasoningRuntimeClient:
 
     def _generate_json_ollama(self, prompt: str, *, max_tokens: int, response_format: Optional[dict] = None) -> dict[str, Any]:
         url, headers, direct_cloud = self._ollama_transport()
-        response = requests.post(
-            url,
-            headers=headers,
-            json=self._ollama_payload(
-                prompt=prompt,
-                model_name=self.resolved_model_name(),
-                direct_cloud=direct_cloud,
-                json_mode=True,
-                response_format=response_format,
-                max_tokens=max_tokens,
-                temperature=0.0,
+        response = self._metered_call(
+            lambda: requests.post(
+                url, headers=headers,
+                json=self._ollama_payload(
+                    prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
+                    json_mode=True, response_format=response_format, max_tokens=max_tokens, temperature=0.0,
+                ), timeout=self.timeout,
             ),
-            timeout=self.timeout,
+            projected=_projected_text_usage(prompt, max_tokens), operation="generate_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
         payload = response.json() or {}
@@ -433,14 +442,13 @@ class ReasoningRuntimeClient:
 
     def _generate_text_ollama(self, prompt: str, *, temperature: float, max_tokens: int) -> str:
         url, headers, direct_cloud = self._ollama_transport()
-        response = requests.post(
-            url,
-            headers=headers,
-            json=self._ollama_payload(
-                prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
-                temperature=temperature, max_tokens=max_tokens,
+        response = self._metered_call(
+            lambda: requests.post(
+                url, headers=headers,
+                json=self._ollama_payload(prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
+                                          temperature=temperature, max_tokens=max_tokens), timeout=self.timeout,
             ),
-            timeout=self.timeout,
+            projected=_projected_text_usage(prompt, max_tokens), operation="generate_text", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
         return str((response.json() or {}).get("response") or "").strip()
@@ -455,18 +463,14 @@ class ReasoningRuntimeClient:
         url, headers, _ = self._ollama_transport()
         model_name = self.resolved_model_name()
         translated_model = model_name[:-6] if model_name.endswith("-cloud") else model_name
-        response = requests.post(
-            url,
-            headers=headers,
-            json={
-                "model": translated_model,
-                "prompt": prompt,
-                "images": [base64.b64encode(image_bytes).decode("ascii")],
-                "stream": False,
-                "format": self._ollama_json_format_payload(response_format),
-                "options": {"temperature": 0},
-            },
-            timeout=self.timeout,
+        response = self._metered_call(
+            lambda: requests.post(
+                url, headers=headers,
+                json={"model": translated_model, "prompt": prompt, "images": [base64.b64encode(image_bytes).decode("ascii")],
+                      "stream": False, "format": self._ollama_json_format_payload(response_format), "options": {"temperature": 0}},
+                timeout=self.timeout,
+            ),
+            projected=_projected_text_usage(prompt, 4096), operation="vision_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
         payload = response.json() or {}
@@ -474,20 +478,14 @@ class ReasoningRuntimeClient:
         return self._safe_parse_json(content)
 
     def _generate_vision_json_mistral(self, *, prompt: str, image_bytes: bytes) -> dict[str, Any]:
-        response = self._mistral_client_instance().chat.complete(
-            model=self.resolved_model_name(),
-            messages=[{
-                "role": "user",
-                "content": [
+        response = self._metered_call(
+            lambda: self._mistral_client_instance().chat.complete(
+                model=self.resolved_model_name(), messages=[{"role": "user", "content": [
                     {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode('ascii')}",
-                    },
-                ],
-            }],
-            response_format={"type": "json_object"},
-            temperature=0,
+                    {"type": "image_url", "image_url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode('ascii')}"},
+                ]}], response_format={"type": "json_object"}, temperature=0,
+            ),
+            projected=_projected_text_usage(prompt, 4096), operation="vision_json", usage_extractor=_mistral_usage,
         )
         return self._safe_parse_json(str(response.choices[0].message.content or ""))
 
@@ -512,11 +510,10 @@ class ReasoningRuntimeClient:
             payload["tools"] = tools
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
-        response = requests.post(
-            self.config.general_compute_chat_url,
-            headers=self._general_compute_headers(),
-            json=payload,
-            timeout=self.timeout,
+        headers = self._general_compute_headers()
+        response = self._metered_call(
+            lambda: requests.post(self.config.general_compute_chat_url, headers=headers, json=payload, timeout=self.timeout),
+            projected=_projected_text_usage(prompt, max_tokens), operation="generate_json", usage_extractor=_http_openai_usage,
         )
         response.raise_for_status()
         raw = response.json() or {}
@@ -538,26 +535,24 @@ class ReasoningRuntimeClient:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        response = requests.post(
-            self.config.general_compute_chat_url,
-            headers=self._general_compute_headers(),
-            json={
-                "model": self.resolved_model_name(),
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
-            timeout=self.timeout,
+        headers = self._general_compute_headers()
+        response = self._metered_call(
+            lambda: requests.post(
+                self.config.general_compute_chat_url, headers=headers,
+                json={"model": self.resolved_model_name(), "messages": messages, "temperature": temperature, "max_tokens": max_tokens},
+                timeout=self.timeout,
+            ),
+            projected=_projected_text_usage(self._compose_text_prompt(system_prompt, prompt), max_tokens),
+            operation="generate_text", usage_extractor=_http_openai_usage,
         )
         response.raise_for_status()
         return self._extract_general_compute_content(response.json() or {}).strip()
 
     def _generate_json_mistral(self, prompt: str) -> dict[str, Any]:
         client = self._mistral_client_instance()
-        response = client.chat.complete(
-            model=self.resolved_model_name(),
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+        response = self._metered_call(
+            lambda: client.chat.complete(model=self.resolved_model_name(), messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}),
+            projected=_projected_text_usage(prompt, 4096), operation="generate_json", usage_extractor=_mistral_usage,
         )
         return self._safe_parse_json(str(response.choices[0].message.content or ""))
 
@@ -574,17 +569,19 @@ class ReasoningRuntimeClient:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        response = client.chat.complete(
-            model=self.resolved_model_name(),
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
+        response = self._metered_call(
+            lambda: client.chat.complete(model=self.resolved_model_name(), messages=messages, temperature=temperature, max_tokens=max_tokens),
+            projected=_projected_text_usage(self._compose_text_prompt(system_prompt, prompt), max_tokens),
+            operation="generate_text", usage_extractor=_mistral_usage,
         )
         return str(response.choices[0].message.content or "").strip()
 
     def _generate_json_gemini(self, prompt: str) -> dict[str, Any]:
         client = self._gemini_client_instance()
-        response = client.models.generate_content(model=self.resolved_model_name(), contents=self._apply_strict_mode(prompt))
+        response = self._metered_call(
+            lambda: client.models.generate_content(model=self.resolved_model_name(), contents=self._apply_strict_mode(prompt)),
+            projected=_projected_text_usage(prompt, 4096), operation="generate_json", usage_extractor=_gemini_usage,
+        )
         return self._safe_parse_json(str(response.text or ""))
 
     def _generate_text_gemini(
@@ -597,10 +594,12 @@ class ReasoningRuntimeClient:
     ) -> str:
         client = self._gemini_client_instance()
         input_text = self._compose_text_prompt(system_prompt, prompt)
-        response = client.models.generate_content(
-            model=self.resolved_model_name(),
-            contents=input_text,
-            config={"temperature": temperature, "max_output_tokens": max_tokens},
+        response = self._metered_call(
+            lambda: client.models.generate_content(
+                model=self.resolved_model_name(), contents=input_text,
+                config={"temperature": temperature, "max_output_tokens": max_tokens},
+            ),
+            projected=_projected_text_usage(input_text, max_tokens), operation="generate_text", usage_extractor=_gemini_usage,
         )
         return str(response.text or "").strip()
 
@@ -775,6 +774,7 @@ class ReasoningRuntimeClient:
 
     def _begin_request_tracking(self) -> None:
         self._request_account_alias = ""
+        self._request_usage = ProviderUsage(request_count=0)
         trace_context = current_trace_context()
         self._last_request_metadata = ReasoningRequestMetadata(
             trace_id=create_trace(
@@ -808,6 +808,7 @@ class ReasoningRuntimeClient:
         self._last_request_metadata.resolved_model = self.resolved_model_name()
         self._last_request_metadata.provider_account_alias = self._current_account_alias()
         self._last_request_metadata.provider = self.provider_name()
+        self._last_request_metadata.usage = self._request_usage.model_dump()
         self._last_request_metadata.completed_at_ms = completed_at_ms
         self._last_request_metadata.latency_ms = max(
             0,
@@ -819,6 +820,33 @@ class ReasoningRuntimeClient:
         self._pending_json_mode = ""
         self._pending_response_format_type = ""
         self._pending_tool_mode = ""
+
+    def _metered_call(self, call: Callable[[], Any], *, projected: ProviderUsage, operation: str, usage_extractor: Callable[[Any], ProviderUsage]) -> Any:
+        reservation = reserve_usage(
+            projected=projected, component="reasoning_runtime", provider=self.provider_name(),
+            account_alias=self._current_account_alias(), model=self.resolved_model_name(), operation=operation,
+        )
+        try:
+            response = call()
+        except Exception as exc:
+            actual = ProviderUsage(request_count=1, source="measured")
+            self._accumulate_usage(actual)
+            settle_usage(reservation, actual, evidence={"status": "error", "exception_type": type(exc).__name__})
+            raise
+        actual = usage_extractor(response)
+        self._accumulate_usage(actual)
+        settle_usage(reservation, actual, evidence={"status": "ok", "evidence_id": actual.evidence_id})
+        return response
+
+    def _accumulate_usage(self, usage: ProviderUsage) -> None:
+        values = self._request_usage.model_dump()
+        for key in ("request_count", "input_tokens", "output_tokens", "cached_input_tokens", "compute_seconds", "image_count", "audio_seconds"):
+            values[key] = float(values.get(key) or 0) + float(getattr(usage, key) or 0)
+        if usage.native_cost_usd is not None:
+            values["native_cost_usd"] = float(values.get("native_cost_usd") or 0) + float(usage.native_cost_usd)
+        values["source"] = usage.source
+        values["evidence_id"] = usage.evidence_id
+        self._request_usage = ProviderUsage.model_validate(values)
 
     def _current_account_alias(self) -> str:
         if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
@@ -951,3 +979,87 @@ class ReasoningRuntimeClient:
             except Exception:
                 pass
         return {"error": "parse_failed", "raw_output": raw}
+
+
+def _projected_text_usage(text: str, max_output_tokens: int) -> ProviderUsage:
+    # A conservative reservation only; settlement always replaces it with native usage.
+    projected_input = max(1, (len(str(text or "").encode("utf-8")) + 1) // 2)
+    return ProviderUsage(request_count=1, input_tokens=projected_input, output_tokens=max(1, int(max_output_tokens)), source="declared")
+
+
+def _http_ollama_usage(response: Any) -> ProviderUsage:
+    payload = dict(response.json() or {})
+    compute_ns = float(payload.get("prompt_eval_duration") or 0) + float(payload.get("eval_duration") or 0)
+    return ProviderUsage(
+        request_count=1,
+        input_tokens=max(0, float(payload.get("prompt_eval_count") or 0)),
+        output_tokens=max(0, float(payload.get("eval_count") or 0)),
+        compute_seconds=max(0.0, compute_ns / 1_000_000_000),
+        source="provider",
+        evidence_id=_http_request_id(response),
+    )
+
+
+def _http_openai_usage(response: Any) -> ProviderUsage:
+    payload = dict(response.json() or {})
+    usage = dict(payload.get("usage") or {})
+    details = dict(usage.get("prompt_tokens_details") or usage.get("input_tokens_details") or {})
+    native_cost = usage.get("cost_usd", usage.get("cost"))
+    return ProviderUsage(
+        request_count=1,
+        input_tokens=max(0, float(usage.get("prompt_tokens", usage.get("input_tokens", 0)) or 0)),
+        output_tokens=max(0, float(usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0)),
+        cached_input_tokens=max(0, float(details.get("cached_tokens", 0) or 0)),
+        native_cost_usd=max(0, float(native_cost)) if native_cost is not None else None,
+        source="provider",
+        evidence_id=str(payload.get("id") or _http_request_id(response)),
+    )
+
+
+def _mistral_usage(response: Any) -> ProviderUsage:
+    usage = getattr(response, "usage", None)
+    native_cost = _attribute(usage, "cost_usd", _attribute(usage, "cost", None))
+    return ProviderUsage(
+        request_count=1,
+        input_tokens=_nonnegative(_attribute(usage, "prompt_tokens", _attribute(usage, "input_tokens", 0))),
+        output_tokens=_nonnegative(_attribute(usage, "completion_tokens", _attribute(usage, "output_tokens", 0))),
+        cached_input_tokens=_nonnegative(_attribute(usage, "cached_tokens", 0)),
+        native_cost_usd=_nonnegative(native_cost) if _is_number(native_cost) else None,
+        source="provider",
+        evidence_id=_scalar_text(_attribute(response, "id", _attribute(response, "request_id", ""))),
+    )
+
+
+def _gemini_usage(response: Any) -> ProviderUsage:
+    usage = getattr(response, "usage_metadata", None)
+    return ProviderUsage(
+        request_count=1,
+        input_tokens=_nonnegative(_attribute(usage, "prompt_token_count", 0)),
+        output_tokens=_nonnegative(_attribute(usage, "candidates_token_count", 0)),
+        cached_input_tokens=_nonnegative(_attribute(usage, "cached_content_token_count", 0)),
+        source="provider",
+        evidence_id=_scalar_text(_attribute(response, "response_id", "")),
+    )
+
+
+def _attribute(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default) if value is not None else default
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _nonnegative(value: Any) -> float:
+    return max(0.0, float(value)) if _is_number(value) else 0.0
+
+
+def _scalar_text(value: Any) -> str:
+    return str(value) if isinstance(value, (str, int)) and not isinstance(value, bool) else ""
+
+
+def _http_request_id(response: Any) -> str:
+    headers = getattr(response, "headers", {}) or {}
+    return str(headers.get("x-request-id") or headers.get("request-id") or "")

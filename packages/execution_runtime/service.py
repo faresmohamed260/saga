@@ -12,7 +12,7 @@ from typing import Any
 from packages.execution_runtime.contracts import ExecutionQueuePolicy, ExecutionSubmission, WorkerExecutionResult
 from packages.execution_runtime.queue import ExecutionQueueRuntime, queue_id_for_run
 from packages.execution_runtime.worker import ExecutionWorker
-from packages.observability_runtime import OTLPHTTPExporter, ObservabilityRuntime, ObservabilityRuntimeConfig, SLODefinition
+from packages.observability_runtime import CostRate, OTLPHTTPExporter, ObservabilityRuntime, ObservabilityRuntimeConfig, SLODefinition
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.production_orchestration import OrchestrationRequest, ProductionOrchestrationService, ProductionOrchestrationServiceConfig
 
@@ -34,6 +34,8 @@ class ExecutionRuntimeServiceConfig:
     default_capability_limit: int = 2
     observability_retention_days: int = 30
     otlp_http_endpoint: str = ""
+    usage_cost_rates: tuple[CostRate, ...] = field(default_factory=tuple)
+    release_id: str = ""
     capability_limits: dict[str, int] = field(default_factory=lambda: {
         "modal_coreference": 1,
         "modal_image": 1,
@@ -122,6 +124,8 @@ class ExecutionRuntimeService:
             supabase_api_url=config.supabase_api_url, supabase_anon_key=config.supabase_anon_key,
             supabase_service_role_key=config.supabase_service_role_key,
             lineage_version_overrides=config.lineage_version_overrides,
+            usage_cost_rates=config.usage_cost_rates,
+            release_id=config.release_id,
         )
 
     @classmethod
@@ -162,6 +166,10 @@ def load_execution_runtime_service_config_from_env() -> ExecutionRuntimeServiceC
     lineage_overrides = json.loads(lineage_raw) if lineage_raw else {}
     if not isinstance(lineage_overrides, dict):
         raise ValueError("SAGA_STAGE_LINEAGE_VERSIONS_JSON must be a JSON object.")
+    cost_rates_raw = str(os.getenv("SAGA_PROVIDER_COST_RATES_JSON") or "").strip()
+    cost_rates_payload = json.loads(cost_rates_raw) if cost_rates_raw else []
+    if not isinstance(cost_rates_payload, list):
+        raise ValueError("SAGA_PROVIDER_COST_RATES_JSON must be a JSON array.")
     return ExecutionRuntimeServiceConfig(
         persistence_mode=str(os.getenv("SAGA_RUNTIME_DB_MODE") or "supabase_postgres").strip(),
         persistence_provider=str(os.getenv("SAGA_RUNTIME_DB_PROVIDER") or "supabase").strip(),
@@ -179,6 +187,8 @@ def load_execution_runtime_service_config_from_env() -> ExecutionRuntimeServiceC
         otlp_http_endpoint=str(os.getenv("SAGA_OTLP_HTTP_ENDPOINT") or "").strip(),
         capability_limits={str(key): max(1, int(value)) for key, value in dict(limits).items()},
         lineage_version_overrides={str(stage): dict(values) for stage, values in lineage_overrides.items()},
+        usage_cost_rates=tuple(CostRate.model_validate(item) for item in cost_rates_payload),
+        release_id=str(os.getenv("SAGA_RELEASE_ID") or "").strip(),
     )
 
 

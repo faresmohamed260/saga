@@ -101,7 +101,7 @@ services:
 
 networks:
   saga:
-    name: saga-production
+    name: ${SAGA_NETWORK_NAME:-saga-production}
   persistence:
     external: true
     name: ${SAGA_PERSISTENCE_NETWORK:-supabase_default}

@@ -19,6 +19,7 @@ from packages.production_orchestration.contracts import OrchestrationRequest, Or
 from packages.production_orchestration.packaging import VersionedDeliverablePackager
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.lineage import active_stage_version_overrides
+from packages.observability_runtime import CostRate, UsageGovernanceRuntime
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,8 @@ class ProductionOrchestrationServiceConfig:
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     lineage_version_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    usage_cost_rates: tuple[CostRate, ...] = field(default_factory=tuple)
+    release_id: str = ""
 
 
 class ProductionOrchestrationService:
@@ -66,6 +69,11 @@ class ProductionOrchestrationService:
             packager=packager,
             cancellation_checker=cancellation_checker,
             lineage_version_overrides=active_stage_version_overrides(config.lineage_version_overrides),
+            usage_governor=UsageGovernanceRuntime(
+                store=self.persistence.usage, cost_rates=config.usage_cost_rates,
+                observation_store=self.persistence.observability,
+            ),
+            release_id=config.release_id,
         )
 
     @classmethod
@@ -166,6 +174,7 @@ def load_production_orchestration_service_config_from_env() -> ProductionOrchest
     lineage_overrides = json.loads(lineage_raw) if lineage_raw else {}
     if not isinstance(lineage_overrides, dict):
         raise ValueError("SAGA_STAGE_LINEAGE_VERSIONS_JSON must be a JSON object.")
+    cost_rates = _cost_rates_from_env()
     return ProductionOrchestrationServiceConfig(
         persistence_mode=str(os.getenv("SAGA_RUNTIME_DB_MODE") or "supabase_postgres").strip(),
         persistence_provider=str(os.getenv("SAGA_RUNTIME_DB_PROVIDER") or "supabase").strip(),
@@ -175,7 +184,19 @@ def load_production_orchestration_service_config_from_env() -> ProductionOrchest
         supabase_anon_key=str(os.getenv("SAGA_SUPABASE_ANON_KEY") or "").strip(),
         supabase_service_role_key=str(os.getenv("SAGA_SUPABASE_SERVICE_ROLE_KEY") or "").strip(),
         lineage_version_overrides={str(stage): dict(values) for stage, values in lineage_overrides.items()},
+        usage_cost_rates=cost_rates,
+        release_id=str(os.getenv("SAGA_RELEASE_ID") or "").strip(),
     )
+
+
+def _cost_rates_from_env() -> tuple[CostRate, ...]:
+    raw = str(os.getenv("SAGA_PROVIDER_COST_RATES_JSON") or "").strip()
+    if not raw:
+        return ()
+    payload = json.loads(raw)
+    if not isinstance(payload, list):
+        raise ValueError("SAGA_PROVIDER_COST_RATES_JSON must be a JSON array.")
+    return tuple(CostRate.model_validate(item) for item in payload)
 
 
 def _resolved_story_id(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> str:

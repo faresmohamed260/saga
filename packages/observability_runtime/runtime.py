@@ -148,24 +148,49 @@ class ObservabilityRuntime:
         cold_start_ms = metadata.get("cold_start_ms", trace.get("cold_start_ms"))
         if cold_start_ms is not None:
             records.append(_metric("provider.cold_start", float(cold_start_ms), unit="ms", identity=(trace_id,), **base))
-        records.extend(self._cost_records(trace_id, metadata, base))
+        usage_metadata = dict(metadata)
+        if trace.get("usage") and not usage_metadata.get("usage"):
+            usage_metadata["usage"] = dict(trace.get("usage") or {})
+        if not usage_metadata.get("model"):
+            usage_metadata["model"] = str(trace.get("resolved_model") or trace.get("model") or "")
+        records.extend(self._cost_records(trace_id, usage_metadata, base))
         return records
 
     def _cost_records(self, trace_id: str, metadata: dict[str, Any], base: dict[str, Any]) -> list[ObservationRecord]:
         usage = dict(metadata.get("usage") or {})
         input_tokens = usage.get("input_tokens", usage.get("prompt_tokens"))
         output_tokens = usage.get("output_tokens", usage.get("completion_tokens"))
+        cached_input_tokens = usage.get("cached_input_tokens", usage.get("cached_tokens"))
         compute_seconds = usage.get("compute_seconds")
-        if input_tokens is None and output_tokens is None and compute_seconds is None:
+        image_count = usage.get("image_count")
+        audio_seconds = usage.get("audio_seconds")
+        request_count = usage.get("request_count")
+        native_cost = usage.get("native_cost_usd")
+        if all(value is None for value in (input_tokens, output_tokens, cached_input_tokens, compute_seconds, image_count, audio_seconds, request_count, native_cost)):
             return []
         model = str(metadata.get("model") or "")
         rate = next((item for item in self.config.cost_rates if item.provider == base["provider"] and (not item.model or item.model == model)), None)
         records = []
-        for name, value in (("usage.input_tokens", input_tokens), ("usage.output_tokens", output_tokens), ("usage.compute_seconds", compute_seconds)):
+        for name, value, unit in (
+            ("usage.input_tokens", input_tokens, "tokens"), ("usage.output_tokens", output_tokens, "tokens"),
+            ("usage.cached_input_tokens", cached_input_tokens, "tokens"),
+            ("usage.compute_seconds", compute_seconds, "s"), ("usage.image_count", image_count, "count"),
+            ("usage.audio_seconds", audio_seconds, "s"), ("usage.request_count", request_count, "count"),
+        ):
             if value is not None:
-                records.append(_metric(name, float(value), unit="tokens" if "tokens" in name else "s", identity=(trace_id,), **base))
-        if rate:
-            cost = float(input_tokens or 0) * rate.input_per_million / 1_000_000 + float(output_tokens or 0) * rate.output_per_million / 1_000_000 + float(compute_seconds or 0) * rate.compute_per_second
+                records.append(_metric(name, float(value), unit=unit, identity=(trace_id,), **base))
+        if native_cost is not None:
+            records.append(_metric("usage.cost", float(native_cost), unit="usd", dimensions={"model": model}, payload={"estimated": False, "pricing_version": "provider-native"}, identity=(trace_id,), **base))
+        elif rate:
+            cost = (
+                max(0.0, float(input_tokens or 0) - float(cached_input_tokens or 0)) * rate.input_per_million / 1_000_000
+                + float(cached_input_tokens or 0) * rate.cached_input_per_million / 1_000_000
+                + float(output_tokens or 0) * rate.output_per_million / 1_000_000
+                + float(compute_seconds or 0) * rate.compute_per_second
+                + float(image_count or 0) * rate.image_each
+                + float(audio_seconds or 0) * rate.audio_per_second
+                + float(request_count or 0) * rate.request_each
+            )
             records.append(_metric("usage.estimated_cost", cost, unit="usd", dimensions={"model": model}, payload={"estimated": True, "pricing_version": rate.pricing_version}, identity=(trace_id,), **base))
         return records
 

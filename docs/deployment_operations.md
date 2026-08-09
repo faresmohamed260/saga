@@ -24,7 +24,7 @@ Use `uv.lock`, digest-pinned base images, and the production Dockerfiles. CI pub
 
 Set `SAGA_RUNTIME_IMAGE` and `SAGA_DASHBOARD_IMAGE` to the manifest's complete GHCR `name@sha256:digest` references. Runtime roles join both the private `saga-production` network and the configurable external `SAGA_PERSISTENCE_NETWORK`; the default `supabase_default` value supports the documented self-hosted Supabase topology without exposing PostgreSQL or Storage through ad hoc host routing.
 
-Copy `deploy/production/.env.example` to a secret-managed deployment environment. Inject database fields, Supabase keys, and provider credentials at deployment time. Do not commit the populated file or pass passwords in command arguments. Production startup validates Alembic revision `202608090200` and fails closed if schema or dependencies are unavailable.
+Copy `deploy/production/.env.example` to a secret-managed deployment environment. Inject database fields, Supabase keys, and provider credentials at deployment time. Do not commit the populated file or pass passwords in command arguments. Production startup validates Alembic revision `202608090400` and fails closed if schema or dependencies are unavailable.
 
 ## Staged Rollout
 
@@ -32,13 +32,15 @@ Copy `deploy/production/.env.example` to a secret-managed deployment environment
 2. Back up the `public` application schema and all configured artifact buckets.
 3. Run `saga-deploy migrate upgrade` as a single job.
 4. Run `saga-deploy migrate check` and `saga-deploy health`.
-5. Register the immutable release with its full Git SHA and image digests, then transition it to `staging`.
+5. Register the CI-produced immutable candidate with `saga-deploy release register-candidate`, import CI evidence, then transition it to `staging`.
 6. Start one API, scheduler, observability process, and one worker on a staging queue.
 7. Verify `/ready`, process heartbeats, OTLP receipt, queue depth, and one real-book execution audit.
-8. Scale workers gradually. Transition the release to `production` only after SLO and quality gates pass.
+8. Record all required immutable gate evidence and evaluate eligibility with `saga-deploy release gate-evaluate --target canary`.
+9. Transition to `canary`, route only the bounded validation cohort, and record fresh canary evidence.
+10. Transition to `production` only when `gate-evaluate --target production` passes.
 
-Release promotion is serialized with a PostgreSQL advisory transaction lock and protected by a unique partial index, so only one production release can exist.
-The deployment runtime also rejects production promotion unless the manifest declares clean source provenance and contains a full 40-character Git SHA plus immutable `sha256` image digests. Dirty local qualification releases may enter staging but cannot be promoted.
+Release promotion is serialized with a PostgreSQL advisory transaction lock and protected by a unique partial index, so only one production release can exist. Direct staging-to-production transitions are invalid.
+The deployment runtime rejects canary and production promotion unless the manifest declares clean source provenance, contains a full 40-character Git SHA, includes immutable runtime and dashboard image digests, and has complete non-expired gate evidence. Dirty local validation builds cannot be registered as release candidates.
 
 ## Rollback
 
@@ -79,12 +81,13 @@ For a consistent recovery point, pause new execution leases, wait for active wri
 - Database and object snapshots are coordinated operationally, not by a distributed transaction.
 - Alert delivery currently depends on configured observability exporters; production paging integration must be supplied per environment.
 - Capacity limits require load-specific tuning from measured queue and provider latency.
+- Production canary traffic requires an environment-specific router or queue cohort; the deployment runtime owns eligibility and evidence, not vendor-specific traffic switching.
 
 ## Validation Evidence
 
 The 2026-08-09 staging validation established:
 
-- Alembic upgrade, rollback, re-upgrade, and one-head checks on isolated PostgreSQL; live schema at `202608090200`.
+- Alembic upgrade, rollback, re-upgrade, and one-head checks on isolated PostgreSQL; release-gate schema validated at `202608090400`.
 - Concurrent PostgreSQL promotion attempts both completed while the unique invariant retained exactly one production release.
 - Runtime and frontend images built successfully; runtime executes as non-root and frontend dependency audit reports zero vulnerabilities.
 - API liveness remained 200 while an unavailable database produced readiness 503.
@@ -97,4 +100,4 @@ The 2026-08-09 staging validation established:
 - Runtime and dashboard containers build from digest-pinned bases and run as non-root users; the dashboard image passed its internal health check as UID 101.
 - The obsolete 96.5 MB SQLite seed deployment was removed from the active tree; Supabase/PostgreSQL remains the only production persistence path.
 
-The original qualification release is explicitly marked `source_state=dirty`; it remains validation metadata and cannot be promoted. Release stabilization subsequently verified the complete migration chain against a fresh isolated PostgreSQL instance: upgrade to `202608090200`, rollback to `202607051730`, re-upgrade, and final validation of 24 application tables.
+The original qualification release is explicitly marked `source_state=dirty`; it remains validation metadata and cannot be promoted. Release stabilization verified the complete migration chain through `202608090200`; usage governance added `202608090300`; immutable release-gate evidence and canary state add `202608090400`.

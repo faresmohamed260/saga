@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy import create_engine
 from packages.deployment_runtime import (
     BackupRuntime,
     ArtifactBackupRuntime,
+    CANARY_REQUIRED_GATES,
     MigrationRuntime,
     ReleaseRuntime,
     check_readiness,
@@ -29,20 +31,82 @@ def _persistence(tmp_path: Path):
     return client
 
 
+def _record_promotion_gates(runtime: ReleaseRuntime, release_id: str, *, observed_at_ms: int = 1_000) -> None:
+    observed_at_ms = int(time.time() * 1000)
+    release = runtime.store.get_release(release_id)
+    manifest = dict(release["manifest"])
+    for gate in CANARY_REQUIRED_GATES:
+        details = _valid_gate_details(gate, release_id=release_id, manifest=manifest)
+        expires_at_ms = observed_at_ms + 3_600_000 if gate in {
+            "staging_readiness", "process_health", "slo",
+        } else observed_at_ms + 86_400_000 if gate in {
+            "production_qualification", "usage_cost",
+        } else 0
+        runtime.gates.record(
+            release_id=release_id, gate=gate, status="passed", source="test-suite",
+            observed_at_ms=observed_at_ms, expires_at_ms=expires_at_ms, details=details,
+        )
+    runtime.gates.record(
+        release_id=release_id, gate="canary", status="passed", source="test-suite",
+        observed_at_ms=observed_at_ms + 1, expires_at_ms=observed_at_ms + 3_600_000,
+        details={
+            "release_id": release_id, "sample_count": 1, "failure_count": 0,
+            "slo_breach_count": 0, "rollback_trigger_tested": True,
+        },
+    )
+
+
+def _valid_gate_details(gate: str, *, release_id: str, manifest: dict) -> dict:
+    digest = "sha256:" + "9" * 64
+    return {
+        "ci": {
+            "git_sha": manifest["git_sha"], "backend_tests_passed": True,
+            "frontend_tests_passed": True, "containers_built": True,
+            "architecture_boundaries_passed": True, "secret_scan_passed": True,
+        },
+        "database_recovery": {
+            "backup_sha256": "a" * 64, "restored_schema_revision": manifest["schema_revision"],
+            "table_counts_match": True,
+        },
+        "artifact_recovery": {"archive_sha256": "b" * 64, "checksums_verified": True, "object_count": 1},
+        "migration": {
+            "current_revision": manifest["schema_revision"], "head_revision": manifest["schema_revision"],
+            "rollback_reupgrade_tested": True,
+        },
+        "staging_readiness": {"ready": True, "release_id": release_id},
+        "process_health": {"ready_roles": ["worker", "scheduler", "observability"], "release_id": release_id},
+        "production_qualification": {
+            "accepted": True, "release_id": release_id, "run_id": "qualification-run",
+            "source_sha256": "c" * 64,
+        },
+        "usage_cost": {"charge_count": 1, "unpriced_charge_count": 0, "reconciled": True},
+        "slo": {"evaluation_count": 6, "breached_count": 0, "insufficient_data_count": 0},
+        "rollback": {
+            "rollback_release_id": "release-prior", "runtime_digest": digest,
+            "dashboard_digest": digest, "restore_tested": True,
+        },
+    }[gate]
+
+
 def test_release_identity_transitions_and_single_production_release(tmp_path: Path):
     persistence = _persistence(tmp_path)
     runtime = ReleaseRuntime(store=persistence.deployments)
-    one = create_release_manifest(version="1.2.3", git_sha="a" * 40, image_digest="sha256:" + "1" * 64, configuration={"queue": "main", "api_token": "first"}, built_at_ms=1)
-    same_identity = create_release_manifest(version="1.2.3", git_sha="a" * 40, image_digest="sha256:" + "1" * 64, configuration={"queue": "main", "api_token": "different"}, built_at_ms=1)
+    components_one = {"runtime": "sha256:" + "1" * 64, "dashboard": "sha256:" + "2" * 64}
+    one = create_release_manifest(version="1.2.3", git_sha="a" * 40, image_digest="sha256:" + "1" * 64, components=components_one, configuration={"queue": "main", "api_token": "first"}, built_at_ms=1)
+    same_identity = create_release_manifest(version="1.2.3", git_sha="a" * 40, image_digest="sha256:" + "1" * 64, components=components_one, configuration={"queue": "main", "api_token": "different"}, built_at_ms=1)
     assert one.configuration_fingerprint == same_identity.configuration_fingerprint
     assert "first" not in one.model_dump_json()
     runtime.register(one)
     runtime.transition(one.release_id, "staging")
+    _record_promotion_gates(runtime, one.release_id)
+    assert runtime.transition(one.release_id, "canary")["status"] == "canary"
     assert runtime.transition(one.release_id, "production")["status"] == "production"
 
-    two = create_release_manifest(version="1.2.4", git_sha="b" * 40, image_digest="sha256:" + "2" * 64, built_at_ms=2)
+    two = create_release_manifest(version="1.2.4", git_sha="b" * 40, image_digest="sha256:" + "3" * 64, components={"runtime": "sha256:" + "3" * 64, "dashboard": "sha256:" + "4" * 64}, built_at_ms=2)
     runtime.register(two)
     runtime.transition(two.release_id, "staging")
+    _record_promotion_gates(runtime, two.release_id)
+    runtime.transition(two.release_id, "canary")
     runtime.transition(two.release_id, "production")
     assert persistence.deployments.get_release(one.release_id)["status"] == "rolled_back"
     assert len(persistence.deployments.list_releases(status="production")) == 1
@@ -53,11 +117,11 @@ def test_release_identity_transitions_and_single_production_release(tmp_path: Pa
 def test_release_promotion_rejects_dirty_or_mutable_provenance(tmp_path: Path):
     persistence = _persistence(tmp_path)
     runtime = ReleaseRuntime(store=persistence.deployments)
-    dirty = create_release_manifest(version="1.2.3-rc.1", git_sha="c" * 40, image_digest="sha256:" + "3" * 64, source_state="dirty")
+    dirty = create_release_manifest(version="1.2.3-rc.1", git_sha="c" * 40, image_digest="sha256:" + "3" * 64, source_state="dirty", components={"runtime": "sha256:" + "3" * 64, "dashboard": "sha256:" + "4" * 64})
     runtime.register(dirty)
     runtime.transition(dirty.release_id, "staging")
     with pytest.raises(ValueError, match="clean committed"):
-        runtime.transition(dirty.release_id, "production")
+        runtime.transition(dirty.release_id, "canary")
 
     with pytest.raises(ValueError, match="semantic versioning"):
         create_release_manifest(version="release-1", git_sha="d" * 40, image_digest="sha256:" + "4" * 64)
@@ -65,6 +129,49 @@ def test_release_promotion_rejects_dirty_or_mutable_provenance(tmp_path: Path):
         create_release_manifest(version="1.2.3", git_sha="abcdef1", image_digest="sha256:" + "4" * 64)
     with pytest.raises(ValueError, match="immutable sha256"):
         create_release_manifest(version="1.2.3", git_sha="d" * 40, image_digest="latest")
+    incomplete = create_release_manifest(
+        version="1.2.4-rc.1", git_sha="f" * 40, image_digest="sha256:" + "7" * 64,
+    )
+    runtime.register(incomplete)
+    runtime.transition(incomplete.release_id, "staging")
+    with pytest.raises(ValueError, match="runtime and dashboard"):
+        runtime.transition(incomplete.release_id, "canary")
+
+
+def test_release_gates_fail_closed_for_missing_expired_and_latest_failed_evidence(tmp_path: Path):
+    persistence = _persistence(tmp_path)
+    runtime = ReleaseRuntime(store=persistence.deployments)
+    manifest = create_release_manifest(
+        version="2.0.0-rc.1", git_sha="e" * 40, image_digest="sha256:" + "5" * 64,
+        components={"runtime": "sha256:" + "5" * 64, "dashboard": "sha256:" + "6" * 64}, built_at_ms=1,
+    )
+    runtime.register(manifest)
+    runtime.transition(manifest.release_id, "staging")
+    missing = runtime.gates.evaluate(release_id=manifest.release_id, target="canary", now_ms=2_000)
+    assert missing.eligible is False
+    assert all(check.status == "missing" for check in missing.checks)
+
+    release = persistence.deployments.get_release(manifest.release_id)
+    for gate in CANARY_REQUIRED_GATES:
+        runtime.gates.record(
+            release_id=manifest.release_id, gate=gate, status="passed", source="test-suite",
+            observed_at_ms=1_000, expires_at_ms=1_500,
+            details=_valid_gate_details(gate, release_id=manifest.release_id, manifest=release["manifest"]),
+        )
+    expired = runtime.gates.evaluate(release_id=manifest.release_id, target="canary", now_ms=2_000)
+    assert expired.eligible is False
+    assert all(check.status == "expired" for check in expired.checks)
+
+    runtime.gates.record(
+        release_id=manifest.release_id, gate="ci", status="failed", source="test-suite",
+        observed_at_ms=3_000, details={"api_token": "must-not-persist", "reason": "regression"},
+    )
+    rows = persistence.deployments.list_release_gate_evidence(release_id=manifest.release_id, gate="ci")
+    assert rows[0]["details"]["api_token"] == "[redacted]"
+    decision = runtime.gates.evaluate(release_id=manifest.release_id, target="canary", now_ms=3_100)
+    assert next(check for check in decision.checks if check.gate == "ci").status == "failed"
+    with pytest.raises(ValueError, match="not eligible"):
+        runtime.transition(manifest.release_id, "canary")
 
 
 def test_scheduler_and_observability_roles_persist_metrics_and_heartbeats(tmp_path: Path):
@@ -221,7 +328,7 @@ def test_artifact_backup_round_trip_uses_storage_contract(tmp_path: Path):
 
 def test_migration_runtime_has_one_expected_head():
     runtime = MigrationRuntime()
-    assert runtime.head() == "202608090200"
+    assert runtime.head() == "202608090400"
 
 
 def test_migration_adoption_rejects_incomplete_unversioned_database(tmp_path: Path):

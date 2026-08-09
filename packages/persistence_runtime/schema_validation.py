@@ -6,13 +6,15 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 
-EXPECTED_SCHEMA_REVISION = "202608090200"
+EXPECTED_SCHEMA_REVISION = "202608090400"
 REQUIRED_TABLES = frozenset({
     "provider_configs", "provider_statuses", "library_series", "library_books", "library_scenes", "library_records",
     "identity_series", "jobs", "job_logs", "generated_stories", "audiobook_runs", "audiobook_chapters",
     "execution_queue_policies", "execution_queue", "execution_telemetry", "stage_lineage_records",
     "observability_records", "agent_runtime_checkpoints", "agent_runtime_checkpoint_blobs",
-    "agent_runtime_checkpoint_writes", "deployment_releases", "deployment_process_heartbeats",
+    "usage_ledger", "usage_budget_policies",
+    "agent_runtime_checkpoint_writes", "deployment_releases", "deployment_release_gate_evidence",
+    "deployment_process_heartbeats",
 })
 
 

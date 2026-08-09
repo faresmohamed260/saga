@@ -23,6 +23,7 @@ from packages.character_world_modeling.store import CharacterWorldModelingStore
 from packages.generation_planning.store import GenerationPlanningStore
 from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.production_orchestration import OrchestrationResult
+from packages.observability_runtime import UsageGovernanceRuntime
 from packages.production_orchestration.contracts import ArtifactReference
 from packages.qualification_runtime.contracts import ProductionQualificationReport, QualificationCheck, QualificationThresholds
 from packages.visual_generation.store import VisualGenerationStore
@@ -143,16 +144,30 @@ class ProductionQualificationEvaluator:
         serialized = json.dumps({"result": result.model_dump(), "checks": [item.model_dump() for item in checks]}, sort_keys=True, default=str)
         exposed = [name for name in _secret_names() if os.getenv(name) and os.getenv(name) in serialized]
         self._check(checks, "security.secrets", "security", not exposed, exposed, [])
-        usage_rows = self.persistence.observability.list(run_id=request.run_id, limit=10000)
-        usage_names = sorted({row.get("name") for row in usage_rows if "usage" in str(row.get("name") or "") or "cost" in str(row.get("name") or "")})
-        provider_names = sorted({row.get("name") for row in usage_rows if str(row.get("name") or "").startswith("provider.")})
+        observation_rows = self.persistence.observability.list(run_id=request.run_id, limit=10000)
+        provider_names = sorted({row.get("name") for row in observation_rows if str(row.get("name") or "").startswith("provider.")})
         self._check(checks, "operations.provider_visibility", "operations", bool(provider_names), provider_names, "provider telemetry")
-        self._check(checks, "operations.cost_visibility", "operations", bool(usage_names), usage_names, "usage or cost telemetry", critical=False)
+        usage_summary = UsageGovernanceRuntime(store=self.persistence.usage).summary(run_id=request.run_id)
+        self._check(
+            checks, "operations.usage_visibility", "operations", usage_summary["charge_count"] > 0,
+            usage_summary, "at least one attributed provider charge",
+        )
+        self._check(
+            checks, "operations.cost_visibility", "operations",
+            usage_summary["charge_count"] > 0
+            and usage_summary["unpriced_charge_count"] == 0
+            and usage_summary["reconciled"],
+            {"charge_count": usage_summary["charge_count"], "priced_charge_count": usage_summary["priced_charge_count"],
+             "unpriced_charge_count": usage_summary["unpriced_charge_count"],
+             "reconciled_charge_count": usage_summary["reconciled_charge_count"], "cost_usd": usage_summary["cost_usd"]},
+            "all provider charges priced and reconciled with settlement evidence",
+        )
         accepted = not any(item.critical and item.status == "failed" for item in checks)
         metrics = {
             "stage_seconds": {item.stage: item.elapsed_seconds for item in result.outcomes}, "total_stage_seconds": total_seconds,
             "queue_event_count": len(queue_events), "identity_evidence_rate": evidence_rate, "story_words": story_words,
             "visual_render_count": len(renders), "accepted_visual_count": len(accepted_audits), "accepted_audio_segment_count": len(accepted_audio),
+            "usage": usage_summary,
             **artifact_metrics,
         }
         return ProductionQualificationReport(

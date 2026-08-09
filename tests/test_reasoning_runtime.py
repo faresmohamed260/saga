@@ -1,7 +1,9 @@
 import requests
+from types import SimpleNamespace
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime.client import ReasoningRuntimeClient
+from packages.reasoning_runtime.client import _mistral_usage
 from packages.reasoning_runtime.factory import create_reasoning_client
 from packages.reasoning_runtime.models import (
     GeneralComputeAccount,
@@ -25,6 +27,23 @@ def test_ollama_cloud_payload_drops_cloud_suffix():
     assert payload["model"] == "gpt-oss:120b"
     assert payload["think"] == "low"
     assert payload["options"] == {"temperature": 0.25, "num_predict": 17}
+
+
+def test_mistral_native_usage_extraction_is_exact_and_mock_safe():
+    usage = _mistral_usage(SimpleNamespace(
+        id="request-1",
+        usage=SimpleNamespace(prompt_tokens=41, completion_tokens=11, cached_tokens=7),
+    ))
+    assert usage.input_tokens == 41
+    assert usage.output_tokens == 11
+    assert usage.cached_input_tokens == 7
+    assert usage.evidence_id == "request-1"
+
+    assert _mistral_usage(SimpleNamespace()).model_dump(exclude={"source"}) == {
+        "request_count": 1.0, "input_tokens": 0.0, "output_tokens": 0.0,
+        "cached_input_tokens": 0.0, "compute_seconds": 0.0, "image_count": 0.0,
+        "audio_seconds": 0.0, "native_cost_usd": None, "evidence_id": "",
+    }
 
 
 def test_ollama_json_payload_enables_native_json_mode():

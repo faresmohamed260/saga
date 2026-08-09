@@ -4,13 +4,16 @@ import argparse
 import json
 import os
 import time
+from pathlib import Path
 
 from packages.deployment_runtime.config import create_deployment_persistence_client
 from packages.deployment_runtime.backup import ArtifactBackupRuntime, BackupRuntime
 from packages.persistence_runtime.database_url import build_database_url_from_env
 from packages.deployment_runtime.health import check_readiness
+from packages.deployment_runtime.gates import ReleaseGateRuntime
 from packages.deployment_runtime.migrations import MigrationRuntime
-from packages.deployment_runtime.release import ReleaseRuntime, create_release_manifest
+from packages.deployment_runtime.candidate import verify_release_candidate
+from packages.deployment_runtime.release import ReleaseRuntime
 
 
 def main() -> int:
@@ -26,15 +29,17 @@ def main() -> int:
     process_health.add_argument("--max-age-seconds", type=int, default=60)
     release = commands.add_parser("release")
     release_commands = release.add_subparsers(dest="release_action", required=True)
-    create = release_commands.add_parser("create")
-    create.add_argument("--version", required=True)
-    create.add_argument("--git-sha", required=True)
-    create.add_argument("--image-digest", required=True)
-    create.add_argument("--component-digest", action="append", default=[], metavar="NAME=SHA256")
-    create.add_argument("--source-state", choices=("clean", "dirty"), default=str(os.getenv("SAGA_SOURCE_STATE") or "clean"))
+    register = release_commands.add_parser("register-candidate")
+    register.add_argument("--candidate-file", required=True)
     transition = release_commands.add_parser("transition")
     transition.add_argument("--release-id", required=True)
-    transition.add_argument("--status", required=True, choices=("staging", "production", "rolled_back", "failed"))
+    transition.add_argument("--status", required=True, choices=("staging", "canary", "production", "rolled_back", "failed"))
+    gate_record = release_commands.add_parser("gate-record")
+    gate_record.add_argument("--release-id", required=True)
+    gate_record.add_argument("--evidence-file", required=True)
+    gate_evaluate = release_commands.add_parser("gate-evaluate")
+    gate_evaluate.add_argument("--release-id", required=True)
+    gate_evaluate.add_argument("--target", required=True, choices=("canary", "production"))
     backup = commands.add_parser("backup")
     backup_commands = backup.add_subparsers(dest="backup_action", required=True)
     backup_create = backup_commands.add_parser("create")
@@ -103,29 +108,35 @@ def main() -> int:
         return 0 if report.ready else 2
 
     releases = ReleaseRuntime(store=client.deployments)
-    if args.release_action == "create":
-        components = _parse_component_digests(args.component_digest)
-        manifest = create_release_manifest(version=args.version, git_sha=args.git_sha, image_digest=args.image_digest,
-            source_state=args.source_state, components=components,
-            configuration={"queue_name": str(os.getenv("SAGA_EXECUTION_QUEUE_NAME") or "production-orchestration")})
-        payload = releases.register(manifest)
-    else:
+    if args.release_action == "register-candidate":
+        candidate_path = Path(args.candidate_file).resolve()
+        if not candidate_path.is_file():
+            raise FileNotFoundError(candidate_path)
+        candidate = verify_release_candidate(json.loads(candidate_path.read_text(encoding="utf-8")))
+        payload = releases.register(candidate.manifest)
+    elif args.release_action == "transition":
         payload = releases.transition(args.release_id, args.status)
+    elif args.release_action == "gate-record":
+        evidence_path = Path(args.evidence_file).resolve()
+        if not evidence_path.is_file():
+            raise FileNotFoundError(evidence_path)
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        payload = ReleaseGateRuntime(store=client.deployments).record(
+            release_id=args.release_id,
+            gate=evidence.get("gate"),
+            status=evidence.get("status"),
+            source=evidence.get("source"),
+            details=evidence.get("details"),
+            artifact_reference=evidence.get("artifact_reference"),
+            observed_at_ms=evidence.get("observed_at_ms"),
+            expires_at_ms=int(evidence.get("expires_at_ms") or 0),
+        ).model_dump()
+    else:
+        decision = ReleaseGateRuntime(store=client.deployments).evaluate(
+            release_id=args.release_id, target=args.target
+        )
+        payload = decision.model_dump()
     print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0
-
-
-def _parse_component_digests(values: list[str]) -> dict[str, str]:
-    components: dict[str, str] = {}
-    for value in values:
-        name, separator, digest = str(value or "").partition("=")
-        if not separator or not name.strip() or not digest.strip():
-            raise ValueError("Each --component-digest must use NAME=SHA256 format.")
-        if name.strip() in components:
-            raise ValueError(f"Duplicate component digest '{name.strip()}'.")
-        components[name.strip()] = digest.strip()
-    return components
-
-
+    return 0 if payload.get("eligible", True) else 2
 if __name__ == "__main__":
     raise SystemExit(main())

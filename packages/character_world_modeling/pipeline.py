@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+import contextvars
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, TypedDict
 
@@ -624,7 +625,7 @@ def _run_ordered_parallel_jobs(jobs: list[dict[str, Any]], worker) -> list[dict[
         return [worker(job) for job in jobs]
     results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="character-world-modeling") as executor:
-        future_to_job = {executor.submit(worker, job): job for job in jobs}
+        future_to_job = {executor.submit(contextvars.copy_context().run, worker, job): job for job in jobs}
         for future in as_completed(future_to_job):
             results.append(future.result())
     return sorted(results, key=lambda item: int(item.get("job_index") or 0))

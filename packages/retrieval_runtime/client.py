@@ -31,7 +31,7 @@ from packages.retrieval_runtime.contracts import (
     RetrievalRequestMetadata,
 )
 from packages.retrieval_runtime.models import RetrievalProfile, RetrievalRuntimeConfig
-from packages.runtime_common import build_structured_runtime_tool, create_trace, current_trace_context
+from packages.runtime_common import ProviderUsage, build_structured_runtime_tool, create_trace, current_trace_context, reserve_usage, settle_usage
 
 
 Embedder = Callable[[list[str]], list[list[float]]]
@@ -59,6 +59,7 @@ class RetrievalRuntimeClient:
         self.persistence_client = persistence_client or self._build_persistence_client(config)
         self.persistence_client.initialize()
         self._last_request_metadata = RetrievalRequestMetadata()
+        self._request_usage = ProviderUsage(request_count=0)
 
     def ensure_document_index(
         self,
@@ -394,6 +395,7 @@ class RetrievalRuntimeClient:
             started_at_ms=started_at_ms,
             status="started",
         )
+        self._request_usage = ProviderUsage(request_count=0)
         return started_at_ms
 
     def _finalize_request_tracking(self, *, status: str) -> None:
@@ -402,6 +404,7 @@ class RetrievalRuntimeClient:
         self._last_request_metadata.completed_at_ms = completed_at_ms
         self._last_request_metadata.latency_ms = max(0, completed_at_ms - int(self._last_request_metadata.started_at_ms or completed_at_ms))
         self._last_request_metadata.status = str(status or "ok")
+        self._last_request_metadata.usage = self._request_usage.model_dump()
 
     def _build_persistence_client(self, config: RetrievalRuntimeConfig):
         profile = config.persistence_profile or PersistenceProfile(
@@ -540,13 +543,37 @@ class RetrievalRuntimeClient:
         vectors: list[list[float]] = []
         for offset in range(0, len(texts), self.batch_size):
             batch = texts[offset: offset + self.batch_size]
-            response = requests.post(
-                self.ollama_embed_url,
-                json={"model": self.embedding_model, "input": batch},
-                timeout=180,
+            projected = ProviderUsage(
+                request_count=1,
+                input_tokens=max(1, sum((len(text.encode("utf-8")) + 1) // 2 for text in batch)),
+                source="declared",
             )
-            response.raise_for_status()
-            payload = response.json() or {}
+            reservation = reserve_usage(
+                projected=projected, component="retrieval_runtime", provider="ollama",
+                model=self.embedding_model, operation="embed_documents",
+            )
+            try:
+                response = requests.post(
+                    self.ollama_embed_url,
+                    json={"model": self.embedding_model, "input": batch},
+                    timeout=180,
+                )
+                response.raise_for_status()
+                payload = response.json() or {}
+            except Exception as exc:
+                actual = ProviderUsage(request_count=1, source="measured")
+                self._accumulate_usage(actual)
+                settle_usage(reservation, actual, evidence={"status": "error", "exception_type": type(exc).__name__})
+                raise
+            actual = ProviderUsage(
+                request_count=1,
+                input_tokens=max(0, float(payload.get("prompt_eval_count") or 0)),
+                compute_seconds=max(0, float(payload.get("total_duration") or 0) / 1_000_000_000),
+                source="provider",
+                evidence_id=str(payload.get("id") or response.headers.get("x-request-id") or ""),
+            )
+            self._accumulate_usage(actual)
+            settle_usage(reservation, actual, evidence={"status": "ok", "batch_size": len(batch)})
             embeddings = payload.get("embeddings") or []
             if len(embeddings) != len(batch):
                 raise RuntimeError(
@@ -554,6 +581,14 @@ class RetrievalRuntimeClient:
                 )
             vectors.extend([[float(value) for value in vector] for vector in embeddings])
         return vectors
+
+    def _accumulate_usage(self, usage: ProviderUsage) -> None:
+        values = self._request_usage.model_dump()
+        for key in ("request_count", "input_tokens", "output_tokens", "cached_input_tokens", "compute_seconds", "image_count", "audio_seconds"):
+            values[key] = float(values.get(key) or 0) + float(getattr(usage, key) or 0)
+        values["source"] = usage.source
+        values["evidence_id"] = usage.evidence_id
+        self._request_usage = ProviderUsage.model_validate(values)
 
     @staticmethod
     def _matches_filters(metadata: dict[str, Any], filters: dict[str, Any]) -> bool:

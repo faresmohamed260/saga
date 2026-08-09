@@ -14,7 +14,7 @@ from packages.modal_runtime.models import (
     ModalLastSuccessfulRequest,
 )
 from packages.modal_runtime.profiling import record_modal_timing
-from packages.runtime_common import create_trace, finalize_trace
+from packages.runtime_common import ProviderUsage, create_trace, finalize_trace, reserve_usage, settle_usage
 
 
 class ModalEndpointPool:
@@ -109,12 +109,13 @@ class ModalEndpointPool:
         token_name = normalized_endpoint.token_name
         started_at_ms = int(time.time() * 1000)
         try:
-            payload = self._invoke_endpoint(normalized_endpoint.model_dump(), **kwargs)
+            payload, usage = self._metered_invoke(normalized_endpoint, kwargs)
             wrapped_payload = self._build_execution_result(
                 endpoint=normalized_endpoint,
                 response_payload=payload,
                 started_at_ms=started_at_ms,
                 status="ok",
+                usage=usage,
             )
             live_payload = dict(normalized_endpoint.live_payload or {})
             self._mark_success(
@@ -136,12 +137,13 @@ class ModalEndpointPool:
                 refreshed = self._refresh_endpoint_for_token(token_name)
                 if refreshed is not None:
                     refreshed_endpoint = self._normalize_endpoint(refreshed)
-                    refreshed_payload = self._invoke_endpoint(refreshed_endpoint.model_dump(), **kwargs)
+                    refreshed_payload, usage = self._metered_invoke(refreshed_endpoint, kwargs)
                     wrapped_payload = self._build_execution_result(
                         endpoint=refreshed_endpoint,
                         response_payload=refreshed_payload,
                         started_at_ms=started_at_ms,
                         status="ok",
+                        usage=usage,
                     )
                     live_payload = dict(refreshed_endpoint.live_payload or {})
                     self._mark_success(
@@ -519,6 +521,7 @@ class ModalEndpointPool:
         response_payload: dict[str, Any],
         started_at_ms: int,
         status: str,
+        usage: ProviderUsage | None = None,
     ) -> dict[str, Any]:
         completed_at_ms = int(time.time() * 1000)
         response = dict(response_payload or {})
@@ -536,6 +539,7 @@ class ModalEndpointPool:
                     "health_url": endpoint.health_url,
                     "upstream_trace_id": upstream_trace_id,
                     "response_keys": sorted(response.keys()),
+                    "usage": (usage or ProviderUsage(request_count=0)).model_dump(),
                 },
             ),
             status=str(status or "ok"),
@@ -570,8 +574,32 @@ class ModalEndpointPool:
                 health_url=endpoint.health_url,
                 response_keys=sorted(response.keys()),
                 upstream_trace_id=upstream_trace_id,
+                usage=(usage or ProviderUsage(request_count=0)).model_dump(),
             ),
         ).model_dump()
+
+    def _metered_invoke(self, endpoint: ModalEndpointDescriptor, kwargs: dict[str, Any]) -> tuple[dict[str, Any], ProviderUsage]:
+        projected = ProviderUsage(
+            request_count=1,
+            image_count=1 if "comfy" in self.app_name.casefold() or "image" in self.app_name.casefold() else 0,
+            source="declared",
+        )
+        reservation = reserve_usage(
+            projected=projected, component="modal_runtime", provider="modal", account_alias=endpoint.token_name,
+            model=self.app_name, operation=str(kwargs.get("operation") or "execute_endpoint"),
+        )
+        try:
+            payload = self._invoke_endpoint(endpoint.model_dump(), **kwargs)
+        except Exception as exc:
+            actual = ProviderUsage(request_count=1, source="measured")
+            settle_usage(reservation, actual, evidence={"status": "error", "exception_type": type(exc).__name__})
+            raise
+        usage = _modal_usage(self.app_name, payload)
+        settle_usage(reservation, usage, evidence={
+            "status": "ok", "upstream_trace_id": str(payload.get("trace_id") or ""),
+            "usage_source": usage.source,
+        })
+        return payload, usage
 
     @staticmethod
     def _normalize_urls(urls: dict[str, str] | ModalEndpointUrls) -> ModalEndpointUrls:
@@ -587,7 +615,6 @@ class ModalEndpointPool:
 
     def _rotation_error(self, message: str) -> RuntimeError:
         return RuntimeError(message)
-
     def _retryable_error_class(self):
         return RuntimeError
 
@@ -660,3 +687,30 @@ class ModalEndpointPool:
 
     def _rotate_prefer_warm(self, tokens: list[Any], start_index: int) -> list[tuple[int, Any]]:
         raise NotImplementedError
+
+
+def _modal_usage(app_name: str, payload: dict[str, Any]) -> ProviderUsage:
+    response = dict(payload or {})
+    technical = dict(response.get("technical_metrics") or {})
+    telemetry = dict(response.get("telemetry") or technical.get("telemetry") or {})
+    compute_seconds = _first_number(
+        response.get("runtime_seconds"), response.get("elapsed_seconds"),
+        telemetry.get("total_elapsed_seconds"), technical.get("total_elapsed_seconds"),
+    )
+    audio_seconds = _first_number(response.get("duration_seconds"), technical.get("duration_seconds"))
+    normalized_app = str(app_name or "").casefold()
+    return ProviderUsage(
+        request_count=1,
+        compute_seconds=compute_seconds,
+        image_count=1 if "comfy" in normalized_app or "image" in normalized_app else 0,
+        audio_seconds=audio_seconds if "tts" in normalized_app or "kokoro" in normalized_app else 0,
+        source="measured",
+        evidence_id=str(response.get("request_id") or response.get("trace_id") or ""),
+    )
+
+
+def _first_number(*values: Any) -> float:
+    for value in values:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return max(0.0, float(value))
+    return 0.0

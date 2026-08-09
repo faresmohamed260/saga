@@ -24,6 +24,9 @@ from packages.persistence_runtime.schema import (
     ExecutionQueueRow,
     ExecutionTelemetryRow,
     ObservabilityRecordRow,
+    UsageBudgetPolicyRow,
+    UsageLedgerRow,
+    DeploymentReleaseGateEvidenceRow,
     DeploymentProcessHeartbeatRow,
     DeploymentReleaseRow,
     IdentitySeriesRow,
@@ -1154,6 +1157,179 @@ class ObservabilityStore:
         }
 
 
+class UsageLedgerStore:
+    """Append-only usage accounting with transactionally serialized budget admission."""
+
+    _lock = threading.RLock()
+    _METRICS = ("request_count", "input_tokens", "output_tokens", "cached_input_tokens", "compute_seconds", "image_count", "audio_seconds", "cost_usd")
+
+    def __init__(self, session_factory: sessionmaker) -> None:
+        self.session_factory = session_factory
+
+    def configure_policy(self, policy: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(policy or {})
+        policy_id = _required(payload.get("policy_id"), "policy_id")
+        with self.session_factory.begin() as session:
+            row = session.get(UsageBudgetPolicyRow, policy_id) or UsageBudgetPolicyRow(policy_id=policy_id)
+            row.scope_type = _required(payload.get("scope_type"), "scope_type")
+            row.scope_value = str(payload.get("scope_value") or "")
+            row.window_seconds = max(0, int(payload.get("window_seconds") or 0))
+            row.limits = _json(payload.get("limits"))
+            row.hard_limit = bool(payload.get("hard_limit", True))
+            row.enabled = bool(payload.get("enabled", True))
+            session.add(row)
+            session.flush()
+            return self._policy_dict(row)
+
+    def list_policies(self, *, enabled: bool | None = None, limit: int = 1000) -> list[dict[str, Any]]:
+        with self.session_factory() as session:
+            stmt = select(UsageBudgetPolicyRow)
+            if enabled is not None:
+                stmt = stmt.where(UsageBudgetPolicyRow.enabled.is_(bool(enabled)))
+            rows = session.execute(stmt.order_by(UsageBudgetPolicyRow.policy_id).limit(max(1, int(limit)))).scalars().all()
+            return [self._policy_dict(row) for row in rows]
+
+    def reserve(self, entry: dict[str, Any]) -> dict[str, Any]:
+        row = self._entry_row(entry)
+        if row.entry_kind != "reservation":
+            raise ValueError("Usage reservation entries must use entry_kind='reservation'.")
+        with self._lock, self.session_factory.begin() as session:
+            existing = session.get(UsageLedgerRow, row.entry_id)
+            if existing is not None:
+                return {"authorized": True, "entry": self._entry_dict(existing), "policies": []}
+            policies = self._applicable_policies(session, row)
+            self._lock_policies(session, policies)
+            breaches = self._breaches(session, row, policies)
+            hard = [item for item in breaches if item["hard_limit"]]
+            if hard:
+                return {"authorized": False, "entry": None, "policies": breaches}
+            session.add(row)
+            session.flush()
+            return {"authorized": True, "entry": self._entry_dict(row), "policies": breaches}
+
+    def settle(self, *, reservation_id: str, release_entry: dict[str, Any], charge_entry: dict[str, Any]) -> dict[str, Any]:
+        release_row, charge_row = self._entry_row(release_entry), self._entry_row(charge_entry)
+        if release_row.entry_kind != "reservation_release" or charge_row.entry_kind != "charge":
+            raise ValueError("Settlement requires reservation_release and charge entries.")
+        if release_row.reservation_id != reservation_id or charge_row.reservation_id != reservation_id:
+            raise ValueError("Settlement reservation IDs must match.")
+        with self._lock, self.session_factory.begin() as session:
+            reservation = session.execute(select(UsageLedgerRow).where(UsageLedgerRow.reservation_id == reservation_id, UsageLedgerRow.entry_kind == "reservation")).scalar_one_or_none()
+            if reservation is None:
+                raise ValueError(f"Unknown usage reservation '{reservation_id}'.")
+            existing_charge = session.get(UsageLedgerRow, charge_row.entry_id)
+            if existing_charge is not None:
+                return {"release": self._entry_dict(session.get(UsageLedgerRow, release_row.entry_id)), "charge": self._entry_dict(existing_charge)}
+            if session.get(UsageLedgerRow, release_row.entry_id) is None:
+                session.add(release_row)
+            session.add(charge_row)
+            session.flush()
+            return {"release": self._entry_dict(release_row), "charge": self._entry_dict(charge_row)}
+
+    def release(self, entry: dict[str, Any]) -> dict[str, Any]:
+        row = self._entry_row(entry)
+        if row.entry_kind != "reservation_release":
+            raise ValueError("Usage release entries must use entry_kind='reservation_release'.")
+        with self._lock, self.session_factory.begin() as session:
+            existing = session.get(UsageLedgerRow, row.entry_id)
+            if existing is None:
+                session.add(row)
+                session.flush()
+                existing = row
+            return self._entry_dict(existing)
+
+    def list(self, *, run_id: str = "", provider: str = "", account_alias: str = "", entry_kind: str = "", since_ms: int = 0, limit: int = 1000) -> list[dict[str, Any]]:
+        with self.session_factory() as session:
+            stmt = select(UsageLedgerRow)
+            for value, column in ((run_id, UsageLedgerRow.run_id), (provider, UsageLedgerRow.provider), (account_alias, UsageLedgerRow.account_alias), (entry_kind, UsageLedgerRow.entry_kind)):
+                if value:
+                    stmt = stmt.where(column == value)
+            if since_ms:
+                stmt = stmt.where(UsageLedgerRow.timestamp_ms >= int(since_ms))
+            rows = session.execute(stmt.order_by(UsageLedgerRow.timestamp_ms.desc()).limit(max(1, int(limit)))).scalars().all()
+            return [self._entry_dict(row) for row in reversed(rows)]
+
+    def _applicable_policies(self, session: Session, row: UsageLedgerRow) -> list[UsageBudgetPolicyRow]:
+        policies = session.execute(select(UsageBudgetPolicyRow).where(UsageBudgetPolicyRow.enabled.is_(True))).scalars().all()
+        values = {"global": "", "run": row.run_id, "provider": row.provider, "account": row.account_alias, "model": row.model}
+        return [policy for policy in policies if policy.scope_type in values and (not policy.scope_value or policy.scope_value == values[policy.scope_type])]
+
+    @staticmethod
+    def _lock_policies(session: Session, policies: list[UsageBudgetPolicyRow]) -> None:
+        if session.get_bind().dialect.name == "postgresql":
+            for policy in sorted(policies, key=lambda item: item.policy_id):
+                session.execute(text("select pg_advisory_xact_lock(hashtext(:key))"), {"key": f"usage-budget:{policy.policy_id}"})
+
+    def _breaches(self, session: Session, candidate: UsageLedgerRow, policies: list[UsageBudgetPolicyRow]) -> list[dict[str, Any]]:
+        now = candidate.timestamp_ms
+        results = []
+        for policy in policies:
+            cutoff = now - max(0, policy.window_seconds) * 1000 if policy.window_seconds else 0
+            stmt = select(UsageLedgerRow)
+            if cutoff:
+                stmt = stmt.where(UsageLedgerRow.timestamp_ms >= cutoff)
+            scope_columns = {"run": (UsageLedgerRow.run_id, candidate.run_id), "provider": (UsageLedgerRow.provider, candidate.provider),
+                             "account": (UsageLedgerRow.account_alias, candidate.account_alias), "model": (UsageLedgerRow.model, candidate.model)}
+            scope = scope_columns.get(policy.scope_type)
+            if scope is not None:
+                scope_column, candidate_value = scope
+                stmt = stmt.where(scope_column == (policy.scope_value or candidate_value))
+            rows = session.execute(stmt).scalars().all()
+            released = {row.reservation_id for row in rows if row.entry_kind == "reservation_release"}
+            active = [
+                row
+                for row in rows
+                if row.entry_kind != "reservation"
+                or not row.expires_at_ms
+                or row.expires_at_ms >= now
+                or row.reservation_id in released
+            ]
+            exceeded = []
+            for metric, limit in dict(policy.limits or {}).items():
+                if metric not in self._METRICS:
+                    continue
+                projected = sum(float(getattr(row, metric) or 0) for row in active) + float(getattr(candidate, metric) or 0)
+                if projected > float(limit):
+                    exceeded.append({"metric": metric, "projected": projected, "limit": float(limit)})
+            if exceeded:
+                results.append({"policy_id": policy.policy_id, "hard_limit": policy.hard_limit, "exceeded": exceeded})
+        return results
+
+    @staticmethod
+    def _entry_row(entry: dict[str, Any]) -> UsageLedgerRow:
+        payload = dict(entry or {})
+        values = {name: float(payload.get(name) or 0) for name in UsageLedgerStore._METRICS}
+        return UsageLedgerRow(
+            entry_id=_required(payload.get("entry_id"), "entry_id"), reservation_id=_required(payload.get("reservation_id"), "reservation_id"),
+            entry_kind=_required(payload.get("entry_kind"), "entry_kind"), timestamp_ms=int(payload.get("timestamp_ms") or _now_ms()),
+            expires_at_ms=max(0, int(payload.get("expires_at_ms") or 0)), release_id=str(payload.get("release_id") or ""),
+            run_id=str(payload.get("run_id") or ""), series_id=str(payload.get("series_id") or ""), stage=str(payload.get("stage") or ""),
+            agent=str(payload.get("agent") or ""), component=str(payload.get("component") or ""), provider=str(payload.get("provider") or ""),
+            account_alias=str(payload.get("account_alias") or ""), model=str(payload.get("model") or ""), operation=str(payload.get("operation") or ""),
+            cost_status=str(payload.get("cost_status") or "unpriced"), pricing_version=str(payload.get("pricing_version") or ""),
+            evidence=_json(payload.get("evidence")), **values,
+        )
+
+    @staticmethod
+    def _entry_dict(row: UsageLedgerRow | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        result = {column: getattr(row, column) for column in (
+            "entry_id", "reservation_id", "entry_kind", "timestamp_ms", "expires_at_ms", "release_id", "run_id", "series_id", "stage", "agent",
+            "component", "provider", "account_alias", "model", "operation", "request_count", "input_tokens", "output_tokens", "cached_input_tokens",
+            "compute_seconds", "image_count", "audio_seconds", "cost_usd", "cost_status", "pricing_version",
+        )}
+        result["evidence"] = dict(row.evidence or {})
+        result["created_at"] = row.created_at.isoformat() if row.created_at else ""
+        return result
+
+    @staticmethod
+    def _policy_dict(row: UsageBudgetPolicyRow) -> dict[str, Any]:
+        return {"policy_id": row.policy_id, "scope_type": row.scope_type, "scope_value": row.scope_value, "window_seconds": row.window_seconds,
+                "limits": dict(row.limits or {}), "hard_limit": row.hard_limit, "enabled": row.enabled,
+                "created_at": row.created_at.isoformat() if row.created_at else "", "updated_at": row.updated_at.isoformat() if row.updated_at else ""}
+
+
 class DeploymentStore:
     def __init__(self, session_factory: sessionmaker) -> None:
         self.session_factory = session_factory
@@ -1223,6 +1399,49 @@ class DeploymentStore:
             rows = session.execute(stmt.order_by(DeploymentReleaseRow.created_at.desc()).limit(max(1, int(limit)))).scalars().all()
             return [self._release_dict(row) for row in rows]
 
+    def record_release_gate_evidence(self, evidence: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(evidence or {})
+        row = DeploymentReleaseGateEvidenceRow(
+            evidence_id=_required(payload.get("evidence_id"), "evidence_id"),
+            release_id=_required(payload.get("release_id"), "release_id"),
+            gate=_required(payload.get("gate"), "gate"),
+            status=_required(payload.get("status"), "status"),
+            observed_at_ms=max(1, int(payload.get("observed_at_ms") or 0)),
+            expires_at_ms=max(0, int(payload.get("expires_at_ms") or 0)),
+            source=_required(payload.get("source"), "source"),
+            evidence_sha256=_required(payload.get("evidence_sha256"), "evidence_sha256"),
+            details=_json(payload.get("details")),
+            artifact_reference=_json(payload.get("artifact_reference")),
+        )
+        with self.session_factory.begin() as session:
+            existing = session.get(DeploymentReleaseGateEvidenceRow, row.evidence_id)
+            if existing is not None:
+                if existing.evidence_sha256 != row.evidence_sha256:
+                    raise ValueError(f"Release gate evidence '{row.evidence_id}' is immutable.")
+                return self._gate_evidence_dict(existing)
+            if session.get(DeploymentReleaseRow, row.release_id) is None:
+                raise ValueError(f"Unknown release '{row.release_id}'.")
+            session.add(row)
+            session.flush()
+            return self._gate_evidence_dict(row)
+
+    def list_release_gate_evidence(
+        self, *, release_id: str, gate: str = "", limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        with self.session_factory() as session:
+            stmt = select(DeploymentReleaseGateEvidenceRow).where(
+                DeploymentReleaseGateEvidenceRow.release_id == _required(release_id, "release_id")
+            )
+            if gate:
+                stmt = stmt.where(DeploymentReleaseGateEvidenceRow.gate == gate)
+            rows = session.execute(
+                stmt.order_by(
+                    DeploymentReleaseGateEvidenceRow.observed_at_ms.desc(),
+                    DeploymentReleaseGateEvidenceRow.created_at.desc(),
+                ).limit(max(1, int(limit)))
+            ).scalars().all()
+            return [self._gate_evidence_dict(row) for row in rows]
+
     def heartbeat(self, process: dict[str, Any]) -> dict[str, Any]:
         payload = dict(process or {})
         process_id = _required(payload.get("process_id"), "process_id")
@@ -1254,6 +1473,22 @@ class DeploymentStore:
         return {"release_id": row.release_id, "version": row.version, "git_sha": row.git_sha, "image_digest": row.image_digest,
                 "status": row.status, "manifest": dict(row.manifest or {}), "created_at": row.created_at.isoformat() if row.created_at else "",
                 "promoted_at": row.promoted_at.isoformat() if row.promoted_at else ""}
+
+    @staticmethod
+    def _gate_evidence_dict(row: DeploymentReleaseGateEvidenceRow) -> dict[str, Any]:
+        return {
+            "evidence_id": row.evidence_id,
+            "release_id": row.release_id,
+            "gate": row.gate,
+            "status": row.status,
+            "observed_at_ms": row.observed_at_ms,
+            "expires_at_ms": row.expires_at_ms,
+            "source": row.source,
+            "evidence_sha256": row.evidence_sha256,
+            "details": dict(row.details or {}),
+            "artifact_reference": dict(row.artifact_reference or {}),
+            "created_at": row.created_at.isoformat() if row.created_at else "",
+        }
 
     @staticmethod
     def _heartbeat_dict(row: DeploymentProcessHeartbeatRow) -> dict[str, Any]:

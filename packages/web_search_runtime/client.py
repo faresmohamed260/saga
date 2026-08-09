@@ -23,7 +23,7 @@ from packages.web_search_runtime.contracts import (
     WebSearchResultsPayload,
 )
 from packages.web_search_runtime.models import WebSearchProfile, WebSearchRuntimeConfig
-from packages.runtime_common import build_structured_runtime_tool, create_trace, current_trace_context
+from packages.runtime_common import ProviderUsage, build_structured_runtime_tool, create_trace, current_trace_context, reserve_usage, settle_usage
 import time
 
 
@@ -39,6 +39,7 @@ class WebSearchRuntimeClient:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": str(profile.user_agent or "").strip()})
         self._last_request_metadata = WebSearchRequestMetadata()
+        self._request_count = 0
 
     def search(self, query: str, *, max_results: int = 8, site: str = "") -> list[SearchResult]:
         if self.mode != self.MODE_DUCKDUCKGO:
@@ -64,7 +65,7 @@ class WebSearchRuntimeClient:
             )
             self._finalize_request_tracking(status="ok")
             return mediawiki_document
-        response = self.session.get(url, timeout=self.timeout)
+        response = self._metered_get(url, timeout=self.timeout)
         response.raise_for_status()
         html = response.text or ""
         title, text, summary, excerpt, focus_text, evidence_sentences = self._extract_document_fields(html, url=url, query=query)
@@ -132,7 +133,7 @@ class WebSearchRuntimeClient:
     def mediawiki_get(self, base_url: str, params: dict[str, Any]) -> dict[str, Any]:
         started_at_ms = self._begin_request_tracking(operation="mediawiki_get")
         api_url = self._mediawiki_api_url(base_url)
-        response = self.session.get(api_url, params=params, timeout=self.timeout)
+        response = self._metered_get(api_url, params=params, timeout=self.timeout)
         response.raise_for_status()
         payload = response.json() or {}
         self._last_request_metadata = WebSearchRequestMetadata(
@@ -370,7 +371,7 @@ class WebSearchRuntimeClient:
         effective_query = str(query or "").strip()
         if site:
             effective_query = f"site:{site.strip()} {effective_query}".strip()
-        response = self.session.get(
+        response = self._metered_get(
             "https://html.duckduckgo.com/html/",
             params={"q": effective_query},
             timeout=self.timeout,
@@ -434,6 +435,7 @@ class WebSearchRuntimeClient:
             started_at_ms=started_at_ms,
             status="started",
         )
+        self._request_count = 0
         return started_at_ms
 
     def _finalize_request_tracking(self, *, status: str) -> None:
@@ -442,6 +444,28 @@ class WebSearchRuntimeClient:
         self._last_request_metadata.completed_at_ms = completed_at_ms
         self._last_request_metadata.latency_ms = max(0, completed_at_ms - int(self._last_request_metadata.started_at_ms or completed_at_ms))
         self._last_request_metadata.status = str(status or "ok")
+        self._last_request_metadata.usage = ProviderUsage(request_count=self._request_count, source="measured").model_dump()
+
+    def _metered_get(self, url: str, **kwargs: Any):
+        projected = ProviderUsage(request_count=1, source="declared")
+        reservation = reserve_usage(
+            projected=projected, component="web_search_runtime", provider=self.provider_name(),
+            model=self.mode, operation=str(self._last_request_metadata.operation or "http_get"),
+        )
+        try:
+            response = self.session.get(url, **kwargs)
+        except Exception as exc:
+            actual = ProviderUsage(request_count=1, source="measured")
+            self._request_count += 1
+            settle_usage(reservation, actual, evidence={"status": "error", "exception_type": type(exc).__name__})
+            raise
+        actual = ProviderUsage(
+            request_count=1, source="provider",
+            evidence_id=str(response.headers.get("x-request-id") or response.headers.get("request-id") or ""),
+        )
+        self._request_count += 1
+        settle_usage(reservation, actual, evidence={"status": str(response.status_code or "")})
+        return response
 
     def _extract_document_fields(self, html: str, *, url: str, query: str = "") -> tuple[str, str, str, str, str, list[WebEvidenceSentence]]:
         title = ""
