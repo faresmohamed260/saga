@@ -69,6 +69,7 @@ For a consistent recovery point, pause new execution leases, wait for active wri
 - `/live` proves only that the API process can answer.
 - `/ready` validates database connectivity and migration ownership; it returns 503 when dependencies are degraded.
 - `saga-deploy process-health --role <role>` verifies recent durable heartbeats.
+- Container health checks use the bounded `packages.deployment_runtime.heartbeat_probe` path, which performs one direct PostgreSQL heartbeat query with a three-second connection deadline instead of initializing the full control plane. Workers emit process heartbeats on an independent thread so long-running jobs remain distinguishable from stalled processes.
 - Scheduler metrics include queue depth; execution observations include latency, failures, retries, lineage, and SLO results.
 - OTLP uses the pinned official collector image and `/v1/metrics`, `/v1/traces`, and `/v1/logs` endpoints.
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,8 @@ from packages.deployment_runtime import (
     observability_tick,
     scheduler_tick,
 )
+from packages.deployment_runtime.heartbeat_probe import process_heartbeat_ready
+from packages.deployment_runtime.processes import _worker_heartbeat_loop
 from packages.execution_runtime import ExecutionRuntimeService, ExecutionRuntimeServiceConfig
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, SchemaNotReadyError, create_persistence_client
 
@@ -76,6 +79,68 @@ def test_scheduler_and_observability_roles_persist_metrics_and_heartbeats(tmp_pa
     assert observer.status == "ok"
     roles = {row["role"] for row in service.persistence.deployments.list_heartbeats()}
     assert roles == {"scheduler", "observability"}
+
+
+def test_lightweight_heartbeat_probe_uses_bounded_direct_postgres_query() -> None:
+    calls: dict[str, object] = {}
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, query, parameters):
+            calls["query"] = query
+            calls["parameters"] = parameters
+
+        def fetchone(self):
+            return (True,)
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def cursor(self):
+            return Cursor()
+
+    def connect(**kwargs):
+        calls["connect"] = kwargs
+        return Connection()
+
+    ready = process_heartbeat_ready(
+        role="worker",
+        release_id="release-test",
+        database_url="postgresql+psycopg://saga:secret@db.example:5432/saga?sslmode=require",
+        max_age_seconds=120,
+        now_ms=500_000,
+        connector=connect,
+    )
+
+    assert ready is True
+    assert calls["connect"]["connect_timeout"] == 3
+    assert calls["connect"]["prepare_threshold"] is None
+    assert calls["parameters"] == ("worker", 380_000, "release-test", "release-test")
+
+
+def test_worker_heartbeat_loop_updates_while_job_is_running() -> None:
+    stop = threading.Event()
+    writes: list[dict[str, object]] = []
+
+    class Deployments:
+        def heartbeat(self, payload):
+            writes.append(payload)
+            stop.set()
+
+    persistence = type("Persistence", (), {"deployments": Deployments()})()
+    _worker_heartbeat_loop(persistence, "worker-1", "release-test", stop, 0.01)
+
+    assert len(writes) == 1
+    assert writes[0]["metadata"] == {"state": "running"}
 
 
 def test_readiness_fails_closed_for_degraded_dependency(tmp_path: Path):

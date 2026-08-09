@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import argparse
+import logging
 import os
 import socket
+import threading
 import time
 from typing import Any
 
 from packages.deployment_runtime.contracts import ProcessTickResult
 from packages.execution_runtime import ExecutionRuntimeService, default_execution_slos
 from packages.observability_runtime import OTLPHTTPExporter, ObservationBatch, ObservationRecord, ObservabilityRuntime, ObservabilityRuntimeConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 def scheduler_tick(service: ExecutionRuntimeService, *, process_id: str = "", release_id: str = "", now_ms: int | None = None) -> ProcessTickResult:
@@ -55,11 +60,41 @@ def worker_main() -> None:
     service = ExecutionRuntimeService.from_env()
     process_id, release_id = _process_id("worker"), str(os.getenv("SAGA_RELEASE_ID") or "")
     interval = max(0.2, float(os.getenv("SAGA_WORKER_POLL_SECONDS") or "2"))
-    while True:
-        result = service.run_worker_once(worker_id=process_id)
-        _heartbeat(service.persistence, process_id, "worker", release_id, "ready", int(time.time() * 1000), {"last_status": result.status})
-        if result.status == "idle":
-            time.sleep(interval)
+    heartbeat_interval = max(5.0, float(os.getenv("SAGA_WORKER_HEARTBEAT_SECONDS") or "30"))
+    stop = threading.Event()
+    _heartbeat(service.persistence, process_id, "worker", release_id, "ready", int(time.time() * 1000), {"state": "starting"})
+    heartbeat_thread = threading.Thread(
+        target=_worker_heartbeat_loop,
+        args=(service.persistence, process_id, release_id, stop, heartbeat_interval),
+        name="worker-process-heartbeat",
+        daemon=True,
+    )
+    heartbeat_thread.start()
+    try:
+        while True:
+            result = service.run_worker_once(worker_id=process_id)
+            _heartbeat(service.persistence, process_id, "worker", release_id, "ready", int(time.time() * 1000), {"last_status": result.status})
+            if result.status == "idle":
+                time.sleep(interval)
+    finally:
+        stop.set()
+        heartbeat_thread.join(timeout=heartbeat_interval + 1)
+
+
+def _worker_heartbeat_loop(persistence, process_id: str, release_id: str, stop: threading.Event, interval: float) -> None:
+    while not stop.wait(max(0.01, interval)):
+        try:
+            _heartbeat(
+                persistence,
+                process_id,
+                "worker",
+                release_id,
+                "ready",
+                int(time.time() * 1000),
+                {"state": "running"},
+            )
+        except Exception:
+            logger.exception("Worker process heartbeat failed")
 
 
 def _loop(role: str, tick, *, default_interval: float = 10.0) -> None:
