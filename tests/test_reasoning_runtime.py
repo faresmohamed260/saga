@@ -9,6 +9,7 @@ from packages.reasoning_runtime.models import (
     ReasoningProfile,
     ReasoningRuntimeConfig,
 )
+from packages.reasoning_runtime.provider_config import apply_persistence_provider_configs, summarize_reasoning_provider_configs
 
 
 def test_ollama_cloud_payload_drops_cloud_suffix():
@@ -67,6 +68,33 @@ def test_general_compute_rotation_advances_active_index():
     client = create_reasoning_client(profile_name="default", config=config)
     assert client._rotate_account() is True
     assert client.config.general_compute_active_index == 1
+
+
+def test_database_owned_sdk_provider_keys_override_process_composition_without_leaking():
+    rows = {
+        "mistral": {"payload": {"api_key": "db-mistral-secret"}},
+        "gemini": {"payload": {"api_key": "db-gemini-secret"}},
+    }
+
+    class ProviderConfigs:
+        def get_provider_config(self, provider_name):
+            return rows.get(provider_name)
+
+    persistence = type("Persistence", (), {"provider_configs": ProviderConfigs()})()
+    config = ReasoningRuntimeConfig(
+        profiles={"default": ReasoningProfile(name="default")},
+        mistral_api_key="process-mistral-secret",
+        gemini_api_key="process-gemini-secret",
+    )
+
+    resolved = apply_persistence_provider_configs(config, persistence_client=persistence)
+    summary = summarize_reasoning_provider_configs(persistence)
+
+    assert resolved.mistral_api_key == "db-mistral-secret"
+    assert resolved.gemini_api_key == "db-gemini-secret"
+    assert summary["mistral"]["configured"] is True
+    assert summary["gemini"]["configured"] is True
+    assert "secret" not in str(summary)
 
 
 def test_retry_json_rotates_on_rate_limit():
