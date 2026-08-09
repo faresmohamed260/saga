@@ -29,7 +29,7 @@ class CanonExtractionServiceConfig:
     supabase_service_role_key: str = ""
     reasoning_profile_name: str = "canon-extraction"
     reasoning_mode: str = "gpt_oss"
-    reasoning_timeout_seconds: int = 180
+    reasoning_timeout_seconds: int = 60
     reasoning_max_retries: int = 2
 
 
@@ -179,6 +179,6 @@ def load_canon_extraction_service_config_from_env() -> CanonExtractionServiceCon
         supabase_service_role_key=str(os.getenv("SAGA_SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip(),
         reasoning_profile_name=str(os.getenv("SAGA_CANON_EXTRACTION_REASONING_PROFILE") or "canon-extraction").strip(),
         reasoning_mode=str(os.getenv("SAGA_CANON_EXTRACTION_REASONING_MODE") or "gpt_oss").strip() or "gpt_oss",
-        reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_TIMEOUT_SECONDS") or "180")),
+        reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_TIMEOUT_SECONDS") or "60")),
         reasoning_max_retries=max(1, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_MAX_RETRIES") or "2")),
     )

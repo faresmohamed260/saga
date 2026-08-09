@@ -31,11 +31,14 @@ from packages.reasoning_runtime.contracts import ReasoningJsonResult, ReasoningR
 from packages.reasoning_runtime.models import ReasoningProfile, ReasoningRuntimeConfig
 from packages.reasoning_runtime.pools import GeneralComputePool, SimpleRotationPool
 from packages.runtime_common import (
+    CancellationChecker,
     ProviderUsage,
+    RuntimeCancelledError,
     build_structured_runtime_tool,
     create_trace,
     current_trace_context,
     reserve_usage,
+    raise_if_cancelled,
     settle_usage,
 )
 
@@ -89,6 +92,7 @@ class ReasoningRuntimeClient:
         response_format: Optional[dict] = None,
         tools: Optional[list] = None,
         tool_choice: Optional[object] = None,
+        cancellation_checker: CancellationChecker | None = None,
     ) -> dict[str, Any]:
         effective_prompt = self._apply_strict_mode(prompt) if strict else prompt
         self._pending_request_kind = "json"
@@ -103,7 +107,8 @@ class ReasoningRuntimeClient:
                 response_format=response_format,
                 tools=tools,
                 tool_choice=tool_choice,
-            )
+            ),
+            cancellation_checker=cancellation_checker,
         )
         if validator and isinstance(result, dict) and "error" not in result and not validator(result):
             self._last_request_metadata.status = "error"
@@ -122,6 +127,7 @@ class ReasoningRuntimeClient:
         system_prompt: str = "",
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        cancellation_checker: CancellationChecker | None = None,
     ) -> str:
         self._pending_request_kind = "text"
         self._pending_json_mode = ""
@@ -135,7 +141,8 @@ class ReasoningRuntimeClient:
                     system_prompt=system_prompt,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                )
+                ),
+                cancellation_checker=cancellation_checker,
             )
             return result
         except Exception as exc:
@@ -609,16 +616,21 @@ class ReasoningRuntimeClient:
         *,
         allow_rotation: bool = True,
         allow_fallback: bool = True,
+        cancellation_checker: CancellationChecker | None = None,
     ) -> dict[str, Any]:
         last_error = "unknown_error"
         for attempt in range(self.max_retries):
+            raise_if_cancelled(cancellation_checker)
             try:
                 if self.base_delay:
                     time.sleep(self.base_delay)
                 result = func()
+                raise_if_cancelled(cancellation_checker)
                 if isinstance(result, dict) and result.get("error") in {"empty_response", "parse_failed"}:
                     raise RuntimeError(str(result["error"]))
                 return result
+            except RuntimeCancelledError:
+                raise
             except requests.HTTPError as exc:
                 last_error = self._http_error_label(exc)
                 if self._should_retry_http(exc, attempt, self.max_retries):
@@ -632,13 +644,24 @@ class ReasoningRuntimeClient:
                     time.sleep(2 ** attempt)
                     continue
                 break
+        raise_if_cancelled(cancellation_checker)
         if self._is_rate_limit_label(last_error) and self.allow_account_rotation and allow_rotation and self._rotate_account():
             self._last_request_metadata.rotation_used = True
             self._last_request_metadata.rotation_attempt_count = int(self._last_request_metadata.rotation_attempt_count or 0) + 1
-            return self._retry_json_request(func, allow_rotation=False, allow_fallback=allow_fallback)
+            return self._retry_json_request(
+                func,
+                allow_rotation=False,
+                allow_fallback=allow_fallback,
+                cancellation_checker=cancellation_checker,
+            )
         if allow_fallback and self.allow_cross_provider_fallback and self._activate_fallback_mode():
             self._last_request_metadata.fallback_used = True
-            return self._retry_json_request(func, allow_rotation=True, allow_fallback=False)
+            return self._retry_json_request(
+                func,
+                allow_rotation=True,
+                allow_fallback=False,
+                cancellation_checker=cancellation_checker,
+            )
         return {"error": "max_retries_exceeded", "last_error": last_error}
 
     def _retry_text_request(
@@ -647,16 +670,21 @@ class ReasoningRuntimeClient:
         *,
         allow_rotation: bool = True,
         allow_fallback: bool = True,
+        cancellation_checker: CancellationChecker | None = None,
     ) -> str:
         last_error = "unknown_error"
         for attempt in range(self.max_retries):
+            raise_if_cancelled(cancellation_checker)
             try:
                 if self.base_delay:
                     time.sleep(self.base_delay)
                 result = str(func() or "").strip()
+                raise_if_cancelled(cancellation_checker)
                 if result:
                     return result
                 raise RuntimeError("empty_response")
+            except RuntimeCancelledError:
+                raise
             except requests.HTTPError as exc:
                 last_error = self._http_error_label(exc)
                 if self._should_retry_http(exc, attempt, self.max_retries):
@@ -670,13 +698,24 @@ class ReasoningRuntimeClient:
                     time.sleep(2 ** attempt)
                     continue
                 break
+        raise_if_cancelled(cancellation_checker)
         if self._is_rate_limit_label(last_error) and self.allow_account_rotation and allow_rotation and self._rotate_account():
             self._last_request_metadata.rotation_used = True
             self._last_request_metadata.rotation_attempt_count = int(self._last_request_metadata.rotation_attempt_count or 0) + 1
-            return self._retry_text_request(func, allow_rotation=False, allow_fallback=allow_fallback)
+            return self._retry_text_request(
+                func,
+                allow_rotation=False,
+                allow_fallback=allow_fallback,
+                cancellation_checker=cancellation_checker,
+            )
         if allow_fallback and self.allow_cross_provider_fallback and self._activate_fallback_mode():
             self._last_request_metadata.fallback_used = True
-            return self._retry_text_request(func, allow_rotation=True, allow_fallback=False)
+            return self._retry_text_request(
+                func,
+                allow_rotation=True,
+                allow_fallback=False,
+                cancellation_checker=cancellation_checker,
+            )
         raise RuntimeError(last_error)
 
     def _activate_fallback_mode(self) -> bool:

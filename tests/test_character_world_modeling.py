@@ -70,8 +70,8 @@ class StubCanonReasoningRuntime:
     def __init__(self) -> None:
         self._last = {}
 
-    def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None):
-        del strict, validator, max_tokens, response_format, tools, tool_choice
+    def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None, cancellation_checker=None):
+        del strict, validator, max_tokens, response_format, tools, tool_choice, cancellation_checker
         scene_id = _first_scene_id(prompt)
         lowered = prompt.lower()
         if "key 'events'" in lowered:

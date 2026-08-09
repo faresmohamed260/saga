@@ -304,6 +304,7 @@ class EventAgent:
             strict=True,
             max_tokens=2600,
             response_format=_structured_response_format("canon_events", EventsPayload),
+            cancellation_checker=self.cancellation_checker,
         )
         if payload.get("error"):
             raise RuntimeError(f"Event extraction failed: {payload.get('error')}")
@@ -492,6 +493,7 @@ class EntityAgent:
             strict=True,
             max_tokens=2400,
             response_format=_structured_response_format("canon_entities", EntitiesPayload),
+            cancellation_checker=self.cancellation_checker,
         )
         if payload.get("error"):
             raise RuntimeError(f"Entity extraction failed: {payload.get('error')}")
@@ -715,6 +717,7 @@ class RelationshipAgent:
             strict=True,
             max_tokens=2400,
             response_format=_structured_response_format("canon_relationships", RelationshipsPayload),
+            cancellation_checker=self.cancellation_checker,
         )
         if payload.get("error"):
             raise RuntimeError(f"Relationship extraction failed: {payload.get('error')}")
