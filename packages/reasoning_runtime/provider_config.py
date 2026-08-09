@@ -11,6 +11,8 @@ from packages.reasoning_runtime.models import GeneralComputeAccount, OllamaAccou
 
 OLLAMA_PROVIDER_NAME = "ollama"
 GENERAL_COMPUTE_PROVIDER_NAME = "general_compute"
+MISTRAL_PROVIDER_NAME = "mistral"
+GEMINI_PROVIDER_NAME = "gemini"
 
 
 def apply_persistence_provider_configs(
@@ -22,6 +24,10 @@ def apply_persistence_provider_configs(
     ollama_payload = dict((ollama_row or {}).get("payload") or {})
     general_row = persistence_client.provider_configs.get_provider_config(GENERAL_COMPUTE_PROVIDER_NAME)
     general_payload = dict((general_row or {}).get("payload") or {})
+    mistral_row = persistence_client.provider_configs.get_provider_config(MISTRAL_PROVIDER_NAME)
+    mistral_payload = dict((mistral_row or {}).get("payload") or {})
+    gemini_row = persistence_client.provider_configs.get_provider_config(GEMINI_PROVIDER_NAME)
+    gemini_payload = dict((gemini_row or {}).get("payload") or {})
     return ReasoningRuntimeConfig(
         profiles=dict(config.profiles or {}),
         ollama_accounts=_parse_ollama_accounts(ollama_payload.get("accounts")),
@@ -32,8 +38,8 @@ def apply_persistence_provider_configs(
         ollama_local_url=config.ollama_local_url,
         ollama_cloud_url=config.ollama_cloud_url,
         general_compute_chat_url=config.general_compute_chat_url,
-        mistral_api_key=config.mistral_api_key,
-        gemini_api_key=config.gemini_api_key,
+        mistral_api_key=str(mistral_payload.get("api_key") or config.mistral_api_key or "").strip(),
+        gemini_api_key=str(gemini_payload.get("api_key") or config.gemini_api_key or "").strip(),
     )
 
 
@@ -91,6 +97,10 @@ def summarize_reasoning_provider_configs(persistence_client: PersistenceRuntimeC
     ollama_payload = dict((ollama_row or {}).get("payload") or {})
     general_row = persistence_client.provider_configs.get_provider_config(GENERAL_COMPUTE_PROVIDER_NAME)
     general_payload = dict((general_row or {}).get("payload") or {})
+    mistral_row = persistence_client.provider_configs.get_provider_config(MISTRAL_PROVIDER_NAME)
+    mistral_payload = dict((mistral_row or {}).get("payload") or {})
+    gemini_row = persistence_client.provider_configs.get_provider_config(GEMINI_PROVIDER_NAME)
+    gemini_payload = dict((gemini_row or {}).get("payload") or {})
     return {
         "ollama": {
             "configured": bool(ollama_payload),
@@ -104,8 +114,14 @@ def summarize_reasoning_provider_configs(persistence_client: PersistenceRuntimeC
             "last_request_index": max(-1, int(general_payload.get("last_request_index") or -1)),
             "has_env_api_key": bool(str(os.getenv("GENERAL_COMPUTE_API_KEY") or "").strip()),
         },
-        "mistral": {"has_env_api_key": bool(str(os.getenv("MISTRAL_API_KEY") or "").strip())},
-        "gemini": {"has_env_api_key": bool(str(os.getenv("GEMINI_API_KEY") or "").strip())},
+        "mistral": {
+            "configured": bool(str(mistral_payload.get("api_key") or "").strip()),
+            "has_env_api_key": bool(str(os.getenv("MISTRAL_API_KEY") or "").strip()),
+        },
+        "gemini": {
+            "configured": bool(str(gemini_payload.get("api_key") or "").strip()),
+            "has_env_api_key": bool(str(os.getenv("GEMINI_API_KEY") or "").strip()),
+        },
     }
 
 
