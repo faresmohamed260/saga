@@ -1,0 +1,89 @@
+name: Backend Architecture CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+      - name: Verify lockfile and install
+        run: uv sync --frozen --extra dev
+      - name: Verify one migration head
+        run: test "$(uv run alembic heads | wc -l)" -eq 1
+      - name: Run active backend tests
+        run: uv run pytest -q
+
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
+        env:
+          POSTGRES_USER: saga
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: saga_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U saga -d saga_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SAGA_SUPABASE_DB_URL: postgresql+psycopg://saga:ci-only-password@127.0.0.1:5432/saga_ci?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+      - run: uv sync --frozen --extra dev
+      - name: Upgrade, rollback operational revision, and re-upgrade
+        run: |
+          uv run saga-deploy migrate upgrade
+          uv run saga-deploy migrate check
+          uv run saga-deploy migrate downgrade --revision 202607051730
+          uv run saga-deploy migrate upgrade
+          uv run saga-deploy migrate check
+
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate Compose
+        run: SAGA_ENV_FILE=.env.example docker compose -f deploy/production/compose.yaml config --quiet
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/production/Dockerfile.runtime
+          push: false
+          tags: saga-runtime:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/production/Dockerfile.frontend
+          push: false
+          tags: saga-dashboard:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
