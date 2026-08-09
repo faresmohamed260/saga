@@ -16,6 +16,8 @@ saga-deploy release gate-record --release-id <release-id> --evidence-file ci-gat
 saga-deploy release transition --release-id <release-id> --status staging
 ```
 
+Set `SAGA_RELEASE_ID` from `candidate.manifest.release_id` when invoking Compose. The explicit Compose environment value prevents stale secret-file configuration from mislabeling runtime evidence.
+
 Gate evidence files contain `gate`, `status`, `source`, `observed_at_ms`, `expires_at_ms`, `details`, and an optional `artifact_reference`. Failed evidence requires a non-empty `details.reason`. Secret-like values are redacted before persistence; oversized evidence is rejected.
 
 ## Canary Gates

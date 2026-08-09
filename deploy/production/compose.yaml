@@ -11,6 +11,7 @@ x-runtime: &runtime
       required: true
   environment:
     SAGA_LOCAL_HEARTBEAT_DIR: /tmp/saga-heartbeats
+    SAGA_RELEASE_ID: ${SAGA_RELEASE_ID:?SAGA_RELEASE_ID is required}
   restart: unless-stopped
   networks: [saga, persistence]
 
