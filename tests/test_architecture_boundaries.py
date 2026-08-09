@@ -35,3 +35,7 @@ def test_packaging_excludes_legacy_and_tests() -> None:
     assert '"saga"' not in package_includes
     assert '"saga.*"' not in package_includes
     assert '"tests"' not in package_includes
+
+
+def test_active_tree_has_no_sqlite_deployment_surface() -> None:
+    assert not Path("deploy/sqlite").exists()
