@@ -20,6 +20,10 @@ class ReasoningVisionSemanticEvaluator:
             "negative-prompt violation; when present, alignment must be at most 0.4 and defect score at least 0.6. Defect score is higher "
             "when there are duplicate subjects, malformed anatomy, "
             "black/blank regions, unreadable composition, text/watermarks, or character-sheet identity drift. "
+            "Character names are semantic identifiers and must never appear as written labels in the image; do not require visible names or text. "
+            "For a hard cast limit, count visible human figures and compare that count with the required total. Treat omitted minor expression, "
+            "accessory, material, lighting, or architectural details as scored issues, not hard violations. Reserve hard violations for an incorrect "
+            "cast count, a forbidden subject, duplicate subject, malformed anatomy, text/watermark, black image, or fundamentally wrong target type. "
             f"Target type: {prompt.target_type}. Positive prompt: {prompt.positive_prompt}. Negative prompt: {prompt.negative_prompt}."
         )
         parsed = self.reasoning_runtime.generate_vision_json(

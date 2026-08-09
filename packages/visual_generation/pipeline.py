@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -339,17 +340,14 @@ class VisualPromptAgent:
             prompts.append(_prompt_artifact(state, item.entity_type, item.entity_id, body, versions=versions, consistency_keys=[item.consistency_key]))
         for item in scene_plans:
             character_text = []
-            cast_names: list[str] = []
+            cast_names = _scene_cast_names(item, baseline_map)
             consistency_keys: list[str] = []
             for ref in item.character_refs:
                 baseline = baseline_map.get(ref)
                 per_scene = next((row for row in scene_states if row.source_scene_id == item.source_scene_id and row.character_id == ref), None)
                 if baseline:
-                    cast_names.append(baseline.canonical_name)
                     consistency_keys.append(baseline.consistency_key)
                     character_text.append(" ".join([baseline.canonical_name, baseline.appearance, baseline.clothing, per_scene.expression if per_scene else "", per_scene.action if per_scene else ""]))
-                else:
-                    cast_names.append(ref)
             entity_text = []
             for ref in item.entity_refs:
                 dossier = dossier_map.get(ref)
@@ -874,6 +872,22 @@ def _entity_visual_type(value: str) -> str | None:
     if any(token in normalized for token in ("object", "artifact", "weapon", "item", "book", "letter", "crown", "knife", "sword", "bridle", "ring")):
         return "object"
     return None
+
+
+def _scene_cast_names(
+    plan: SceneVisualPlanArtifact,
+    baselines: dict[str, CharacterVisualBaselineArtifact],
+) -> list[str]:
+    plan_text = " ".join([
+        plan.composition, plan.environment, plan.lighting, plan.mood, plan.camera, plan.action,
+    ])
+    explicit_refs = re.findall(r"\bchar-[a-z0-9][a-z0-9-]*", plan_text.casefold())
+    refs = _dedupe([*plan.character_refs, *explicit_refs])
+    names = []
+    for ref in refs:
+        baseline = baselines.get(ref)
+        names.append(baseline.canonical_name if baseline else ref.removeprefix("char-").replace("-", " ").title())
+    return _dedupe(names)
 
 
 def _latest_audits(audits: list[VisualQualityDecisionArtifact]) -> dict[str, VisualQualityDecisionArtifact]:
