@@ -56,20 +56,20 @@ class NarrativeSupportState(TypedDict, total=False):
 
 
 class ClaimEvaluationPayload(BaseModel):
-    claim: str
+    claim: str = Field(max_length=500)
     claim_type: str = "canon_fact"
     classification: str = "unsupported"
     severity: str = "medium"
-    evidence_ids: list[str] = Field(default_factory=list)
-    rationale: str = ""
+    evidence_ids: list[str] = Field(default_factory=list, max_length=8)
+    rationale: str = Field(default="", max_length=300)
     confidence: float = 0.0
     temporal_scope: str = ""
     plan_alignment: str = ""
 
 
 class SceneEvaluationPayload(BaseModel):
-    claims: list[ClaimEvaluationPayload] = Field(default_factory=list)
-    summary: str = ""
+    claims: list[ClaimEvaluationPayload] = Field(default_factory=list, max_length=16)
+    summary: str = Field(default="", max_length=500)
 
 
 class SceneRevisionPayload(BaseModel):
@@ -189,7 +189,18 @@ class SemanticSupportAgent:
         )
         evidence = _evidence_from_results(results, document_map=document_map)
         prompt = _build_support_prompt(scene=scene, plan=plan, evidence=evidence)
-        response = self.reasoning_runtime.generate_json(prompt, strict=True, max_tokens=1800)
+        response = self.reasoning_runtime.generate_json(
+            prompt,
+            strict=True,
+            max_tokens=2600,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "narrative_scene_support_evaluation",
+                    "schema": SceneEvaluationPayload.model_json_schema(),
+                },
+            },
+        )
         request_metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
         request_ok = request_metadata.get("status") == "ok" and isinstance(response, dict) and not response.get("error")
         try:
@@ -685,6 +696,7 @@ def _build_support_prompt(*, scene: SceneProseArtifact, plan: Any, evidence: lis
         "For generated_present claims set plan_alignment=aligned when entailed by PLANNED_SCENE, otherwise not_aligned. Prior-canon claims use not_applicable.\n"
         "A non-contradictory generated_present claim is story_local creative_expansion, including consequential events explicitly authorized by PLANNED_SCENE. The plan can never make a prior_canon claim supported.\n"
         "Claims must be atomic. Split prior canon facts from present generated actions or locations.\n"
+        "Return at most 16 material claims. Prioritize every prior-canon claim and consequential generated-present claim; group minor set dressing when needed.\n"
         "Classifications:\n"
         "- supported: a canon_fact directly stated or safely entailed by cited evidence.\n"
         "- creative_expansion: a story_local action, dialogue, sensation, or emotion invented for this new scene that neither asserts prior canon nor conflicts with it.\n"

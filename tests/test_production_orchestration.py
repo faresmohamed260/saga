@@ -9,6 +9,7 @@ import pytest
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.production_orchestration.contracts import ArtifactReference, OrchestrationExecutionLimits, OrchestrationRequest, StageOutcomeArtifact
 from packages.production_orchestration.packaging import PackageChapter, PackageSourceBundle, VersionedDeliverablePackager, build_epub
+from packages.production_orchestration.bindings import ActiveStageBinding
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.policy import STAGE_ORDER, resolve_stage_plan
 
@@ -125,6 +126,24 @@ def _request(run_id="run-1", **kwargs):
 
 def _accepted(stage):
     return StageOutcomeArtifact(stage=stage, status="accepted", accepted=True, output_context={"story_id": "story-1"} if stage in {"narrative_generation", "narrative_support"} else {})
+
+
+def test_active_stage_binding_propagates_a_persisted_quality_rejection():
+    rejected = StageOutcomeArtifact(
+        stage="narrative_support",
+        status="rejected",
+        accepted=False,
+        reasons=["Live semantic evaluation did not pass."],
+    )
+    binding = ActiveStageBinding(
+        inspector=lambda request, outcomes: rejected,
+        executor=lambda request, outcomes: None,
+    )
+
+    outcome = binding.execute(request=_request(), outcomes={})
+
+    assert outcome.status == "rejected"
+    assert outcome.reasons == ["Live semantic evaluation did not pass."]
 
 
 def test_dependency_plan_is_ordered_and_optional_media_is_explicit():

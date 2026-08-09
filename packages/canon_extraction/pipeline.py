@@ -36,11 +36,6 @@ CANON_EXTRACTION_PARALLELISM = max(1, int(os.getenv("SAGA_CANON_EXTRACTION_PARAL
 MAX_EVENTS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_EVENTS_PER_SCENE") or "5"))
 MAX_ENTITIES_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_ENTITIES_PER_SCENE") or "24"))
 MAX_RELATIONSHIPS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_RELATIONSHIPS_PER_SCENE") or "14"))
-CANON_RESUME_STAGES = {
-    value.strip()
-    for value in str(os.getenv("SAGA_CANON_RESUME_STAGES") or "").split(",")
-    if value.strip()
-}
 ALLOWED_ENTITY_TYPES = {"location", "object", "creature", "organization", "artifact", "concept"}
 ALLOWED_RELATIONSHIP_TYPES = {
     "ally",
@@ -1103,7 +1098,12 @@ def _job_latency_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _resume_stage_enabled(stage_name: str) -> bool:
-    return stage_name in CANON_RESUME_STAGES or "all" in CANON_RESUME_STAGES
+    resume_stages = {
+        value.strip()
+        for value in str(os.getenv("SAGA_CANON_RESUME_STAGES") or "").split(",")
+        if value.strip()
+    }
+    return stage_name in resume_stages or "all" in resume_stages
 
 
 def _canon_stage_job_id(*, stage_name: str, book_id: str, chapter_index: int, scene_slices: list[dict[str, Any]]) -> str:

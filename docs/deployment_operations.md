@@ -26,6 +26,8 @@ Set `SAGA_RUNTIME_IMAGE` and `SAGA_DASHBOARD_IMAGE` to the manifest's complete G
 
 Copy `deploy/production/.env.example` to a secret-managed deployment environment. Inject database fields, Supabase keys, and provider credentials at deployment time. Do not commit the populated file or pass passwords in command arguments. Production startup validates Alembic revision `202608090400` and fails closed if schema or dependencies are unavailable.
 
+Self-hosted Supabase Storage must set `FILE_SIZE_LIMIT` explicitly for the largest supported source book; the validated baseline is 512 MiB. Treat the storage service limit as infrastructure configuration, not an application retry condition. Qualification must prove an upload larger than 50 MiB, checksum-verified download, and cleanup before admitting an environment.
+
 ## Staged Rollout
 
 1. Run the complete CI gate and publish both images from a clean commit.
