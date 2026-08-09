@@ -339,13 +339,17 @@ class VisualPromptAgent:
             prompts.append(_prompt_artifact(state, item.entity_type, item.entity_id, body, versions=versions, consistency_keys=[item.consistency_key]))
         for item in scene_plans:
             character_text = []
+            cast_names: list[str] = []
             consistency_keys: list[str] = []
             for ref in item.character_refs:
                 baseline = baseline_map.get(ref)
                 per_scene = next((row for row in scene_states if row.source_scene_id == item.source_scene_id and row.character_id == ref), None)
                 if baseline:
+                    cast_names.append(baseline.canonical_name)
                     consistency_keys.append(baseline.consistency_key)
                     character_text.append(" ".join([baseline.canonical_name, baseline.appearance, baseline.clothing, per_scene.expression if per_scene else "", per_scene.action if per_scene else ""]))
+                else:
+                    cast_names.append(ref)
             entity_text = []
             for ref in item.entity_refs:
                 dossier = dossier_map.get(ref)
@@ -353,7 +357,11 @@ class VisualPromptAgent:
                     consistency_keys.append(dossier.consistency_key)
                     entity_text.append(f"{dossier.canonical_name}: {dossier.visual_description}")
             body = " ".join([item.title, item.composition, item.environment, item.lighting, item.mood, item.camera, item.action, *character_text, *entity_text])
-            prompts.append(_prompt_artifact(state, "scene", item.source_scene_id, body, versions=versions, consistency_keys=consistency_keys, source_scene_id=item.source_scene_id))
+            prompts.append(_prompt_artifact(
+                state, "scene", item.source_scene_id, body, versions=versions,
+                consistency_keys=consistency_keys, source_scene_id=item.source_scene_id,
+                scene_character_names=cast_names,
+            ))
         prompts = _select_prompts(prompts, include_types=state.get("include_types") or [], max_per_type=int(state.get("max_renders_per_type") or 0))
         persisted = self.store.replace_prompts(series_id=state["series_id"], story_id=state["story_id"], items=prompts)
         metadata = _stage_metadata(state, "prompt_construction", started, prompt_count=len(persisted), target_types=sorted({item.target_type for item in persisted}))
@@ -788,13 +796,27 @@ def _build_scene_plans(state: VisualGenerationState, payload: VisualPlanningPayl
     return results
 
 
-def _prompt_artifact(state: VisualGenerationState, target_type: str, target_ref: str, body: str, *, versions: dict[str, str], consistency_keys: list[str], source_scene_id: str = "") -> VisualPromptArtifact:
-    positive, negative, mode = compile_prompt(target_type=target_type, body=body)
+def _prompt_artifact(
+    state: VisualGenerationState,
+    target_type: str,
+    target_ref: str,
+    body: str,
+    *,
+    versions: dict[str, str],
+    consistency_keys: list[str],
+    source_scene_id: str = "",
+    scene_character_names: list[str] | None = None,
+) -> VisualPromptArtifact:
+    positive, negative, mode = compile_prompt(
+        target_type=target_type,
+        body=body,
+        scene_character_names=scene_character_names,
+    )
     return VisualPromptArtifact(
         prompt_id=_stable_id("visual-prompt", state["story_id"], target_type, target_ref), series_id=state["series_id"], story_id=state["story_id"],
         target_type=target_type, target_ref=target_ref, source_scene_id=source_scene_id, workflow_mode=mode,
         positive_prompt=positive, negative_prompt=negative, workflow_version=str(versions.get(mode) or "unknown"),
-        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v1"},
+        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v2"},
     )
 
 
