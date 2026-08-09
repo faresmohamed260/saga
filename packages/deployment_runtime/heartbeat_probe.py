@@ -7,6 +7,7 @@ import json
 import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.engine import make_url
@@ -62,6 +63,27 @@ def process_heartbeat_ready(
     return bool(row and row[0])
 
 
+def local_heartbeat_ready(
+    *,
+    role: str,
+    release_id: str = "",
+    max_age_seconds: int = 180,
+    heartbeat_dir: str = "",
+    now_ms: int | None = None,
+) -> bool:
+    root = str(heartbeat_dir or os.getenv("SAGA_LOCAL_HEARTBEAT_DIR") or "").strip()
+    if not root:
+        raise RuntimeError("Local heartbeat probe requires SAGA_LOCAL_HEARTBEAT_DIR.")
+    payload = json.loads((Path(root) / f"{role}.json").read_text(encoding="utf-8"))
+    threshold = int(now_ms or time.time() * 1000) - max(1, int(max_age_seconds)) * 1000
+    return bool(
+        payload.get("role") == role
+        and payload.get("status") == "ready"
+        and int(payload.get("last_seen_ms") or 0) >= threshold
+        and (not release_id or payload.get("release_id") == release_id)
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role", required=True, choices=("worker", "scheduler", "observability"))
@@ -70,10 +92,20 @@ def main() -> int:
     args = parser.parse_args()
     started = time.perf_counter()
     try:
-        ready = process_heartbeat_ready(
-            role=args.role,
-            release_id=args.release_id,
-            max_age_seconds=args.max_age_seconds,
+        local_dir = str(os.getenv("SAGA_LOCAL_HEARTBEAT_DIR") or "").strip()
+        ready = (
+            local_heartbeat_ready(
+                role=args.role,
+                release_id=args.release_id,
+                max_age_seconds=args.max_age_seconds,
+                heartbeat_dir=local_dir,
+            )
+            if local_dir
+            else process_heartbeat_ready(
+                role=args.role,
+                release_id=args.release_id,
+                max_age_seconds=args.max_age_seconds,
+            )
         )
         payload = {"ready": ready, "role": args.role, "elapsed_seconds": round(time.perf_counter() - started, 4)}
     except Exception as exc:

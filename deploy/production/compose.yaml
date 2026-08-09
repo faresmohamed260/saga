@@ -9,6 +9,8 @@ x-runtime: &runtime
   env_file:
     - path: ${SAGA_ENV_FILE:-.env}
       required: true
+  environment:
+    SAGA_LOCAL_HEARTBEAT_DIR: /tmp/saga-heartbeats
   restart: unless-stopped
   networks: [saga, persistence]
 

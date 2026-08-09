@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import argparse
 import logging
+import json
 import os
+from pathlib import Path
 import socket
 import threading
 import time
@@ -108,6 +110,22 @@ def _loop(role: str, tick, *, default_interval: float = 10.0) -> None:
 
 def _heartbeat(persistence, process_id: str, role: str, release_id: str, status: str, timestamp: int, metadata: dict[str, Any]) -> None:
     persistence.deployments.heartbeat({"process_id": process_id, "role": role, "release_id": release_id, "status": status, "last_seen_ms": timestamp, "metadata": metadata})
+    _write_local_heartbeat(role=role, release_id=release_id, status=status, timestamp=timestamp)
+
+
+def _write_local_heartbeat(*, role: str, release_id: str, status: str, timestamp: int) -> None:
+    root = str(os.getenv("SAGA_LOCAL_HEARTBEAT_DIR") or "").strip()
+    if not root:
+        return
+    directory = Path(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{role}.json"
+    temporary = directory / f".{role}.{os.getpid()}.tmp"
+    temporary.write_text(
+        json.dumps({"role": role, "release_id": release_id, "status": status, "last_seen_ms": timestamp}),
+        encoding="utf-8",
+    )
+    temporary.replace(target)
 
 
 def _observability(service: ExecutionRuntimeService) -> ObservabilityRuntime:
