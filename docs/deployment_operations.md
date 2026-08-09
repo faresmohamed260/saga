@@ -90,7 +90,7 @@ The 2026-08-09 staging validation established:
 - A 98,797,551-byte application backup restored at migration head with exact sampled table-count matches.
 - A 112,095,596-byte artifact archive restored 132 objects across six non-empty buckets with per-object checksum verification.
 - Real-book audit for `real-lineage-input-20260808a` completed with terminal success, nine observed stages, ten lineage records, 91 observations, all six SLOs healthy, and secret audit passed.
-- Clean-checkout backend regression: 247 passed, 3 skipped. Dashboard: 13 passed, production build and dependency audit passed with zero vulnerabilities.
+- Clean-checkout backend regression: 248 passed, 3 skipped. Dashboard: 13 passed, production build and dependency audit passed with zero vulnerabilities.
 - Runtime and dashboard containers build from digest-pinned bases and run as non-root users; the dashboard image passed its internal health check as UID 101.
 - The obsolete 96.5 MB SQLite seed deployment was removed from the active tree; Supabase/PostgreSQL remains the only production persistence path.
 
