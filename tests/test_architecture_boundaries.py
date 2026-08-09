@@ -39,3 +39,12 @@ def test_packaging_excludes_legacy_and_tests() -> None:
 
 def test_active_tree_has_no_sqlite_deployment_surface() -> None:
     assert not Path("deploy/sqlite").exists()
+
+
+def test_production_compose_supports_digest_images_and_persistence_network() -> None:
+    compose = Path("deploy/production/compose.yaml").read_text(encoding="utf-8")
+
+    assert "${SAGA_RUNTIME_IMAGE:-" in compose
+    assert "${SAGA_DASHBOARD_IMAGE:-" in compose
+    assert "networks: [saga, persistence]" in compose
+    assert "name: ${SAGA_PERSISTENCE_NETWORK:-supabase_default}" in compose

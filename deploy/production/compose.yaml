@@ -1,5 +1,5 @@
 x-runtime: &runtime
-  image: saga-runtime:${SAGA_RELEASE_VERSION:-dev}
+  image: ${SAGA_RUNTIME_IMAGE:-saga-runtime:${SAGA_RELEASE_VERSION:-dev}}
   build:
     context: ../..
     dockerfile: deploy/production/Dockerfile.runtime
@@ -10,7 +10,7 @@ x-runtime: &runtime
     - path: ${SAGA_ENV_FILE:-.env}
       required: true
   restart: unless-stopped
-  networks: [saga]
+  networks: [saga, persistence]
 
 services:
   migrate:
@@ -77,7 +77,7 @@ services:
       retries: 3
 
   frontend:
-    image: saga-dashboard:${SAGA_RELEASE_VERSION:-dev}
+    image: ${SAGA_DASHBOARD_IMAGE:-saga-dashboard:${SAGA_RELEASE_VERSION:-dev}}
     build:
       context: ../..
       dockerfile: deploy/production/Dockerfile.frontend
@@ -100,3 +100,6 @@ services:
 networks:
   saga:
     name: saga-production
+  persistence:
+    external: true
+    name: ${SAGA_PERSISTENCE_NETWORK:-supabase_default}

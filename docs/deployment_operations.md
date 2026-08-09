@@ -22,6 +22,8 @@ Workers coordinate through PostgreSQL leases and capability limits. API startup 
 
 Use `uv.lock`, digest-pinned base images, and the production Dockerfiles. CI publishes commit- and version-tagged images to GHCR with build-provenance attestations, refuses to overwrite an existing version tag, and retains a release manifest containing both component digests. Deploy by image digest, never by a mutable tag.
 
+Set `SAGA_RUNTIME_IMAGE` and `SAGA_DASHBOARD_IMAGE` to the manifest's complete GHCR `name@sha256:digest` references. Runtime roles join both the private `saga-production` network and the configurable external `SAGA_PERSISTENCE_NETWORK`; the default `supabase_default` value supports the documented self-hosted Supabase topology without exposing PostgreSQL or Storage through ad hoc host routing.
+
 Copy `deploy/production/.env.example` to a secret-managed deployment environment. Inject database fields, Supabase keys, and provider credentials at deployment time. Do not commit the populated file or pass passwords in command arguments. Production startup validates Alembic revision `202608090200` and fails closed if schema or dependencies are unavailable.
 
 ## Staged Rollout
