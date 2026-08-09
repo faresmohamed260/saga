@@ -155,15 +155,17 @@ class ReasoningRuntimeClient:
         self._pending_tool_mode = ""
         self._begin_request_tracking()
         if self.mode == self.MODE_MISTRAL:
-            operation = lambda: self._generate_vision_json_mistral(
-                prompt=self._apply_strict_mode(prompt), image_bytes=image_bytes
-            )
+            def operation() -> dict[str, Any]:
+                return self._generate_vision_json_mistral(
+                    prompt=self._apply_strict_mode(prompt), image_bytes=image_bytes
+                )
         else:
-            operation = lambda: self._generate_vision_json_ollama(
-                prompt=self._apply_strict_mode(prompt),
-                image_bytes=image_bytes,
-                response_format=response_format,
-            )
+            def operation() -> dict[str, Any]:
+                return self._generate_vision_json_ollama(
+                    prompt=self._apply_strict_mode(prompt),
+                    image_bytes=image_bytes,
+                    response_format=response_format,
+                )
         result = self._retry_json_request(operation)
         if isinstance(result, dict) and result.get("error"):
             self._last_request_metadata.status = "error"
@@ -614,7 +616,10 @@ class ReasoningRuntimeClient:
             try:
                 if self.base_delay:
                     time.sleep(self.base_delay)
-                return func()
+                result = func()
+                if isinstance(result, dict) and result.get("error") in {"empty_response", "parse_failed"}:
+                    raise RuntimeError(str(result["error"]))
+                return result
             except requests.HTTPError as exc:
                 last_error = self._http_error_label(exc)
                 if self._should_retry_http(exc, attempt, self.max_retries):

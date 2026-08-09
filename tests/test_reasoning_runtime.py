@@ -120,6 +120,22 @@ def test_retry_json_backs_off_on_sdk_rate_limit(monkeypatch):
     assert sleeps == [8]
 
 
+def test_retry_json_retries_transient_structured_output_failures(monkeypatch):
+    config = ReasoningRuntimeConfig(
+        profiles={"default": ReasoningProfile(name="default", mode="gpt_oss", max_retries=3)},
+        ollama_accounts=[OllamaAccount(label="a1", api_key="test-key")],
+    )
+    client = create_reasoning_client(profile_name="default", config=config)
+    monkeypatch.setattr("packages.reasoning_runtime.client.time.sleep", lambda _seconds: None)
+    responses = iter([
+        {"error": "parse_failed", "raw_output": "not-json"},
+        {"error": "empty_response"},
+        {"ok": True},
+    ])
+
+    assert client._retry_json_request(lambda: next(responses)) == {"ok": True}
+
+
 def test_safe_parse_json_extracts_object_from_fence():
     assert ReasoningRuntimeClient._safe_parse_json("```json\n{\"ok\": true}\n```") == {"ok": True}
 
