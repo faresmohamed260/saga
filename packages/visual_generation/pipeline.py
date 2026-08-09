@@ -343,9 +343,10 @@ class VisualPromptAgent:
             prompts.append(_prompt_artifact(state, item.entity_type, item.entity_id, body, versions=versions, consistency_keys=[item.consistency_key]))
         for item in scene_plans:
             character_text = []
-            cast_names = _scene_cast_names(item, baseline_map)
+            visible_character_refs = _scene_visible_character_refs(item, scene_states)
+            cast_names = _scene_cast_names(item, baseline_map, visible_character_refs)
             consistency_keys: list[str] = []
-            for ref in item.character_refs:
+            for ref in visible_character_refs:
                 baseline = baseline_map.get(ref)
                 per_scene = next((row for row in scene_states if row.source_scene_id == item.source_scene_id and row.character_id == ref), None)
                 if baseline:
@@ -880,17 +881,51 @@ def _entity_visual_type(value: str) -> str | None:
 def _scene_cast_names(
     plan: SceneVisualPlanArtifact,
     baselines: dict[str, CharacterVisualBaselineArtifact],
+    visible_character_refs: list[str],
 ) -> list[str]:
     plan_text = " ".join([
         plan.composition, plan.environment, plan.lighting, plan.mood, plan.camera, plan.action,
     ])
     explicit_refs = re.findall(r"\bchar-[a-z0-9][a-z0-9-]*", plan_text.casefold())
-    refs = _dedupe([*plan.character_refs, *explicit_refs])
+    refs = _dedupe([*visible_character_refs, *explicit_refs])
     names = []
     for ref in refs:
         baseline = baselines.get(ref)
         names.append(baseline.canonical_name if baseline else ref.removeprefix("char-").replace("-", " ").title())
     return _dedupe(names)
+
+
+def _scene_visible_character_refs(
+    plan: SceneVisualPlanArtifact,
+    scene_states: list[CharacterSceneStateArtifact],
+) -> list[str]:
+    states = {
+        item.character_id: item
+        for item in scene_states
+        if item.source_scene_id == plan.source_scene_id
+    }
+    offscreen_markers = (
+        "implied presence",
+        "implied reference",
+        "off-screen",
+        "offscreen",
+        "not present",
+        "mentioned only",
+        "reference only",
+    )
+    visible: list[str] = []
+    for ref in plan.character_refs:
+        state = states.get(ref)
+        state_text = " ".join([
+            state.expression,
+            state.pose,
+            state.physical_condition,
+            state.action,
+        ]).casefold() if state else ""
+        if state and any(marker in state_text for marker in offscreen_markers):
+            continue
+        visible.append(ref)
+    return _dedupe(visible)
 
 
 def _latest_audits(audits: list[VisualQualityDecisionArtifact]) -> dict[str, VisualQualityDecisionArtifact]:

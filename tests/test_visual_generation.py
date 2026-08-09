@@ -16,8 +16,12 @@ from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime import ReasoningProfile, ReasoningRuntimeConfig, create_reasoning_client
 from packages.visual_generation import VisualGenerationRuntime
-from packages.visual_generation.contracts import VisualPromptArtifact
-from packages.visual_generation.pipeline import VisualPlanningPayload
+from packages.visual_generation.contracts import (
+    CharacterSceneStateArtifact,
+    SceneVisualPlanArtifact,
+    VisualPromptArtifact,
+)
+from packages.visual_generation.pipeline import VisualPlanningPayload, _scene_visible_character_refs
 from packages.visual_generation.prompt_policy import compile_prompt
 from packages.visual_generation.quality import evaluate_image_technical_quality
 from packages.visual_generation.vision import ReasoningVisionSemanticEvaluator
@@ -243,6 +247,26 @@ def test_scene_prompt_enforces_unique_whole_image_cast_cardinality():
     assert "Show each named person exactly once" in positive
     assert "background people" in negative
     assert mode == "entity_generation"
+
+
+def test_scene_cast_excludes_characters_that_are_only_offscreen_references():
+    plan = SceneVisualPlanArtifact(
+        plan_id="plan-1", series_id="series-1", story_id="story-1",
+        source_scene_id="scene-1", character_refs=["char-present", "char-mentioned"],
+    )
+    states = [
+        CharacterSceneStateArtifact(
+            state_id="state-present", series_id="series-1", story_id="story-1",
+            source_scene_id="scene-1", character_id="char-present", action="opens the ledger",
+        ),
+        CharacterSceneStateArtifact(
+            state_id="state-mentioned", series_id="series-1", story_id="story-1",
+            source_scene_id="scene-1", character_id="char-mentioned",
+            action="implied reference as the absent High King",
+        ),
+    ]
+
+    assert _scene_visible_character_refs(plan, states) == ["char-present"]
 
 
 def test_vision_evaluator_does_not_require_written_character_names():
