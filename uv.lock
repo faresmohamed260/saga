@@ -2726,7 +2726,7 @@ wheels = [
 
 [[package]]
 name = "saga-story-system"
-version = "0.2.0rc2"
+version = "0.2.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
