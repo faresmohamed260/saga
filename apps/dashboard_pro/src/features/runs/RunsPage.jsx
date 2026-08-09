@@ -1,10 +1,10 @@
 ﻿import { useEffect, useMemo } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { runtimeApi } from "../../api/runtimeApi";
-import { LogViewer, Progress } from "../../components/feedback/Progress";
-import { Badge, Button, EmptyState, Field, Panel, shortRef, toneFor } from "../../components/ui/primitives";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
+import { RunDetailsPanel } from "../../components/run-panels/RunDetailsPanel.jsx";
+import { RunsListPanel } from "../../components/run-panels/RunsListPanel.jsx";
 
 export function RunsPage() {
   const { jobId } = useParams();
@@ -74,51 +74,17 @@ export function RunsPage() {
   const canRetry = ["failed", "cancelled"].includes(status) && ["db-native-analysis", "audiobook-pipeline"].includes(type);
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
-      <Panel title="Runs" subtitle="One card per persisted dashboard job.">
-        {jobs.length ? (
-          <div className="space-y-3">
-            {jobs.map((job) => (
-              <Link key={job.id} to={`/runs/${encodeURIComponent(job.id)}`} className="block overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/45 p-4 hover:border-sky-500/60">
-                <div className="flex min-w-0 items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-black text-white" title={job.id}>{job.id}</p>
-                    <p className="mt-1 truncate text-sm text-slate-500" title={job.command || job.type || ""}>{shortRef(job.command || job.type || "")}</p>
-                  </div>
-                  <div className="max-w-[120px] shrink-0"><Badge tone={toneFor(job.status)}>{job.status || "unknown"}</Badge></div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : <EmptyState title="No runs found" />}
-      </Panel>
-
-      <Panel
-        title={job?.id || "Select a run"}
-        subtitle={job ? `${job.type || job.job_type || "job"} - ${job.status || "unknown"}` : "Choose a run from the left."}
-        action={job ? (
-          <div className="flex flex-wrap gap-2">
-            {canRetry ? <Button onClick={() => control("retry")}>Retry</Button> : null}
-            {canCancel ? <Button variant="danger" onClick={() => control("cancel")}>Cancel</Button> : null}
-          </div>
-        ) : null}
-      >
-        {job ? (
-          <div className="space-y-4">
-            <Progress job={{ ...job, progress }} />
-            <div className="grid gap-3 md:grid-cols-4">
-              <Field label="Status"><Badge tone={toneFor(job.status)}>{job.status}</Badge></Field>
-              <Field label="Phase">{progress.phase || progress.stage || progress.status || "n/a"}</Field>
-              <Field label="PID">{job.pid || "n/a"}</Field>
-              <Field label="Return code">{job.return_code ?? "n/a"}</Field>
-            </div>
-            {failureSummary ? <FailureSummary summary={failureSummary} /> : null}
-            <Panel title="Structured log tail" subtitle="Most recent persisted job logs. Errors are highlighted; full tracebacks stay scrollable for debugging.">
-              <LogViewer lines={logs} />
-            </Panel>
-          </div>
-        ) : <EmptyState title="No run selected" />}
-      </Panel>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      <RunsListPanel jobs={jobs} />
+      <RunDetailsPanel
+        job={job}
+        progress={progress}
+        logs={logs}
+        failureSummary={failureSummary}
+        canRetry={canRetry}
+        canCancel={canCancel}
+        onControl={control}
+      />
     </div>
   );
 }
@@ -142,7 +108,6 @@ function mergeJobSnapshot(selected, detail) {
     },
   };
 }
-
 function isActiveJob(job) {
   return ["running", "queued", "starting", "validating", "staging"].includes(String(job?.status || "").toLowerCase());
 }
@@ -209,15 +174,4 @@ function summarizeFailure(job, logs) {
     exception: exceptionLine || "",
     traceback: tracebackStart >= 0 ? `${lines.length - tracebackStart} traceback line(s) recorded` : "No traceback recorded",
   };
-}
-
-function FailureSummary({ summary }) {
-  return (
-    <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
-      <p className="font-black text-amber-50">Failure summary</p>
-      <p className="mt-2">{summary.reason}</p>
-      {summary.exception && summary.exception !== summary.reason ? <p className="mt-2 text-amber-200/80">{summary.exception}</p> : null}
-      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-amber-200/70">{summary.traceback}</p>
-    </div>
-  );
 }

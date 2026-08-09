@@ -1,4 +1,5 @@
 import { request, toQuery } from "./client";
+import { audiobookRunBundleUrl as resolveAudiobookRunBundleUrl } from "./artifactUrls";
 
 export const runtimeApi = {
   state: () => request("/runtime/state"),
@@ -15,7 +16,7 @@ export const runtimeApi = {
   startAudiobookRun: (runId) => request(`/runtime/audiobook/runs/${encodeURIComponent(runId)}/start`, { method: "POST" }),
   audiobookChapterAudioUrl: (runId, chapterId) => `/runtime/audiobook/runs/${encodeURIComponent(runId)}/chapters/${encodeURIComponent(chapterId)}/audio`,
   audiobookRunAudioUrl: (runId) => `/runtime/audiobook/runs/${encodeURIComponent(runId)}/audio`,
-  audiobookRunBundleUrl: (runId) => `/runtime/file${toQuery({ path: `analysis_outputs/dashboard/audiobooks/bundles/${runId}.wav` })}`,
+  audiobookRunBundleUrl: (runOrId) => resolveAudiobookRunBundleUrl(runOrId),
   bookAnalysis: (bookRef, params = {}) => request(`/runtime/books/${encodeURIComponent(bookRef)}/analysis${toQuery(params)}`),
   uploads: () => request("/runtime/uploads"),
   uploadBatch: (formData) => request("/runtime/uploads/batch", { method: "POST", body: formData }),
@@ -40,4 +41,7 @@ export const runtimeApi = {
   deleteAssetEntity: (entityId) => request(`/runtime/assets/entities/${encodeURIComponent(entityId)}`, { method: "DELETE" }),
   renderBatch: (payload) => request("/runtime/assets/render-batch", { method: "POST", body: JSON.stringify(payload) }),
   providerStatuses: (refresh = false) => request(`/runtime/providers/status${refresh ? "?refresh=1" : ""}`),
+  inferenceProvider: (providerName) => request(`/runtime/inference/providers/${encodeURIComponent(providerName)}`),
+  saveInferenceProvider: (providerName, payload) =>
+    request(`/runtime/inference/providers/${encodeURIComponent(providerName)}`, { method: "POST", body: JSON.stringify(payload) }),
 };

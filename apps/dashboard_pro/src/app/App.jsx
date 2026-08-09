@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { AppShell } from "../components/navigation/AppShell";
-import { RuntimeProvider } from "../hooks/useRuntimeState";
+import { AppShell } from "../components/AppShell";
+import { RuntimeProvider } from "../hooks/RuntimeProvider";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { RunsPage } from "../features/runs/RunsPage";
 import { LibraryPage } from "../features/library/LibraryPage";
