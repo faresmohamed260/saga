@@ -97,9 +97,11 @@ class StubReasoningRuntime:
 
     def __init__(self) -> None:
         self._last = {}
+        self.response_schema_names: list[str] = []
 
     def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None):
-        del strict, validator, max_tokens, response_format, tools, tool_choice
+        del strict, validator, max_tokens, tools, tool_choice
+        self.response_schema_names.append(str(((response_format or {}).get("json_schema") or {}).get("name") or ""))
         lowered = prompt.lower()
         scene_id = _first_scene_id(prompt)
         if "key 'events'" in lowered:
@@ -204,9 +206,10 @@ def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_pa
         allow_in_memory_checkpointer=True,
     )
     analysis.invoke(series_id="series-1", source_paths=[str(source_path)], thread_id="analysis-foundation-test")
+    reasoning = StubReasoningRuntime()
     runtime = CanonExtractionRuntime(
         persistence=client,
-        reasoning_runtime=StubReasoningRuntime(),
+        reasoning_runtime=reasoning,
         allow_in_memory_checkpointer=True,
     )
     result = runtime.invoke(series_id="series-1", thread_id="canon-extraction-test")
@@ -224,7 +227,7 @@ def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_pa
     ]
     assert result.run_metadata["stage_details"]["event_extraction"]["parallelism"] >= 1
     assert result.run_metadata["stage_details"]["event_extraction"]["job_latency_seconds"]["count"] >= 1
-
+    assert set(reasoning.response_schema_names) == {"canon_events", "canon_entities", "canon_relationships"}
     persisted_events = client.library.list_records(record_type="event", series_id="series-1", limit=20)
     persisted_entities = client.library.list_records(record_type="entity", series_id="series-1", limit=20)
     persisted_relationships = client.library.list_records(record_type="relationship", series_id="series-1", limit=20)
@@ -233,6 +236,11 @@ def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_pa
     assert len(persisted_entities) == 1
     assert len(persisted_relationships) == 1
     assert len(persisted_timeline) == 1
+
+
+def test_schema_invalid_canon_payload_is_eligible_for_bounded_split_retry():
+    error = RuntimeError("Event extraction payload_validation_failed: event_type is required")
+    assert _should_retry_split_extraction_error(error) is True
 
 
 def test_event_agent_rebuilds_from_persisted_stage_jobs_without_reasoning(tmp_path: Path, monkeypatch):
