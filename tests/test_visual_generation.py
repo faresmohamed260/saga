@@ -16,9 +16,11 @@ from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime import ReasoningProfile, ReasoningRuntimeConfig, create_reasoning_client
 from packages.visual_generation import VisualGenerationRuntime
+from packages.visual_generation.contracts import VisualPromptArtifact
 from packages.visual_generation.pipeline import VisualPlanningPayload
 from packages.visual_generation.prompt_policy import compile_prompt
 from packages.visual_generation.quality import evaluate_image_technical_quality
+from packages.visual_generation.vision import ReasoningVisionSemanticEvaluator
 
 
 class StubPlanningRuntime:
@@ -55,7 +57,7 @@ class StubPlanningRuntime:
             ],
             "scenes": [{
                 "source_scene_id": "scene-1",
-                "composition": "Jude centered at the palace threshold",
+                "composition": "Jude centered at the palace threshold while char-archivist kneels beside the gate",
                 "environment": "rain-soaked hilltop palace",
                 "lighting": "cold dawn",
                 "mood": "tense",
@@ -243,6 +245,42 @@ def test_scene_prompt_enforces_unique_whole_image_cast_cardinality():
     assert mode == "entity_generation"
 
 
+def test_vision_evaluator_does_not_require_written_character_names():
+    class CapturingRuntime:
+        prompt = ""
+
+        def generate_vision_json(self, *, prompt, image_bytes):
+            self.prompt = prompt
+            assert image_bytes
+            return {
+                "prompt_alignment_score": 0.9,
+                "subject_consistency_score": 0.9,
+                "composition_score": 0.9,
+                "photorealism_score": 0.9,
+                "defect_score": 0.1,
+                "issues": [],
+                "hard_constraint_violations": [],
+            }
+
+        def last_request_metadata(self):
+            return {"provider": "test"}
+
+    runtime = CapturingRuntime()
+    evaluator = ReasoningVisionSemanticEvaluator(runtime)
+    evaluator.evaluate(
+        image_bytes=_png(black=False),
+        prompt=VisualPromptArtifact(
+            prompt_id="prompt-1", series_id="series-1", story_id="story-1",
+            target_type="scene", target_ref="scene-1", workflow_mode="entity_generation",
+            positive_prompt="Show exactly two people: Apollo and Evangeline.", negative_prompt="text, watermark",
+        ),
+    )
+
+    assert "must never appear as written labels" in runtime.prompt
+    assert "count visible human figures" in runtime.prompt
+    assert "omitted minor expression" in runtime.prompt
+
+
 def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     client = _persistence(tmp_path)
     _seed(client)
@@ -261,8 +299,9 @@ def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     assert "crowded with revelers" not in location_prompt.positive_prompt
     assert "Unoccupied static environment reference" in location_prompt.positive_prompt
     scene_prompt = next(item for item in result.prompts if item.target_type == "scene")
-    assert "EXACTLY 1 PEOPLE TOTAL" in scene_prompt.positive_prompt
+    assert "EXACTLY 2 PEOPLE TOTAL" in scene_prompt.positive_prompt
     assert "Jude" in scene_prompt.positive_prompt
+    assert "Archivist" in scene_prompt.positive_prompt
     assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v2"
 
 
