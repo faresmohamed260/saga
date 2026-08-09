@@ -26,7 +26,7 @@ from packages.production_orchestration.contracts import (
 from packages.production_orchestration.policy import STAGE_DEPENDENCIES, STAGE_ORDER, resolve_stage_plan
 from packages.production_orchestration.lineage import PersistenceArtifactVersionStore, build_stage_spec, normalized_outcome_payload, parent_fingerprints
 from packages.production_orchestration.store import OrchestrationStore
-from packages.runtime_common import RuntimeCancelledError
+from packages.runtime_common import RuntimeCancelledError, UsageGovernor, usage_scope
 
 
 class OrchestrationState(TypedDict, total=False):
@@ -42,6 +42,7 @@ class StageAgent:
     def __init__(
         self, *, stage: StageName, binding: OrchestrationStage, store: OrchestrationStore,
         lineage: LineageRuntime, version_overrides: dict[str, dict[str, Any]], cancellation_checker: Callable[[str], bool],
+        usage_governor: UsageGovernor | None = None, release_id: str = "",
     ) -> None:
         self.stage = stage
         self.binding = binding
@@ -49,6 +50,8 @@ class StageAgent:
         self.lineage = lineage
         self.version_overrides = version_overrides
         self.cancellation_checker = cancellation_checker
+        self.usage_governor = usage_governor
+        self.release_id = str(release_id or "")
 
     def run(self, state: OrchestrationState) -> dict[str, Any]:
         request = OrchestrationRequest.model_validate(state["request"])
@@ -111,7 +114,11 @@ class StageAgent:
                 previous_attempt = current.attempt if current and not current.accepted else 0
                 if current and not current.accepted and previous_attempt >= max(1, request.max_attempts):
                     return {}
-                outcome = self.binding.execute(request=request, outcomes=stage_context)
+                with usage_scope(
+                    governor=self.usage_governor, release_id=self.release_id, run_id=request.run_id,
+                    series_id=request.series_id, stage=self.stage, agent=f"{self.stage}_agent",
+                ):
+                    outcome = self.binding.execute(request=request, outcomes=stage_context)
                 outcome = outcome.model_copy(update={
                     "stage": self.stage,
                     "attempt": (current.attempt if current else 0) + 1,
@@ -263,6 +270,8 @@ class ProductionOrchestrationRuntime:
         allow_in_memory_checkpointer: bool = False,
         cancellation_checker: Callable[[str], bool] | None = None,
         lineage_version_overrides: dict[str, dict[str, Any]] | None = None,
+        usage_governor: UsageGovernor | None = None,
+        release_id: str = "",
     ) -> None:
         missing = [stage for stage in STAGE_ORDER if stage != "artifact_packaging" and stage not in stages]
         if missing:
@@ -282,6 +291,8 @@ class ProductionOrchestrationRuntime:
             cancellation_checker=resolved_cancellation_checker,
             lineage=self.lineage,
             version_overrides=dict(lineage_version_overrides or {}),
+            usage_governor=usage_governor,
+            release_id=release_id,
         )
 
     def invoke(self, request: OrchestrationRequest, *, thread_id: str = "") -> OrchestrationResult:
@@ -314,6 +325,7 @@ def build_production_orchestration_graph(
     *, store: OrchestrationStore, stages: dict[StageName, OrchestrationStage], checkpointer: BaseCheckpointSaver | None = None,
     cancellation_checker: Callable[[str], bool] | None = None, lineage: LineageRuntime,
     version_overrides: dict[str, dict[str, Any]] | None = None,
+    usage_governor: UsageGovernor | None = None, release_id: str = "",
 ):
     resolved_cancellation_checker = cancellation_checker or (lambda run_id: False)
     graph = StateGraph(OrchestrationState)
@@ -321,6 +333,7 @@ def build_production_orchestration_graph(
         graph.add_node(stage, StageAgent(
             stage=stage, binding=stages[stage], store=store, lineage=lineage,
             version_overrides=dict(version_overrides or {}), cancellation_checker=resolved_cancellation_checker,
+            usage_governor=usage_governor, release_id=release_id,
         ).run)
     graph.add_node("orchestration_decision", OrchestrationDecisionAgent(store).run)
     graph.add_edge(START, STAGE_ORDER[0])

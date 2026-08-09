@@ -19,6 +19,7 @@ from packages.modal_runtime import (
 )
 from packages.reasoning_runtime import summarize_reasoning_provider_configs
 from packages.deployment_runtime import check_readiness
+from packages.observability_runtime import UsageBudgetPolicy, UsageGovernanceRuntime
 
 
 APP_TITLE = "S.A.G.A. Runtime API"
@@ -186,6 +187,46 @@ def runtime_provider_statuses(refresh: int = Query(0, ge=0, le=1)):
             **_reasoning_provider_payloads(client),
         }
     }
+
+
+@app.get("/runtime/usage/summary")
+def runtime_usage_summary(
+    run_id: str = Query("", max_length=160),
+    provider: str = Query("", max_length=120),
+    account_alias: str = Query("", max_length=160),
+    since_ms: int = Query(0, ge=0),
+):
+    client = _create_persistence_client()
+    runtime = UsageGovernanceRuntime(store=client.usage)
+    return {
+        "summary": runtime.summary(
+            run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+        ),
+        "by_provider": runtime.breakdown(
+            group_by="provider", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+        ),
+        "by_account": runtime.breakdown(
+            group_by="account_alias", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+        ),
+        "by_model": runtime.breakdown(
+            group_by="model", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+        ),
+        "by_stage": runtime.breakdown(
+            group_by="stage", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+        ),
+        "policies": client.usage.list_policies(enabled=True),
+    }
+
+
+@app.post("/runtime/usage/budgets/{policy_id}")
+def configure_runtime_usage_budget(policy_id: str, payload: dict):
+    client = _create_persistence_client()
+    try:
+        policy = UsageBudgetPolicy.model_validate({**dict(payload or {}), "policy_id": policy_id})
+        saved = UsageGovernanceRuntime(store=client.usage, observation_store=client.observability).configure_policy(policy)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"policy": saved}
 
 
 @app.get("/runtime/providers/{provider_name}")

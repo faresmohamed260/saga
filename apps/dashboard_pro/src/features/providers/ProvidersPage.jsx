@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import { runtimeApi } from "../../api/runtimeApi";
 import { ProviderHealthPanel } from "../../components/provider-cards/ProviderHealthPanel.jsx";
-import { Badge, Button, EmptyState, Field, Panel, TextInput, toneFor } from "../../components/primitives/index.js";
+import { Badge, Button, EmptyState, Field, Metric, Panel, TextInput, toneFor } from "../../components/primitives/index.js";
 import { useAsync } from "../../hooks/useAsync";
 
 const EMPTY_ACCOUNT = { label: "", token_id: "", token_secret: "", app_name_override: "" };
@@ -144,6 +144,44 @@ function InferenceHealthSummary({ providers }) {
   );
 }
 
+function UsageGovernancePanel() {
+  const usage = useAsync(() => runtimeApi.usageSummary(), []);
+  const summary = usage.value?.summary || {};
+  const providers = usage.value?.by_provider || [];
+  const unpriced = Number(summary.unpriced_charge_count || 0);
+
+  return (
+    <Panel
+      title="Usage & Cost Governance"
+      subtitle="Immutable provider charges, versioned pricing coverage, and active budget policy state."
+      action={<Button onClick={usage.reload}>Refresh usage</Button>}
+    >
+      {usage.error ? <p className="text-sm text-rose-300">{usage.error}</p> : null}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Provider requests" value={summary.request_count || 0} detail="ledger" tone="blue" />
+        <Metric label="Tracked cost USD" value={Number(summary.cost_usd || 0).toFixed(4)} detail="priced" tone="green" />
+        <Metric label="Unpriced charges" value={unpriced} detail={unpriced ? "action required" : "covered"} tone={unpriced ? "red" : "green"} />
+        <Metric label="Active budgets" value={usage.value?.policies?.length || 0} detail="enforced" tone="amber" />
+      </div>
+      {providers.length ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {providers.map((row) => (
+            <div key={row.provider} className="rounded-xl border border-white/10 bg-slate-950/35 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-bold text-white">{row.provider}</p>
+                <Badge tone={row.unpriced_charge_count ? "red" : "green"}>{row.charge_count} charges</Badge>
+              </div>
+              <p className="mt-2 text-sm text-slate-400">
+                {Number(row.input_tokens || 0).toLocaleString()} input tokens | {Number(row.output_tokens || 0).toLocaleString()} output tokens | ${Number(row.cost_usd || 0).toFixed(4)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : <EmptyState title="No provider usage recorded" />}
+    </Panel>
+  );
+}
+
 export function ProvidersPage() {
   const statuses = useAsync(() => runtimeApi.providerStatuses(false), []);
 
@@ -157,6 +195,7 @@ export function ProvidersPage() {
   return (
     <div className="space-y-6">
       <ProviderHealthPanel providers={providers} onRefresh={refresh} />
+      <UsageGovernancePanel />
       <Panel
         title="Modal ComfyUI Config"
         subtitle="Persist the shared Hugging Face token and Modal account pool in the database, then redeploy from the same stored config."

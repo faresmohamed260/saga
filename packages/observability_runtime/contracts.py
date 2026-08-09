@@ -58,11 +58,34 @@ class SLOEvaluation(BaseModel):
 
 class CostRate(BaseModel):
     provider: str
+    account_alias: str = ""
     model: str = ""
     input_per_million: float = Field(default=0.0, ge=0)
+    cached_input_per_million: float = Field(default=0.0, ge=0)
     output_per_million: float = Field(default=0.0, ge=0)
     compute_per_second: float = Field(default=0.0, ge=0)
+    image_each: float = Field(default=0.0, ge=0)
+    audio_per_second: float = Field(default=0.0, ge=0)
+    request_each: float = Field(default=0.0, ge=0)
     pricing_version: str
+
+
+class UsageBudgetPolicy(BaseModel):
+    policy_id: str
+    scope_type: Literal["global", "run", "provider", "account", "model"]
+    scope_value: str = ""
+    window_seconds: int = Field(default=0, ge=0)
+    limits: dict[str, float] = Field(default_factory=dict)
+    hard_limit: bool = True
+    enabled: bool = True
+
+    def model_post_init(self, __context: Any) -> None:
+        allowed = {"request_count", "input_tokens", "output_tokens", "cached_input_tokens", "compute_seconds", "image_count", "audio_seconds", "cost_usd"}
+        unknown = sorted(set(self.limits) - allowed)
+        if unknown:
+            raise ValueError(f"Unsupported usage budget metrics: {', '.join(unknown)}")
+        if any(float(value) < 0 for value in self.limits.values()):
+            raise ValueError("Usage budget limits cannot be negative.")
 
 
 class ObservationStore(Protocol):

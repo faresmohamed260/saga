@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +37,54 @@ class RuntimeRequestMetadata(BaseModel):
     latency_ms: int = 0
     status: str = ""
     error_code: str = ""
+    usage: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProviderUsage(BaseModel):
+    """Provider-reported or directly measured billable usage for one request."""
+
+    request_count: float = Field(default=1.0, ge=0)
+    input_tokens: float = Field(default=0.0, ge=0)
+    output_tokens: float = Field(default=0.0, ge=0)
+    cached_input_tokens: float = Field(default=0.0, ge=0)
+    compute_seconds: float = Field(default=0.0, ge=0)
+    image_count: float = Field(default=0.0, ge=0)
+    audio_seconds: float = Field(default=0.0, ge=0)
+    native_cost_usd: float | None = Field(default=None, ge=0)
+    source: Literal["provider", "measured", "declared"] = "provider"
+    evidence_id: str = ""
+
+
+class UsageAttribution(BaseModel):
+    release_id: str = ""
+    run_id: str = ""
+    series_id: str = ""
+    stage: str = ""
+    agent: str = ""
+    component: str = ""
+    provider: str = ""
+    account_alias: str = ""
+    model: str = ""
+    operation: str = ""
+
+
+class UsageReservation(BaseModel):
+    reservation_id: str
+    attribution: UsageAttribution
+    projected: ProviderUsage
+    projected_cost_usd: float = Field(default=0.0, ge=0)
+    cost_status: Literal["native", "estimated", "unpriced"] = "unpriced"
+    pricing_version: str = ""
+    authorized: bool = True
+    reasons: list[str] = Field(default_factory=list)
+
+
+class UsageGovernor(Protocol):
+    def reserve(self, attribution: UsageAttribution, projected: ProviderUsage) -> UsageReservation: ...
+
+    def settle(self, reservation: UsageReservation, actual: ProviderUsage, *, evidence: dict[str, Any] | None = None) -> dict[str, Any]: ...
+
+    def release(self, reservation: UsageReservation, *, reason: str = "") -> dict[str, Any]: ...
 
 
 class RuntimeTrace(BaseModel):

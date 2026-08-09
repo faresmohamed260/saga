@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+import contextvars
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, TypedDict
@@ -1059,7 +1060,7 @@ def _run_ordered_parallel_jobs(
         while next_index < len(jobs) and len(pending) < workers:
             raise_if_cancelled(cancellation_checker)
             job = jobs[next_index]
-            pending[executor.submit(worker, job)] = job
+            pending[executor.submit(contextvars.copy_context().run, worker, job)] = job
             next_index += 1
         while pending:
             raise_if_cancelled(cancellation_checker)
@@ -1070,7 +1071,7 @@ def _run_ordered_parallel_jobs(
                 if next_index < len(jobs):
                     raise_if_cancelled(cancellation_checker)
                     job = jobs[next_index]
-                    pending[executor.submit(worker, job)] = job
+                    pending[executor.submit(contextvars.copy_context().run, worker, job)] = job
                     next_index += 1
     finally:
         cancelled = cancellation_checker is not None and cancellation_checker()

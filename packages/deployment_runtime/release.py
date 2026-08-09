@@ -9,12 +9,14 @@ import time
 from typing import Any
 
 from packages.deployment_runtime.contracts import ReleaseManifest
+from packages.deployment_runtime.gates import ReleaseGateRuntime
 from packages.persistence_runtime import EXPECTED_SCHEMA_REVISION
 
 
 ALLOWED_TRANSITIONS = {
     "candidate": {"staging", "failed"},
-    "staging": {"production", "failed", "rolled_back"},
+    "staging": {"canary", "failed", "rolled_back"},
+    "canary": {"production", "failed", "rolled_back"},
     "production": {"rolled_back"},
     "failed": set(),
     "rolled_back": set(),
@@ -52,6 +54,7 @@ def create_release_manifest(*, version: str, git_sha: str, image_digest: str = "
 class ReleaseRuntime:
     def __init__(self, *, store) -> None:
         self.store = store
+        self.gates = ReleaseGateRuntime(store=store)
 
     def register(self, manifest: ReleaseManifest) -> dict[str, Any]:
         return self.store.record_release({
@@ -66,8 +69,10 @@ class ReleaseRuntime:
             raise ValueError(f"Unknown release '{release_id}'.")
         if status not in ALLOWED_TRANSITIONS.get(str(current["status"]), set()):
             raise ValueError(f"Invalid release transition {current['status']} -> {status}.")
-        if status == "production":
+        if status in {"canary", "production"}:
             self._assert_promotable(ReleaseManifest.model_validate(current.get("manifest") or {}))
+            self.gates.assert_eligible(release_id=release_id, target=status)
+        if status == "production":
             return self.store.promote_release(release_id, expected_status=str(current["status"]))
         updated = self.store.set_release_status(release_id, status=status)
         if updated is None:
@@ -82,6 +87,9 @@ class ReleaseRuntime:
             raise ValueError("Production promotion requires a full immutable Git SHA.")
         if not IMAGE_DIGEST_PATTERN.fullmatch(manifest.image_digest):
             raise ValueError("Production promotion requires an immutable primary image digest.")
+        missing_components = sorted({"runtime", "dashboard"} - set(manifest.components))
+        if missing_components:
+            raise ValueError("Production promotion requires runtime and dashboard component image digests.")
         if any(not IMAGE_DIGEST_PATTERN.fullmatch(digest) for digest in manifest.components.values()):
             raise ValueError("Production promotion requires immutable component image digests.")
 

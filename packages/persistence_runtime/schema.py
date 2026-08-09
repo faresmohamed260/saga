@@ -217,6 +217,58 @@ class ObservabilityRecordRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class UsageLedgerRow(Base):
+    __tablename__ = "usage_ledger"
+    __table_args__ = (
+        Index("ix_usage_ledger_run", "run_id", "timestamp_ms"),
+        Index("ix_usage_ledger_provider", "provider", "account_alias", "timestamp_ms"),
+        Index("ix_usage_ledger_reservation", "reservation_id", "entry_kind"),
+    )
+
+    entry_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    reservation_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    entry_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    timestamp_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expires_at_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    release_id: Mapped[str] = mapped_column(String(160), default="")
+    run_id: Mapped[str] = mapped_column(String(160), default="")
+    series_id: Mapped[str] = mapped_column(String(120), default="")
+    stage: Mapped[str] = mapped_column(String(120), default="")
+    agent: Mapped[str] = mapped_column(String(120), default="")
+    component: Mapped[str] = mapped_column(String(120), default="")
+    provider: Mapped[str] = mapped_column(String(120), default="")
+    account_alias: Mapped[str] = mapped_column(String(160), default="")
+    model: Mapped[str] = mapped_column(String(160), default="")
+    operation: Mapped[str] = mapped_column(String(120), default="")
+    request_count: Mapped[float] = mapped_column(Float, default=0.0)
+    input_tokens: Mapped[float] = mapped_column(Float, default=0.0)
+    output_tokens: Mapped[float] = mapped_column(Float, default=0.0)
+    cached_input_tokens: Mapped[float] = mapped_column(Float, default=0.0)
+    compute_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    image_count: Mapped[float] = mapped_column(Float, default=0.0)
+    audio_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    cost_status: Mapped[str] = mapped_column(String(32), default="unpriced")
+    pricing_version: Mapped[str] = mapped_column(String(80), default="")
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UsageBudgetPolicyRow(Base):
+    __tablename__ = "usage_budget_policies"
+    __table_args__ = (Index("ix_usage_budget_scope", "scope_type", "scope_value", "enabled"),)
+
+    policy_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_value: Mapped[str] = mapped_column(String(160), default="")
+    window_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    limits: Mapped[dict] = mapped_column(JSON, default=dict)
+    hard_limit: Mapped[bool] = mapped_column(default=True)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class DeploymentReleaseRow(Base):
     __tablename__ = "deployment_releases"
     __table_args__ = (Index("ix_deployment_releases_status", "status", "created_at"),)
@@ -229,6 +281,27 @@ class DeploymentReleaseRow(Base):
     manifest: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeploymentReleaseGateEvidenceRow(Base):
+    __tablename__ = "deployment_release_gate_evidence"
+    __table_args__ = (
+        Index("ix_deployment_release_gate_latest", "release_id", "gate", "observed_at_ms"),
+    )
+
+    evidence_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    release_id: Mapped[str] = mapped_column(
+        String(160), ForeignKey("deployment_releases.release_id", ondelete="RESTRICT"), nullable=False
+    )
+    gate: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    observed_at_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expires_at_ms: Mapped[int] = mapped_column(BigInteger, default=0)
+    source: Mapped[str] = mapped_column(String(160), nullable=False)
+    evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    artifact_reference: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class DeploymentProcessHeartbeatRow(Base):

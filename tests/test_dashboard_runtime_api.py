@@ -8,6 +8,8 @@ from apps.dashboard_api.app import app
 from packages.agent_runtime.graph import AgentGraphRuntime
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime.contracts import ReasoningClient
+from packages.observability_runtime import CostRate, UsageGovernanceRuntime
+from packages.runtime_common import ProviderUsage, UsageAttribution
 
 
 class StubArtifactPlanner(ReasoningClient):
@@ -379,3 +381,39 @@ def test_runtime_provider_statuses_include_modal_and_reasoning_summaries(monkeyp
     assert payload["modal_comfyui"]["statuses"][0]["probe_status"] == "ok"
     assert payload["ollama"]["config"]["accounts"][0]["has_api_key"] is True
     assert payload["mistral"]["statuses"][0]["probe_status"] == "configured"
+
+
+def test_runtime_usage_summary_and_budget_policy_surface(monkeypatch, tmp_path):
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'runtime-usage.sqlite3'}"
+    storage_root = tmp_path / "objects"
+    monkeypatch.setenv("SAGA_RUNTIME_DB_URL", database_url)
+    monkeypatch.setenv("SAGA_RUNTIME_DB_MODE", "test_harness")
+    monkeypatch.setenv("SAGA_RUNTIME_LOCAL_STORAGE_ROOT", str(storage_root))
+    profile = PersistenceProfile(
+        name="test-runtime-usage", provider="supabase", mode="test_harness",
+        database_url=database_url, local_storage_root_dir=str(storage_root),
+    )
+    persistence = create_persistence_client(profile=profile, config=PersistenceRuntimeConfig(profile=profile))
+    persistence.initialize()
+    governor = UsageGovernanceRuntime(store=persistence.usage, cost_rates=(CostRate(
+        provider="mistral", model="model-a", input_per_million=2, output_per_million=6, pricing_version="test-rate",
+    ),))
+    attribution = UsageAttribution(run_id="run-usage", stage="canon", provider="mistral", model="model-a")
+    reservation = governor.reserve(attribution, ProviderUsage(input_tokens=20, output_tokens=10, source="declared"))
+    governor.settle(reservation, ProviderUsage(input_tokens=12, output_tokens=4, evidence_id="request-1"))
+
+    client = TestClient(app)
+    saved = client.post("/runtime/usage/budgets/run-cap", json={
+        "scope_type": "run", "limits": {"cost_usd": 1}, "hard_limit": True,
+    })
+    response = client.get("/runtime/usage/summary", params={"run_id": "run-usage"})
+
+    assert saved.status_code == 200
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["charge_count"] == 1
+    assert payload["summary"]["unpriced_charge_count"] == 0
+    assert payload["by_provider"][0]["provider"] == "mistral"
+    assert payload["by_account"][0]["account_alias"] == "unattributed"
+    assert payload["by_model"][0]["model"] == "model-a"
+    assert payload["policies"][0]["policy_id"] == "run-cap"

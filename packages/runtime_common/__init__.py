@@ -1,4 +1,14 @@
-from packages.runtime_common.contracts import RuntimeErrorInfo, RuntimeEvent, RuntimeRequestMetadata, RuntimeToolEnvelope, RuntimeTrace
+from packages.runtime_common.contracts import (
+    ProviderUsage,
+    RuntimeErrorInfo,
+    RuntimeEvent,
+    RuntimeRequestMetadata,
+    RuntimeToolEnvelope,
+    RuntimeTrace,
+    UsageAttribution,
+    UsageGovernor,
+    UsageReservation,
+)
 from packages.runtime_common.tracing import (
     create_trace,
     current_trace_context,
@@ -10,6 +20,14 @@ from packages.runtime_common.tracing import (
 )
 from packages.runtime_common.tooling import build_structured_runtime_tool
 from packages.runtime_common.cancellation import CancellationChecker, RuntimeCancelledError, raise_if_cancelled
+from packages.runtime_common.usage import (
+    UsageBudgetExceededError,
+    current_usage_attribution,
+    release_usage,
+    reserve_usage,
+    settle_usage,
+    usage_scope,
+)
 
 __all__ = [
     "RuntimeErrorInfo",
@@ -17,6 +35,11 @@ __all__ = [
     "RuntimeRequestMetadata",
     "RuntimeToolEnvelope",
     "RuntimeTrace",
+    "ProviderUsage",
+    "UsageAttribution",
+    "UsageGovernor",
+    "UsageReservation",
+    "UsageBudgetExceededError",
     "CancellationChecker",
     "RuntimeCancelledError",
     "build_structured_runtime_tool",
@@ -27,5 +50,10 @@ __all__ = [
     "runtime_tool_failure",
     "runtime_tool_success",
     "trace_scope",
+    "usage_scope",
+    "current_usage_attribution",
+    "reserve_usage",
+    "settle_usage",
+    "release_usage",
     "raise_if_cancelled",
 ]

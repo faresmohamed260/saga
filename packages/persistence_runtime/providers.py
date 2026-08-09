@@ -22,6 +22,7 @@ from packages.persistence_runtime.stores import (
     JobStore,
     LineageStore,
     ObservabilityStore,
+    UsageLedgerStore,
     LibraryStore,
     LocalObjectStorageStore,
     ProviderConfigStore,
@@ -71,6 +72,7 @@ class SupabasePersistenceProvider:
         self.execution_queue = ExecutionQueueStore(self.session_factory)
         self.lineage = LineageStore(self.session_factory)
         self.observability = ObservabilityStore(self.session_factory)
+        self.usage = UsageLedgerStore(self.session_factory)
         self.deployments = DeploymentStore(self.session_factory)
         self.stories = StoryStore(self.session_factory)
         self.audiobooks = AudiobookStore(self.session_factory)
