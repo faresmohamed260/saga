@@ -10,11 +10,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy.engine import make_url
-
-from packages.persistence_runtime.database_url import build_database_url_from_env
-
-
 def process_heartbeat_ready(
     *,
     role: str,
@@ -24,6 +19,10 @@ def process_heartbeat_ready(
     now_ms: int | None = None,
     connector: Callable[..., Any] | None = None,
 ) -> bool:
+    from sqlalchemy.engine import make_url
+
+    from packages.persistence_runtime.database_url import build_database_url_from_env
+
     resolved_url = str(database_url or build_database_url_from_env()).strip()
     if not resolved_url:
         raise RuntimeError("Process heartbeat probe requires the Supabase database environment.")
