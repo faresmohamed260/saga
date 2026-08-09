@@ -23,11 +23,12 @@ class StubSupportReasoningRuntime:
         self.evaluations = list(evaluations)
         self.revision_prose = revision_prose
         self._last = {}
+        self.last_kwargs = {}
         self.evaluation_calls = 0
         self.revision_calls = 0
 
     def generate_json(self, prompt: str, **kwargs):
-        del kwargs
+        self.last_kwargs = dict(kwargs)
         self._last = {"provider": "test-live", "resolved_model": "support-model", "status": "ok"}
         if prompt.startswith("Revise generated"):
             self.revision_calls += 1
@@ -230,7 +231,8 @@ def _runtime(client, reasoning):
 def test_semantic_support_accepts_supported_canon_and_creative_expansion(tmp_path: Path):
     client = _persistence(tmp_path)
     series_id, story_id = _seed_story(client)
-    result = _runtime(client, StubSupportReasoningRuntime([_evaluation("supported")])).invoke(
+    reasoning = StubSupportReasoningRuntime([_evaluation("supported")])
+    result = _runtime(client, reasoning).invoke(
         series_id=series_id, story_id=story_id, thread_id="accepted"
     )
 
@@ -240,6 +242,9 @@ def test_semantic_support_accepts_supported_canon_and_creative_expansion(tmp_pat
     assert result.audits[0].status == "accepted"
     assert {item.classification for item in result.audits[0].claims} == {"supported", "creative_expansion"}
     require_narrative_semantic_acceptance(result.story)
+    schema = reasoning.last_kwargs["response_format"]["json_schema"]["schema"]
+    assert reasoning.last_kwargs["max_tokens"] == 2600
+    assert schema["properties"]["claims"]["maxItems"] == 16
 
 
 def test_semantic_support_allows_low_severity_noncontradictory_set_dressing(tmp_path: Path):

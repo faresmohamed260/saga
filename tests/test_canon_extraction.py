@@ -235,7 +235,7 @@ def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_pa
     assert len(persisted_timeline) == 1
 
 
-def test_event_agent_rebuilds_from_persisted_stage_jobs_without_reasoning(tmp_path: Path):
+def test_event_agent_rebuilds_from_persisted_stage_jobs_without_reasoning(tmp_path: Path, monkeypatch):
     client = _persistence(tmp_path)
     source_path = _analysis_source(tmp_path)
     analysis = AnalysisFoundationRuntime(
@@ -253,26 +253,30 @@ def test_event_agent_rebuilds_from_persisted_stage_jobs_without_reasoning(tmp_pa
     client.library.delete_records(record_type="event", series_id="series-1")
     context = CanonExtractionStore(client).load_series_context(series_id="series-1")
 
-    original_resume_stages = set(canon_pipeline.CANON_RESUME_STAGES)
-    canon_pipeline.CANON_RESUME_STAGES.add("event_extraction")
-    try:
-        payload = EventAgent(
-            store=CanonExtractionStore(client),
-            reasoning_runtime=AlwaysFailReasoningRuntime(),
-        ).run(
-            series_id="series-1",
-            books=list(context["books"]),
-            chapters=list(context["chapters"]),
-            scenes=list(context["scenes"]),
-            identity_bundle=context["identity_bundle"],
-        )
-    finally:
-        canon_pipeline.CANON_RESUME_STAGES.clear()
-        canon_pipeline.CANON_RESUME_STAGES.update(original_resume_stages)
+    monkeypatch.setenv("SAGA_CANON_RESUME_STAGES", "event_extraction")
+    payload = EventAgent(
+        store=CanonExtractionStore(client),
+        reasoning_runtime=AlwaysFailReasoningRuntime(),
+    ).run(
+        series_id="series-1",
+        books=list(context["books"]),
+        chapters=list(context["chapters"]),
+        scenes=list(context["scenes"]),
+        identity_bundle=context["identity_bundle"],
+    )
 
     assert len(payload["events"]) == 1
     assert client.library.list_records(record_type="event", series_id="series-1", limit=20)
     assert client.library.list_records(record_type="canon_extraction_job", series_id="series-1", limit=20)
+
+
+def test_canon_resume_configuration_is_read_at_execution_time(monkeypatch):
+    monkeypatch.delenv("SAGA_CANON_RESUME_STAGES", raising=False)
+    assert canon_pipeline._resume_stage_enabled("event_extraction") is False
+
+    monkeypatch.setenv("SAGA_CANON_RESUME_STAGES", "event_extraction,relationship_extraction")
+    assert canon_pipeline._resume_stage_enabled("event_extraction") is True
+    assert canon_pipeline._resume_stage_enabled("relationship_extraction") is True
 
 
 def test_canon_extraction_requires_persisted_identity_bundle(tmp_path: Path):

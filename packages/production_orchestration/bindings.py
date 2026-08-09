@@ -13,7 +13,11 @@ from packages.audiobook_generation.store import AudiobookGenerationStore
 from packages.canon_extraction.store import CanonExtractionStore
 from packages.character_world_modeling.store import CharacterWorldModelingStore
 from packages.generation_planning.store import GenerationPlanningStore
-from packages.narrative_generation.contracts import GeneratedStoryArtifact, NarrativeGenerationResult
+from packages.narrative_generation.contracts import (
+    GeneratedStoryArtifact,
+    NarrativeGenerationResult,
+    NarrativeSupportDecisionArtifact,
+)
 from packages.narrative_generation.quality import require_narrative_generation_acceptance, require_narrative_semantic_acceptance
 from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.persistence_runtime import PersistenceRuntimeClient
@@ -41,8 +45,8 @@ class ActiveStageBinding:
     def execute(self, *, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageOutcomeArtifact:
         self.executor(request, outcomes)
         inspected = self.inspector(request, outcomes)
-        if inspected is None or not inspected.accepted:
-            raise RuntimeError("Stage execution completed without a persisted acceptance artifact.")
+        if inspected is None:
+            raise RuntimeError("Stage execution completed without a persisted outcome artifact.")
         return inspected.model_copy(update={"reused": False})
 
     def lineage_output(
@@ -160,11 +164,44 @@ class ActiveStageInspector:
         try:
             story = self.narrative.load_story(series_id=request.series_id, story_id=story_id)
             _require_story_quality(self.narrative, series_id=request.series_id, story=story)
-            require_narrative_semantic_acceptance(story)
         except (FileNotFoundError, ValueError):
             return None
-        support = dict((story.metadata or {}).get("semantic_support") or {})
-        return _accepted("narrative_support", {"story_id": story.story_id}, {"factual_support_rate": support.get("factual_support_rate", 0.0), "status": support.get("status")})
+        rows = self.persistence.library.list_records(
+            record_type="narrative_support_decision",
+            series_id=request.series_id,
+            scene_id=story_id,
+            limit=10,
+        )
+        decision = next(
+            (
+                NarrativeSupportDecisionArtifact.model_validate(dict(row.get("payload") or {}))
+                for row in reversed(rows)
+            ),
+            None,
+        )
+        if decision is None:
+            return None
+        metrics = {
+            "factual_support_rate": decision.factual_support_rate,
+            "unsupported_invention_rate": decision.unsupported_invention_rate,
+            "contradiction_rate": decision.contradiction_rate,
+            "provider_success_rate": decision.provider_success_rate,
+            "status": decision.status,
+        }
+        if not decision.accepted:
+            return StageOutcomeArtifact(
+                stage="narrative_support",
+                status="rejected",
+                accepted=False,
+                output_context={"story_id": story.story_id, "support_decision_id": decision.decision_id},
+                metrics=metrics,
+                reasons=list(decision.reasons),
+            )
+        try:
+            require_narrative_semantic_acceptance(story)
+        except ValueError:
+            return None
+        return _accepted("narrative_support", {"story_id": story.story_id}, metrics)
 
     def visual_generation(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageOutcomeArtifact | None:
         story_id = _story_id(request, outcomes)
