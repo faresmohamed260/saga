@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
-from packages.production_orchestration.contracts import ArtifactReference, OrchestrationRequest, StageOutcomeArtifact
+from packages.production_orchestration.contracts import ArtifactReference, OrchestrationExecutionLimits, OrchestrationRequest, StageOutcomeArtifact
 from packages.production_orchestration.packaging import PackageChapter, PackageSourceBundle, VersionedDeliverablePackager, build_epub
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.policy import STAGE_ORDER, resolve_stage_plan
@@ -44,6 +44,14 @@ class FakeStage:
     def lineage_output(self, *, request, outcomes, outcome):
         del request, outcomes, outcome
         return {"stage": self.stage, "revision": self.revision}
+
+
+def test_visual_attempt_budget_is_independent_and_bounded():
+    limits = OrchestrationExecutionLimits(max_visual_attempts=4)
+
+    assert limits.max_visual_attempts == 4
+    with pytest.raises(ValueError):
+        OrchestrationExecutionLimits(max_visual_attempts=7)
 
 
 class FakeSource:

@@ -30,6 +30,7 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=2400)
     parser.add_argument("--stage-timeout-seconds", type=int, default=900)
     parser.add_argument("--preflight-timeout-seconds", type=int, default=30)
+    parser.add_argument("--visual-max-attempts", type=int, choices=range(1, 7), default=2)
     parser.add_argument("--run-id", default="")
     parser.add_argument("--series-id", default="")
     parser.add_argument("--report", default="")
@@ -65,6 +66,7 @@ def main() -> int:
                 target_words_per_scene=100,
                 visual_include_types=["character", "location", "creature", "object", "scene"],
                 max_visual_renders_per_type=1,
+                max_visual_attempts=args.visual_max_attempts,
                 audiobook_max_chapters=1,
                 audiobook_max_segment_chars=900,
             ),

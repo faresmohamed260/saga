@@ -26,6 +26,7 @@ class OrchestrationExecutionLimits(BaseModel):
     target_words_per_scene: int = Field(default=180, ge=80, le=1200)
     visual_include_types: list[str] = Field(default_factory=list)
     max_visual_renders_per_type: int = Field(default=0, ge=0, le=100)
+    max_visual_attempts: int = Field(default=0, ge=0, le=6)
     audiobook_max_chapters: int = Field(default=0, ge=0, le=1000)
     audiobook_max_segment_chars: int = Field(default=1800, ge=200, le=10000)
 
