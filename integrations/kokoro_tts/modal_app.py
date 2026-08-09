@@ -1,3 +1,5 @@
+"""Modal application for the Kokoro speech synthesis provider."""
+
 from __future__ import annotations
 
 import io
@@ -13,7 +15,7 @@ import soundfile as sf
 from pydantic import BaseModel, Field
 
 
-APP_NAME = os.environ.get("MODAL_KOKORO_APP_NAME", "graduation-kokoro-tts")
+APP_NAME = os.environ.get("MODAL_KOKORO_APP_NAME", "saga-tts-runtime")
 MODAL_VERSION = "1.4.2"
 PYTHON_VERSION = "3.11"
 CPU_SIZE = int(os.environ.get("MODAL_KOKORO_CPU", "4"))
@@ -23,7 +25,8 @@ CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_KOKORO_IDLE_SECONDS", "60"))
 DEFAULT_LANG_CODE = os.environ.get("MODAL_KOKORO_LANG_CODE", "a")
 DEFAULT_VOICE = os.environ.get("MODAL_KOKORO_DEFAULT_VOICE", "af_bella")
 DEFAULT_SAMPLE_RATE = int(os.environ.get("MODAL_KOKORO_SAMPLE_RATE", "24000"))
-DEFAULT_AUDIO_FORMAT = os.environ.get("MODAL_KOKORO_AUDIO_FORMAT", "wav").strip().lower() or "wav"
+# FLAC keeps the provider boundary compact while preserving lossless output.
+DEFAULT_AUDIO_FORMAT = os.environ.get("MODAL_KOKORO_AUDIO_FORMAT", "flac").strip().lower() or "flac"
 
 image = (
     modal.Image.debian_slim(python_version=PYTHON_VERSION)
@@ -290,7 +293,6 @@ class KokoroTTSService:
 @app.local_entrypoint()
 def entrypoint(
     text: str,
-    output_path: str = "integrations/kokoro_tts/outputs/sample.wav",
     voice: str = DEFAULT_VOICE,
     lang_code: str = DEFAULT_LANG_CODE,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
@@ -299,8 +301,6 @@ def entrypoint(
     trim_silence: bool = False,
     sentence_pause_ms: int = 0,
 ) -> None:
-    from pathlib import Path
-
     service = KokoroTTSService()
     payload = service.synthesize.remote(
         text=text,
@@ -312,7 +312,14 @@ def entrypoint(
         trim_silence=trim_silence,
         sentence_pause_ms=sentence_pause_ms,
     )
-    target = Path(output_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(payload["audio_bytes"])
-    print(target.resolve())
+    print(
+        {
+            "provider": "kokoro_tts",
+            "voice": payload["voice"],
+            "lang_code": payload["lang_code"],
+            "audio_format": payload["audio_format"],
+            "sample_rate": payload["sample_rate"],
+            "duration_seconds": payload["duration_seconds"],
+            "byte_length": len(payload["audio_bytes"]),
+        }
+    )

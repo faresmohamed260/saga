@@ -1,19 +1,22 @@
+"""Runtime token rotation and failover for the Kokoro speech provider."""
+
 from __future__ import annotations
 
 import os
-from pathlib import Path
+import time
 from typing import Any
 
 import requests
 
+from packages.modal_runtime import ModalEndpointPool
+
 from .client import ModalKokoroTTSClient
 from .token_pool import (
     DEFAULT_STATE_PATH,
-    DEFAULT_TOKENS_PATH,
     DEFAULT_WARM_TTL_SECONDS,
     load_active_token_name,
+    load_token_stats,
     load_start_index,
-    load_tokens,
     mark_live_success,
     rotate_prefer_warm,
     save_next_index,
@@ -40,204 +43,56 @@ class ModalTTSRotationError(RuntimeError):
     pass
 
 
-class ModalTTSPoolManager:
+class _ModalTTSRetryableError(RuntimeError):
+    pass
+
+
+class ModalTTSPoolManager(ModalEndpointPool):
     def __init__(
         self,
         *,
         app_name: str | None = None,
-        tokens_path: str | Path = DEFAULT_TOKENS_PATH,
-        state_path: str | Path = DEFAULT_STATE_PATH,
+        tokens: list[Any] | None = None,
+        state_path: str | None = DEFAULT_STATE_PATH,
+        runtime_generation: int = 0,
         warm_ttl_seconds: int = DEFAULT_WARM_TTL_SECONDS,
         request_timeout_seconds: int = 300,
+        max_failover_attempts: int = 3,
     ) -> None:
-        self.app_name = str(app_name or os.environ.get("MODAL_KOKORO_APP_NAME") or "graduation-kokoro-tts").strip()
-        self.tokens_path = Path(tokens_path)
-        self.state_path = Path(state_path)
-        self.warm_ttl_seconds = max(1, int(warm_ttl_seconds or DEFAULT_WARM_TTL_SECONDS))
-        self.request_timeout_seconds = max(1, int(request_timeout_seconds or 300))
-        self._sticky_token_name = ""
-        self._sticky_api_url = ""
-        self._sticky_health_url = ""
-        self._sticky_live_payload: dict[str, Any] | None = None
-
-    def get_live_endpoints(self, *, max_endpoints: int | None = None) -> list[dict[str, Any]]:
-        limit = max(1, int(max_endpoints or 1))
-        tokens = load_tokens(self.tokens_path)
-        token_by_name = {token.name: token for token in tokens}
-        endpoints: list[dict[str, Any]] = []
-        seen: set[str] = set()
-
-        sticky_live = self._try_sticky_live(token_by_name)
-        if sticky_live:
-            endpoints.append(sticky_live)
-            seen.add(str(sticky_live["token_name"]))
-            if len(endpoints) >= limit:
-                return endpoints
-
-        start_index = load_start_index(self.state_path)
-        ordered_tokens = rotate_prefer_warm(tokens, start_index, state_path=self.state_path)
-        active_token_name = load_active_token_name(self.state_path)
-        if active_token_name:
-            ordered_tokens = sorted(
-                ordered_tokens,
-                key=lambda item: 0 if item[1].name == active_token_name else 1,
-            )
-
-        for index, token in ordered_tokens:
-            if token.name in seen:
-                continue
-            try:
-                urls = ensure_urls(token, self.app_name)
-                health = self._fetch_health(urls.health_url)
-                mark_live_success(
-                    token.name,
-                    api_url=urls.api_url,
-                    health_url=urls.health_url,
-                    app_name=self.app_name,
-                    live_payload=health,
-                    state_path=self.state_path,
-                    warm_ttl_seconds=self.warm_ttl_seconds,
-                )
-                live = {
-                    "token_name": token.name,
-                    "api_url": urls.api_url,
-                    "health_url": urls.health_url,
-                    "live_payload": health,
-                }
-                if not self._sticky_token_name:
-                    self._remember_sticky_live(
-                        token_name=token.name,
-                        api_url=urls.api_url,
-                        health_url=urls.health_url,
-                        live_payload=health,
-                    )
-                endpoints.append(live)
-                seen.add(token.name)
-                save_next_index(index + 1, self.state_path)
-                if len(endpoints) >= limit:
-                    break
-            except Exception as exc:  # noqa: BLE001
-                update_token_stat(
-                    token.name,
-                    state_path=self.state_path,
-                    health_ok=False,
-                    live_ok=False,
-                    last_error=f"{type(exc).__name__}: {exc}",
-                    app_name=self.app_name,
-                )
-                continue
-        if not endpoints:
-            raise ModalTTSRotationError("Unable to find any live TTS Modal endpoints.")
-        return endpoints
-
-    def ensure_live(self) -> dict[str, Any]:
-        return self.get_live_endpoints(max_endpoints=1)[0]
-
-    def synthesize_via_endpoint(self, endpoint: dict[str, Any], **kwargs) -> dict[str, Any]:
-        token_name = str(endpoint.get("token_name") or "").strip()
-        api_url = str(endpoint.get("api_url") or "").strip()
-        health_url = str(endpoint.get("health_url") or "").strip()
-        live_payload = endpoint.get("live_payload") if isinstance(endpoint.get("live_payload"), dict) else {}
-        try:
-            client = ModalKokoroTTSClient(api_url, timeout_seconds=self.request_timeout_seconds)
-            payload = client.synthesize(**kwargs)
-            mark_live_success(
-                token_name,
-                api_url=api_url,
-                health_url=health_url,
-                app_name=self.app_name,
-                live_payload=live_payload,
-                state_path=self.state_path,
-                warm_ttl_seconds=self.warm_ttl_seconds,
-            )
-            payload["token_name"] = token_name
-            payload["api_url"] = api_url
-            return payload
-        except requests.HTTPError as exc:
-            if self._is_credit_failure(exc):
-                update_token_stat(
-                    token_name,
-                    state_path=self.state_path,
-                    health_ok=False,
-                    live_ok=False,
-                    last_error=f"credit_failure:{exc}",
-                    api_url=api_url,
-                    health_url=health_url,
-                    app_name=self.app_name,
-                )
-                self._advance_past_current_token(token_name)
-                self._clear_sticky_live(token_name)
-                return self.synthesize(**kwargs)
-            raise
-        except requests.RequestException as exc:
-            update_token_stat(
-                token_name,
-                state_path=self.state_path,
-                health_ok=False,
-                live_ok=False,
-                last_error=f"request_failure:{type(exc).__name__}: {exc}",
-                api_url=api_url,
-                health_url=health_url,
-                app_name=self.app_name,
-            )
-            self._clear_sticky_live(token_name)
-            return self.synthesize(**kwargs)
+        super().__init__(
+            app_name=str(app_name or os.environ.get("MODAL_KOKORO_APP_NAME") or "saga-tts-runtime").strip(),
+            tokens=tokens,
+            state_path=state_path,
+            runtime_generation=runtime_generation,
+            warm_ttl_seconds=warm_ttl_seconds,
+            request_timeout_seconds=request_timeout_seconds,
+            max_failover_attempts=max_failover_attempts,
+        )
 
     def synthesize(self, **kwargs) -> dict[str, Any]:
-        live = self.ensure_live()
-        try:
-            return self.synthesize_via_endpoint(live, **kwargs)
-        except RuntimeError as exc:
-            raise RuntimeError(str(exc)) from exc
+        return self.execute(**kwargs)
 
-    def _try_sticky_live(self, token_by_name: dict[str, Any]) -> dict[str, Any] | None:
-        token_name = str(self._sticky_token_name or "").strip()
-        if not token_name:
-            return None
-        token = token_by_name.get(token_name)
-        if token is None:
-            self._clear_sticky_live()
-            return None
-        try:
-            health_url = self._sticky_health_url
-            api_url = self._sticky_api_url
-            live_payload = self._sticky_live_payload
-            if not health_url or not api_url:
-                urls = ensure_urls(token, self.app_name)
-                api_url = urls.api_url
-                health_url = urls.health_url
-                live_payload = self._fetch_health(health_url)
-            else:
-                live_payload = self._fetch_health(health_url)
-            self._remember_sticky_live(
-                token_name=token_name,
-                api_url=api_url,
-                health_url=health_url,
-                live_payload=live_payload if isinstance(live_payload, dict) else {},
-            )
-            return {
-                "token_name": token_name,
-                "api_url": api_url,
-                "health_url": health_url,
-                "live_payload": live_payload if isinstance(live_payload, dict) else {},
-            }
-        except Exception:
-            self._clear_sticky_live(token_name)
-            return None
+    def synthesize_via_endpoint(self, endpoint: dict[str, Any], **kwargs) -> dict[str, Any]:
+        return self.execute_via_endpoint(endpoint, **kwargs)
 
-    def _remember_sticky_live(self, *, token_name: str, api_url: str, health_url: str, live_payload: dict[str, Any]) -> None:
-        self._sticky_token_name = str(token_name or "").strip()
-        self._sticky_api_url = str(api_url or "").strip()
-        self._sticky_health_url = str(health_url or "").strip()
-        self._sticky_live_payload = live_payload if isinstance(live_payload, dict) else {}
+    def _rotation_error(self, message: str) -> RuntimeError:
+        return ModalTTSRotationError(message)
 
-    def _clear_sticky_live(self, token_name: str | None = None) -> None:
-        if token_name and str(token_name).strip() and str(token_name).strip() != str(self._sticky_token_name or "").strip():
-            return
-        self._sticky_token_name = ""
-        self._sticky_api_url = ""
-        self._sticky_health_url = ""
-        self._sticky_live_payload = None
+    def _retryable_error_class(self):
+        return _ModalTTSRetryableError
+
+    def _credit_failure_message(self, token_name: str) -> str:
+        return f"TTS endpoint credit failure for token '{token_name}'."
+
+    def _server_failure_message(self, token_name: str) -> str:
+        return f"TTS endpoint server failure for token '{token_name}'."
+
+    def _request_failure_message(self, token_name: str) -> str:
+        return f"TTS endpoint request failure for token '{token_name}'."
+
+    def _resolve_urls_for_token(self, token: Any) -> dict[str, str]:
+        urls = ensure_urls(token, self.app_name)
+        return {"api_url": urls.api_url, "health_url": urls.health_url}
 
     def _fetch_health(self, health_url: str) -> dict[str, Any]:
         response = requests.get(health_url, timeout=self.request_timeout_seconds)
@@ -247,12 +102,103 @@ class ModalTTSPoolManager:
             raise RuntimeError(f"TTS app did not confirm readiness: {payload!r}")
         return payload
 
-    def _advance_past_current_token(self, token_name: str) -> None:
-        tokens = load_tokens(self.tokens_path)
-        for index, token in enumerate(tokens):
-            if token.name == token_name:
-                save_next_index(index + 1, self.state_path)
-                return
+    def _invoke_endpoint(self, endpoint: dict[str, Any], **kwargs) -> dict[str, Any]:
+        client = ModalKokoroTTSClient(str(endpoint.get("api_url") or "").strip(), timeout_seconds=self.request_timeout_seconds)
+        payload = client.synthesize(**kwargs)
+        payload["token_name"] = str(endpoint.get("token_name") or "").strip()
+        payload["api_url"] = str(endpoint.get("api_url") or "").strip()
+        return payload
+
+    def _mark_success(
+        self,
+        token_name: str,
+        endpoint: dict[str, Any],
+        *,
+        live_payload: dict[str, Any],
+        last_successful_request: dict[str, Any] | None = None,
+    ) -> None:
+        mark_live_success(
+            token_name,
+            api_url=str(endpoint.get("api_url") or "").strip(),
+            health_url=str(endpoint.get("health_url") or "").strip(),
+            app_name=self.app_name,
+            live_payload=live_payload,
+            state_path=self.state_path,
+            warm_ttl_seconds=self.warm_ttl_seconds,
+            runtime_generation=self.runtime_generation,
+            last_successful_request=last_successful_request,
+        )
+
+    def _record_discovery_success(self, token_name: str, endpoint: dict[str, Any], live_payload: dict[str, Any]) -> None:
+        self._mark_success(token_name, endpoint, live_payload=live_payload)
+        super()._record_discovery_success(token_name, endpoint, live_payload)
+
+    def _update_status(
+        self,
+        token_name: str,
+        *,
+        health_ok: bool | None = None,
+        request_ok: bool | None = None,
+        last_error: str | None = None,
+        api_url: str | None = None,
+        ui_url: str | None = None,
+        health_url: str | None = None,
+        live_payload: dict[str, Any] | None = None,
+    ) -> None:
+        update_token_stat(
+            token_name,
+            state_path=self.state_path,
+            health_ok=health_ok,
+            live_ok=request_ok,
+            warm_until=None,
+            last_error=last_error,
+            api_url=api_url,
+            health_url=health_url,
+            app_name=self.app_name,
+            live_payload=live_payload,
+            runtime_generation=self.runtime_generation,
+        )
+
+    def _load_active_token_name(self) -> str:
+        return load_active_token_name(
+            self.state_path,
+            expected_app_name=self.app_name,
+            expected_generation=self.runtime_generation,
+        )
+
+    def _load_token_stats(self) -> dict[str, dict[str, Any]]:
+        return load_token_stats(
+            self.state_path,
+            expected_app_name=self.app_name,
+            expected_generation=self.runtime_generation,
+        )
+
+    def _load_start_index(self) -> int:
+        return load_start_index(
+            self.state_path,
+            expected_app_name=self.app_name,
+            expected_generation=self.runtime_generation,
+        )
+
+    def _save_next_index(self, next_index: int) -> None:
+        save_next_index(
+            next_index,
+            self.state_path,
+            app_name=self.app_name,
+            runtime_generation=self.runtime_generation,
+        )
+
+    def _rotate_prefer_warm(self, tokens: list[Any], start_index: int) -> list[tuple[int, Any]]:
+        return rotate_prefer_warm(
+            tokens,
+            start_index,
+            state_path=self.state_path,
+            expected_app_name=self.app_name,
+            expected_generation=self.runtime_generation,
+        )
+
+    def _is_persisted_endpoint_warm(self, stats: dict[str, Any]) -> bool:
+        return int(stats.get("warm_until", 0) or 0) > int(time.time())
 
     def _is_credit_failure(self, exc: requests.HTTPError) -> bool:
         response = exc.response

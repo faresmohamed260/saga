@@ -1,4 +1,4 @@
-{
+﻿{
   "1": {
     "inputs": {
       "clip_name": "qwen_3_4b.safetensors",
@@ -23,6 +23,7 @@
   "3": {
     "inputs": {
       "seed": 1045747208887172,
+      "control_after_generate": "randomize",
       "steps": 12,
       "cfg": 1,
       "sampler_name": "res_multistep",
@@ -119,13 +120,41 @@
         0
       ],
       "image": [
-        "7",
+        "13",
         0
       ]
     },
     "class_type": "QwenImageDiffsynthControlnet",
     "_meta": {
       "title": "QwenImageDiffsynthControlnet"
+    }
+  },
+  "12": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "largest_size": 1280,
+      "image": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToMaxDimension",
+    "_meta": {
+      "title": "Scale Control Image"
+    }
+  },
+  "13": {
+    "inputs": {
+      "low_threshold": 0.1,
+      "high_threshold": 0.32,
+      "image": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "Canny",
+    "_meta": {
+      "title": "Canny Control Image"
     }
   },
   "10": {

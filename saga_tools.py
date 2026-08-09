@@ -1,4 +1,4 @@
-"""Lightweight CLI for contract-centric downstream workflows."""
+﻿"""Lightweight CLI for contract-centric downstream workflows."""
 
 from __future__ import annotations
 
@@ -29,7 +29,16 @@ from saga.domain.pipeline_contract import (
     rebuild_resolved_scene_analyses,
 )
 from saga.domain.stable_character_state import StableCharacterStateBuilder
-from saga.providers.llm_client import LLMClient
+from saga.providers.reasoning_runtime_adapter import (
+    MODE_CODEX,
+    MODE_DEEPSEEK,
+    MODE_GENERAL_COMPUTE,
+    MODE_GEMINI,
+    MODE_GPT_OSS,
+    MODE_MISTRAL,
+    create_runtime_client,
+    probe_runtime_mode_access,
+)
 from saga.providers.neo4j_ingestion_service import Neo4jIngestionError, Neo4jIngestionService
 from saga.agents.db_event_agent import DatabaseEventAnalysisAgent
 from saga.retrieval.neo4j_narrative_context_service import Neo4jNarrativeContextService
@@ -52,16 +61,16 @@ from saga.storage.persistence import SagaSQLiteStore
 
 CorpusHardeningService = None
 
-DEFAULT_NARRATIVE_MODEL_MODE = LLMClient.MODE_GPT_OSS
+DEFAULT_NARRATIVE_MODEL_MODE = MODE_GPT_OSS
 DEFAULT_NARRATIVE_OLLAMA_MODEL = "gemma4:31b-cloud"
 DEFAULT_PRODUCTION_IDENTITY_PROVIDER = "booknlp_clean"
 MODEL_MODE_CHOICES = [
-    LLMClient.MODE_DEEPSEEK,
-    LLMClient.MODE_GPT_OSS,
-    LLMClient.MODE_CODEX,
-    LLMClient.MODE_GENERAL_COMPUTE,
-    LLMClient.MODE_MISTRAL,
-    LLMClient.MODE_GEMINI,
+    MODE_DEEPSEEK,
+    MODE_GPT_OSS,
+    MODE_CODEX,
+    MODE_GENERAL_COMPUTE,
+    MODE_MISTRAL,
+    MODE_GEMINI,
 ]
 IDENTITY_PROVIDER_CHOICES = ["booknlp_clean"]
 ANALYSIS_PROVIDER_MODE_CHOICES = ["single_provider", "same_provider_rotating", "cross_provider_fallback"]
@@ -70,77 +79,21 @@ SQLITE_STORE = SagaSQLiteStore()
 
 def _preflight_model_access(model_mode: str, provider_mode: str) -> None:
     provider_mode = str(provider_mode or "single_provider").strip().lower()
-    if model_mode in {LLMClient.MODE_DEEPSEEK, LLMClient.MODE_GPT_OSS}:
-        probe_client = LLMClient(
-            mode=model_mode,
-            max_retries=1,
-            base_delay=0.0,
-            timeout=30,
-            allow_account_rotation=(provider_mode == "same_provider_rotating"),
-            allow_cross_provider_fallback=(provider_mode == "cross_provider_fallback"),
-        )
-        model_name = probe_client._ollama_model_for_mode()
-        try:
-            probe_result = LLMClient.probe_ollama_mode_access(model_mode, model_name)
-        except Exception as exc:
-            probe_result = {"status": "error", "detail": str(exc)}
-        if probe_result.get("status") == "ok":
-            return
-        if provider_mode == "same_provider_rotating":
-            rotation_result = probe_client._rotate_ollama_account()
-            if rotation_result.get("status") == "rotated":
-                return
-        raise ValueError(
-            f"Ollama model access failed for mode '{model_mode}' using model '{model_name}': "
-            f"{probe_result.get('detail') or probe_result.get('status')}. "
-            "Choose a working model or upgrade the Ollama subscription for that cloud model."
-        )
-    if model_mode == getattr(LLMClient, "MODE_CODEX", "codex"):
-        probe_client = LLMClient(
-            mode=model_mode,
-            max_retries=1,
-            base_delay=0.0,
-            timeout=30,
-            allow_account_rotation=False,
-            allow_cross_provider_fallback=False,
-        )
-        model_name = probe_client._codex_model_for_mode()
-        try:
-            probe_result = LLMClient.probe_codex_model_access(model_name)
-        except Exception as exc:
-            probe_result = {"status": "error", "detail": str(exc)}
-        if probe_result.get("status") == "ok":
-            return
-        raise ValueError(
-            f"OpenAI/Codex model access failed for mode '{model_mode}' using model '{model_name}': "
-            f"{probe_result.get('detail') or probe_result.get('status')}. "
-            "Configure a working OPENAI_API_KEY or local Codex provider account."
-        )
-    if model_mode == LLMClient.MODE_GENERAL_COMPUTE:
-        probe_client = LLMClient(
-            mode=model_mode,
-            max_retries=1,
-            base_delay=0.0,
-            timeout=30,
-            allow_account_rotation=(provider_mode == "same_provider_rotating"),
-            allow_cross_provider_fallback=(provider_mode == "cross_provider_fallback"),
-        )
-        model_name = probe_client._general_compute_model_for_mode()
-        try:
-            probe_result = LLMClient.probe_general_compute_model_access(model_name)
-        except Exception as exc:
-            probe_result = {"status": "error", "detail": str(exc)}
-        if probe_result.get("status") == "ok":
-            return
-        if provider_mode == "same_provider_rotating":
-            rotation_result = probe_client._rotate_general_compute_account()
-            if rotation_result.get("status") == "rotated":
-                return
-        raise ValueError(
-            f"General Compute model access failed for mode '{model_mode}' using model '{model_name}': "
-            f"{probe_result.get('detail') or probe_result.get('status')}. "
-            "Configure a working General Compute API key or switch to another model provider."
-        )
+    probe_result = probe_runtime_mode_access(
+        model_mode,
+        timeout=30,
+        max_retries=1,
+        allow_account_rotation=(provider_mode == "same_provider_rotating"),
+        allow_cross_provider_fallback=(provider_mode == "cross_provider_fallback"),
+    )
+    if probe_result.get("status") == "ok":
+        return
+    model_name = str(probe_result.get("model") or model_mode)
+    raise ValueError(
+        f"Model access failed for mode '{model_mode}' using model '{model_name}': "
+        f"{probe_result.get('detail') or probe_result.get('status')}. "
+        "Configure a working provider account or switch to another model provider."
+    )
 
 
 class _TerminalProgressPrinter:
@@ -242,11 +195,11 @@ def _encode_progress_payload(phase: str, payload: Dict[str, Any]) -> Dict[str, A
             details.append(f"{elapsed_seconds}s elapsed")
         if model:
             details.append(model)
-        suffix = " آ· ".join(details)
+        suffix = " ط¢آ· ".join(details)
         return {
             "current": scene_position if isinstance(scene_position, int) else None,
             "total": total_scenes if isinstance(total_scenes, int) else None,
-            "label": f"{label_prefix}{scene_label}" + (f" آ· {suffix}" if suffix else ""),
+            "label": f"{label_prefix}{scene_label}" + (f" ط¢آ· {suffix}" if suffix else ""),
             "status": payload.get("status") or "Scene still running",
         }
     if phase == "resume":
@@ -1784,7 +1737,7 @@ def probe_neo4j(args) -> None:
 
 
 def audit_corpus(args) -> None:
-    llm = LLMClient(mode=args.model_mode, ollama_model_override=getattr(args, "ollama_model", ""))
+    llm = create_runtime_client(mode=args.model_mode, model_override=getattr(args, "ollama_model", ""))
     service = _get_corpus_hardening_service_class()(
         neo4j_service=Neo4jIngestionService(
             uri=args.uri,
@@ -1809,7 +1762,7 @@ def audit_corpus(args) -> None:
 
 
 def repair_corpus(args) -> None:
-    llm = LLMClient(mode=args.model_mode, ollama_model_override=getattr(args, "ollama_model", ""))
+    llm = create_runtime_client(mode=args.model_mode, model_override=getattr(args, "ollama_model", ""))
     service = _get_corpus_hardening_service_class()(
         neo4j_service=Neo4jIngestionService(
             uri=args.uri,
@@ -1833,7 +1786,7 @@ def repair_corpus(args) -> None:
 
 
 def rebuild_corpus(args) -> None:
-    llm = LLMClient(mode=args.model_mode, ollama_model_override=getattr(args, "ollama_model", ""))
+    llm = create_runtime_client(mode=args.model_mode, model_override=getattr(args, "ollama_model", ""))
     service = _get_corpus_hardening_service_class()(
         neo4j_service=Neo4jIngestionService(
             uri=args.uri,
@@ -1867,10 +1820,10 @@ def _decoder_from_args(args) -> NarrativeGenerationService:
     prose_mode = getattr(args, "prose_model_mode", "") or base_mode
     prose_model = getattr(args, "prose_model", "") or base_model
 
-    planner_llm = LLMClient(mode=planner_mode, ollama_model_override=planner_model)
-    prose_llm = planner_llm if (planner_mode == prose_mode and planner_model == prose_model) else LLMClient(
+    planner_llm = create_runtime_client(mode=planner_mode, model_override=planner_model)
+    prose_llm = planner_llm if (planner_mode == prose_mode and planner_model == prose_model) else create_runtime_client(
         mode=prose_mode,
-        ollama_model_override=prose_model,
+        model_override=prose_model,
     )
     try:
         return NarrativeGenerationService(
@@ -1896,10 +1849,10 @@ def compare_generation_models(args) -> None:
         planner_model = getattr(args, f"planner_model_{suffix}", "") or ollama_model
         prose_mode = getattr(args, f"prose_model_mode_{suffix}", "") or model_mode
         prose_model = getattr(args, f"prose_model_{suffix}", "") or ollama_model
-        planner_llm = LLMClient(mode=planner_mode, ollama_model_override=planner_model)
-        prose_llm = planner_llm if (planner_mode == prose_mode and planner_model == prose_model) else LLMClient(
+        planner_llm = create_runtime_client(mode=planner_mode, model_override=planner_model)
+        prose_llm = planner_llm if (planner_mode == prose_mode and planner_model == prose_model) else create_runtime_client(
             mode=prose_mode,
-            ollama_model_override=prose_model,
+            model_override=prose_model,
         )
         decoder = NarrativeGenerationService(
             llm_client=planner_llm,
@@ -2079,10 +2032,10 @@ def render_character_sheets(args) -> None:
 
 
 def analyze_db_events(args) -> None:
-    model_mode = str(getattr(args, "model_mode", "") or LLMClient.MODE_GPT_OSS).strip()
+    model_mode = str(getattr(args, "model_mode", "") or MODE_GPT_OSS).strip()
     provider_mode = str(getattr(args, "analysis_provider_mode", "") or "same_provider_rotating").strip()
     agent = DatabaseEventAnalysisAgent(
-        llm_client=LLMClient(
+        llm_client=create_runtime_client(
             mode=model_mode,
             allow_account_rotation=(provider_mode == "same_provider_rotating"),
             allow_cross_provider_fallback=(provider_mode == "cross_provider_fallback"),
@@ -2189,8 +2142,8 @@ def audit_visual_prompts(args) -> None:
 
 def rewrite_visual_prompts(args) -> None:
     service = VisualPromptRewriteService(
-        llm_client=LLMClient(
-            mode=getattr(args, "model_mode", LLMClient.MODE_CODEX),
+        llm_client=create_runtime_client(
+            mode=getattr(args, "model_mode", MODE_CODEX),
             allow_account_rotation=True,
             allow_cross_provider_fallback=False,
         )
@@ -2257,8 +2210,8 @@ def build_entity_visual_prompts(args) -> None:
 
 def research_visual_references(args) -> None:
     service = WikiCharacterReferenceService(
-        llm_client=LLMClient(
-            mode=getattr(args, "model_mode", LLMClient.MODE_CODEX),
+        llm_client=create_runtime_client(
+            mode=getattr(args, "model_mode", MODE_CODEX),
             allow_account_rotation=True,
             allow_cross_provider_fallback=False,
         ),
@@ -2650,7 +2603,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     resplit_parser = subparsers.add_parser(
         "resplit-book-scenes",
-        help="Re-split one SQLite-backed book into smaller scene rows using stored chapter text.",
+        help="Re-split one persisted book into smaller scene rows using stored chapter text.",
     )
     resplit_parser.add_argument("--book-ref", required=True, help="SQLite book reference like db://book/<book_id>.")
     resplit_parser.add_argument("--target-words", type=int, default=700, help="Approximate target words per scene chunk.")
@@ -2864,7 +2817,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     db_event_parser.add_argument("--book-ref", required=True, help="Canonical db://book/<id> reference.")
     db_event_parser.add_argument("--chapter-index", type=int, required=True, help="Stored chapter index to analyze.")
-    db_event_parser.add_argument("--model-mode", default=LLMClient.MODE_GPT_OSS, choices=MODEL_MODE_CHOICES, help="LLM backend for the standalone event agent.")
+    db_event_parser.add_argument("--model-mode", default=MODE_GPT_OSS, choices=MODEL_MODE_CHOICES, help="LLM backend for the standalone event agent.")
     db_event_parser.add_argument("--analysis-provider-mode", default="same_provider_rotating", choices=ANALYSIS_PROVIDER_MODE_CHOICES, help="Provider rotation mode for the standalone event agent.")
     db_event_parser.add_argument("--replace-existing-agent-rows", action="store_true", help="Replace prior rows produced by this standalone agent for the same chapter.")
     db_event_parser.add_argument("--out", required=True, help="Output path for the event-agent JSON result.")
@@ -2889,7 +2842,7 @@ def build_parser() -> argparse.ArgumentParser:
     rewrite_visual_parser.add_argument("--contract", required=True, help="Path to the contract JSON.")
     rewrite_visual_parser.add_argument("--reference-json", default="", help="Optional canonical reference notes JSON keyed by character name.")
     rewrite_visual_parser.add_argument("--name", action="append", default=[], help="Optional character name filter. Repeat as needed.")
-    rewrite_visual_parser.add_argument("--model-mode", default=LLMClient.MODE_CODEX, choices=MODEL_MODE_CHOICES, help="LLM backend for the rewrite agent.")
+    rewrite_visual_parser.add_argument("--model-mode", default=MODE_CODEX, choices=MODEL_MODE_CHOICES, help="LLM backend for the rewrite agent.")
     rewrite_visual_parser.add_argument("--out", required=True, help="Output path for the rewritten prompt JSON.")
     rewrite_visual_parser.add_argument("--report-md", default="", help="Optional markdown report path.")
     rewrite_visual_parser.set_defaults(func=rewrite_visual_prompts)
@@ -2911,7 +2864,7 @@ def build_parser() -> argparse.ArgumentParser:
     research_visual_parser.add_argument("--name", action="append", default=[], help="Optional character name filter. Repeat as needed.")
     research_visual_parser.add_argument("--wiki-base-url", default="https://acourtofthornsandroses.fandom.com", help="MediaWiki/Fandom base URL.")
     research_visual_parser.add_argument("--series-id", default="acotar", help="Series identifier used for title overrides.")
-    research_visual_parser.add_argument("--model-mode", default=LLMClient.MODE_CODEX, choices=MODEL_MODE_CHOICES, help="LLM backend for structuring fetched notes.")
+    research_visual_parser.add_argument("--model-mode", default=MODE_CODEX, choices=MODEL_MODE_CHOICES, help="LLM backend for structuring fetched notes.")
     research_visual_parser.add_argument("--out", required=True, help="Output path for the reference JSON.")
     research_visual_parser.add_argument("--report-md", default="", help="Optional markdown report path.")
     research_visual_parser.set_defaults(func=research_visual_references)
@@ -2997,11 +2950,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--model-mode",
         default=DEFAULT_NARRATIVE_MODEL_MODE,
         choices=[
-            LLMClient.MODE_DEEPSEEK,
-            LLMClient.MODE_GPT_OSS,
-            LLMClient.MODE_GENERAL_COMPUTE,
-            LLMClient.MODE_MISTRAL,
-            LLMClient.MODE_GEMINI,
+            MODE_DEEPSEEK,
+            MODE_GPT_OSS,
+            MODE_GENERAL_COMPUTE,
+            MODE_MISTRAL,
+            MODE_GEMINI,
         ],
         help="LLM backend to use for blueprint generation.",
     )
@@ -3086,11 +3039,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--model-mode",
         default=DEFAULT_NARRATIVE_MODEL_MODE,
         choices=[
-            LLMClient.MODE_DEEPSEEK,
-            LLMClient.MODE_GPT_OSS,
-            LLMClient.MODE_GENERAL_COMPUTE,
-            LLMClient.MODE_MISTRAL,
-            LLMClient.MODE_GEMINI,
+            MODE_DEEPSEEK,
+            MODE_GPT_OSS,
+            MODE_GENERAL_COMPUTE,
+            MODE_MISTRAL,
+            MODE_GEMINI,
         ],
         help="LLM backend to use for sequel generation.",
     )
@@ -3197,5 +3150,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

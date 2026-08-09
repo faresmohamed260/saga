@@ -1,6 +1,7 @@
+"""Thin HTTP client for the deployed Kokoro Modal service."""
+
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -20,7 +21,7 @@ class ModalKokoroTTSClient:
         voice: str = "af_bella",
         lang_code: str = "a",
         sample_rate: int = 24000,
-        audio_format: str = "wav",
+        audio_format: str = "flac",
         normalize_audio: bool = True,
         trim_silence: bool = False,
         sentence_pause_ms: int = 0,
@@ -30,7 +31,7 @@ class ModalKokoroTTSClient:
             "voice": str(voice or "af_bella"),
             "lang_code": str(lang_code or "a"),
             "sample_rate": int(sample_rate or 24000),
-            "audio_format": str(audio_format or "wav").strip().lower() or "wav",
+            "audio_format": str(audio_format or "flac").strip().lower() or "flac",
             "normalize_audio": bool(normalize_audio),
             "trim_silence": bool(trim_silence),
             "sentence_pause_ms": int(sentence_pause_ms or 0),
@@ -53,10 +54,3 @@ class ModalKokoroTTSClient:
                 "total_elapsed_seconds": float(response.headers.get("X-Kokoro-Total-Elapsed-Seconds") or 0.0),
             },
         }
-
-    def synthesize_to_file(self, output_path: str | Path, **kwargs) -> dict[str, Any]:
-        payload = self.synthesize(**kwargs)
-        target = Path(output_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload["audio_bytes"])
-        return {**payload, "output_path": str(target)}

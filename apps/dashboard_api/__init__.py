@@ -1,2 +1,2 @@
-"""Local web runtime for the S.A.G.A. dashboard."""
+"""Minimal dashboard runtime HTTP surface."""
 

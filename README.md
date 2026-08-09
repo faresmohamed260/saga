@@ -4,19 +4,23 @@
 
 [![Dashboard Pro CI](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml/badge.svg?branch=main)](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml)
 
-S.A.G.A. is a local, database-backed narrative analysis and generation workspace for books. It ingests source novels, builds canonical structured memory, exposes the results through a dashboard, and supports visual and decoder workflows on top of the same stored data.
+S.A.G.A. is a narrative analysis and generation workspace for books. It ingests source novels, builds canonical structured memory, exposes the results through a dashboard, and supports visual, retrieval, decoder, and audiobook workflows on top of a unified runtime-backed persistence layer.
 
 ## Repository Status
 
-The repository has been updated around the current production path:
+The repository is being rebuilt around the current production path:
 
-- SQLite-backed canonical storage instead of filesystem-first contracts
-- BookNLP-clean identity as the main identity source
-- DB-native analysis agents for events, entities, profiles, timelines, states, and visuals
+- unified persistence/storage runtime instead of filesystem-first contracts
+- Supabase/Postgres + object storage as the active persistence provider path
+- runtime-native analysis agents for events, entities, profiles, timelines, states, and visuals
 - React + FastAPI dashboard as the main operator surface
-- database-backed visual prompt, render, and decoder story workflows
+- independently deployable API, worker, scheduler, and observability roles
+- Alembic-owned PostgreSQL migrations and provider-neutral database/artifact recovery
+- runtime-backed visual prompt, render, and decoder story workflows
 
-The earlier legacy/prototype architecture is documented for comparison, but the active repo direction is the current DB-native system.
+The earlier legacy/prototype architecture is being isolated out of the active tree. The target direction is the unified runtime architecture described in `docs/storage_architecture.md`.
+
+Production build, rollout, rollback, health, and disaster-recovery procedures are documented in `docs/deployment_operations.md`.
 
 ## What Changed In The Repo
 
@@ -25,7 +29,7 @@ Recent structural changes reflected in this repo:
 - the main application code is now centered under [saga](B:\Documents\PyCharm\graduationProject\saga)
 - the dashboard frontend lives under [apps/dashboard_pro](B:\Documents\PyCharm\graduationProject\apps\dashboard_pro)
 - the dashboard runtime/backend lives under [apps/dashboard_api](B:\Documents\PyCharm\graduationProject\apps\dashboard_api)
-- persistence, identity, providers, analysis agents, visuals, and decoder code now operate against SQLite-backed storage
+- persistence, identity, providers, analysis agents, visuals, and decoder code are being cut over to the unified runtime
 - legacy top-level clutter was reduced so the repo is organized around application package, apps, configs, deploy assets, scripts, tests, and docs
 
 ## Main Surfaces
@@ -54,15 +58,6 @@ Dashboard Pro frontend work now follows a GitHub PR flow:
 - frontend tasks can be opened from [.github/ISSUE_TEMPLATE/dashboard-pro-task.yml](B:\Documents\PyCharm\graduationProject\.github\ISSUE_TEMPLATE\dashboard-pro-task.yml)
 - CI for Dashboard Pro runs from [.github/workflows/dashboard-pro-ci.yml](B:\Documents\PyCharm\graduationProject\.github\workflows\dashboard-pro-ci.yml)
 - contributor guidance lives in [CONTRIBUTING.md](B:\Documents\PyCharm\graduationProject\CONTRIBUTING.md)
-
-### Narraverse Website
-
-Primary public website surface:
-
-- [apps/narraverse_web](B:\Documents\PyCharm\graduationProject\apps\narraverse_web)
-- [docs/narraverse_web.md](B:\Documents\PyCharm\graduationProject\docs\narraverse_web.md)
-
-Hosted locally as the `NarraverseWebsite` Windows service on `127.0.0.1:8676` and exposed publicly at `https://narraverse.faresuniform.uk` through the same Cloudflare Tunnel pattern used for the other `faresuniform.uk` services.
 
 ### CLI
 
@@ -157,9 +152,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\install_saga_dashboar
 
 - frontend: React
 - backend/runtime: FastAPI
-- storage: SQLite
-- identity: BookNLP-clean pipeline
-- generation/render orchestration: local services + provider integrations
+- storage abstraction: `packages/persistence_runtime`
+- active provider path: Supabase Postgres + pgvector + Supabase Storage
+- generation/render orchestration: decoupled provider runtimes + dashboard/runtime surfaces
 
 ## Key Current Components
 
@@ -205,15 +200,10 @@ Additional docs:
 
 ## Local-Only Data
 
-The following remain local and are not intended for Git tracking:
-
-- `analysis_outputs/`
-- local database files
-- local provider account files
-- rendered images and generated EPUB exports
+Local temp/cache data is not source-of-truth persistence. Durable artifacts belong in the unified runtime object storage path.
 
 ## Notes
 
 - The dashboard/runtime path is the main operational path.
-- The current repo is organized around the DB-native system, not the earlier contract-first prototype.
+- The active storage architecture is the unified persistence runtime. Supabase is a provider, not the abstraction.
 - Methodology and implementation comparison is intentionally kept in the separate top-level document so the README can stay repository-focused.

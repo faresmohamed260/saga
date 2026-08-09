@@ -9,15 +9,17 @@ description = "S.A.G.A. — Story Analysis, Generation, and Archives."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "alembic",
   "beautifulsoup4",
   "ebooklib",
   "fastapi",
   "google-genai",
+  "langgraph",
   "mistralai",
   "pypdf",
-  "PyMuPDF",
+  "Pillow",
+  "psycopg[binary]",
   "requests",
-  "scikit-learn",
   "sqlalchemy",
   "trafilatura",
   "uvicorn",
@@ -41,13 +43,20 @@ namespaces = true
 include = [
   "apps",
   "apps.*",
+  "packages",
+  "packages.*",
   "saga",
   "saga.*",
   "integrations",
   "integrations.*",
-  "apps.dashboard_api",
   "tests",
 ]
+
+[project.scripts]
+saga-deploy = "packages.deployment_runtime.cli:main"
+saga-runtime-api = "apps.dashboard_api.app:main"
+saga-process = "packages.deployment_runtime.processes:main"
+saga-execution = "scripts.run_execution_worker:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

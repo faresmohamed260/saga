@@ -1,3 +1,5 @@
+"""Workspace-scoped Modal URL resolution helpers for Kokoro deployments."""
+
 from __future__ import annotations
 
 import json

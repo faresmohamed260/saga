@@ -1,0 +1,38 @@
+FROM python:3.12.9-slim-bookworm AS runtime
+
+ARG SAGA_RELEASE_VERSION=dev
+ARG SAGA_GIT_SHA=unknown
+ARG SAGA_IMAGE_DIGEST=""
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH" \
+    SAGA_RELEASE_VERSION=${SAGA_RELEASE_VERSION} \
+    SAGA_GIT_SHA=${SAGA_GIT_SHA} \
+    SAGA_IMAGE_DIGEST=${SAGA_IMAGE_DIGEST} \
+    SAGA_RUNTIME_HOST=0.0.0.0
+
+RUN addgroup --system saga && adduser --system --ingroup saga --home /app saga \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv==0.8.22
+
+WORKDIR /app
+COPY --chown=saga:saga pyproject.toml uv.lock README.md ./
+USER saga
+RUN uv sync --frozen --no-dev --no-install-project
+COPY --chown=saga:saga apps ./apps
+COPY --chown=saga:saga configs ./configs
+COPY --chown=saga:saga integrations ./integrations
+COPY --chown=saga:saga migrations ./migrations
+COPY --chown=saga:saga packages ./packages
+COPY --chown=saga:saga scripts ./scripts
+COPY --chown=saga:saga supabase ./supabase
+COPY --chown=saga:saga alembic.ini ./alembic.ini
+RUN uv sync --frozen --no-dev
+
+EXPOSE 8675
+CMD ["python", "-m", "apps.dashboard_api.app"]

@@ -1,0 +1,73 @@
+"""Portable provider-oriented persistence runtime package."""
+
+from .client import PersistenceRuntimeClient
+from .conventions import (
+    AUDIO_OUTPUT_BUCKET,
+    GENERATED_IMAGE_BUCKET,
+    IDENTITY_EXPORT_BUCKET,
+    RUNTIME_REPORT_BUCKET,
+    SOURCE_DOCUMENT_BUCKET,
+    STORY_EXPORT_BUCKET,
+    ArtifactStorageManager,
+    EphemeralWorkspaceManager,
+    build_retrieval_namespace,
+    build_vector_namespace,
+    validate_vector_namespace,
+)
+from .contracts import (
+    AudiobookStore,
+    DeploymentStore,
+    ExecutionQueueStore,
+    IdentityStore,
+    JobStore,
+    LineageStore,
+    ObservabilityStore,
+    LibraryStore,
+    ObjectStorageStore,
+    PersistenceProvider,
+    PersistenceRuntime,
+    ProviderOperationalStatePayload,
+    ProviderConfigStore,
+    StoryStore,
+    VectorStore,
+)
+from .factory import create_persistence_client, create_persistence_provider
+from .models import PersistenceProfile, PersistenceRuntimeConfig
+from .schema_validation import EXPECTED_SCHEMA_REVISION, SchemaNotReadyError, validate_production_schema
+
+__all__ = [
+    "AudiobookStore",
+    "DeploymentStore",
+    "ExecutionQueueStore",
+    "ArtifactStorageManager",
+    "IdentityStore",
+    "JobStore",
+    "LineageStore",
+    "ObservabilityStore",
+    "LibraryStore",
+    "ObjectStorageStore",
+    "EphemeralWorkspaceManager",
+    "PersistenceProfile",
+    "PersistenceProvider",
+    "PersistenceRuntime",
+    "PersistenceRuntimeClient",
+    "PersistenceRuntimeConfig",
+    "ProviderOperationalStatePayload",
+    "ProviderConfigStore",
+    "StoryStore",
+    "SOURCE_DOCUMENT_BUCKET",
+    "GENERATED_IMAGE_BUCKET",
+    "IDENTITY_EXPORT_BUCKET",
+    "STORY_EXPORT_BUCKET",
+    "AUDIO_OUTPUT_BUCKET",
+    "RUNTIME_REPORT_BUCKET",
+    "VectorStore",
+    "build_vector_namespace",
+    "build_retrieval_namespace",
+    "validate_vector_namespace",
+    "create_persistence_client",
+    "create_persistence_provider",
+    "EXPECTED_SCHEMA_REVISION",
+    "SchemaNotReadyError",
+    "validate_production_schema",
+]
