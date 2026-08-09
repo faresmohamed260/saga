@@ -17,6 +17,7 @@ from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeC
 from packages.reasoning_runtime import ReasoningProfile, ReasoningRuntimeConfig, create_reasoning_client
 from packages.visual_generation import VisualGenerationRuntime
 from packages.visual_generation.pipeline import VisualPlanningPayload
+from packages.visual_generation.quality import evaluate_image_technical_quality
 
 
 class StubPlanningRuntime:
@@ -216,6 +217,15 @@ def _runtime(client, image_provider, semantic_evaluator, seeds):
         allow_in_memory_checkpointer=True,
         seed_factory=lambda: next(iterator),
     )
+
+
+def test_technical_quality_accepts_valid_highly_compressed_png():
+    image_bytes = _png(black=False)
+
+    result = evaluate_image_technical_quality(image_bytes, expected_width=512, expected_height=512)
+
+    assert result["passed"] is True
+    assert result["issues"] == []
 
 
 def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):

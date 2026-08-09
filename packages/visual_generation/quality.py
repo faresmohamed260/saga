@@ -26,8 +26,6 @@ def evaluate_image_technical_quality(image_bytes: bytes, *, expected_width: int,
     issues: list[str] = []
     if image.width != expected_width or image.height != expected_height:
         issues.append(f"unexpected_dimensions:{image.width}x{image.height}")
-    if len(image_bytes) < 2048:
-        issues.append("image_payload_too_small")
     if mean <= 3.0 or variance <= 1.0 or black_ratio >= 0.98:
         issues.append("black_or_blank_image")
     return {
