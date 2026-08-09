@@ -16,10 +16,10 @@ from packages.deployment_runtime import (
     observability_tick,
     scheduler_tick,
 )
-from packages.deployment_runtime.heartbeat_probe import process_heartbeat_ready
-from packages.deployment_runtime.processes import _worker_heartbeat_loop
+from packages.deployment_runtime.heartbeat_probe import local_heartbeat_ready, process_heartbeat_ready
+from packages.deployment_runtime.processes import _heartbeat, _worker_heartbeat_loop
 from packages.execution_runtime import ExecutionRuntimeService, ExecutionRuntimeServiceConfig
-from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, SchemaNotReadyError, create_persistence_client
+from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 
 
 def _persistence(tmp_path: Path):
@@ -125,6 +125,34 @@ def test_lightweight_heartbeat_probe_uses_bounded_direct_postgres_query() -> Non
     assert calls["connect"]["connect_timeout"] == 3
     assert calls["connect"]["prepare_threshold"] is None
     assert calls["parameters"] == ("worker", 380_000, "release-test", "release-test")
+
+
+def test_local_heartbeat_probe_reads_marker_written_after_durable_heartbeat(tmp_path: Path, monkeypatch) -> None:
+    writes: list[dict[str, object]] = []
+
+    class Deployments:
+        def heartbeat(self, payload):
+            writes.append(payload)
+
+    monkeypatch.setenv("SAGA_LOCAL_HEARTBEAT_DIR", str(tmp_path))
+    persistence = type("Persistence", (), {"deployments": Deployments()})()
+    _heartbeat(persistence, "worker-1", "worker", "release-test", "ready", 500_000, {"state": "running"})
+
+    assert writes
+    assert local_heartbeat_ready(
+        role="worker",
+        release_id="release-test",
+        max_age_seconds=120,
+        heartbeat_dir=str(tmp_path),
+        now_ms=550_000,
+    )
+    assert not local_heartbeat_ready(
+        role="worker",
+        release_id="another-release",
+        max_age_seconds=120,
+        heartbeat_dir=str(tmp_path),
+        now_ms=550_000,
+    )
 
 
 def test_worker_heartbeat_loop_updates_while_job_is_running() -> None:
