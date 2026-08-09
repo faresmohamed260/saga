@@ -84,7 +84,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: Validate Compose
-        run: SAGA_ENV_FILE=.env.example docker compose -f deploy/production/compose.yaml config --quiet
+        run: SAGA_ENV_FILE=.env.example SAGA_RELEASE_ID=release-ci-validation docker compose -f deploy/production/compose.yaml config --quiet
       - name: Build runtime image
         uses: docker/build-push-action@v6
         with:
