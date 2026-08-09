@@ -5,23 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "saga-story-system"
 version = "0.1.0"
-description = "S.A.G.A. — Story Analysis, Generation, and Archives."
+description = "S.A.G.A. - Story Analysis, Generation, and Archives."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "alembic",
   "beautifulsoup4",
   "ebooklib",
   "fastapi",
-  "ftfy",
   "google-genai",
+  "langgraph",
   "mistralai",
-  "openai",
-  "Pillow",
-  "python-multipart",
   "pypdf",
-  "PyMuPDF",
+  "Pillow",
+  "psycopg[binary]",
   "requests",
-  "scikit-learn",
   "sqlalchemy",
   "trafilatura",
   "uvicorn",
@@ -45,13 +43,17 @@ namespaces = true
 include = [
   "apps",
   "apps.*",
-  "saga",
-  "saga.*",
+  "packages",
+  "packages.*",
   "integrations",
   "integrations.*",
-  "apps.dashboard_api",
-  "tests",
 ]
+
+[project.scripts]
+saga-deploy = "packages.deployment_runtime.cli:main"
+saga-runtime-api = "apps.dashboard_api.app:main"
+saga-process = "packages.deployment_runtime.processes:main"
+saga-execution = "scripts.run_execution_worker:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

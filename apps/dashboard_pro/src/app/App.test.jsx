@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { BrowserRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
-import { AudiobookControlsPanel } from "../components/AudiobookPanels.jsx";
+import { AudiobookControlsPanel } from "../components/audiobook-panels/AudiobookControlsPanel.jsx";
 
 const apiMock = vi.hoisted(() => ({
   state: vi.fn(async () => ({
@@ -24,22 +24,22 @@ const apiMock = vi.hoisted(() => ({
     total_books: 1,
     total_chapters: 3,
     transcript_storage_mode: "database",
-    audio_storage_mode: "path",
+    audio_storage_mode: "artifact",
     voice: "af_bella",
     audio_format: "wav",
     status: "staged",
     metadata: { rewrite_provider: "ollama", rewrite_fallback_mode: "strict_rewrite" },
     chapters: [
-      { id: "audio-chapter-1", chapter_id: "chapter-1", book_id: "book-1", book_index: 1, chapter_index: 1, chapter_title: "Chapter 1", transcript_status: "staged", audio_status: "staged", transcript_text: "Chapter one transcript preview.", audio_path: "B:/audio/chapter1.wav" },
+      { id: "audio-chapter-1", chapter_id: "chapter-1", book_id: "book-1", book_index: 1, chapter_index: 1, chapter_title: "Chapter 1", transcript_status: "staged", audio_status: "staged", transcript_text: "Chapter one transcript preview.", audio_artifact: { bucket_name: "audio-outputs", object_path: "series/series-1/audio/runs/audio-run-1/chapters/chapter-1/chapter-1.wav" } },
     ],
   })),
-  stageAudiobookRun: vi.fn(async () => ({ run: { id: "audio-run-2", title: "Staged audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "path", voice: "af_bella", audio_format: "wav", status: "staged", chapters: [] } })),
+  stageAudiobookRun: vi.fn(async () => ({ run: { id: "audio-run-2", title: "Staged audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "artifact", voice: "af_bella", audio_format: "wav", status: "staged", chapters: [] } })),
   startAudiobookJob: vi.fn(async () => ({
-    run: { id: "audio-run-3", title: "Queued audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "path", voice: "af_bella", audio_format: "wav", status: "queued", job_id: "audiobook-job-1", chapters: [] },
+    run: { id: "audio-run-3", title: "Queued audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "artifact", voice: "af_bella", audio_format: "wav", status: "queued", job_id: "audiobook-job-1", chapters: [] },
     job: { id: "audiobook-job-1", status: "queued" },
   })),
   startAudiobookRun: vi.fn(async () => ({
-    run: { id: "audio-run-1", title: "Book One audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "path", voice: "af_bella", audio_format: "wav", status: "queued", job_id: "audiobook-job-2", chapters: [] },
+    run: { id: "audio-run-1", title: "Book One audiobook", scope_type: "book", total_books: 1, total_chapters: 3, transcript_storage_mode: "database", audio_storage_mode: "artifact", voice: "af_bella", audio_format: "wav", status: "queued", job_id: "audiobook-job-2", chapters: [] },
     job: { id: "audiobook-job-2", status: "queued" },
   })),
   audiobookChapterAudioUrl: vi.fn((runId, chapterId) => `/runtime/audiobook/runs/${runId}/chapters/${chapterId}/audio`),
@@ -66,7 +66,7 @@ const apiMock = vi.hoisted(() => ({
   validateDecoderPlan: vi.fn(async () => ({ valid: true, warnings: [], errors: [], plan: { series_id: "series-1" } })),
   stories: vi.fn(async () => ({ stories: [{ id: "story-1", title: "Story One", status: "completed", story_mode: "post_canon", series_id: "series-1" }] })),
   assetSeriesSummary: vi.fn(async () => ({ series: [{ series_id: "series-1", series_title: "Series One", asset_count: 1, rendered_count: 1 }] })),
-  assets: vi.fn(async () => ({ total: 1, entities: [{ id: "entity-1", name: "Hero", entity_type: "character", series_id: "series-1", series_title: "Series One", book_title: "Book One", image_count: 1, prompt_count: 1, render_status: "completed", generated_thumbnail_path: "", generated_image_path: "" }] })),
+  assets: vi.fn(async () => ({ total: 1, entities: [{ id: "entity-1", name: "Hero", entity_type: "character", series_id: "series-1", series_title: "Series One", book_title: "Book One", image_count: 1, prompt_count: 1, render_status: "completed", generated_image_artifact: { bucket_name: "generated-images", object_path: "series/series-1/assets/entity-1/render.png" } }] })),
   asset: vi.fn(async () => ({ entity: { id: "entity-1", name: "Hero", entity_type: "character", baseline_visual_prompt: "photo prompt", series_id: "series-1", series_title: "Series One", book_title: "Book One" }, prompts: [], images: [] })),
   savePromptVersion: vi.fn(async () => ({ prompt_id: "prompt-1" })),
   renderEntity: vi.fn(async () => ({ id: "render-1", status: "queued" })),

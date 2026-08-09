@@ -1,3 +1,5 @@
-export function assetImageUrl(path) {
-  return path ? `/runtime/file?path=${encodeURIComponent(path)}` : "";
+import { artifactUrl } from "../../api/artifactUrls";
+
+export function assetImageUrl(reference) {
+  return artifactUrl(reference);
 }

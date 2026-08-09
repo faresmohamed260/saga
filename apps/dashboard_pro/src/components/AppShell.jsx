@@ -1,9 +1,10 @@
 import { Outlet, useLocation } from "react-router-dom";
-import { StatusBanner } from "./primitives";
+import { StatusBanner } from "./primitives/index.js";
 import { useRuntimeState } from "../hooks/useRuntimeState";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { NAV_ITEMS } from "./navConfig";
-import { ShellHeader, ShellNav } from "./ShellHeader";
+import { ShellHeader } from "./shell/ShellHeader.jsx";
+import { ShellNav } from "./shell/ShellNav.jsx";
 
 export function AppShell() {
   const location = useLocation();

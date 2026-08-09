@@ -1,0 +1,26 @@
+{
+  "source": "D:\\Books\\Ebooks\\Holly Black\\The Lost Sisters\\The Lost Sisters.epub",
+  "cases": [
+    {
+      "case_id": "lost-sisters-note-to-locke",
+      "title_any_contains": ["crafting and sending", "note to locke crafted", "composes and sends a note", "craft a secret note", "writes and sends a secret note", "seabird to deliver a note", "writes and seals", "writes a secret note"],
+      "expected_participant_refs": ["char-taryn", "char-vivi", "char-locke"],
+      "forbidden_participant_refs": ["char-madoc"],
+      "narrator_character_id": "char-taryn"
+    },
+    {
+      "case_id": "lost-sisters-midnight-meeting",
+      "title_any_contains": ["midnight", "window", "first visit", "locke visits taryn at night"],
+      "expected_participant_refs": ["char-taryn", "char-locke"],
+      "forbidden_participant_refs": ["char-vivi", "char-jude"],
+      "narrator_character_id": "char-taryn"
+    },
+    {
+      "case_id": "lost-sisters-marriage-conditions",
+      "title_any_contains": ["marriage conditions", "conditions for marriage", "marriage with conditions", "marry under conditions"],
+      "expected_participant_refs": ["char-taryn", "char-locke"],
+      "forbidden_participant_refs": ["char-vivi", "char-jude"],
+      "narrator_character_id": "char-taryn"
+    }
+  ]
+}

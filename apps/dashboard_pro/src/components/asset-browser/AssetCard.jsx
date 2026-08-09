@@ -3,8 +3,9 @@ import { assetImageUrl } from "./assetImageUrl";
 import { STANDARD_ASSET_RATIO_CLASS } from "./constants";
 
 export function AssetCard({ entity, selected, onToggleSelect, onOpen }) {
-  const thumbnailPath = entity.generated_thumbnail_path || entity.generated_image_path;
-  const hasImage = !!thumbnailPath;
+  const thumbnailRef = entity.generated_thumbnail || entity.generated_thumbnail_artifact
+    || entity.generated_image || entity.generated_image_artifact;
+  const hasImage = !!assetImageUrl(thumbnailRef);
 
   return (
     <div
@@ -32,7 +33,7 @@ export function AssetCard({ entity, selected, onToggleSelect, onOpen }) {
         <div className={`${STANDARD_ASSET_RATIO_CLASS} border-b border-white/10 bg-black/40`}>
           {hasImage ? (
             <img
-              src={assetImageUrl(thumbnailPath)}
+              src={assetImageUrl(thumbnailRef)}
               alt={entity.name}
               loading="lazy"
               decoding="async"

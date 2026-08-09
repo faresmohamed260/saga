@@ -1,0 +1,105 @@
+x-runtime: &runtime
+  image: ${SAGA_RUNTIME_IMAGE:-saga-runtime:${SAGA_RELEASE_VERSION:-dev}}
+  build:
+    context: ../..
+    dockerfile: deploy/production/Dockerfile.runtime
+    args:
+      SAGA_RELEASE_VERSION: ${SAGA_RELEASE_VERSION:-dev}
+      SAGA_GIT_SHA: ${SAGA_GIT_SHA:-unknown}
+  env_file:
+    - path: ${SAGA_ENV_FILE:-.env}
+      required: true
+  restart: unless-stopped
+  networks: [saga, persistence]
+
+services:
+  migrate:
+    <<: *runtime
+    command: ["python", "-m", "packages.deployment_runtime.cli", "migrate", "upgrade"]
+    restart: "no"
+
+  api:
+    <<: *runtime
+    command: ["python", "-m", "apps.dashboard_api.app"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${SAGA_API_PORT:-8675}:8675"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8675/ready', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  worker:
+    <<: *runtime
+    command: ["saga-process", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "packages.deployment_runtime.cli", "process-health", "--role", "worker"]
+      interval: 20s
+      timeout: 8s
+      start_period: 20s
+      retries: 3
+
+  scheduler:
+    <<: *runtime
+    command: ["saga-process", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "packages.deployment_runtime.cli", "process-health", "--role", "scheduler"]
+      interval: 20s
+      timeout: 8s
+      start_period: 20s
+      retries: 3
+
+  observability:
+    <<: *runtime
+    command: ["saga-process", "observability"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-m", "packages.deployment_runtime.cli", "process-health", "--role", "observability", "--max-age-seconds", "150"]
+      interval: 30s
+      timeout: 8s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    image: ${SAGA_DASHBOARD_IMAGE:-saga-dashboard:${SAGA_RELEASE_VERSION:-dev}}
+    build:
+      context: ../..
+      dockerfile: deploy/production/Dockerfile.frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SAGA_FRONTEND_PORT:-8088}:8080"
+    restart: unless-stopped
+    networks: [saga]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.152.1@sha256:fa1f6ea8dabd3042fabf4411eed7fa52f253edd8940140bec89a573e62a24eb7
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    restart: unless-stopped
+    networks: [saga]
+
+networks:
+  saga:
+    name: saga-production
+  persistence:
+    external: true
+    name: ${SAGA_PERSISTENCE_NETWORK:-supabase_default}

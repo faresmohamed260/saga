@@ -11,7 +11,7 @@ export function OutputsHeader({ selectedRun, playableChapters }) {
         <Badge tone={toneFor(selectedRun.status)}>{selectedRun.status || "unknown"}</Badge>
         {playableChapters.length ? (
           <a
-            href={runtimeApi.audiobookRunBundleUrl(selectedRun.id)}
+            href={runtimeApi.audiobookRunBundleUrl(selectedRun)}
             download={`${selectedRun.title || "audiobook"}.wav`}
             className="rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-400/20"
           >

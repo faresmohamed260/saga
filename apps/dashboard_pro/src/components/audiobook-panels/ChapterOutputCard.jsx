@@ -1,9 +1,11 @@
 import { runtimeApi } from "../../api/runtimeApi";
+import { artifactUrl } from "../../api/artifactUrls";
 import { Button, DataCard, Toolbar } from "../primitives";
 import { chapterLabel } from "../../features/audiobook/audiobookUtils";
 
 export function ChapterOutputCard({ selectedRun, chapter, expanded, onToggle }) {
-  const audioUrl = runtimeApi.audiobookChapterAudioUrl(selectedRun.id, chapter.chapter_id);
+  const audioUrl = artifactUrl(chapter.audio_artifact || chapter.audio_file)
+    || runtimeApi.audiobookChapterAudioUrl(selectedRun.id, chapter.chapter_id);
   const filename = `${selectedRun.title || "audiobook"}-book-${chapter.book_index || "x"}-chapter-${chapter.chapter_index || "x"}.${selectedRun.audio_format || "wav"}`;
   return (
     <DataCard className="bg-[#0b1117]">

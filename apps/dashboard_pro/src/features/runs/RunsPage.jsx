@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { runtimeApi } from "../../api/runtimeApi";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { RunDetailsPanel, RunsListPanel } from "../../components/RunPanels";
+import { RunDetailsPanel } from "../../components/run-panels/RunDetailsPanel.jsx";
+import { RunsListPanel } from "../../components/run-panels/RunsListPanel.jsx";
 
 export function RunsPage() {
   const { jobId } = useParams();
@@ -107,7 +108,6 @@ function mergeJobSnapshot(selected, detail) {
     },
   };
 }
-
 function isActiveJob(job) {
   return ["running", "queued", "starting", "validating", "staging"].includes(String(job?.status || "").toLowerCase());
 }
@@ -175,4 +175,3 @@ function summarizeFailure(job, logs) {
     traceback: tracebackStart >= 0 ? `${lines.length - tracebackStart} traceback line(s) recorded` : "No traceback recorded",
   };
 }
-

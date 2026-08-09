@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { runtimeApi } from "../../api/runtimeApi";
-import { Metric } from "../../components/primitives";
+import { AudiobookControlsPanel } from "../../components/audiobook-panels/AudiobookControlsPanel.jsx";
+import { AudiobookLibraryPanel } from "../../components/audiobook-panels/AudiobookLibraryPanel.jsx";
+import { AudiobookNotice } from "../../components/audiobook-panels/AudiobookNotice.jsx";
+import { AudiobookOutputsPanel } from "../../components/audiobook-panels/AudiobookOutputsPanel.jsx";
+import { Metric } from "../../components/primitives/index.js";
 import { useAsync } from "../../hooks/useAsync";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
 import { buildPlanPayload, chapterLabel, filterSupersededRuns, normalizeBookRows, normalizeSeriesRows, runMatchesPlan } from "./audiobookUtils";
-import { AudiobookControlsPanel, AudiobookLibraryPanel, AudiobookNotice, AudiobookOutputsPanel } from "../../components/AudiobookPanels";
 
 const EMPTY_CHAPTERS = [];
 

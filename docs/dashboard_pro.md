@@ -1,17 +1,27 @@
 # S.A.G.A. Dashboard Pro
 
-`apps/dashboard_pro` is the active modular React dashboard for S.A.G.A. It is the only dashboard frontend served by `apps.dashboard_api.app`.
+`apps/dashboard_pro` is the active modular React dashboard for S.A.G.A. It is the only active dashboard frontend in the repo.
+
+## Frontend Structure
+
+- `src/app`: top-level routing and shell composition.
+- `src/features`: route-owned page modules and feature-specific state helpers.
+- `src/components/*`: concrete reusable UI modules grouped by domain, not compatibility barrels.
+- `src/components/primitives`: shared UI primitives.
+- `src/hooks`: runtime context, polling, and async helpers.
+
+The intended import direction is `app/features -> concrete component modules -> primitives/hooks/api`. Thin root-level re-export wrappers are intentionally avoided so the repo has one obvious source for each UI module.
 
 ## Current Capabilities
 
 - Routed pages for Overview, Import, Runs, Library, Analysis, Visual Assets, Decoder, Providers, and Diagnostics.
-- Database-backed runtime reads for jobs, books, analysis sections, provider health, generated stories, visual assets, uploads, and prompt metadata.
-- Import staging and validation are implemented against SQLite uploaded-source records.
-- Starting a validated import plan delegates to `saga.services.database_analysis_run_service.DatabaseAnalysisRunService`, not an embedded API-only pipeline.
+- Runtime-backed reads for jobs, books, analysis sections, provider health, generated stories, visual assets, uploads, and prompt metadata.
+- Import staging and validation are implemented against unified persistence runtime source-document records.
+- Starting a validated import plan delegates to the backend runtime orchestration layer, not an embedded API-only pipeline.
 - Import jobs can run deterministic ingest/split only, or the full DB-agent stage list when `shared_config.run_agents=true`.
 - Decoder plan validation and decoder job start are wired to the existing decoder runtime.
 - Visual prompt versioning, batch render start, and exact single-entity render handoff are wired to existing visual runtime paths.
-- Single-entity render passes both the selected SQLite entity id and optional prompt id through the API, CLI, manifest builder, and ComfyUI render service.
+- Single-entity render passes the selected canonical entity id and prompt data through runtime-backed provider flows.
 - Job controls are intentionally conservative: unsupported pause/resume controls are hidden in the UI, and unsupported backend actions return explicit `409` errors instead of pretending to work.
 
 ## Deployment

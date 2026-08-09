@@ -1,16 +1,21 @@
+"""Persisted token rotation state for Kokoro provider accounts."""
+
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from packages.modal_runtime import load_modal_account_secrets
+from packages.modal_runtime.state import load_runtime_state, save_runtime_state, stamp_runtime_metadata
 
-MODULE_DIR = Path(__file__).resolve().parent
-DEFAULT_TOKENS_PATH = MODULE_DIR.parent / "comfyui" / "modal_tokens.json"
-DEFAULT_STATE_PATH = MODULE_DIR / "pool_state.json"
+
+DEFAULT_STATE_PATH: Path | None = None
 DEFAULT_WARM_TTL_SECONDS = 60
+PROVIDER_NAME = "modal_kokoro_tts"
 
 
 @dataclass(frozen=True)
@@ -20,73 +25,111 @@ class ModalToken:
     token_secret: str
 
 
-def _load_state(state_path: Path = DEFAULT_STATE_PATH) -> dict:
-    if not state_path.exists():
-        return {}
+def load_tokens() -> list[ModalToken]:
+    persisted = []
     try:
-        raw = json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-    return raw if isinstance(raw, dict) else {}
+        persisted = load_modal_account_secrets(PROVIDER_NAME)
+    except Exception:
+        persisted = []
+    if persisted:
+        return [
+            ModalToken(
+                name=str(item.get("label") or "").strip(),
+                token_id=str(item.get("token_id") or "").strip(),
+                token_secret=str(item.get("token_secret") or "").strip(),
+            )
+            for item in persisted
+            if str(item.get("label") or "").strip() and str(item.get("token_id") or "").strip() and str(item.get("token_secret") or "").strip()
+        ]
+    if str(os.getenv("SAGA_MODAL_ALLOW_ENV_FALLBACK") or "").strip().lower() not in {"1", "true", "yes"}:
+        return []
+    payload = str(os.getenv("SAGA_MODAL_TOKENS_JSON") or "").strip()
+    if payload:
+        try:
+            raw = json.loads(payload)
+        except json.JSONDecodeError:
+            raw = []
+        if isinstance(raw, list):
+            tokens: list[ModalToken] = []
+            for idx, item in enumerate(raw, start=1):
+                if not isinstance(item, dict):
+                    continue
+                token_id = str(item.get("token_id") or "").strip()
+                token_secret = str(item.get("token_secret") or "").strip()
+                if not token_id or not token_secret:
+                    continue
+                tokens.append(
+                    ModalToken(
+                        name=str(item.get("label") or item.get("name") or f"member-{idx:02d}").strip(),
+                        token_id=token_id,
+                        token_secret=token_secret,
+                    )
+                )
+            if tokens:
+                return tokens
+    token_id = str(os.getenv("MODAL_TOKEN_ID") or "").strip()
+    token_secret = str(os.getenv("MODAL_TOKEN_SECRET") or "").strip()
+    if token_id and token_secret:
+        return [ModalToken(name="default", token_id=token_id, token_secret=token_secret)]
+    return []
 
 
-def _save_state(payload: dict, state_path: Path = DEFAULT_STATE_PATH) -> None:
+def _load_state(
+    state_path: Path | None = DEFAULT_STATE_PATH,
+    *,
+    expected_app_name: str = "",
+    expected_generation: int = 0,
+) -> dict:
+    return load_runtime_state(
+        state_path,
+        expected_app_name=expected_app_name,
+        expected_generation=expected_generation,
+        provider_name=PROVIDER_NAME,
+    )
+
+
+def _save_state(payload: dict, state_path: Path | None = DEFAULT_STATE_PATH) -> None:
     try:
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        save_runtime_state(payload, state_path, provider_name=PROVIDER_NAME)
     except OSError:
         # Pool state helps token rotation and observability, but it should never abort a live TTS render.
         return
 
 
-def load_tokens(tokens_path: Path = DEFAULT_TOKENS_PATH) -> list[ModalToken]:
-    if not tokens_path.exists():
-        raise FileNotFoundError(
-            f"Token file not found: {tokens_path}. Copy modal_tokens.example.json to modal_tokens.json first."
-        )
-    raw = json.loads(tokens_path.read_text(encoding="utf-8"))
-    items = raw.get("tokens")
-    if not isinstance(items, list) or not items:
-        raise ValueError(f"{tokens_path} must contain a non-empty 'tokens' list.")
-    tokens: list[ModalToken] = []
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            raise ValueError(f"Token entry #{index + 1} must be an object.")
-        name = str(item.get("name") or f"token-{index + 1}")
-        token_id = str(item.get("token_id") or "").strip()
-        token_secret = str(item.get("token_secret") or "").strip()
-        if not token_id or not token_secret:
-            raise ValueError(f"Token entry '{name}' is missing token_id or token_secret.")
-        tokens.append(ModalToken(name=name, token_id=token_id, token_secret=token_secret))
-    return tokens
-
-
-def load_start_index(state_path: Path = DEFAULT_STATE_PATH) -> int:
-    raw = _load_state(state_path)
+def load_start_index(state_path: Path | None = DEFAULT_STATE_PATH, *, expected_app_name: str = "", expected_generation: int = 0) -> int:
+    raw = _load_state(state_path, expected_app_name=expected_app_name, expected_generation=expected_generation)
     return max(int(raw.get("next_index", 0)), 0)
 
 
-def save_next_index(next_index: int, state_path: Path = DEFAULT_STATE_PATH) -> None:
-    payload = _load_state(state_path)
+def save_next_index(
+    next_index: int,
+    state_path: Path | None = DEFAULT_STATE_PATH,
+    *,
+    app_name: str = "",
+    runtime_generation: int = 0,
+) -> None:
+    payload = _load_state(state_path, expected_app_name=app_name, expected_generation=runtime_generation)
+    if app_name or runtime_generation:
+        payload = stamp_runtime_metadata(payload, app_name=app_name, runtime_generation=runtime_generation)
     payload["next_index"] = max(next_index, 0)
     _save_state(payload, state_path)
 
 
-def load_token_stats(state_path: Path = DEFAULT_STATE_PATH) -> dict[str, dict]:
-    raw = _load_state(state_path)
+def load_token_stats(state_path: Path | None = DEFAULT_STATE_PATH, *, expected_app_name: str = "", expected_generation: int = 0) -> dict[str, dict]:
+    raw = _load_state(state_path, expected_app_name=expected_app_name, expected_generation=expected_generation)
     stats = raw.get("token_stats", {})
     return stats if isinstance(stats, dict) else {}
 
 
-def load_active_token_name(state_path: Path = DEFAULT_STATE_PATH) -> str:
-    raw = _load_state(state_path)
+def load_active_token_name(state_path: Path | None = DEFAULT_STATE_PATH, *, expected_app_name: str = "", expected_generation: int = 0) -> str:
+    raw = _load_state(state_path, expected_app_name=expected_app_name, expected_generation=expected_generation)
     return str(raw.get("active_token_name") or "").strip()
 
 
 def update_token_stat(
     token_name: str,
     *,
-    state_path: Path = DEFAULT_STATE_PATH,
+    state_path: Path | None = DEFAULT_STATE_PATH,
     health_ok: bool | None = None,
     live_ok: bool | None = None,
     warm_until: int | None = None,
@@ -95,8 +138,11 @@ def update_token_stat(
     health_url: str | None = None,
     app_name: str | None = None,
     live_payload: dict | None = None,
+    last_successful_request: dict | None = None,
+    runtime_generation: int = 0,
 ) -> None:
-    payload = _load_state(state_path)
+    payload = _load_state(state_path, expected_app_name=str(app_name or ""), expected_generation=runtime_generation)
+    payload = stamp_runtime_metadata(payload, app_name=str(app_name or ""), runtime_generation=runtime_generation)
     stats = payload.setdefault("token_stats", {})
     token_stats = stats.setdefault(token_name, {})
     now = int(time.time())
@@ -121,6 +167,9 @@ def update_token_stat(
     if live_payload is not None:
         token_stats["live_payload"] = live_payload
         token_stats["live_payload_checked_at"] = now
+    if last_successful_request is not None:
+        token_stats["last_successful_request"] = last_successful_request
+        token_stats["last_successful_request_at"] = now
     _save_state(payload, state_path)
 
 
@@ -131,10 +180,13 @@ def mark_live_success(
     health_url: str,
     app_name: str,
     live_payload: dict,
-    state_path: Path = DEFAULT_STATE_PATH,
+    state_path: Path | None = DEFAULT_STATE_PATH,
     warm_ttl_seconds: int = DEFAULT_WARM_TTL_SECONDS,
+    runtime_generation: int = 0,
+    last_successful_request: dict | None = None,
 ) -> None:
-    payload = _load_state(state_path)
+    payload = _load_state(state_path, expected_app_name=app_name, expected_generation=runtime_generation)
+    payload = stamp_runtime_metadata(payload, app_name=app_name, runtime_generation=runtime_generation)
     payload["active_api_url"] = api_url
     payload["active_health_url"] = health_url
     payload["active_token_name"] = token_name
@@ -151,11 +203,13 @@ def mark_live_success(
         health_url=health_url,
         app_name=app_name,
         live_payload=live_payload,
+        last_successful_request=last_successful_request,
+        runtime_generation=runtime_generation,
     )
 
 
-def is_token_warm(token_name: str, *, state_path: Path = DEFAULT_STATE_PATH) -> bool:
-    stats = load_token_stats(state_path)
+def is_token_warm(token_name: str, *, state_path: Path | None = DEFAULT_STATE_PATH, expected_app_name: str = "", expected_generation: int = 0) -> bool:
+    stats = load_token_stats(state_path, expected_app_name=expected_app_name, expected_generation=expected_generation)
     token_stats = stats.get(token_name, {})
     return int(token_stats.get("warm_until", 0)) > int(time.time())
 
@@ -175,13 +229,15 @@ def rotate_prefer_warm(
     tokens: Iterable[ModalToken],
     start_index: int,
     *,
-    state_path: Path = DEFAULT_STATE_PATH,
+    state_path: Path | None = DEFAULT_STATE_PATH,
+    expected_app_name: str = "",
+    expected_generation: int = 0,
 ) -> list[tuple[int, ModalToken]]:
     ordered = rotate_from(tokens, start_index)
     warm: list[tuple[int, ModalToken]] = []
     cold: list[tuple[int, ModalToken]] = []
     for item in ordered:
-        if is_token_warm(item[1].name, state_path=state_path):
+        if is_token_warm(item[1].name, state_path=state_path, expected_app_name=expected_app_name, expected_generation=expected_generation):
             warm.append(item)
         else:
             cold.append(item)

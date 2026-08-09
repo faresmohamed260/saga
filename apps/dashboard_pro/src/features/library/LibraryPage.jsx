@@ -1,6 +1,6 @@
-import { Metric } from "../../components/primitives";
+import { LibraryGrid } from "../../components/library-cards/LibraryGrid.jsx";
+import { Metric } from "../../components/primitives/index.js";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { LibraryGrid } from "../../components/LibraryCards";
 
 export function LibraryPage() {
   const { state } = useRuntimeState();

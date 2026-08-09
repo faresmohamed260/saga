@@ -39,8 +39,8 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
   }));
   const [baselinePromptState, setBaselinePromptState] = useState({ positive: "", negative: "" });
   const [previewState, setPreviewState] = useState({
-    imagePath: "",
-    thumbnailPath: "",
+    imageRef: null,
+    thumbnailRef: null,
     promptKey: "",
     rendering: false,
     saving: false,
@@ -51,8 +51,12 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
   const [activePromptTab, setActivePromptTab] = useState("positive");
   const [renameDraft, setRenameDraft] = useState("");
   const [renaming, setRenaming] = useState(false);
-  const fullImagePath = activeImage.output_path || entity.generated_image_path;
-  const displayedImagePath = previewState.imagePath || fullImagePath;
+  const fullImageRef =
+    activeImage.output_artifact ||
+    activeImage.generated_image ||
+    entity.generated_image ||
+    entity.generated_image_artifact;
+  const displayedImageRef = previewState.imageRef || fullImageRef;
 
   useEffect(() => {
     const positive = promptEditor?.positive
@@ -89,8 +93,8 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
       negative: baselineNegative,
     });
     setPreviewState({
-      imagePath: "",
-      thumbnailPath: "",
+      imageRef: null,
+      thumbnailRef: null,
       promptKey: "",
       rendering: false,
       saving: false,
@@ -106,7 +110,7 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
   const resolvedPositivePrompt = composePrompt(editorState.positivePrefix, editorState.positiveBody, editorState.positiveSuffix);
   const resolvedNegativePrompt = composeNegativePrompt(editorState.negativeBase, editorState.negativeTail);
   const currentPromptKey = promptKey(resolvedPositivePrompt, resolvedNegativePrompt);
-  const canSave = !!previewState.imagePath && previewState.promptKey === currentPromptKey && !previewState.rendering && !previewState.saving;
+  const canSave = !!previewState.imageRef && previewState.promptKey === currentPromptKey && !previewState.rendering && !previewState.saving;
   const positiveDirty =
     String(editorState.positivePrefix || "") !== String(baselineEditorState.positivePrefix || "") ||
     String(editorState.positiveBody || "") !== String(baselineEditorState.positiveBody || "") ||
@@ -128,8 +132,8 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
         negative_prompt: resolvedNegativePrompt,
       });
       setPreviewState({
-        imagePath: result.preview_image_path || "",
-        thumbnailPath: result.preview_thumbnail_path || "",
+        imageRef: result.preview_image || result.preview_image_artifact || null,
+        thumbnailRef: result.preview_thumbnail || result.preview_thumbnail_artifact || null,
         promptKey: currentPromptKey,
         rendering: false,
         saving: false,
@@ -154,12 +158,12 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
       const result = await runtimeApi.saveRenderedEntity(entityId, {
         positive_prompt: resolvedPositivePrompt,
         negative_prompt: resolvedNegativePrompt,
-        preview_image_path: previewState.imagePath,
+        preview_image: previewState.imageRef,
       });
       setPreviewState((current) => ({
         ...current,
-        imagePath: "",
-        thumbnailPath: "",
+        imageRef: null,
+        thumbnailRef: null,
         promptKey: "",
         rendering: false,
         saving: false,
@@ -229,9 +233,9 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
             <h3 className="text-2xl font-black text-white">{entity.name || "Loading asset"}</h3>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {displayedImagePath ? (
+            {displayedImageRef ? (
               <a
-                href={assetImageUrl(displayedImagePath)}
+                href={assetImageUrl(displayedImageRef)}
                 download
                 className="rounded-lg border border-emerald-400/50 bg-emerald-400/10 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-400/20"
               >
@@ -255,10 +259,10 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
           <div className="border-b border-white/10 bg-black/40 xl:border-b-0 xl:border-r">
             {loading ? (
               <div className="flex min-h-[32rem] items-center justify-center p-8 text-slate-400">Loading full asset details...</div>
-            ) : displayedImagePath ? (
+            ) : displayedImageRef ? (
               <div className="flex min-h-[32rem] items-center justify-center p-6">
                 <img
-                  src={assetImageUrl(displayedImagePath)}
+                  src={assetImageUrl(displayedImageRef)}
                   alt={entity.name || entityId}
                   className="max-h-[78vh] w-full rounded-lg object-contain"
                 />
@@ -295,7 +299,7 @@ export function AssetModal({ entityId, payload, loading, onSaved, onDeleted, onC
 
             {previewState.error ? <StatusBanner tone="red" message={previewState.error} /> : null}
             {previewState.message ? <StatusBanner tone="green" message={previewState.message} /> : null}
-            {previewState.imagePath && previewState.promptKey !== currentPromptKey ? (
+            {previewState.imageRef && previewState.promptKey !== currentPromptKey ? (
               <StatusBanner tone="amber" message="The prompt changed after the last render. Render again before saving." />
             ) : null}
 

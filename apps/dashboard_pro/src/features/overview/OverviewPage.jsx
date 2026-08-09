@@ -1,6 +1,7 @@
-import { Metric, toneFor } from "../../components/primitives";
+import { CanonLibraryPanel } from "../../components/overview-cards/CanonLibraryPanel.jsx";
+import { OperationsPanel } from "../../components/overview-cards/OperationsPanel.jsx";
+import { Metric, toneFor } from "../../components/primitives/index.js";
 import { useRuntimeState } from "../../hooks/useRuntimeState";
-import { CanonLibraryPanel, OperationsPanel } from "../../components/OverviewCards";
 
 export function OverviewPage() {
   const { state } = useRuntimeState();

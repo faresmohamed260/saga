@@ -1,5 +1,6 @@
 import { Badge, DataCard, Field, Toolbar, text } from "../primitives";
 import { CompactList } from "./CompactList";
+import { assetImageUrl } from "../asset-browser/assetImageUrl";
 
 export function EntityCard({ row, visual }) {
   const name = row.name || row.entity_name || "Unnamed entity";
@@ -35,7 +36,7 @@ export function EntityCard({ row, visual }) {
         <div className="mt-4 space-y-3">
           <Field label="Prompt">{text(row.baseline_prompt || row.baseline_visual_prompt)}</Field>
           <Field label="Negative prompt">{text(row.negative_prompt)}</Field>
-          {row.generated_image_path ? <img src={`/runtime/file?path=${encodeURIComponent(row.generated_image_path)}`} alt={name} className="max-h-[520px] rounded-lg border border-white/10 object-contain" /> : <Field label="Image">No image version recorded.</Field>}
+          {assetImageUrl(row.generated_image || row.generated_image_artifact) ? <img src={assetImageUrl(row.generated_image || row.generated_image_artifact)} alt={name} className="max-h-[520px] rounded-lg border border-white/10 object-contain" /> : <Field label="Image">No image version recorded.</Field>}
         </div>
       ) : null}
     </DataCard>
