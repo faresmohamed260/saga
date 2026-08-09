@@ -127,6 +127,20 @@ class RelationshipsPayload(BaseModel):
     relationships: list[SceneRelationshipExtraction] = Field(default_factory=list)
 
 
+def _structured_response_format(name: str, payload_type: type[BaseModel]) -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": name, "schema": payload_type.model_json_schema()},
+    }
+
+
+def _validate_extraction_payload(payload_type: type[BaseModel], payload: dict[str, Any], label: str) -> BaseModel:
+    try:
+        return payload_type.model_validate(payload)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} payload_validation_failed: {exc}") from exc
+
+
 class EventAgent:
     def __init__(self, *, store: CanonExtractionStore, reasoning_runtime: ReasoningRuntimeClient, cancellation_checker: CancellationChecker | None = None) -> None:
         self.store = store
@@ -285,10 +299,15 @@ class EventAgent:
         raise_if_cancelled(self.cancellation_checker)
         runtime = reasoning_runtime or self.reasoning_runtime
         prompt = _build_events_prompt(book=book, chapter=chapter, scene_slices=scene_slices, identity_bundle=identity_bundle)
-        payload = runtime.generate_json(prompt, strict=True, max_tokens=2600)
+        payload = runtime.generate_json(
+            prompt,
+            strict=True,
+            max_tokens=2600,
+            response_format=_structured_response_format("canon_events", EventsPayload),
+        )
         if payload.get("error"):
             raise RuntimeError(f"Event extraction failed: {payload.get('error')}")
-        return EventsPayload.model_validate(payload)
+        return EventsPayload.model_validate(_validate_extraction_payload(EventsPayload, payload, "Event extraction"))
 
     def _extract_chapter_events_with_fallback(
         self,
@@ -468,10 +487,15 @@ class EntityAgent:
         raise_if_cancelled(self.cancellation_checker)
         runtime = reasoning_runtime or self.reasoning_runtime
         prompt = _build_entities_prompt(book=book, chapter=chapter, scene_slices=scene_slices, identity_bundle=identity_bundle)
-        payload = runtime.generate_json(prompt, strict=True, max_tokens=2400)
+        payload = runtime.generate_json(
+            prompt,
+            strict=True,
+            max_tokens=2400,
+            response_format=_structured_response_format("canon_entities", EntitiesPayload),
+        )
         if payload.get("error"):
             raise RuntimeError(f"Entity extraction failed: {payload.get('error')}")
-        return EntitiesPayload.model_validate(payload)
+        return EntitiesPayload.model_validate(_validate_extraction_payload(EntitiesPayload, payload, "Entity extraction"))
 
     def _extract_chapter_entities_with_fallback(
         self,
@@ -686,10 +710,17 @@ class RelationshipAgent:
             identity_bundle=identity_bundle,
             entities=entities,
         )
-        payload = runtime.generate_json(prompt, strict=True, max_tokens=2400)
+        payload = runtime.generate_json(
+            prompt,
+            strict=True,
+            max_tokens=2400,
+            response_format=_structured_response_format("canon_relationships", RelationshipsPayload),
+        )
         if payload.get("error"):
             raise RuntimeError(f"Relationship extraction failed: {payload.get('error')}")
-        return RelationshipsPayload.model_validate(payload)
+        return RelationshipsPayload.model_validate(
+            _validate_extraction_payload(RelationshipsPayload, payload, "Relationship extraction")
+        )
 
     def _extract_chapter_relationships_with_fallback(
         self,
@@ -1263,7 +1294,10 @@ def _fallback_events_payload_from_scene_slices(scene_slices: list[dict[str, Any]
 
 def _should_retry_split_extraction_error(exc: RuntimeError) -> bool:
     message = str(exc)
-    return "parse_failed" in message or "empty_response" in message or "max_retries_exceeded" in message
+    return any(
+        label in message
+        for label in ("parse_failed", "empty_response", "max_retries_exceeded", "payload_validation_failed")
+    )
 
 
 def _identity_character_context(identity_bundle: CanonicalIdentityBundle) -> list[dict[str, Any]]:
