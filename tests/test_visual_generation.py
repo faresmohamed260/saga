@@ -17,6 +17,7 @@ from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeC
 from packages.reasoning_runtime import ReasoningProfile, ReasoningRuntimeConfig, create_reasoning_client
 from packages.visual_generation import VisualGenerationRuntime
 from packages.visual_generation.pipeline import VisualPlanningPayload
+from packages.visual_generation.prompt_policy import compile_prompt
 from packages.visual_generation.quality import evaluate_image_technical_quality
 
 
@@ -228,6 +229,20 @@ def test_technical_quality_accepts_valid_highly_compressed_png():
     assert result["issues"] == []
 
 
+def test_scene_prompt_enforces_unique_whole_image_cast_cardinality():
+    positive, negative, mode = compile_prompt(
+        target_type="scene",
+        body="Azriel opens the scroll while Elain watches and Cassian stands by the fire.",
+        scene_character_names=["Azriel", "Elain", "Cassian", "Azriel"],
+    )
+
+    assert "EXACTLY 3 PEOPLE TOTAL" in positive
+    assert "Azriel, Elain, Cassian" in positive
+    assert "Show each named person exactly once" in positive
+    assert "background people" in negative
+    assert mode == "entity_generation"
+
+
 def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     client = _persistence(tmp_path)
     _seed(client)
@@ -245,6 +260,10 @@ def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     location_prompt = next(item for item in result.prompts if item.target_type == "location")
     assert "crowded with revelers" not in location_prompt.positive_prompt
     assert "Unoccupied static environment reference" in location_prompt.positive_prompt
+    scene_prompt = next(item for item in result.prompts if item.target_type == "scene")
+    assert "EXACTLY 1 PEOPLE TOTAL" in scene_prompt.positive_prompt
+    assert "Jude" in scene_prompt.positive_prompt
+    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v2"
 
 
 def test_black_image_retries_with_a_new_seed(tmp_path: Path):

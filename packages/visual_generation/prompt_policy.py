@@ -34,16 +34,28 @@ ENTITY_NEGATIVE = {
 }
 SCENE_PREFIX = "Create a photorealistic narrative scene image faithful to the supplied production references and story moment."
 SCENE_SUFFIX = "Cinematic but physically plausible composition, coherent spatial layout, realistic anatomy and materials, natural detail, sharp subject readability, no text or watermark."
-SCENE_NEGATIVE = "anime, illustration, painting, cartoon, CGI, 3D render, duplicate characters, inconsistent faces, extra limbs, malformed hands, broken anatomy, incoherent architecture, unrelated people, text, logo, watermark, blurry, low detail, black image"
+SCENE_NEGATIVE = "anime, illustration, painting, cartoon, CGI, 3D render, duplicate characters, extra people, background people, crowds, silhouettes, reflections of people, portraits, inconsistent faces, extra limbs, malformed hands, broken anatomy, incoherent architecture, unrelated people, text, logo, watermark, blurry, low detail, black image"
 
 
-def compile_prompt(*, target_type: str, body: str) -> tuple[str, str, str]:
+def compile_prompt(*, target_type: str, body: str, scene_character_names: list[str] | None = None) -> tuple[str, str, str]:
     normalized = str(target_type or "").strip().lower()
     clean_body = " ".join(str(body or "").split())
     if normalized == "character":
         return f"{CHARACTER_PREFIX}\n{clean_body}\n{CHARACTER_SUFFIX}", CHARACTER_NEGATIVE, "character_sheet"
     if normalized == "scene":
-        return f"{SCENE_PREFIX}\n{clean_body}\n{SCENE_SUFFIX}", SCENE_NEGATIVE, "entity_generation"
+        cast = list(dict.fromkeys(name.strip() for name in (scene_character_names or []) if name.strip()))
+        if cast:
+            cast_constraint = (
+                f"HARD CAST LIMIT: Show EXACTLY {len(cast)} PEOPLE TOTAL in the entire image: {', '.join(cast)}. "
+                "Show each named person exactly once. Do not add any other person, duplicate, background figure, "
+                "silhouette, human reflection, or human portrait."
+            )
+        else:
+            cast_constraint = (
+                "HARD CAST LIMIT: Show ZERO PEOPLE in the entire image. Do not add a person, background figure, "
+                "silhouette, human reflection, or human portrait."
+            )
+        return f"{SCENE_PREFIX}\n{cast_constraint}\n{clean_body}\n{SCENE_SUFFIX}", SCENE_NEGATIVE, "entity_generation"
     if normalized not in ENTITY_PREFIX:
         raise ValueError(f"Unsupported visual target type '{target_type}'.")
     return f"{ENTITY_PREFIX[normalized]}\n{clean_body}\n{ENTITY_SUFFIX[normalized]}", ENTITY_NEGATIVE[normalized], "entity_generation"
