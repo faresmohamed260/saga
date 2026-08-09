@@ -1,4 +1,5 @@
 import requests
+import pytest
 from types import SimpleNamespace
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
@@ -12,6 +13,7 @@ from packages.reasoning_runtime.models import (
     ReasoningRuntimeConfig,
 )
 from packages.reasoning_runtime.provider_config import apply_persistence_provider_configs, summarize_reasoning_provider_configs
+from packages.runtime_common import RuntimeCancelledError
 
 
 def test_ollama_cloud_payload_drops_cloud_suffix():
@@ -181,6 +183,42 @@ def test_retry_json_retries_transient_structured_output_failures(monkeypatch):
     ])
 
     assert client._retry_json_request(lambda: next(responses)) == {"ok": True}
+
+
+def test_retry_json_stops_before_another_provider_attempt_after_cancellation(monkeypatch):
+    config = ReasoningRuntimeConfig(
+        profiles={"default": ReasoningProfile(name="default", mode="gpt_oss", max_retries=4)},
+        ollama_accounts=[OllamaAccount(label="a1", api_key="test-key")],
+    )
+    client = create_reasoning_client(profile_name="default", config=config)
+    monkeypatch.setattr("packages.reasoning_runtime.client.time.sleep", lambda _seconds: None)
+    state = {"calls": 0, "cancelled": False}
+
+    def operation():
+        state["calls"] += 1
+        state["cancelled"] = True
+        return {"error": "parse_failed", "raw_output": "truncated"}
+
+    with pytest.raises(RuntimeCancelledError):
+        client._retry_json_request(operation, cancellation_checker=lambda: state["cancelled"])
+
+    assert state["calls"] == 1
+
+
+def test_retry_json_discards_a_response_completed_after_cancellation():
+    config = ReasoningRuntimeConfig(
+        profiles={"default": ReasoningProfile(name="default", mode="gpt_oss", max_retries=2)},
+        ollama_accounts=[OllamaAccount(label="a1", api_key="test-key")],
+    )
+    client = create_reasoning_client(profile_name="default", config=config)
+    state = {"cancelled": False}
+
+    def operation():
+        state["cancelled"] = True
+        return {"ok": True}
+
+    with pytest.raises(RuntimeCancelledError):
+        client._retry_json_request(operation, cancellation_checker=lambda: state["cancelled"])
 
 
 def test_safe_parse_json_extracts_object_from_fence():

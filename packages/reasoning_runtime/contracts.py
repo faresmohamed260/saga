@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Optional, Protocol
 
 from pydantic import AliasChoices, BaseModel, Field
-from packages.runtime_common import RuntimeRequestMetadata
+from packages.runtime_common import CancellationChecker, RuntimeRequestMetadata
 
 
 class ReasoningRequestMetadata(RuntimeRequestMetadata):
@@ -60,6 +60,7 @@ class ReasoningClient(Protocol):
         response_format: Optional[dict] = None,
         tools: Optional[list] = None,
         tool_choice: Optional[object] = None,
+        cancellation_checker: CancellationChecker | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -70,6 +71,7 @@ class ReasoningClient(Protocol):
         system_prompt: str = "",
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        cancellation_checker: CancellationChecker | None = None,
     ) -> str:
         ...
 

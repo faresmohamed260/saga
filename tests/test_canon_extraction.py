@@ -99,8 +99,8 @@ class StubReasoningRuntime:
         self._last = {}
         self.response_schema_names: list[str] = []
 
-    def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None):
-        del strict, validator, max_tokens, tools, tool_choice
+    def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None, cancellation_checker=None):
+        del strict, validator, max_tokens, tools, tool_choice, cancellation_checker
         self.response_schema_names.append(str(((response_format or {}).get("json_schema") or {}).get("name") or ""))
         lowered = prompt.lower()
         scene_id = _first_scene_id(prompt)
