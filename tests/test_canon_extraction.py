@@ -439,6 +439,19 @@ def test_normalize_entity_type_rejects_character_like_labels():
     assert _normalize_entity_type("event", name="coronation of Prince Dain", description="A future coronation") == "concept"
 
 
+def test_normalize_entity_type_corrects_natural_spring_mislabeled_as_object():
+    assert _normalize_entity_type(
+        "object",
+        name="glowing spring",
+        description="A luminous natural spring marked on a map as the travelers' destination.",
+    ) == "location"
+    assert _normalize_entity_type(
+        "object",
+        name="clockwork spring",
+        description="A portable coiled metal replacement part.",
+    ) == "object"
+
+
 def test_normalize_entity_name_removes_leading_articles_for_deduplication():
     assert normalize_entity_name("the Folk") == "Folk"
     assert normalize_entity_name("An apple blossom") == "apple blossom"

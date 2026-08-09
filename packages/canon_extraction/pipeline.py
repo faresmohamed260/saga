@@ -1150,6 +1150,9 @@ def _build_entities_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scen
         "Exclude canonical characters already covered by the identity bundle.\n"
         "Do not extract narrator/addressee labels as entities.\n"
         "Allowed entity types only: location, object, creature, organization, artifact, concept.\n"
+        "Classify by physical role, not an ambiguous noun: location means a place or natural/spatial feature people can enter, visit, or travel to "
+        "(including springs, pools, rivers, forests, buildings, and rooms); object means a portable physical item; artifact means a significant "
+        "crafted, historical, or enchanted item. A natural water spring is always a location, never a coiled object.\n"
         "Never return entity_type=character or entity_type=event.\n"
         f"Book title: {book.title}\n"
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
@@ -1337,9 +1340,19 @@ def _normalize_label(value: str) -> str:
 
 def _normalize_entity_type(value: str, *, name: str = "", description: str = "") -> str:
     normalized = _normalize_label(value)
+    haystack = f"{name} {description} {value}".casefold()
+    natural_place_phrases = {
+        "natural spring", "glowing spring", "luminous spring", "hot spring", "mineral spring", "spring-fed",
+        "body of water", "waterfall", "riverbank", "river bank",
+    }
+    if any(phrase in haystack for phrase in natural_place_phrases):
+        return "location"
+    if re.search(r"\b(spring|pool)\b", haystack) and any(
+        marker in haystack for marker in ("water", "luminous", "glowing", "natural", "destination", "terrain", "shore")
+    ):
+        return "location"
     if normalized in ALLOWED_ENTITY_TYPES:
         return normalized
-    haystack = f"{name} {description} {value}".casefold()
     if any(token in haystack for token in {"castle", "house", "room", "woods", "forest", "river", "bank", "world", "palace", "hall", "table", "window", "balcony"}):
         return "location"
     if any(token in haystack for token in {"dagger", "knife", "cloak", "gown", "ring", "hand", "seal", "apple", "plum", "note", "sword"}):
