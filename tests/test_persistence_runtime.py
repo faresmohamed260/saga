@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from packages.persistence_runtime import (
     AUDIO_OUTPUT_BUCKET,
     GENERATED_IMAGE_BUCKET,
@@ -122,6 +124,56 @@ def test_library_store_persists_series_books_scenes_and_records(tmp_path):
     assert books[0]["title"] == "A Court of Thorns and Roses"
     assert scenes[0]["payload"]["characters"] == ["Feyre"]
     assert records[0]["title"] == "Feyre Archeron"
+
+
+def test_library_store_bulk_upserts_scenes_in_one_ordered_contract(tmp_path):
+    client = _client(tmp_path)
+    client.library.upsert_series("series-bulk", title="Bulk")
+    client.library.upsert_book("book-bulk", series_id="series-bulk", title="Bulk Book")
+
+    inserted = client.library.upsert_scenes([
+        {
+            "scene_id": "scene-b",
+            "book_id": "book-bulk",
+            "chapter_index": 1,
+            "scene_index": 2,
+            "summary": "Second",
+            "text": "Second scene.",
+            "payload": {"version": 1},
+        },
+        {
+            "scene_id": "scene-a",
+            "book_id": "book-bulk",
+            "chapter_index": 1,
+            "scene_index": 1,
+            "summary": "First",
+            "text": "First scene.",
+            "payload": {"version": 1},
+        },
+    ])
+    updated = client.library.upsert_scenes([
+        {**inserted[0], "summary": "Second revised", "payload": {"version": 2}},
+        {**inserted[1], "summary": "First revised", "payload": {"version": 2}},
+    ])
+
+    assert [row["scene_id"] for row in inserted] == ["scene-b", "scene-a"]
+    assert [row["summary"] for row in updated] == ["Second revised", "First revised"]
+    persisted = client.library.list_scenes(book_id="book-bulk")
+    assert [row["scene_id"] for row in persisted] == ["scene-a", "scene-b"]
+    assert all(row["payload"]["version"] == 2 for row in persisted)
+
+
+def test_library_store_bulk_scene_upsert_rejects_duplicate_ids(tmp_path):
+    client = _client(tmp_path)
+    duplicate = {
+        "scene_id": "scene-duplicate",
+        "book_id": "book-duplicate",
+        "chapter_index": 1,
+        "scene_index": 1,
+    }
+
+    with pytest.raises(ValueError, match="unique scene_id"):
+        client.library.upsert_scenes([duplicate, duplicate])
 
 
 def test_job_story_identity_and_audiobook_stores_round_trip(tmp_path):

@@ -24,8 +24,20 @@ def ground_scene_narration(
     identity_bundle: CanonicalIdentityBundle,
     chapter_texts: list[str] | None = None,
 ) -> list[SceneNarrativeGrounding]:
-    narrator_candidate = infer_global_narrator(identity_bundle=identity_bundle, texts=[*(chapter_texts or []), *[scene.text for scene in scenes]])
-    addressee_candidates = infer_global_addressees(identity_bundle=identity_bundle, texts=[*(chapter_texts or []), *[scene.text for scene in scenes]])
+    name_index, names_pattern = _identity_name_index(identity_bundle)
+    source_texts = [*(chapter_texts or []), *[scene.text for scene in scenes]]
+    narrator_candidate = infer_global_narrator(
+        identity_bundle=identity_bundle,
+        texts=source_texts,
+        _name_index=name_index,
+        _names_pattern=names_pattern,
+    )
+    addressee_candidates = infer_global_addressees(
+        identity_bundle=identity_bundle,
+        texts=source_texts,
+        _name_index=name_index,
+        _names_pattern=names_pattern,
+    )
     results: list[SceneNarrativeGrounding] = []
     for scene in scenes:
         first_person_count = _pronoun_count(scene.text, FIRST_PERSON_TERMS)
@@ -43,7 +55,12 @@ def ground_scene_narration(
                 evidence_spans.extend(list(narrator_candidate.get("evidence_spans") or [])[:3])
             else:
                 diagnostics.append("first_person_narrator_unresolved")
-        scene_addressees = _scene_addressees(scene.text, identity_bundle=identity_bundle, global_addressees=addressee_candidates)
+        scene_addressees = _scene_addressees(
+            scene.text,
+            global_addressees=addressee_candidates,
+            name_index=name_index,
+            names_pattern=names_pattern,
+        )
         if second_person_count and not scene_addressees:
             diagnostics.append("second_person_addressee_unresolved")
         results.append(
@@ -84,17 +101,61 @@ def apply_scene_narrative_grounding(
     return updated
 
 
-def infer_global_narrator(*, identity_bundle: CanonicalIdentityBundle, texts: list[str]) -> dict[str, Any] | None:
+def infer_global_narrator(
+    *,
+    identity_bundle: CanonicalIdentityBundle,
+    texts: list[str],
+    _name_index: dict[str, CanonicalCharacter] | None = None,
+    _names_pattern: str = "",
+) -> dict[str, Any] | None:
     if identity_bundle.narrator.perspective != "first_person":
         return None
     joined = "\n\n".join(str(text or "") for text in texts if str(text or "").strip())
     if not joined:
         return None
-    scores: list[tuple[float, CanonicalCharacter, list[NarrativeEvidenceSpan]]] = []
-    for character in identity_bundle.characters:
-        score, evidence = _narrator_score(character, joined)
-        if score > 0:
-            scores.append((score, character, evidence))
+    name_index, names_pattern = (
+        (_name_index, _names_pattern)
+        if _name_index is not None
+        else _identity_name_index(identity_bundle)
+    )
+    if not name_index or not names_pattern:
+        return None
+    scores_by_character: dict[str, float] = {}
+    evidence_by_character: dict[str, list[NarrativeEvidenceSpan]] = {}
+    patterns = [
+        (rf"\bthere\s+was\s+a\s+girl\s+named\s+(?P<name>{names_pattern})(?!\w)", 7.0, "self_story_name"),
+        (rf"\bonce\s+upon\s+a\s+time[^.\n]{{0,120}}(?P<name>{names_pattern})(?!\w)", 5.0, "self_story_name"),
+        (rf"(?<!\w)(?P<name>{names_pattern})\s*,\s+you(?:'re| are| were| have| had)?\b", 4.0, "direct_address_to_narrator"),
+        (rf"\bmy\s+name\s+is\s+(?P<name>{names_pattern})(?!\w)", 8.0, "explicit_self_name"),
+        (rf"\bi\s+am\s+(?P<name>{names_pattern})(?!\w)", 8.0, "explicit_self_name"),
+    ]
+    for pattern, weight, kind in patterns:
+        for match in re.finditer(pattern, joined, flags=re.IGNORECASE):
+            character = name_index.get(_normalized_name(match.group("name")))
+            if character is None:
+                continue
+            window = _window(joined, match.start(), match.end(), radius=360)
+            if _pronoun_count(window, FIRST_PERSON_TERMS) <= 0:
+                continue
+            scores_by_character[character.character_id] = (
+                scores_by_character.get(character.character_id, 0.0) + weight
+            )
+            evidence_by_character.setdefault(character.character_id, []).append(
+                NarrativeEvidenceSpan(
+                    kind=kind,
+                    text=_clean_excerpt(window, max_chars=280),
+                    start_char=max(0, match.start() - 360),
+                    end_char=min(len(joined), match.end() + 360),
+                    character_id=character.character_id,
+                    character_name=character.display_name,
+                )
+            )
+    characters = {item.character_id: item for item in identity_bundle.characters}
+    scores = [
+        (score, characters[character_id], evidence_by_character.get(character_id, []))
+        for character_id, score in scores_by_character.items()
+        if character_id in characters and score > 0
+    ]
     if not scores:
         return None
     scores.sort(key=lambda item: (-item[0], item[1].display_name.casefold()))
@@ -112,22 +173,46 @@ def infer_global_narrator(*, identity_bundle: CanonicalIdentityBundle, texts: li
     }
 
 
-def infer_global_addressees(*, identity_bundle: CanonicalIdentityBundle, texts: list[str]) -> list[dict[str, Any]]:
+def infer_global_addressees(
+    *,
+    identity_bundle: CanonicalIdentityBundle,
+    texts: list[str],
+    _name_index: dict[str, CanonicalCharacter] | None = None,
+    _names_pattern: str = "",
+) -> list[dict[str, Any]]:
     joined = "\n\n".join(str(text or "") for text in texts if str(text or "").strip())
     if not joined:
         return []
-    scored: list[tuple[float, CanonicalCharacter]] = []
-    for character in identity_bundle.characters:
-        score = 0.0
-        names = [character.display_name, *list(character.aliases or [])]
-        for name in names:
-            if not name:
-                continue
-            score += 4.0 * len(re.findall(rf"\byou\s*,\s*{re.escape(name)}\b", joined, flags=re.IGNORECASE))
-            score += 4.0 * len(re.findall(rf"\b{re.escape(name)}\s*,\s*you\b", joined, flags=re.IGNORECASE))
-            score += 2.0 * len(re.findall(rf"\byour\s+(?:sister|brother|mother|father|friend)\b[^.\n]{{0,80}}\b{re.escape(name)}\b", joined, flags=re.IGNORECASE))
-        if score > 0:
-            scored.append((score, character))
+    name_index, names_pattern = (
+        (_name_index, _names_pattern)
+        if _name_index is not None
+        else _identity_name_index(identity_bundle)
+    )
+    if not name_index or not names_pattern:
+        return []
+    scores: dict[str, float] = {}
+    direct_pattern = (
+        rf"\byou\s*,\s*(?P<after>{names_pattern})(?!\w)"
+        rf"|(?<!\w)(?P<before>{names_pattern})\s*,\s*you\b"
+    )
+    for match in re.finditer(direct_pattern, joined, flags=re.IGNORECASE):
+        character = name_index.get(_normalized_name(match.group("after") or match.group("before")))
+        if character is not None:
+            scores[character.character_id] = scores.get(character.character_id, 0.0) + 4.0
+    relation_pattern = (
+        rf"\byour\s+(?:sister|brother|mother|father|friend)\b[^.\n]{{0,80}}"
+        rf"(?P<relation>{names_pattern})(?!\w)"
+    )
+    for match in re.finditer(relation_pattern, joined, flags=re.IGNORECASE):
+        character = name_index.get(_normalized_name(match.group("relation")))
+        if character is not None:
+            scores[character.character_id] = scores.get(character.character_id, 0.0) + 2.0
+    characters = {item.character_id: item for item in identity_bundle.characters}
+    scored = [
+        (score, characters[character_id])
+        for character_id, score in scores.items()
+        if character_id in characters and score > 0
+    ]
     scored.sort(key=lambda item: (-item[0], item[1].display_name.casefold()))
     return [
         {"character_id": character.character_id, "display_name": character.display_name, "score": score}
@@ -151,60 +236,59 @@ def narrative_grounding_summary(scenes: list[SceneArtifact]) -> dict[str, Any]:
     }
 
 
-def _narrator_score(character: CanonicalCharacter, text: str) -> tuple[float, list[NarrativeEvidenceSpan]]:
-    score = 0.0
-    evidence: list[NarrativeEvidenceSpan] = []
-    names = [character.display_name, *list(character.aliases or [])]
-    for name in names:
-        if not name:
-            continue
-        patterns = [
-            (rf"\bthere\s+was\s+a\s+girl\s+named\s+{re.escape(name)}\b", 7.0, "self_story_name"),
-            (rf"\bonce\s+upon\s+a\s+time[^.\n]{{0,120}}\b{re.escape(name)}\b", 5.0, "self_story_name"),
-            (rf"\b{re.escape(name)}\s*,\s+you(?:'re| are| were| have| had)?\b", 4.0, "direct_address_to_narrator"),
-            (rf"\bmy\s+name\s+is\s+{re.escape(name)}\b", 8.0, "explicit_self_name"),
-            (rf"\bi\s+am\s+{re.escape(name)}\b", 8.0, "explicit_self_name"),
-        ]
-        for pattern, weight, kind in patterns:
-            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-                window = _window(text, match.start(), match.end(), radius=360)
-                if _pronoun_count(window, FIRST_PERSON_TERMS) <= 0:
-                    continue
-                score += weight
-                evidence.append(
-                    NarrativeEvidenceSpan(
-                        kind=kind,
-                        text=_clean_excerpt(window, max_chars=280),
-                        start_char=max(0, match.start() - 360),
-                        end_char=min(len(text), match.end() + 360),
-                        character_id=character.character_id,
-                        character_name=character.display_name,
-                    )
-                )
-    return score, evidence
-
-
 def _scene_addressees(
     text: str,
     *,
-    identity_bundle: CanonicalIdentityBundle,
     global_addressees: list[dict[str, Any]],
+    name_index: dict[str, CanonicalCharacter],
+    names_pattern: str,
 ) -> list[dict[str, str]]:
     matched: list[dict[str, str]] = []
-    for character in identity_bundle.characters:
-        names = [character.display_name, *list(character.aliases or [])]
-        for name in names:
-            if not name:
-                continue
-            if re.search(rf"\byou\s*,\s*{re.escape(name)}\b|\b{re.escape(name)}\s*,\s*you\b", text, flags=re.IGNORECASE):
+    if names_pattern:
+        pattern = (
+            rf"\byou\s*,\s*(?P<after>{names_pattern})(?!\w)"
+            rf"|(?<!\w)(?P<before>{names_pattern})\s*,\s*you\b"
+        )
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            character = name_index.get(_normalized_name(match.group("after") or match.group("before")))
+            if character is not None:
                 matched.append({"character_id": character.character_id, "display_name": character.display_name})
-                break
     if matched:
         return _unique_character_rows(matched)
     if _pronoun_count(text, SECOND_PERSON_TERMS) >= 2 and global_addressees:
         best = global_addressees[0]
         return [{"character_id": str(best["character_id"]), "display_name": str(best["display_name"])}]
     return []
+
+
+def _identity_name_index(
+    identity_bundle: CanonicalIdentityBundle,
+) -> tuple[dict[str, CanonicalCharacter], str]:
+    candidates: dict[str, list[tuple[str, CanonicalCharacter]]] = {}
+    for character in identity_bundle.characters:
+        for raw_name in [character.display_name, *list(character.aliases or [])]:
+            name = " ".join(str(raw_name or "").split()).strip()
+            normalized = _normalized_name(name)
+            if not normalized or len(normalized) < 2:
+                continue
+            candidates.setdefault(normalized, []).append((name, character))
+    unique: dict[str, CanonicalCharacter] = {}
+    display_names: dict[str, str] = {}
+    for normalized, rows in candidates.items():
+        character_ids = {character.character_id for _, character in rows}
+        if len(character_ids) != 1:
+            continue
+        unique[normalized] = rows[0][1]
+        display_names[normalized] = max((name for name, _ in rows), key=len)
+    pattern = "|".join(
+        re.escape(display_names[key])
+        for key in sorted(display_names, key=lambda item: (-len(display_names[item]), item))
+    )
+    return unique, pattern
+
+
+def _normalized_name(value: str) -> str:
+    return " ".join(str(value or "").split()).casefold()
 
 
 def _pronoun_count(text: str, terms: set[str]) -> int:

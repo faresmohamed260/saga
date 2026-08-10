@@ -473,6 +473,9 @@ class LibraryStore(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def upsert_scenes(self, scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        ...
+
     def list_scenes(self, *, book_id: str, limit: int = 500) -> list[dict[str, Any]]:
         ...
 

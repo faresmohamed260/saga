@@ -179,20 +179,29 @@ class AnalysisFoundationStore:
         return results
 
     def upsert_scene(self, scene: SceneArtifact) -> SceneArtifact:
-        payload = self.persistence.library.upsert_scene(
-            scene.scene_id,
-            book_id=scene.book_id,
-            chapter_index=scene.chapter_index,
-            scene_index=scene.scene_index,
-            summary=scene.summary,
-            text=scene.text,
-            payload={
-                "word_count": scene.word_count,
-                "source_chapter_indices": list(scene.source_chapter_indices),
-                "end_chapter_index": scene.end_chapter_index,
-                **dict(scene.metadata or {}),
-            },
+        return self.upsert_scenes([scene])[0]
+
+    def upsert_scenes(self, scenes: list[SceneArtifact]) -> list[SceneArtifact]:
+        rows = self.persistence.library.upsert_scenes(
+            [{
+                "scene_id": scene.scene_id,
+                "book_id": scene.book_id,
+                "chapter_index": scene.chapter_index,
+                "scene_index": scene.scene_index,
+                "summary": scene.summary,
+                "text": scene.text,
+                "payload": {
+                    "word_count": scene.word_count,
+                    "source_chapter_indices": list(scene.source_chapter_indices),
+                    "end_chapter_index": scene.end_chapter_index,
+                    **dict(scene.metadata or {}),
+                },
+            } for scene in scenes]
         )
+        return [self._scene_from_payload(payload) for payload in rows]
+
+    @staticmethod
+    def _scene_from_payload(payload: dict[str, Any]) -> SceneArtifact:
         scene_payload = dict(payload.get("payload") or {})
         return SceneArtifact(
             scene_id=payload["scene_id"],
@@ -209,24 +218,7 @@ class AnalysisFoundationStore:
 
     def list_scenes(self, *, book_id: str) -> list[SceneArtifact]:
         rows = self.persistence.library.list_scenes(book_id=book_id, limit=10000)
-        results = []
-        for row in rows:
-            payload = dict(row.get("payload") or {})
-            results.append(
-                SceneArtifact(
-                    scene_id=row["scene_id"],
-                    book_id=row["book_id"],
-                    chapter_index=int(row["chapter_index"]),
-                    scene_index=int(row["scene_index"]),
-                    summary=row.get("summary") or "",
-                    text=row.get("text") or "",
-                    word_count=int(payload.get("word_count") or 0),
-                    source_chapter_indices=[int(value) for value in list(payload.get("source_chapter_indices") or [])],
-                    end_chapter_index=int(payload.get("end_chapter_index") or 0),
-                    metadata={k: v for k, v in payload.items() if k not in {"word_count", "source_chapter_indices", "end_chapter_index"}},
-                )
-            )
-        return results
+        return [self._scene_from_payload(row) for row in rows]
 
     def save_identity_bundle(self, bundle: CanonicalIdentityBundle) -> CanonicalIdentityBundle:
         payload = bundle.model_dump()
