@@ -154,8 +154,15 @@ class ActiveStageInspector:
             return None
         try:
             quality = _require_story_quality(self.narrative, series_id=request.series_id, story=story)
-        except ValueError:
-            return None
+        except ValueError as exc:
+            return StageOutcomeArtifact(
+                stage="narrative_generation",
+                status="rejected",
+                accepted=False,
+                output_context={"story_id": story.story_id, "blueprint_id": story.blueprint_id},
+                metrics={"chapter_count": len(story.chapters)},
+                reasons=[str(exc)],
+            )
         return _accepted(
             "narrative_generation",
             {"story_id": story.story_id, "blueprint_id": story.blueprint_id},

@@ -46,6 +46,7 @@ def main() -> int:
         "--visual-max-attempts", type=int, choices=range(1, 7), default=2
     )
     parser.add_argument("--max-attempts", type=int, choices=range(2, 7), default=4)
+    parser.add_argument("--retry-backoff-seconds", type=int, default=30)
     parser.add_argument("--run-id", default="")
     parser.add_argument("--series-id", default="")
     parser.add_argument("--report", default="")
@@ -109,7 +110,9 @@ def main() -> int:
             },
         )
         queued = service.submit(
-            request, max_attempts=args.max_attempts, backoff_seconds=0
+            request,
+            max_attempts=args.max_attempts,
+            backoff_seconds=max(1, args.retry_backoff_seconds),
         )
         if (
             args.resume
@@ -132,23 +135,6 @@ def main() -> int:
             if args.resume
             else []
         )
-        outcome: dict[str, object] = {}
-
-        def work() -> None:
-            try:
-                outcome["result"] = service.run_worker_once(
-                    worker_id=f"qualification-worker-{suffix}"
-                )
-            except BaseException as exc:  # noqa: BLE001
-                outcome["error"] = {
-                    "type": type(exc).__name__,
-                    "message": str(exc)[:1000],
-                }
-
-        worker = threading.Thread(
-            target=work, name=f"qualification-{suffix}", daemon=True
-        )
-        worker.start()
         started = time.monotonic()
         deadline = started + max(60, args.timeout_seconds)
         current_stage = _resume_stage(historical_logs)
@@ -156,71 +142,98 @@ def main() -> int:
         cancellation_reason = ""
         cancellation_requested = False
         seen_logs = {int(log.get("id") or 0) for log in historical_logs}
-        while worker.is_alive() and time.monotonic() < deadline:
-            job = service.persistence.jobs.get_job(run_id) or {}
-            for log in job.get("logs") or []:
-                log_id = int(log.get("id") or 0)
-                if log_id in seen_logs:
-                    continue
-                seen_logs.add(log_id)
-                stage = str(log.get("stage") or "")
-                message = str(log.get("message") or "")
-                if message == "stage_accepted" and stage in ALL_STAGES:
-                    stage_index = ALL_STAGES.index(stage)
-                    current_stage = (
-                        ALL_STAGES[stage_index + 1]
-                        if stage_index + 1 < len(ALL_STAGES)
-                        else ""
+        worker_result = None
+        while time.monotonic() < deadline:
+            outcome: dict[str, object] = {}
+
+            def work() -> None:
+                try:
+                    outcome["result"] = service.run_worker_once(
+                        worker_id=f"qualification-worker-{suffix}"
                     )
-                    stage_started = time.monotonic()
-                elif stage and stage != "orchestration" and stage != current_stage:
-                    current_stage, stage_started = stage, time.monotonic()
-                _emit(
-                    "stage_event",
-                    stage=stage,
-                    message=log.get("message"),
-                    elapsed_seconds=round(time.monotonic() - started, 1),
-                )
-            if current_stage and time.monotonic() - stage_started > max(
-                60, args.stage_timeout_seconds
-            ):
-                cancellation_reason = f"Stage deadline exceeded: {current_stage}"
+                except BaseException as exc:  # noqa: BLE001
+                    outcome["error"] = {
+                        "type": type(exc).__name__,
+                        "message": str(exc)[:1000],
+                    }
+
+            worker = threading.Thread(
+                target=work, name=f"qualification-{suffix}", daemon=True
+            )
+            worker.start()
+            while worker.is_alive() and time.monotonic() < deadline:
+                job = service.persistence.jobs.get_job(run_id) or {}
+                for log in job.get("logs") or []:
+                    log_id = int(log.get("id") or 0)
+                    if log_id in seen_logs:
+                        continue
+                    seen_logs.add(log_id)
+                    stage = str(log.get("stage") or "")
+                    message = str(log.get("message") or "")
+                    if message == "stage_accepted" and stage in ALL_STAGES:
+                        stage_index = ALL_STAGES.index(stage)
+                        current_stage = (
+                            ALL_STAGES[stage_index + 1]
+                            if stage_index + 1 < len(ALL_STAGES)
+                            else ""
+                        )
+                        stage_started = time.monotonic()
+                    elif stage and stage != "orchestration" and stage != current_stage:
+                        current_stage, stage_started = stage, time.monotonic()
+                    _emit(
+                        "stage_event",
+                        stage=stage,
+                        message=log.get("message"),
+                        elapsed_seconds=round(time.monotonic() - started, 1),
+                    )
+                if current_stage and time.monotonic() - stage_started > max(
+                    60, args.stage_timeout_seconds
+                ):
+                    cancellation_reason = f"Stage deadline exceeded: {current_stage}"
+                    cancellation_requested = _request_cancellation(
+                        service,
+                        queue_id=queue_id,
+                        reason=cancellation_reason,
+                        already_requested=cancellation_requested,
+                    )
+                    _emit(
+                        "stage_deadline",
+                        stage=current_stage,
+                        elapsed_seconds=round(time.monotonic() - stage_started, 1),
+                    )
+                    break
+                worker.join(timeout=2.0)
+            if worker.is_alive():
+                cancellation_reason = cancellation_reason or "Qualification global deadline exceeded."
                 cancellation_requested = _request_cancellation(
-                    service,
-                    queue_id=queue_id,
-                    reason=cancellation_reason,
+                    service, queue_id=queue_id, reason=cancellation_reason,
                     already_requested=cancellation_requested,
                 )
-                _emit(
-                    "stage_deadline",
-                    stage=current_stage,
-                    elapsed_seconds=round(time.monotonic() - stage_started, 1),
-                )
+                _emit("deadline", reason=cancellation_reason, elapsed_seconds=round(time.monotonic() - started, 1))
+                worker.join(timeout=30.0)
+                if worker.is_alive():
+                    _emit("cancellation_drain_timeout", queue_id=queue_id, wait_seconds=30)
+                return 3
+            if "error" in outcome:
+                _emit("worker_error", **dict(outcome["error"]))
+                return 2
+            worker_result = outcome["result"]
+            if worker_result.status != "retry_wait":
                 break
-            worker.join(timeout=2.0)
-        if worker.is_alive():
-            cancellation_reason = (
-                cancellation_reason or "Qualification global deadline exceeded."
-            )
-            cancellation_requested = _request_cancellation(
-                service,
-                queue_id=queue_id,
-                reason=cancellation_reason,
-                already_requested=cancellation_requested,
-            )
+            retry_at_ms = int((worker_result.queue_item or {}).get("available_at_ms") or 0)
+            wait_seconds = max(1.0, min(120.0, retry_at_ms / 1000 - time.time()))
             _emit(
-                "deadline",
-                reason=cancellation_reason,
-                elapsed_seconds=round(time.monotonic() - started, 1),
+                "worker_retry_wait",
+                attempt=(worker_result.queue_item or {}).get("attempt_count"),
+                wait_seconds=round(wait_seconds, 1),
             )
-            worker.join(timeout=30.0)
-            if worker.is_alive():
-                _emit("cancellation_drain_timeout", queue_id=queue_id, wait_seconds=30)
+            while time.monotonic() < deadline and wait_seconds > 0:
+                sleep_for = min(2.0, wait_seconds)
+                time.sleep(sleep_for)
+                wait_seconds -= sleep_for
+        if worker_result is None:
+            _emit("worker_terminal", status="deadline", error={"message": "No worker result before deadline."})
             return 3
-        if "error" in outcome:
-            _emit("worker_error", **dict(outcome["error"]))
-            return 2
-        worker_result = outcome["result"]
         if worker_result.orchestration_result is None:
             _emit(
                 "worker_terminal",
