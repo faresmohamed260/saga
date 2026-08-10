@@ -42,6 +42,7 @@ class ExecutionWorker:
         if heartbeat:
             heartbeat.start()
         result = None
+        executor = None
         error: dict[str, Any] = {}
         try:
             request = OrchestrationRequest.model_validate(dict(item.get("payload") or {}).get("orchestration_request") or {})
@@ -57,6 +58,18 @@ class ExecutionWorker:
             error = {"code": "worker_exception", "exception_type": type(exc).__name__, "message": str(exc)}
             final = self.queue.fail(item, worker_id=self.worker_id, error=error, retryable=_retryable(exc))
         finally:
+            close = getattr(executor, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:
+                    error = {
+                        **error,
+                        "executor_close": {
+                            "exception_type": type(exc).__name__,
+                            "message": str(exc),
+                        },
+                    }
             if heartbeat:
                 heartbeat.stop()
         if final is None:

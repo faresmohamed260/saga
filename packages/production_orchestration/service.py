@@ -83,6 +83,9 @@ class ProductionOrchestrationService:
     def run(self, request: OrchestrationRequest, *, thread_id: str = "") -> OrchestrationResult:
         return self.runtime.invoke(request, thread_id=thread_id or f"production-orchestration-{request.run_id}-{uuid.uuid4().hex[:8]}")
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def _stage_bindings(self, inspector: ActiveStageInspector) -> dict[StageName, ActiveStageBinding]:
         bindings = {
             "analysis_foundation": ActiveStageBinding(inspector=inspector.analysis_foundation, executor=self._run_analysis_foundation),
@@ -106,20 +109,27 @@ class ProductionOrchestrationService:
         if not request.source_paths:
             raise ValueError("source_paths are required when analysis foundation is not already accepted.")
         from packages.analysis_foundation import AnalysisFoundationRunRequest, AnalysisFoundationService
-        AnalysisFoundationService.from_env().run(AnalysisFoundationRunRequest(series_id=request.series_id, source_paths=request.source_paths, thread_id=f"{request.run_id}-analysis"))
+        _run_scoped_service(
+            AnalysisFoundationService.from_env(),
+            AnalysisFoundationRunRequest(series_id=request.series_id, source_paths=request.source_paths, thread_id=f"{request.run_id}-analysis"),
+        )
 
     def _run_canon_extraction(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
         del outcomes
         from packages.canon_extraction import CanonExtractionRunRequest, CanonExtractionService
-        CanonExtractionService.from_env(
-            cancellation_checker=lambda: self.cancellation_checker(request.run_id),
-        ).run(CanonExtractionRunRequest(series_id=request.series_id, thread_id=f"{request.run_id}-canon"))
+        _run_scoped_service(
+            CanonExtractionService.from_env(cancellation_checker=lambda: self.cancellation_checker(request.run_id)),
+            CanonExtractionRunRequest(series_id=request.series_id, thread_id=f"{request.run_id}-canon"),
+        )
 
     @staticmethod
     def _run_character_world_modeling(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
         del outcomes
         from packages.character_world_modeling import CharacterWorldModelingRunRequest, CharacterWorldModelingService
-        CharacterWorldModelingService.from_env().run(CharacterWorldModelingRunRequest(series_id=request.series_id, thread_id=f"{request.run_id}-character-world"))
+        _run_scoped_service(
+            CharacterWorldModelingService.from_env(),
+            CharacterWorldModelingRunRequest(series_id=request.series_id, thread_id=f"{request.run_id}-character-world"),
+        )
 
     @staticmethod
     def _run_generation_planning(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
@@ -127,46 +137,61 @@ class ProductionOrchestrationService:
         if not request.premise:
             raise ValueError("premise is required when generation planning is not already accepted.")
         from packages.generation_planning import GenerationPlanningRunRequest, GenerationPlanningService
-        GenerationPlanningService.from_env().run(GenerationPlanningRunRequest(
-            series_id=request.series_id, premise=request.premise, target_audience=request.target_audience,
-            tone=request.tone, desired_chapter_count=request.desired_chapter_count, thread_id=f"{request.run_id}-planning",
-        ))
+        _run_scoped_service(
+            GenerationPlanningService.from_env(),
+            GenerationPlanningRunRequest(
+                series_id=request.series_id, premise=request.premise, target_audience=request.target_audience,
+                tone=request.tone, desired_chapter_count=request.desired_chapter_count, thread_id=f"{request.run_id}-planning",
+            ),
+        )
 
     @staticmethod
     def _run_narrative_generation(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
         from packages.narrative_generation import NarrativeGenerationRunRequest, NarrativeGenerationService
         blueprint_id = request.blueprint_id or str(outcomes.get("generation_planning", StageOutcomeArtifact(stage="generation_planning", status="rejected")).output_context.get("blueprint_id") or "")
-        NarrativeGenerationService.from_env().run(NarrativeGenerationRunRequest(
-            series_id=request.series_id, blueprint_id=blueprint_id, story_id=request.story_id, thread_id=f"{request.run_id}-narrative",
-            target_words_per_scene=request.execution_limits.target_words_per_scene,
-        ))
+        _run_scoped_service(
+            NarrativeGenerationService.from_env(),
+            NarrativeGenerationRunRequest(
+                series_id=request.series_id, blueprint_id=blueprint_id, story_id=request.story_id, thread_id=f"{request.run_id}-narrative",
+                target_words_per_scene=request.execution_limits.target_words_per_scene,
+            ),
+        )
 
     @staticmethod
     def _run_narrative_support(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
         from packages.narrative_generation import NarrativeSupportRunRequest, NarrativeSupportService
         story_id = _resolved_story_id(request, outcomes)
-        NarrativeSupportService.from_env().run(NarrativeSupportRunRequest(series_id=request.series_id, story_id=story_id, thread_id=f"{request.run_id}-support"))
+        _run_scoped_service(
+            NarrativeSupportService.from_env(),
+            NarrativeSupportRunRequest(series_id=request.series_id, story_id=story_id, thread_id=f"{request.run_id}-support"),
+        )
 
     @staticmethod
     def _run_visual_generation(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
         from packages.visual_generation import VisualGenerationRunRequest, VisualGenerationService
-        VisualGenerationService.from_env().run(VisualGenerationRunRequest(
-            series_id=request.series_id, story_id=_resolved_story_id(request, outcomes),
-            thread_id=f"{request.run_id}-visual",
-            max_attempts=request.execution_limits.max_visual_attempts or request.max_attempts,
-            include_types=tuple(request.execution_limits.visual_include_types),
-            max_renders_per_type=request.execution_limits.max_visual_renders_per_type,
-        ))
+        _run_scoped_service(
+            VisualGenerationService.from_env(),
+            VisualGenerationRunRequest(
+                series_id=request.series_id, story_id=_resolved_story_id(request, outcomes),
+                thread_id=f"{request.run_id}-visual",
+                max_attempts=request.execution_limits.max_visual_attempts or request.max_attempts,
+                include_types=tuple(request.execution_limits.visual_include_types),
+                max_renders_per_type=request.execution_limits.max_visual_renders_per_type,
+            ),
+        )
 
     @staticmethod
     def _run_audiobook_generation(request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> None:
         from packages.audiobook_generation import AudiobookGenerationRunRequest, AudiobookGenerationService
-        AudiobookGenerationService.from_env().run(AudiobookGenerationRunRequest(
-            series_id=request.series_id, story_id=_resolved_story_id(request, outcomes),
-            run_id=request.audiobook_run_id or f"{request.run_id}-audiobook", max_attempts=request.max_attempts,
-            max_chapters=request.execution_limits.audiobook_max_chapters,
-            max_segment_chars=request.execution_limits.audiobook_max_segment_chars,
-        ))
+        _run_scoped_service(
+            AudiobookGenerationService.from_env(),
+            AudiobookGenerationRunRequest(
+                series_id=request.series_id, story_id=_resolved_story_id(request, outcomes),
+                run_id=request.audiobook_run_id or f"{request.run_id}-audiobook", max_attempts=request.max_attempts,
+                max_chapters=request.execution_limits.audiobook_max_chapters,
+                max_segment_chars=request.execution_limits.audiobook_max_segment_chars,
+            ),
+        )
 
 
 def load_production_orchestration_service_config_from_env() -> ProductionOrchestrationServiceConfig:
@@ -207,3 +232,10 @@ def _resolved_story_id(request: OrchestrationRequest, outcomes: dict[str, StageO
     if not story_id:
         raise ValueError("A story_id is required for downstream generation.")
     return story_id
+
+
+def _run_scoped_service(service, request) -> Any:
+    try:
+        return service.run(request)
+    finally:
+        service.persistence.close()

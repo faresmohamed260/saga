@@ -38,6 +38,7 @@ class FakeExecutor:
         self.status = status
         self.error = error
         self.on_run = on_run
+        self.closed = False
 
     def run(self, request, *, thread_id=""):
         del thread_id
@@ -61,6 +62,9 @@ class FakeExecutor:
                 reasons=[] if accepted else [status],
             ),
         )
+
+    def close(self):
+        self.closed = True
 
 
 class FakeTelemetryExporter:
@@ -394,6 +398,29 @@ def test_worker_completes_once_and_exports_structured_telemetry(tmp_path: Path):
         .status
         == "idle"
     )
+
+
+def test_worker_closes_executor_after_success_and_failure(tmp_path: Path):
+    client = _persistence(tmp_path)
+    queue = ExecutionQueueRuntime(persistence=client)
+    queue.configure(ExecutionQueuePolicy(global_limit=1))
+    executors = []
+
+    def factory(checker):
+        executor = FakeExecutor(checker, error=ValueError("failed") if executors else None)
+        executors.append(executor)
+        return executor
+
+    _submit(queue, "run-close-success")
+    assert ExecutionWorker(
+        queue=queue, worker_id="worker-close-success", enable_heartbeat=False, executor_factory=factory,
+    ).run_once().status == "succeeded"
+    _submit(queue, "run-close-failure")
+    assert ExecutionWorker(
+        queue=queue, worker_id="worker-close-failure", enable_heartbeat=False, executor_factory=factory,
+    ).run_once().status == "dead_letter"
+
+    assert all(executor.closed for executor in executors)
 
 
 def test_terminal_work_remains_succeeded_when_telemetry_export_fails(tmp_path: Path):
