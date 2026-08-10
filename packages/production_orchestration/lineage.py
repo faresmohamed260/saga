@@ -14,7 +14,7 @@ from packages.production_orchestration.policy import STAGE_DEPENDENCIES
 
 STAGE_CONTRACT_VERSIONS: dict[str, dict[str, str]] = {
     "analysis_foundation": {"runtime": "analysis-foundation-v1", "schema_version": "analysis-v1", "quality_policy": "analysis-quality-v1"},
-    "canon_extraction": {"runtime": "canon-extraction-v1", "schema_version": "canon-v1", "quality_policy": "canon-quality-v1"},
+    "canon_extraction": {"runtime": "canon-extraction-v1", "schema_version": "canon-v1", "quality_policy": "canon-quality-v2"},
     "character_world_modeling": {"runtime": "character-world-v1", "schema_version": "character-world-v1", "quality_policy": "character-world-quality-v1"},
     "generation_planning": {"runtime": "generation-planning-v1", "schema_version": "blueprint-v1", "quality_policy": "planning-quality-v1"},
     "narrative_generation": {"runtime": "narrative-generation-v2", "schema_version": "story-v1", "quality_policy": "narrative-quality-v2"},

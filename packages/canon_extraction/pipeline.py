@@ -459,7 +459,11 @@ class EntityAgent:
                         aliases=_unique_strings([normalize_entity_name(alias) for alias in item.aliases if normalize_entity_name(alias)]),
                         mention_scene_ids=mention_scene_ids,
                         book_ids=[book_id],
-                        metadata={"reasoning_provider": self.reasoning_runtime.provider_name(), "reasoning_model": self.reasoning_runtime.resolved_model_name()},
+                        metadata={
+                            "reasoning_provider": self.reasoning_runtime.provider_name(),
+                            "reasoning_model": self.reasoning_runtime.resolved_model_name(),
+                            "source_entity_type": item.entity_type,
+                        },
                     )
                     if existing is None:
                         merged[entity_id] = artifact
@@ -1195,6 +1199,8 @@ def _build_entities_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scen
         "(including springs, pools, rivers, forests, buildings, and rooms); object means a portable physical item; artifact means a significant "
         "crafted, historical, or enchanted item. A natural water spring is always a location, never a coiled object.\n"
         "Never return entity_type=character or entity_type=event.\n"
+        "Omit events and ceremonies such as coronations, weddings, funerals, battles, feasts, and festivals from entities; "
+        "they belong in event extraction and must never be labeled as creatures, locations, or objects.\n"
         f"Book title: {book.title}\n"
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
         f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False, indent=2)}\n"
@@ -1450,6 +1456,7 @@ def _normalize_label(value: str) -> str:
 
 def _normalize_entity_type(value: str, *, name: str = "", description: str = "") -> str:
     normalized = _normalize_label(value)
+    normalized_name = " ".join(str(name or "").casefold().split())
     haystack = f"{name} {description} {value}".casefold()
     natural_place_phrases = {
         "natural spring", "glowing spring", "luminous spring", "hot spring", "mineral spring", "spring-fed",
@@ -1461,6 +1468,11 @@ def _normalize_entity_type(value: str, *, name: str = "", description: str = "")
         marker in haystack for marker in ("water", "luminous", "glowing", "natural", "destination", "terrain", "shore")
     ):
         return "location"
+    if re.search(
+        r"\b(coronation|wedding|funeral|ceremony|festival|feast|battle|war|oath|promise|bargain|divination)\b",
+        normalized_name,
+    ):
+        return "concept"
     if normalized in ALLOWED_ENTITY_TYPES:
         return normalized
     if any(token in haystack for token in {"castle", "house", "room", "woods", "forest", "river", "bank", "world", "palace", "hall", "table", "window", "balcony"}):
