@@ -529,6 +529,7 @@ class VisualAuditAgent:
                         "attempt": render.attempt,
                         "semantic_provider": type(self.semantic_evaluator).__name__,
                         "semantic_request": _semantic_request_lineage(semantic),
+                        "cast_audit": _cast_audit_lineage(semantic),
                         "reported_hard_violation_count": len(reported_hard_violations),
                         "blocking_hard_violation_count": len(hard_violations),
                     },
@@ -886,12 +887,19 @@ def _prompt_artifact(
         body=body,
         scene_character_names=scene_character_names,
     )
+    metadata: dict[str, Any] = {"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v5"}
+    if target_type == "scene":
+        metadata["expected_visible_human_count"] = len(
+            [name for name in (scene_character_names or []) if str(name).strip()]
+        )
+    elif target_type in {"location", "creature", "object"}:
+        metadata["expected_visible_human_count"] = 0
     return VisualPromptArtifact(
         prompt_id=_stable_id("visual-prompt", state["story_id"], target_type, target_ref), series_id=state["series_id"], story_id=state["story_id"],
         target_type=target_type, target_ref=target_ref, source_scene_id=source_scene_id, workflow_mode=mode,
         positive_prompt=positive, negative_prompt=negative, workflow_version=str(versions.get(mode) or "unknown"),
         width=768 if target_type == "scene" else 512,
-        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v4"},
+        consistency_keys=_dedupe(consistency_keys), metadata=metadata,
     )
 
 
@@ -1101,15 +1109,30 @@ def _semantic_request_lineage(semantic: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _cast_audit_lineage(semantic: dict[str, Any]) -> dict[str, Any]:
+    audit = dict(semantic.get("cast_audit") or {})
+    if not audit:
+        return {}
+    return {
+        "passed": audit.get("passed") is True,
+        "expected_visible_human_count": int(audit.get("expected_visible_human_count") or 0),
+        "observed_visible_human_count": int(audit.get("observed_visible_human_count") or 0),
+        "uncertain_count": int(audit.get("uncertain_count") or 0),
+        "strip_counts": [
+            int(dict(item).get("visible_head_center_count") or 0)
+            for item in list(audit.get("strips") or [])
+        ],
+    }
+
+
 def _issues_contain_hard_violation(issues: list[str]) -> bool:
     markers = ("violates", "violation", "forbidden", "identity drift", "malformed anatomy")
     return any(any(marker in str(issue).lower() for marker in markers) for issue in issues)
 
 
 def _blocking_hard_violations(violations: list[str], *, scores: dict[str, float]) -> list[str]:
-    if scores.get("prompt_alignment_score", 0.0) <= 0.4 or scores.get("defect_score", 1.0) >= 0.6:
-        return violations
-    return []
+    del scores
+    return violations
 
 
 def _dedupe(values: list[Any]) -> list[str]:

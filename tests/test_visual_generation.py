@@ -435,13 +435,13 @@ def test_structured_scene_cast_removes_off_camera_character_reference_text():
     ) == []
 
 
-def test_semantic_hard_violations_must_agree_with_hard_failure_scores():
+def test_semantic_hard_violations_always_block_even_when_scores_conflict():
     violations = ["Character name mismatch", "Scene type violation"]
 
     assert _blocking_hard_violations(
         violations,
         scores={"prompt_alignment_score": 0.85, "defect_score": 0.15},
-    ) == []
+    ) == violations
     assert _blocking_hard_violations(
         violations,
         scores={"prompt_alignment_score": 0.4, "defect_score": 0.6},
@@ -484,6 +484,49 @@ def test_vision_evaluator_does_not_require_written_character_names():
     assert "omitted minor expression" in runtime.prompt
 
 
+def test_vision_evaluator_rejects_mismatched_tiled_hard_cast():
+    class CountingRuntime:
+        calls = 0
+
+        def generate_vision_json(self, *, prompt, image_bytes):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "prompt_alignment_score": 0.9,
+                    "subject_consistency_score": 0.9,
+                    "composition_score": 0.9,
+                    "photorealism_score": 0.9,
+                    "defect_score": 0.1,
+                    "issues": [],
+                    "hard_constraint_violations": [],
+                }
+            return {
+                "visible_head_center_count": 1 if self.calls in {2, 3} else 0,
+                "detections": [],
+                "uncertain_count": 0,
+            }
+
+        def last_request_metadata(self):
+            return {"provider": "test"}
+
+    evaluator = ReasoningVisionSemanticEvaluator(CountingRuntime())
+    result = evaluator.evaluate(
+        image_bytes=_png(black=False),
+        prompt=VisualPromptArtifact(
+            prompt_id="prompt-1", series_id="series-1", story_id="story-1",
+            target_type="scene", target_ref="scene-1", workflow_mode="entity_generation",
+            positive_prompt="Show exactly one person.", negative_prompt="extra people",
+            metadata={"expected_visible_human_count": 1},
+        ),
+    )
+
+    assert result["cast_audit"]["observed_visible_human_count"] == 2
+    assert result["cast_audit"]["passed"] is False
+    assert result["prompt_alignment_score"] == 0.4
+    assert result["defect_score"] == 0.6
+    assert result["hard_constraint_violations"]
+
+
 def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     client = _persistence(tmp_path)
     _seed(client)
@@ -506,7 +549,9 @@ def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     assert "Jude" in scene_prompt.positive_prompt
     assert "Archivist" in scene_prompt.positive_prompt
     assert (scene_prompt.width, scene_prompt.height) == (768, 512)
-    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v4"
+    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v5"
+    assert scene_prompt.metadata["expected_visible_human_count"] == 2
+    assert location_prompt.metadata["expected_visible_human_count"] == 0
     assert all(
         item.metadata["semantic_request"]["resolved_model"] == "mistral-small-2603"
         for item in result.audits

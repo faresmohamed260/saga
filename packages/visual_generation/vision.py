@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from typing import Any
 
 from packages.reasoning_runtime import ReasoningRuntimeClient
@@ -37,4 +38,79 @@ class ReasoningVisionSemanticEvaluator:
         if parsed.get("error"):
             raise RuntimeError(f"Vision evaluator failed: {parsed!r}")
         parsed["request_metadata"] = self.reasoning_runtime.last_request_metadata()
+        expected_count = prompt.metadata.get("expected_visible_human_count")
+        if isinstance(expected_count, int) and not isinstance(expected_count, bool):
+            cast_audit = self._evaluate_hard_cast(image_bytes=image_bytes, expected_count=expected_count)
+            parsed["cast_audit"] = cast_audit
+            if not cast_audit["passed"]:
+                violations = list(parsed.get("hard_constraint_violations") or [])
+                violations.append(str(cast_audit["violation"]))
+                parsed["hard_constraint_violations"] = list(dict.fromkeys(violations))
+                parsed["prompt_alignment_score"] = min(_score(parsed.get("prompt_alignment_score")), 0.4)
+                parsed["defect_score"] = max(_score(parsed.get("defect_score")), 0.6)
         return parsed
+
+    def _evaluate_hard_cast(self, *, image_bytes: bytes, expected_count: int) -> dict[str, Any]:
+        try:
+            from PIL import Image
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("Pillow is required by the visual hard-cast audit.") from exc
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        observed_count = 0
+        uncertain_count = 0
+        strips: list[dict[str, Any]] = []
+        for index in range(4):
+            left = index * image.width // 4
+            right = (index + 1) * image.width // 4
+            strip = image.crop((left, 0, right, image.height))
+            output = io.BytesIO()
+            strip.save(output, format="PNG")
+            result = self.reasoning_runtime.generate_vision_json(
+                prompt=(
+                    "This is one non-overlapping full-height vertical quarter of a larger image. Count every visible human "
+                    "or human-like figure whose HEAD CENTER is inside this strip. Include tiny, blurred, cloaked, partially "
+                    "occluded background people, silhouettes, statues, human portraits, and human reflections. A body crossing "
+                    "the crop edge counts only when its head center is visible in this crop. Return JSON only with "
+                    "visible_head_center_count as a non-negative integer, detections as a list, and uncertain_count as a "
+                    "non-negative integer."
+                ),
+                image_bytes=output.getvalue(),
+            )
+            count = _nonnegative_int(result.get("visible_head_center_count"))
+            uncertain = _nonnegative_int(result.get("uncertain_count"))
+            if count is None or uncertain is None:
+                raise ValueError("Vision hard-cast evaluator returned an invalid count payload.")
+            observed_count += count
+            uncertain_count += uncertain
+            strips.append({
+                "strip_index": index,
+                "visible_head_center_count": count,
+                "uncertain_count": uncertain,
+                "detections": list(result.get("detections") or []),
+                "request_metadata": self.reasoning_runtime.last_request_metadata(),
+            })
+        passed = observed_count == expected_count and uncertain_count == 0
+        return {
+            "passed": passed,
+            "expected_visible_human_count": expected_count,
+            "observed_visible_human_count": observed_count,
+            "uncertain_count": uncertain_count,
+            "strips": strips,
+            "violation": "" if passed else (
+                f"Hard cast violation: expected {expected_count} visible human figure(s), observed {observed_count} "
+                f"with {uncertain_count} uncertain detection(s)."
+            ),
+        }
+
+
+def _score(value: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
