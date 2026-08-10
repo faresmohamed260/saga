@@ -75,6 +75,17 @@ class FailingSupportReasoningRuntime(StubSupportReasoningRuntime):
         return {"error": "provider_failed"}
 
 
+class RetryInnovationReasoningRuntime(StubSupportReasoningRuntime):
+    def generate_json(self, prompt: str, **kwargs):
+        if prompt.startswith("Adjudicate unsupported") and self.adjudication_calls == 0:
+            self.prompts.append(prompt)
+            self.last_kwargs = dict(kwargs)
+            self.adjudication_calls += 1
+            self._last = {"provider": "test-live", "resolved_model": "support-model", "status": "ok"}
+            return {"claims": [{"claim_id": "wrong", "disposition": "invalid"}]}
+        return super().generate_json(prompt, **kwargs)
+
+
 def _persistence(tmp_path: Path):
     profile = PersistenceProfile(
         name="narrative-support-test",
@@ -389,6 +400,39 @@ def test_semantic_support_adjudicates_unsupported_planned_innovation(tmp_path: P
     assert reasoning.adjudication_calls == 1
     assert "PLANNING_CONTEXT.premise, continuation_plan, divergence_plan" in reasoning.prompts[1]
     assert result.audits[0].metadata["innovation_adjudication"]["authorized_claim_count"] == 1
+
+
+def test_semantic_support_retries_invalid_innovation_payload_without_relaxing_gate(tmp_path: Path):
+    client = _persistence(tmp_path)
+    series_id, story_id = _seed_story(client)
+    evaluation = _evaluation("supported")
+    evaluation["claims"].append(
+        {
+            "claim": "Mira is the court archivist.",
+            "claim_type": "canon_fact",
+            "classification": "unsupported",
+            "severity": "medium",
+            "temporal_scope": "prior_canon",
+            "plan_alignment": "not_applicable",
+            "evidence_ids": [],
+            "rationale": "No source-book evidence establishes Mira.",
+            "confidence": 0.99,
+        }
+    )
+    reasoning = RetryInnovationReasoningRuntime(
+        [evaluation], innovation_disposition="planned_innovation"
+    )
+
+    result = _runtime(client, reasoning).invoke(
+        series_id=series_id,
+        story_id=story_id,
+        thread_id="innovation-adjudication-retry",
+    )
+
+    assert result.decision.accepted is True
+    adjudication = result.audits[0].metadata["innovation_adjudication"]
+    assert adjudication["attempt_count"] == 2
+    assert [item["status"] for item in adjudication["attempts"]] == ["payload_invalid", "ok"]
 
 
 def test_semantic_support_revises_then_rechecks_unsupported_claims(tmp_path: Path):
