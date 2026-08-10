@@ -216,11 +216,21 @@ class ActiveStageInspector:
         story_id = _story_id(request, outcomes)
         rows = self.persistence.library.list_records(record_type="visual_generation_decision", series_id=request.series_id, scene_id=story_id, limit=100)
         decisions = [VisualGenerationDecisionArtifact.model_validate(dict(row.get("payload") or {})) for row in rows]
-        decision = next((item for item in reversed(decisions) if item.accepted), None)
+        decision = decisions[-1] if decisions else None
         if decision is None:
             return None
         audits = self.visual.list_audits(series_id=request.series_id, story_id=story_id)
-        return _accepted("visual_generation", {"story_id": story_id, "visual_decision_id": decision.decision_id}, {"accepted_render_count": len([item for item in audits if item.accepted])})
+        metrics = {"accepted_render_count": len([item for item in audits if item.accepted])}
+        if not decision.accepted:
+            return StageOutcomeArtifact(
+                stage="visual_generation",
+                status="rejected",
+                accepted=False,
+                output_context={"story_id": story_id, "visual_decision_id": decision.decision_id},
+                metrics=metrics,
+                reasons=list(decision.reasons),
+            )
+        return _accepted("visual_generation", {"story_id": story_id, "visual_decision_id": decision.decision_id}, metrics)
 
     def audiobook_generation(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageOutcomeArtifact | None:
         story_id = _story_id(request, outcomes)
