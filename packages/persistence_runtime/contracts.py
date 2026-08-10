@@ -493,6 +493,18 @@ class LibraryStore(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    def upsert_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        ...
+
+    def replace_records(
+        self,
+        *,
+        record_type: str,
+        series_id: str,
+        records: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        ...
+
     def list_records(
         self,
         *,
