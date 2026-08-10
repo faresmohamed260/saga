@@ -38,6 +38,21 @@ class ReasoningVisionSemanticEvaluator:
         if parsed.get("error"):
             raise RuntimeError(f"Vision evaluator failed: {parsed!r}")
         parsed["request_metadata"] = self.reasoning_runtime.last_request_metadata()
+        expected_clothing = str(prompt.metadata.get("expected_character_clothing") or "").strip()
+        if prompt.target_type == "character" and expected_clothing:
+            character_audit = self._evaluate_character_consistency(
+                image_bytes=image_bytes,
+                expected_clothing=expected_clothing,
+                negative_prompt=prompt.negative_prompt,
+                requires_footwear=prompt.metadata.get("requires_footwear") is True,
+            )
+            parsed["character_consistency_audit"] = character_audit
+            if not character_audit["passed"]:
+                violations = list(parsed.get("hard_constraint_violations") or [])
+                violations.extend(character_audit["hard_constraint_violations"])
+                parsed["hard_constraint_violations"] = list(dict.fromkeys(violations))
+                parsed["prompt_alignment_score"] = min(_score(parsed.get("prompt_alignment_score")), 0.4)
+                parsed["defect_score"] = max(_score(parsed.get("defect_score")), 0.6)
         expected_count = prompt.metadata.get("expected_visible_human_count")
         if isinstance(expected_count, int) and not isinstance(expected_count, bool):
             cast_audit = self._evaluate_hard_cast(image_bytes=image_bytes, expected_count=expected_count)
@@ -49,6 +64,55 @@ class ReasoningVisionSemanticEvaluator:
                 parsed["prompt_alignment_score"] = min(_score(parsed.get("prompt_alignment_score")), 0.4)
                 parsed["defect_score"] = max(_score(parsed.get("defect_score")), 0.6)
         return parsed
+
+    def _evaluate_character_consistency(
+        self,
+        *,
+        image_bytes: bytes,
+        expected_clothing: str,
+        negative_prompt: str,
+        requires_footwear: bool,
+    ) -> dict[str, Any]:
+        result = self.reasoning_runtime.generate_vision_json(
+            prompt=(
+                "Audit this three-view character sheet for hard visual consistency. Compare front, side, and back across the "
+                "entire image. Return JSON only with these booleans: same_clothing_all_views, "
+                "same_sleeve_length_all_views, same_footwear_all_views, all_views_full_body, "
+                "required_clothing_match_all_views, visible_skin_tight_bodysuit, "
+                "visible_transparent_or_sheer_clothing, visible_barefoot_any_view; plus hard_constraint_violations and evidence "
+                "as lists of concise strings. Different or missing sleeves, changed garments or footwear, cropped bodies, "
+                "forbidden garments, or failure to match required attire are hard violations. Classify only what is visibly "
+                f"rendered. Required clothing: {expected_clothing}. Forbidden clothing: {negative_prompt}. "
+                f"Footwear required: {str(requires_footwear).lower()}."
+            ),
+            image_bytes=image_bytes,
+        )
+        required_true = (
+            "same_clothing_all_views", "same_sleeve_length_all_views", "same_footwear_all_views",
+            "all_views_full_body", "required_clothing_match_all_views",
+        )
+        required_false = ("visible_skin_tight_bodysuit", "visible_transparent_or_sheer_clothing")
+        for key in (*required_true, *required_false, "visible_barefoot_any_view"):
+            if not isinstance(result.get(key), bool):
+                raise ValueError(f"Vision character-consistency evaluator omitted boolean '{key}'.")
+        violations = [str(item) for item in list(result.get("hard_constraint_violations") or []) if str(item).strip()]
+        for key in required_true:
+            if result[key] is not True:
+                violations.append(f"Character-sheet hard constraint failed: {key}.")
+        for key in required_false:
+            if result[key] is True:
+                violations.append(f"Character-sheet forbidden clothing detected: {key}.")
+        if requires_footwear and result["visible_barefoot_any_view"] is True:
+            violations.append("Character-sheet required footwear is missing in at least one view.")
+        violations = list(dict.fromkeys(violations))
+        return {
+            **{key: result[key] for key in (*required_true, *required_false, "visible_barefoot_any_view")},
+            "requires_footwear": requires_footwear,
+            "passed": not violations,
+            "hard_constraint_violations": violations,
+            "evidence": [str(item) for item in list(result.get("evidence") or []) if str(item).strip()],
+            "request_metadata": self.reasoning_runtime.last_request_metadata(),
+        }
 
     def _evaluate_hard_cast(self, *, image_bytes: bytes, expected_count: int) -> dict[str, Any]:
         try:
