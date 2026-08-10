@@ -108,7 +108,7 @@ class ClaimSupportArtifact(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
     rationale: str = ""
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    temporal_scope: Literal["prior_canon", "generated_present"] = "prior_canon"
+    temporal_scope: Literal["prior_canon", "generated_story", "generated_present"] = "prior_canon"
     plan_alignment: Literal["aligned", "not_aligned", "not_applicable"] = "not_applicable"
 
 

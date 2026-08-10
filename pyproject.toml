@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saga-story-system"
-version = "0.2.0rc17"
+version = "0.2.0rc18"
 description = "S.A.G.A. - Story Analysis, Generation, and Archives."
 readme = "README.md"
 requires-python = ">=3.10"

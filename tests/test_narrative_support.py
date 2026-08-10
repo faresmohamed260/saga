@@ -27,8 +27,10 @@ class StubSupportReasoningRuntime:
         self.last_kwargs = {}
         self.evaluation_calls = 0
         self.revision_calls = 0
+        self.prompts: list[str] = []
 
     def generate_json(self, prompt: str, **kwargs):
+        self.prompts.append(prompt)
         self.last_kwargs = dict(kwargs)
         self._last = {"provider": "test-live", "resolved_model": "support-model", "status": "ok"}
         if prompt.startswith("Revise generated"):
@@ -122,6 +124,7 @@ def _seed_story(client) -> tuple[str, str]:
         grounding_id="grounding-support",
         title="The Notebook Reopens",
         premise="Continue the notebook story without changing established canon.",
+        divergence_plan="Introduce Mira as a new archivist for this generated story.",
         chapter_outline=[
             ChapterOutlineItem(
                 chapter_index=1,
@@ -300,6 +303,36 @@ def test_semantic_support_uses_temporal_scope_for_plan_authorized_present_events
     assert claim.classification == "creative_expansion"
     assert claim.temporal_scope == "generated_present"
     assert claim.plan_alignment == "aligned"
+
+
+def test_semantic_support_allows_blueprint_aligned_generated_story_innovation(tmp_path: Path):
+    client = _persistence(tmp_path)
+    series_id, story_id = _seed_story(client)
+    evaluation = _evaluation("supported")
+    evaluation["claims"].append(
+        {
+            "claim": "Mira is a new archivist in this generated story.",
+            "claim_type": "canon_fact",
+            "classification": "unsupported",
+            "severity": "medium",
+            "temporal_scope": "generated_story",
+            "plan_alignment": "aligned",
+            "evidence_ids": [],
+            "rationale": "The blueprint explicitly introduces Mira as a new participant.",
+            "confidence": 0.99,
+        }
+    )
+    reasoning = StubSupportReasoningRuntime([evaluation])
+    result = _runtime(client, reasoning).invoke(
+        series_id=series_id, story_id=story_id, thread_id="generated-story-innovation"
+    )
+
+    claim = next(item for item in result.audits[0].claims if item.claim.startswith("Mira"))
+    assert result.decision.accepted is True
+    assert claim.claim_type == "story_local"
+    assert claim.classification == "creative_expansion"
+    assert claim.temporal_scope == "generated_story"
+    assert "Introduce Mira as a new archivist" in reasoning.prompts[0]
 
 
 def test_semantic_support_revises_then_rechecks_unsupported_claims(tmp_path: Path):

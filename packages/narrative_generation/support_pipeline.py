@@ -176,6 +176,7 @@ class SemanticSupportAgent:
         logger.info("semantic_support evaluating scene=%s round=%d", scene.source_scene_id, evaluation_round)
         blueprint = GenerationBlueprintArtifact.model_validate(state["blueprint"])
         plan = next((item for item in blueprint.scene_plan if item.scene_id == scene.source_scene_id), None)
+        plan_context = _support_plan_context(blueprint=blueprint, plan=plan)
         query = " ".join(
             value
             for value in [scene.title, scene.purpose, getattr(plan, "summary", ""), scene.prose]
@@ -188,7 +189,7 @@ class SemanticSupportAgent:
             character_bias=list(scene.character_refs),
         )
         evidence = _evidence_from_results(results, document_map=document_map)
-        prompt = _build_support_prompt(scene=scene, plan=plan, evidence=evidence)
+        prompt = _build_support_prompt(scene=scene, plan=plan_context, evidence=evidence)
         response = self.reasoning_runtime.generate_json(
             prompt,
             strict=True,
@@ -214,7 +215,7 @@ class SemanticSupportAgent:
         claims = _normalize_claims(
             payload.claims,
             scene=scene,
-            plan=plan,
+            plan=plan_context,
             evidence=evidence,
             request_ok=request_ok,
         )
@@ -279,8 +280,9 @@ class SupportRevisionAgent:
                 continue
             blueprint = GenerationBlueprintArtifact.model_validate(state["blueprint"])
             plan = next((item for item in blueprint.scene_plan if item.scene_id == scene.source_scene_id), None)
+            plan_context = _support_plan_context(blueprint=blueprint, plan=plan)
             response = self.reasoning_runtime.generate_json(
-                _build_revision_prompt(scene=scene, plan=plan, audit=audit), strict=True, max_tokens=1600,
+                _build_revision_prompt(scene=scene, plan=plan_context, audit=audit), strict=True, max_tokens=1600,
             )
             metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
             if metadata.get("status") != "ok" or not isinstance(response, dict) or response.get("error"):
@@ -693,10 +695,10 @@ def _build_support_prompt(*, scene: SceneProseArtifact, plan: Any, evidence: lis
     return (
         "You audit generated continuation prose against retrieved source-book canon evidence.\n"
         "Extract claims ONLY from GENERATED_SCENE.prose, then classify each claim.\n"
-        "PLANNED_SCENE is authoritative generation intent, not source-book canon. Never extract a claim merely because it appears in the plan.\n"
-        "For each extracted claim set temporal_scope=generated_present when it describes an event, action, dialogue, location, or state created in this scene; otherwise use prior_canon when it asserts pre-existing history, motive, identity, relationship, ability, rule, or durable state.\n"
-        "For generated_present claims set plan_alignment=aligned when entailed by PLANNED_SCENE, otherwise not_aligned. Prior-canon claims use not_applicable.\n"
-        "A non-contradictory generated_present claim is story_local creative_expansion, including consequential events explicitly authorized by PLANNED_SCENE. The plan can never make a prior_canon claim supported.\n"
+        "PLANNING_CONTEXT is authoritative generation intent, not source-book canon. Never extract a claim merely because it appears in the plan.\n"
+        "Use temporal_scope=generated_present for actions, dialogue, location, or transient state created in this scene. Use generated_story for a persistent character, role, object, location, relationship, or plot device explicitly introduced as new by PLANNING_CONTEXT.divergence_plan and used by its planned_scene. Use prior_canon for claims about pre-existing source-book history or world state.\n"
+        "For generated_present and generated_story claims set plan_alignment=aligned only when entailed by PLANNING_CONTEXT; otherwise not_aligned. Prior-canon claims use not_applicable.\n"
+        "A non-contradictory generated_present claim is story_local creative_expansion. A non-contradictory generated_story claim is story_local creative_expansion only when plan_alignment=aligned. The plan can never make a prior_canon claim supported or authorize a contradiction.\n"
         "Claims must be atomic. Split prior canon facts from present generated actions or locations.\n"
         "Return at most 16 material claims. Prioritize every prior-canon claim and consequential generated-present claim; group minor set dressing when needed.\n"
         "Classifications:\n"
@@ -715,9 +717,9 @@ def _build_support_prompt(*, scene: SceneProseArtifact, plan: Any, evidence: lis
         "Use only evidence_id values present below. A supported claim must cite at least one evidence_id.\n"
         "Return JSON only: {\"claims\":[{\"claim\":str,\"claim_type\":\"canon_fact|story_local\","
         "\"classification\":\"supported|creative_expansion|unsupported|contradiction\",\"evidence_ids\":[str],"
-        "\"severity\":\"low|medium|high\",\"temporal_scope\":\"prior_canon|generated_present\","
+        "\"severity\":\"low|medium|high\",\"temporal_scope\":\"prior_canon|generated_story|generated_present\","
         "\"plan_alignment\":\"aligned|not_aligned|not_applicable\",\"rationale\":str,\"confidence\":0..1}],\"summary\":str}.\n"
-        f"PLANNED_SCENE: {json.dumps(_as_dict(plan), ensure_ascii=False)}\n"
+        f"PLANNING_CONTEXT: {json.dumps(_as_dict(plan), ensure_ascii=False)}\n"
         f"GENERATED_SCENE: {json.dumps({'title': scene.title, 'prose': scene.prose, 'canon_refs': scene.canon_refs, 'character_refs': scene.character_refs, 'entity_refs': scene.entity_refs}, ensure_ascii=False)}\n"
         f"RETRIEVED_EVIDENCE: {json.dumps(evidence_payload, ensure_ascii=False)}"
     )
@@ -765,10 +767,10 @@ def _build_revision_prompt(*, scene: SceneProseArtifact, plan: Any, audit: Scene
     return (
         "Revise generated continuation prose so every listed unsupported or contradictory canon claim is removed or corrected.\n"
         "Preserve supported canon, scene purpose, style, and permissible creative expansion. Do not invent replacement canon facts.\n"
-        "Preserve present-scene events authorized by PLANNED_SCENE. Remove or reframe only the unsupported prior-canon assertion, motive, history, or contradiction identified in PROBLEMS.\n"
+        "Preserve present-scene events and persistent new-story innovations explicitly authorized by PLANNING_CONTEXT. Remove or reframe only unsupported prior-canon assertions or contradictions.\n"
         "Return JSON only: {\"title\":str,\"prose\":str}.\n"
         f"SCENE: {json.dumps({'title': scene.title, 'prose': scene.prose, 'purpose': scene.purpose}, ensure_ascii=False)}\n"
-        f"PLANNED_SCENE: {json.dumps(_as_dict(plan), ensure_ascii=False)}\n"
+        f"PLANNING_CONTEXT: {json.dumps(_as_dict(plan), ensure_ascii=False)}\n"
         f"PROBLEMS: {json.dumps(problematic, ensure_ascii=False)}\n"
         f"EVIDENCE: {json.dumps([item.model_dump() for item in audit.evidence], ensure_ascii=False)}"
     )
@@ -817,7 +819,7 @@ def _normalize_claims(
             classification = "unsupported"
         if severity not in {"low", "medium", "high"}:
             severity = "medium"
-        if temporal_scope not in {"prior_canon", "generated_present"}:
+        if temporal_scope not in {"prior_canon", "generated_story", "generated_present"}:
             temporal_scope = "prior_canon"
         if plan_alignment not in {"aligned", "not_aligned", "not_applicable"}:
             plan_alignment = "not_applicable"
@@ -828,6 +830,14 @@ def _normalize_claims(
             cited = []
             if plan is None:
                 plan_alignment = "not_applicable"
+        elif temporal_scope == "generated_story" and plan_alignment == "aligned" and classification != "contradiction":
+            claim_type = "story_local"
+            classification = "creative_expansion"
+            cited = []
+        elif temporal_scope == "generated_story":
+            claim_type = "canon_fact"
+            classification = "unsupported" if classification == "creative_expansion" else classification
+            cited = []
         elif temporal_scope == "prior_canon":
             claim_type = "canon_fact"
             plan_alignment = "not_applicable"
@@ -853,6 +863,15 @@ def _normalize_claims(
             )
         )
     return normalized
+
+
+def _support_plan_context(*, blueprint: GenerationBlueprintArtifact, plan: Any) -> dict[str, Any]:
+    return {
+        "premise": blueprint.premise,
+        "continuation_plan": blueprint.continuation_plan,
+        "divergence_plan": blueprint.divergence_plan,
+        "planned_scene": _as_dict(plan),
+    }
 
 
 def _support_issues(
