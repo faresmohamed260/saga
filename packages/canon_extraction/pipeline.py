@@ -31,7 +31,7 @@ from packages.persistence_runtime import PersistenceRuntimeClient
 from packages.reasoning_runtime import ReasoningRuntimeClient
 from packages.runtime_common import CancellationChecker, raise_if_cancelled
 
-SCENE_SLICE_BATCH_SIZE = max(1, int(os.getenv("SAGA_CANON_SCENE_SLICE_BATCH_SIZE") or "8"))
+SCENE_SLICE_BATCH_SIZE = max(1, int(os.getenv("SAGA_CANON_SCENE_SLICE_BATCH_SIZE") or "12"))
 CANON_EXTRACTION_PARALLELISM = max(1, int(os.getenv("SAGA_CANON_EXTRACTION_PARALLELISM") or "4"))
 MAX_EVENTS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_EVENTS_PER_SCENE") or "5"))
 MAX_ENTITIES_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_ENTITIES_PER_SCENE") or "24"))
@@ -331,6 +331,8 @@ class EventAgent:
                 )
             ]
         except RuntimeError as exc:
+            if _is_exhausted_provider_error(exc):
+                return [_fallback_events_payload_from_scene_slices(scene_slices)]
             if not _should_retry_split_extraction_error(exc):
                 raise
             try:
@@ -520,6 +522,8 @@ class EntityAgent:
                 )
             ]
         except RuntimeError as exc:
+            if _is_exhausted_provider_error(exc):
+                return [EntitiesPayload()]
             if not _should_retry_split_extraction_error(exc):
                 raise
             try:
@@ -748,6 +752,8 @@ class RelationshipAgent:
                 )
             ]
         except RuntimeError as exc:
+            if _is_exhausted_provider_error(exc):
+                return [RelationshipsPayload()]
             if not _should_retry_split_extraction_error(exc):
                 raise
             try:
@@ -1171,7 +1177,7 @@ def _build_events_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scene_
         "Do not invent scenes or facts outside the provided scene slices.\n"
         f"Book title: {book.title}\n"
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
-        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle), ensure_ascii=False, indent=2)}\n"
+        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False, indent=2)}\n"
         f"Scene slices JSON:\n{json.dumps(scene_slices, ensure_ascii=False, indent=2)}\n"
     )
 
@@ -1191,7 +1197,7 @@ def _build_entities_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scen
         "Never return entity_type=character or entity_type=event.\n"
         f"Book title: {book.title}\n"
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
-        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle), ensure_ascii=False, indent=2)}\n"
+        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False, indent=2)}\n"
         f"Scene slices JSON:\n{json.dumps(scene_slices, ensure_ascii=False, indent=2)}\n"
     )
 
@@ -1216,7 +1222,7 @@ def _build_relationships_prompt(
         "Allowed relationship types only: ally, antagonistic, artifact_usage, co_conspirator, companion, curiosity, family, friendship, location_association, manipulation, marriage, protective, reference, request, romantic, sibling.\n"
         f"Book title: {book.title}\n"
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
-        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle), ensure_ascii=False, indent=2)}\n"
+        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False, indent=2)}\n"
         f"Available non-character entities JSON:\n{json.dumps(_entity_context(entities), ensure_ascii=False, indent=2)}\n"
         f"Scene slices JSON:\n{json.dumps(scene_slices, ensure_ascii=False, indent=2)}\n"
     )
@@ -1299,11 +1305,21 @@ def _should_retry_split_extraction_error(exc: RuntimeError) -> bool:
     message = str(exc)
     return any(
         label in message
-        for label in ("parse_failed", "empty_response", "max_retries_exceeded", "payload_validation_failed")
+        for label in ("parse_failed", "empty_response", "payload_validation_failed")
     )
 
 
-def _identity_character_context(identity_bundle: CanonicalIdentityBundle) -> list[dict[str, Any]]:
+def _is_exhausted_provider_error(exc: RuntimeError) -> bool:
+    return "max_retries_exceeded" in str(exc)
+
+
+def _identity_character_context(
+    identity_bundle: CanonicalIdentityBundle,
+    *,
+    scene_slices: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    searchable_text = _searchable_scene_slice_text(scene_slices)
+    grounded_ids, grounded_names = _grounded_character_references(scene_slices)
     return [
         {
             "character_id": character.character_id,
@@ -1311,7 +1327,63 @@ def _identity_character_context(identity_bundle: CanonicalIdentityBundle) -> lis
             "aliases": list(character.aliases),
         }
         for character in identity_bundle.characters
+        if character.character_id in grounded_ids
+        or _normalize_search_text(character.display_name) in grounded_names
+        or any(
+            _identity_name_is_relevant(name, searchable_text)
+            for name in [character.display_name, *character.aliases]
+        )
     ]
+
+
+def _searchable_scene_slice_text(scene_slices: list[dict[str, Any]]) -> str:
+    values: list[str] = []
+    for scene_slice in scene_slices:
+        values.extend((str(scene_slice.get("summary") or ""), str(scene_slice.get("excerpt") or "")))
+    return f" {_normalize_search_text(' '.join(values))} "
+
+
+def _grounded_character_references(scene_slices: list[dict[str, Any]]) -> tuple[set[str], set[str]]:
+    character_ids: set[str] = set()
+    names: set[str] = set()
+    for scene_slice in scene_slices:
+        grounding = scene_slice.get("narrative_grounding")
+        if not isinstance(grounding, dict):
+            continue
+        character_ids.update(
+            value
+            for value in [
+                str(grounding.get("narrator_character_id") or "").strip(),
+                *(str(item or "").strip() for item in list(grounding.get("addressee_character_ids") or [])),
+            ]
+            if value
+        )
+        names.update(
+            value
+            for value in [
+                _normalize_search_text(str(grounding.get("narrator_name") or "")),
+                *(_normalize_search_text(str(item or "")) for item in list(grounding.get("addressee_names") or [])),
+            ]
+            if value
+        )
+    return character_ids, names
+
+
+def _identity_name_is_relevant(name: str, searchable_text: str) -> bool:
+    normalized = _normalize_search_text(name)
+    if len(normalized) < 3 or normalized in _NON_DISTINCT_IDENTITY_NAMES:
+        return False
+    return f" {normalized} " in searchable_text
+
+
+def _normalize_search_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+
+
+_NON_DISTINCT_IDENTITY_NAMES = {
+    "he", "her", "hers", "him", "his", "i", "it", "me", "mine", "my", "she", "their",
+    "theirs", "them", "they", "we", "you", "your", "yours",
+}
 
 
 def _entity_context(entities: list[EntityArtifact]) -> list[dict[str, Any]]:

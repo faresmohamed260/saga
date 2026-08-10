@@ -10,6 +10,7 @@ from packages.analysis_foundation import AnalysisFoundationRuntime
 from packages.canon_extraction import CanonExtractionRuntime
 from packages.canon_extraction.contracts import EntityArtifact, RelationshipArtifact
 from packages.canon_extraction import pipeline as canon_pipeline
+from packages.canon_extraction.service import load_canon_extraction_service_config_from_env
 from packages.canon_extraction.pipeline import (
     EventAgent,
     _augment_participant_names_from_event_text,
@@ -17,6 +18,7 @@ from packages.canon_extraction.pipeline import (
     _chunk_scene_text,
     _entities_for_scene_slice_batch,
     _has_participant_text_support,
+    _identity_character_context,
     _normalize_entity_type,
     _normalize_relationship_type,
     _resolve_participant_refs,
@@ -52,6 +54,15 @@ def test_parallel_canon_jobs_stop_scheduling_after_cancellation(monkeypatch):
         )
 
     assert len(started) <= 2
+
+
+def test_mistral_canon_profile_defaults_to_extraction_model(monkeypatch):
+    monkeypatch.setenv("SAGA_CANON_EXTRACTION_REASONING_MODE", "mistral")
+    monkeypatch.delenv("SAGA_CANON_EXTRACTION_REASONING_MODEL", raising=False)
+
+    config = load_canon_extraction_service_config_from_env()
+
+    assert config.reasoning_model == "mistral-small-2603"
 
 
 class StubIdentityRuntime:
@@ -417,6 +428,51 @@ def test_batched_scene_slices_bound_prompt_coverage():
     assert all(len(batch) <= 4 for batch in batches)
     assert "beat-0001" in batches[0][0]["excerpt"]
     assert "beat-0899" in batches[-1][-1]["excerpt"]
+
+
+def test_identity_context_only_includes_characters_relevant_to_scene_batch():
+    bundle = CanonicalIdentityBundle(
+        series_id="series-1",
+        provider_name="test",
+        characters=[
+            CanonicalCharacter(character_id="char-feyre", display_name="Feyre Archeron", aliases=["Feyre"]),
+            CanonicalCharacter(character_id="char-rhys", display_name="Rhysand", aliases=["Rhys"]),
+            CanonicalCharacter(character_id="char-cassian", display_name="Cassian", aliases=["he"]),
+        ],
+    )
+    context = _identity_character_context(
+        bundle,
+        scene_slices=[
+            {
+                "summary": "Feyre meets the High Lord.",
+                "excerpt": "She waits for him.",
+                "narrative_grounding": {
+                    "narrator_character_id": "char-cassian",
+                    "narrator_name": "Cassian",
+                },
+            }
+        ],
+    )
+
+    assert [row["character_id"] for row in context] == ["char-feyre", "char-cassian"]
+
+
+def test_identity_context_matches_names_on_token_boundaries():
+    bundle = CanonicalIdentityBundle(
+        series_id="series-1",
+        provider_name="test",
+        characters=[
+            CanonicalCharacter(character_id="char-rhys", display_name="Rhys", aliases=[]),
+            CanonicalCharacter(character_id="char-rhy", display_name="Rhy", aliases=[]),
+        ],
+    )
+
+    context = _identity_character_context(
+        bundle,
+        scene_slices=[{"summary": "", "excerpt": "Rhys entered quietly."}],
+    )
+
+    assert [row["character_id"] for row in context] == ["char-rhys"]
 
 
 def test_entities_for_scene_slice_batch_filters_to_relevant_scene_ids():
@@ -977,5 +1033,5 @@ def test_split_scene_slices_for_retry_can_bisect_single_large_slice():
 def test_split_retry_predicate_handles_empty_provider_responses():
     assert _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: empty_response"))
     assert _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: parse_failed"))
-    assert _should_retry_split_extraction_error(RuntimeError("Event extraction failed: max_retries_exceeded"))
+    assert not _should_retry_split_extraction_error(RuntimeError("Event extraction failed: max_retries_exceeded"))
     assert not _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: auth_failed"))

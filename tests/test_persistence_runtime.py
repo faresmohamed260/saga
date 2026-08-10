@@ -176,6 +176,48 @@ def test_library_store_bulk_scene_upsert_rejects_duplicate_ids(tmp_path):
         client.library.upsert_scenes([duplicate, duplicate])
 
 
+def test_library_store_bulk_upserts_records_in_input_order(tmp_path):
+    client = _client(tmp_path)
+    inserted = client.library.upsert_records([
+        {"record_id": "record-b", "record_type": "event", "series_id": "series-1", "ordinal": 2, "payload": {"v": 1}},
+        {"record_id": "record-a", "record_type": "event", "series_id": "series-1", "ordinal": 1, "payload": {"v": 1}},
+    ])
+    updated = client.library.upsert_records([
+        {**inserted[0], "title": "B", "payload": {"v": 2}},
+        {**inserted[1], "title": "A", "payload": {"v": 2}},
+    ])
+
+    assert [row["record_id"] for row in inserted] == ["record-b", "record-a"]
+    assert [row["title"] for row in updated] == ["B", "A"]
+    assert all(row["payload"]["v"] == 2 for row in updated)
+
+
+def test_library_store_bulk_record_upsert_rejects_duplicate_ids(tmp_path):
+    client = _client(tmp_path)
+    duplicate = {"record_id": "record-duplicate", "record_type": "event"}
+
+    with pytest.raises(ValueError, match="unique record_id"):
+        client.library.upsert_records([duplicate, duplicate])
+
+
+def test_library_store_replaces_record_set_atomically(tmp_path):
+    client = _client(tmp_path)
+    client.library.upsert_records([
+        {"record_id": "stale", "record_type": "event", "series_id": "series-1", "payload": {"v": 1}},
+        {"record_id": "other", "record_type": "event", "series_id": "series-2", "payload": {"v": 1}},
+    ])
+
+    replaced = client.library.replace_records(
+        record_type="event",
+        series_id="series-1",
+        records=[{"record_id": "fresh", "record_type": "event", "series_id": "series-1", "payload": {"v": 2}}],
+    )
+
+    assert [row["record_id"] for row in replaced] == ["fresh"]
+    assert [row["record_id"] for row in client.library.list_records(record_type="event", series_id="series-1")] == ["fresh"]
+    assert [row["record_id"] for row in client.library.list_records(record_type="event", series_id="series-2")] == ["other"]
+
+
 def test_job_story_identity_and_audiobook_stores_round_trip(tmp_path):
     client = _client(tmp_path)
 

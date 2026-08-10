@@ -37,66 +37,62 @@ class CanonExtractionStore:
         }
 
     def replace_events(self, *, series_id: str, events: list[EventArtifact]) -> list[EventArtifact]:
-        self.persistence.library.delete_records(record_type="event", series_id=series_id)
-        persisted: list[EventArtifact] = []
-        for event in events:
-            payload = self.persistence.library.upsert_record(
-                event.event_id,
-                record_type="event",
-                series_id=event.series_id,
-                book_id=event.book_id,
-                scene_id=event.scene_id,
-                title=event.title,
-                ordinal=event.event_index,
-                payload=event.model_dump(),
-            )
-            persisted.append(EventArtifact.model_validate(dict(payload.get("payload") or {})))
-        return persisted
+        rows = self.persistence.library.replace_records(record_type="event", series_id=series_id, records=[
+            {
+                "record_id": event.event_id,
+                "record_type": "event",
+                "series_id": event.series_id,
+                "book_id": event.book_id,
+                "scene_id": event.scene_id,
+                "title": event.title,
+                "ordinal": event.event_index,
+                "payload": event.model_dump(),
+            }
+            for event in events
+        ])
+        return [EventArtifact.model_validate(dict(row.get("payload") or {})) for row in rows]
 
     def replace_entities(self, *, series_id: str, entities: list[EntityArtifact]) -> list[EntityArtifact]:
-        self.persistence.library.delete_records(record_type="entity", series_id=series_id)
-        persisted: list[EntityArtifact] = []
-        for entity in entities:
-            payload = self.persistence.library.upsert_record(
-                entity.entity_id,
-                record_type="entity",
-                series_id=entity.series_id,
-                title=entity.canonical_name,
-                payload=entity.model_dump(),
-            )
-            persisted.append(EntityArtifact.model_validate(dict(payload.get("payload") or {})))
-        return persisted
+        rows = self.persistence.library.replace_records(record_type="entity", series_id=series_id, records=[
+            {
+                "record_id": entity.entity_id,
+                "record_type": "entity",
+                "series_id": entity.series_id,
+                "title": entity.canonical_name,
+                "payload": entity.model_dump(),
+            }
+            for entity in entities
+        ])
+        return [EntityArtifact.model_validate(dict(row.get("payload") or {})) for row in rows]
 
     def replace_relationships(self, *, series_id: str, relationships: list[RelationshipArtifact]) -> list[RelationshipArtifact]:
-        self.persistence.library.delete_records(record_type="relationship", series_id=series_id)
-        persisted: list[RelationshipArtifact] = []
-        for relationship in relationships:
-            payload = self.persistence.library.upsert_record(
-                relationship.relationship_id,
-                record_type="relationship",
-                series_id=relationship.series_id,
-                title=f"{relationship.source_ref}:{relationship.relationship_type}:{relationship.target_ref}",
-                payload=relationship.model_dump(),
-            )
-            persisted.append(RelationshipArtifact.model_validate(dict(payload.get("payload") or {})))
-        return persisted
+        rows = self.persistence.library.replace_records(record_type="relationship", series_id=series_id, records=[
+            {
+                "record_id": relationship.relationship_id,
+                "record_type": "relationship",
+                "series_id": relationship.series_id,
+                "title": f"{relationship.source_ref}:{relationship.relationship_type}:{relationship.target_ref}",
+                "payload": relationship.model_dump(),
+            }
+            for relationship in relationships
+        ])
+        return [RelationshipArtifact.model_validate(dict(row.get("payload") or {})) for row in rows]
 
     def replace_timeline(self, *, series_id: str, timeline: list[TimelineArtifact]) -> list[TimelineArtifact]:
-        self.persistence.library.delete_records(record_type="timeline", series_id=series_id)
-        persisted: list[TimelineArtifact] = []
-        for item in timeline:
-            payload = self.persistence.library.upsert_record(
-                item.timeline_id,
-                record_type="timeline",
-                series_id=item.series_id,
-                book_id=item.book_id,
-                scene_id=item.scene_id,
-                title=item.title,
-                ordinal=item.sequence_index,
-                payload=item.model_dump(),
-            )
-            persisted.append(TimelineArtifact.model_validate(dict(payload.get("payload") or {})))
-        return persisted
+        rows = self.persistence.library.replace_records(record_type="timeline", series_id=series_id, records=[
+            {
+                "record_id": item.timeline_id,
+                "record_type": "timeline",
+                "series_id": item.series_id,
+                "book_id": item.book_id,
+                "scene_id": item.scene_id,
+                "title": item.title,
+                "ordinal": item.sequence_index,
+                "payload": item.model_dump(),
+            }
+            for item in timeline
+        ])
+        return [TimelineArtifact.model_validate(dict(row.get("payload") or {})) for row in rows]
 
     def delete_stage_jobs(self, *, series_id: str, stage_name: str) -> int:
         rows = self.persistence.library.list_records(record_type="canon_extraction_job", series_id=series_id, limit=10000)

@@ -485,30 +485,90 @@ class LibraryStore:
         ordinal: int | None = None,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        return self.upsert_records(
+            [{
+                "record_id": record_id,
+                "record_type": record_type,
+                "series_id": series_id,
+                "book_id": book_id,
+                "scene_id": scene_id,
+                "title": title,
+                "ordinal": ordinal,
+                "payload": payload,
+            }]
+        )[0]
+
+    def upsert_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized = self._validated_bulk_records(records)
         with self.session_factory() as session:
-            row = session.get(LibraryRecordRow, record_id)
-            if row is None:
-                row = LibraryRecordRow(
-                    record_id=record_id,
-                    record_type=record_type,
-                    series_id=series_id,
-                    book_id=book_id,
-                    scene_id=scene_id,
-                    title=title,
-                    ordinal=ordinal,
-                    payload=_json(payload),
+            rows = self._upsert_record_rows(session, normalized)
+            session.flush()
+            result = [self._record_dict(row) for row in rows]
+            session.commit()
+            return result
+
+    def replace_records(
+        self,
+        *,
+        record_type: str,
+        series_id: str,
+        records: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        normalized = self._validated_bulk_records(records)
+        expected_type = _required(record_type, "record_type")
+        for item in normalized:
+            if str(item.get("record_type") or "") != expected_type or str(item.get("series_id") or "") != series_id:
+                raise ValueError("Replacement records must match record_type and series_id.")
+        with self.session_factory() as session:
+            session.execute(
+                delete(LibraryRecordRow).where(
+                    LibraryRecordRow.record_type == expected_type,
+                    LibraryRecordRow.series_id == series_id,
                 )
+            )
+            rows = self._upsert_record_rows(session, normalized)
+            session.flush()
+            result = [self._record_dict(row) for row in rows]
+            session.commit()
+            return result
+
+    @staticmethod
+    def _validated_bulk_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized = [dict(item or {}) for item in records]
+        record_ids = [_required(item.get("record_id"), "record_id") for item in normalized]
+        if len(set(record_ids)) != len(record_ids):
+            raise ValueError("Bulk record upsert requires unique record_id values.")
+        return normalized
+
+    @staticmethod
+    def _upsert_record_rows(session, records: list[dict[str, Any]]) -> list[LibraryRecordRow]:
+        record_ids = [str(item["record_id"]) for item in records]
+        existing = {
+            row.record_id: row
+            for row in session.execute(
+                select(LibraryRecordRow).where(LibraryRecordRow.record_id.in_(record_ids))
+            ).scalars()
+        } if record_ids else {}
+        rows: list[LibraryRecordRow] = []
+        for item, record_id in zip(records, record_ids, strict=True):
+            row = existing.get(record_id)
+            values = {
+                "record_type": _required(item.get("record_type"), "record_type"),
+                "series_id": str(item.get("series_id") or ""),
+                "book_id": str(item.get("book_id") or ""),
+                "scene_id": str(item.get("scene_id") or ""),
+                "title": str(item.get("title") or ""),
+                "ordinal": item.get("ordinal"),
+                "payload": _json(item.get("payload")),
+            }
+            if row is None:
+                row = LibraryRecordRow(record_id=record_id, **values)
                 session.add(row)
             else:
-                row.record_type = record_type
-                row.series_id = series_id
-                row.book_id = book_id
-                row.scene_id = scene_id
-                row.title = title
-                row.ordinal = ordinal
-                row.payload = _json(payload)
-            session.commit()
-            return self._record_dict(row)
+                for key, value in values.items():
+                    setattr(row, key, value)
+            rows.append(row)
+        return rows
 
     def list_records(
         self,
