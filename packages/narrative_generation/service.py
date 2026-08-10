@@ -28,7 +28,7 @@ class NarrativeGenerationServiceConfig:
     reasoning_profile_name: str = "narrative-generation"
     reasoning_mode: str = "gpt_oss"
     reasoning_timeout_seconds: int = 120
-    reasoning_max_retries: int = 1
+    reasoning_max_retries: int = 3
     reasoning_base_delay_seconds: float = 0.0
 
 
@@ -177,6 +177,6 @@ def load_narrative_generation_service_config_from_env() -> NarrativeGenerationSe
         reasoning_profile_name=str(os.getenv("SAGA_NARRATIVE_GENERATION_REASONING_PROFILE") or "narrative-generation").strip(),
         reasoning_mode=str(os.getenv("SAGA_NARRATIVE_GENERATION_REASONING_MODE") or "gpt_oss").strip() or "gpt_oss",
         reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_NARRATIVE_GENERATION_REASONING_TIMEOUT_SECONDS") or "120")),
-        reasoning_max_retries=max(1, int(os.getenv("SAGA_NARRATIVE_GENERATION_REASONING_MAX_RETRIES") or "1")),
+        reasoning_max_retries=max(1, int(os.getenv("SAGA_NARRATIVE_GENERATION_REASONING_MAX_RETRIES") or "3")),
         reasoning_base_delay_seconds=max(0.0, float(os.getenv("SAGA_NARRATIVE_GENERATION_REASONING_BASE_DELAY_SECONDS") or "0")),
     )

@@ -5,6 +5,7 @@ from pathlib import Path
 from packages.generation_planning.contracts import ChapterOutlineItem, GenerationBlueprintArtifact, ScenePlanItem
 from packages.generation_planning.store import GenerationPlanningStore
 from packages.narrative_generation import NarrativeGenerationRuntime, evaluate_narrative_generation
+from packages.narrative_generation.service import load_narrative_generation_service_config_from_env
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 
 
@@ -49,6 +50,14 @@ class FailingNarrativeReasoningRuntime(StubNarrativeReasoningRuntime):
         self.calls += 1
         self._last = {"provider": "mistral", "resolved_model": self.resolved_model_name(), "status": "error"}
         return {"error": "max_retries_exceeded"}
+
+
+def test_narrative_service_uses_bounded_rate_limit_retries_by_default(monkeypatch):
+    monkeypatch.delenv("SAGA_NARRATIVE_GENERATION_REASONING_MAX_RETRIES", raising=False)
+
+    config = load_narrative_generation_service_config_from_env()
+
+    assert config.reasoning_max_retries == 3
 
 
 def _persistence(tmp_path: Path):
