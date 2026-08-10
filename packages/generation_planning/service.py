@@ -28,7 +28,7 @@ class GenerationPlanningServiceConfig:
     reasoning_profile_name: str = "generation-planning"
     reasoning_mode: str = "gpt_oss"
     reasoning_timeout_seconds: int = 120
-    reasoning_max_retries: int = 1
+    reasoning_max_retries: int = 3
 
 
 @dataclass(frozen=True)
@@ -178,5 +178,5 @@ def load_generation_planning_service_config_from_env() -> GenerationPlanningServ
         reasoning_profile_name=str(os.getenv("SAGA_GENERATION_PLANNING_REASONING_PROFILE") or "generation-planning").strip(),
         reasoning_mode=str(os.getenv("SAGA_GENERATION_PLANNING_REASONING_MODE") or "gpt_oss").strip() or "gpt_oss",
         reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_GENERATION_PLANNING_REASONING_TIMEOUT_SECONDS") or "120")),
-        reasoning_max_retries=max(1, int(os.getenv("SAGA_GENERATION_PLANNING_REASONING_MAX_RETRIES") or "1")),
+        reasoning_max_retries=max(1, int(os.getenv("SAGA_GENERATION_PLANNING_REASONING_MAX_RETRIES") or "3")),
     )

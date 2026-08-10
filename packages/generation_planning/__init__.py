@@ -15,7 +15,7 @@ from .pipeline import (
     StoryIntentAgent,
     build_generation_planning_graph,
 )
-from .quality import GenerationPlanningQualityMetrics, evaluate_generation_blueprint
+from .quality import GenerationPlanningQualityMetrics, evaluate_generation_blueprint, has_live_planning_provider_proof
 from .service import (
     GenerationPlanningRunRequest,
     GenerationPlanningService,
@@ -40,5 +40,6 @@ __all__ = [
     "StoryIntentArtifact",
     "build_generation_planning_graph",
     "evaluate_generation_blueprint",
+    "has_live_planning_provider_proof",
     "load_generation_planning_service_config_from_env",
 ]

@@ -14,6 +14,7 @@ from packages.canon_extraction.store import CanonExtractionStore
 from packages.character_world_modeling.store import CharacterWorldModelingStore
 from packages.character_world_modeling.quality import character_world_shape_complete
 from packages.generation_planning.store import GenerationPlanningStore
+from packages.generation_planning.quality import has_live_planning_provider_proof
 from packages.narrative_generation.contracts import (
     GeneratedStoryArtifact,
     NarrativeGenerationResult,
@@ -135,6 +136,15 @@ class ActiveStageInspector:
         if not blueprints:
             return None
         blueprint = blueprints[0]
+        if not has_live_planning_provider_proof(blueprint):
+            return StageOutcomeArtifact(
+                stage="generation_planning",
+                status="rejected",
+                accepted=False,
+                output_context={"blueprint_id": blueprint.blueprint_id},
+                metrics={"chapter_count": len(blueprint.chapter_outline), "scene_count": len(blueprint.scene_plan)},
+                reasons=["Generation blueprint lacks successful live-provider provenance."],
+            )
         return _accepted("generation_planning", {"blueprint_id": blueprint.blueprint_id}, {"chapter_count": len(blueprint.chapter_outline), "scene_count": len(blueprint.scene_plan)})
 
     def narrative_generation(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageOutcomeArtifact | None:

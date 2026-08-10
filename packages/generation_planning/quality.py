@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from packages.generation_planning.contracts import GenerationPlanningResult
+from packages.generation_planning.contracts import GenerationBlueprintArtifact, GenerationPlanningResult
 
 
 class GenerationPlanningQualityMetrics(BaseModel):
@@ -19,6 +19,18 @@ class GenerationPlanningQualityMetrics(BaseModel):
     audio_requirement_rate: float = 1.0
     pass_quality_gate: bool = True
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+def has_live_planning_provider_proof(blueprint: GenerationBlueprintArtifact) -> bool:
+    metadata = dict(blueprint.metadata or {})
+    request_metadata = dict(metadata.get("request_metadata") or {})
+    return (
+        bool(str(metadata.get("reasoning_provider") or "").strip())
+        and bool(str(metadata.get("reasoning_model") or "").strip())
+        and str(metadata.get("reasoning_status") or "").strip() == "ok"
+        and not bool(request_metadata.get("fallback_used"))
+        and not bool(request_metadata.get("deterministic_fallback"))
+    )
 
 
 def evaluate_generation_blueprint(
