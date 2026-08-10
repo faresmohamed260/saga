@@ -61,6 +61,7 @@ class AnalysisFoundationService:
                 supabase_service_role_key=config.supabase_service_role_key,
             ),
         )
+        self.persistence = persistence
         identity_profile = IdentityRuntimeProfile(
             name="analysis-foundation-identity",
             provider_name=config.identity_provider_name,
@@ -83,6 +84,9 @@ class AnalysisFoundationService:
             book_index_start=request.book_index_start,
             thread_id=request.thread_id,
         )
+
+    def close(self) -> None:
+        self.persistence.close()
 
     def build_quality_audit(self, *, result: AnalysisFoundationResult, source_paths: list[str]) -> dict[str, Any]:
         identity_bundle = result.identity_bundle

@@ -13,6 +13,13 @@ from packages.production_orchestration.bindings import ActiveStageBinding
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.policy import STAGE_ORDER, resolve_stage_plan
 from packages.production_orchestration.service import _run_scoped_service
+from packages.analysis_foundation import AnalysisFoundationService
+from packages.audiobook_generation import AudiobookGenerationService
+from packages.canon_extraction import CanonExtractionService
+from packages.character_world_modeling import CharacterWorldModelingService
+from packages.generation_planning import GenerationPlanningService
+from packages.narrative_generation import NarrativeGenerationService, NarrativeSupportService
+from packages.visual_generation import VisualGenerationService
 
 
 class FakeStage:
@@ -66,6 +73,9 @@ def test_scoped_stage_service_closes_persistence_on_success_and_failure():
                 raise self.error
             return request
 
+        def close(self):
+            self.persistence.close()
+
     successful = Service()
     failing = Service(RuntimeError("failed"))
 
@@ -75,6 +85,29 @@ def test_scoped_stage_service_closes_persistence_on_success_and_failure():
 
     assert successful.persistence.closed is True
     assert failing.persistence.closed is True
+
+
+@pytest.mark.parametrize(
+    "service_type",
+    [
+        AnalysisFoundationService,
+        CanonExtractionService,
+        CharacterWorldModelingService,
+        GenerationPlanningService,
+        NarrativeGenerationService,
+        NarrativeSupportService,
+        VisualGenerationService,
+        AudiobookGenerationService,
+    ],
+)
+def test_active_stage_services_expose_persistence_lifecycle(service_type):
+    persistence = type("Persistence", (), {"closed": False, "close": lambda self: setattr(self, "closed", True)})()
+    service = service_type.__new__(service_type)
+    service.persistence = persistence
+
+    service.close()
+
+    assert persistence.closed is True
 
 
 def test_visual_attempt_budget_is_independent_and_bounded():

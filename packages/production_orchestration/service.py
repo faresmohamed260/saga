@@ -238,4 +238,4 @@ def _run_scoped_service(service, request) -> Any:
     try:
         return service.run(request)
     finally:
-        service.persistence.close()
+        service.close()

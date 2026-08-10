@@ -91,6 +91,9 @@ class GenerationPlanningService:
             desired_chapter_count=request.desired_chapter_count,
         )
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def build_quality_audit(self, *, result: GenerationPlanningResult) -> dict[str, Any]:
         context = self.runtime.store.load_series_context(series_id=result.series_id)
         valid_canon_refs = {

@@ -131,6 +131,9 @@ class VisualGenerationService:
             workflow_versions=_workflow_versions(),
         )
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def reaudit(self, request: VisualGenerationRunRequest) -> VisualGenerationResult:
         return self.runtime.reaudit(
             series_id=request.series_id,

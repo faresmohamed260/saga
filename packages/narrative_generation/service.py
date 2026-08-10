@@ -89,6 +89,9 @@ class NarrativeGenerationService:
             target_words_per_scene=request.target_words_per_scene,
         )
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def build_quality_audit(self, *, result: NarrativeGenerationResult) -> dict[str, Any]:
         context = self.runtime.store.load_series_context(series_id=result.series_id, blueprint_id=result.story.blueprint_id)
         blueprint = context.get("blueprint")
