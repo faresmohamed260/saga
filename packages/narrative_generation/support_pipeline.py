@@ -203,6 +203,7 @@ class SemanticSupportAgent:
         )
         request_metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
         request_ok = request_metadata.get("status") == "ok" and isinstance(response, dict) and not response.get("error")
+        response, response_normalization = _bounded_support_response(response)
         try:
             payload = SceneEvaluationPayload.model_validate(response) if request_ok else SceneEvaluationPayload()
         except Exception as exc:
@@ -254,6 +255,7 @@ class SemanticSupportAgent:
                 "reasoning_provider": request_metadata.get("provider"),
                 "reasoning_model": request_metadata.get("resolved_model"),
                 "request_metadata": request_metadata,
+                "response_normalization": response_normalization,
                 "evaluation_summary": payload.summary,
             },
         )
@@ -719,6 +721,43 @@ def _build_support_prompt(*, scene: SceneProseArtifact, plan: Any, evidence: lis
         f"GENERATED_SCENE: {json.dumps({'title': scene.title, 'prose': scene.prose, 'canon_refs': scene.canon_refs, 'character_refs': scene.character_refs, 'entity_refs': scene.entity_refs}, ensure_ascii=False)}\n"
         f"RETRIEVED_EVIDENCE: {json.dumps(evidence_payload, ensure_ascii=False)}"
     )
+
+
+def _bounded_support_response(response: Any, *, max_claims: int = 16) -> tuple[Any, dict[str, Any]]:
+    if not isinstance(response, dict) or not isinstance(response.get("claims"), list):
+        return response, {}
+    claims = list(response["claims"])
+    if len(claims) <= max_claims:
+        return response, {}
+    risky_indices = [
+        index
+        for index, raw in enumerate(claims)
+        if isinstance(raw, dict)
+        and (
+            str(raw.get("claim_type") or "") == "canon_fact"
+            or str(raw.get("classification") or "") in {"unsupported", "contradiction"}
+        )
+    ]
+    if len(risky_indices) > max_claims:
+        return response, {
+            "status": "rejected_risky_overflow",
+            "original_claim_count": len(claims),
+            "risky_claim_count": len(risky_indices),
+            "retained_claim_count": len(claims),
+        }
+    retained = set(risky_indices)
+    for index in range(len(claims)):
+        if len(retained) >= max_claims:
+            break
+        retained.add(index)
+    normalized = dict(response)
+    normalized["claims"] = [claim for index, claim in enumerate(claims) if index in retained]
+    return normalized, {
+        "status": "bounded",
+        "original_claim_count": len(claims),
+        "risky_claim_count": len(risky_indices),
+        "retained_claim_count": len(normalized["claims"]),
+    }
 
 
 def _build_revision_prompt(*, scene: SceneProseArtifact, plan: Any, audit: SceneSupportAuditArtifact) -> str:

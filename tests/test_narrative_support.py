@@ -14,6 +14,7 @@ from packages.narrative_generation import (
     require_narrative_semantic_acceptance,
 )
 from packages.narrative_generation.store import NarrativeGenerationStore
+from packages.narrative_generation.support_pipeline import _bounded_support_response
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.retrieval_runtime import RetrievalProfile, RetrievalRuntimeConfig, create_retrieval_client
 
@@ -358,3 +359,54 @@ def test_semantic_support_fails_closed_when_provider_fails(tmp_path: Path):
         assert "has not passed" in str(exc)
     else:
         raise AssertionError("Rejected narrative should not pass the downstream semantic-support guard.")
+
+
+def test_bounded_support_response_retains_late_risky_claims():
+    claims = [
+        {
+            "claim": f"Creative detail {index}",
+            "claim_type": "story_local",
+            "classification": "creative_expansion",
+        }
+        for index in range(20)
+    ]
+    risky = {
+        "claim": "Unsupported prior-canon assertion",
+        "claim_type": "canon_fact",
+        "classification": "unsupported",
+    }
+    response, metadata = _bounded_support_response({"claims": [*claims, risky], "summary": "audit"})
+
+    assert len(response["claims"]) == 16
+    assert risky in response["claims"]
+    assert metadata == {
+        "status": "bounded",
+        "original_claim_count": 21,
+        "risky_claim_count": 1,
+        "retained_claim_count": 16,
+    }
+
+
+def test_bounded_support_response_fails_closed_on_risky_overflow():
+    claims = [
+        {
+            "claim": f"Risky claim {index}",
+            "claim_type": "canon_fact",
+            "classification": "unsupported",
+        }
+        for index in range(17)
+    ]
+    response, metadata = _bounded_support_response({"claims": claims})
+
+    assert len(response["claims"]) == 17
+    assert metadata["status"] == "rejected_risky_overflow"
+    assert metadata["risky_claim_count"] == 17
+
+
+def test_bounded_support_response_is_noop_within_schema_limit():
+    response = {"claims": [{"claim": "A"}]}
+
+    normalized, metadata = _bounded_support_response(response)
+
+    assert normalized is response
+    assert metadata == {}
