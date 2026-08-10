@@ -507,6 +507,19 @@ def test_normalize_entity_type_rejects_character_like_labels():
     assert _normalize_entity_type("event", name="coronation of Prince Dain", description="A future coronation") == "concept"
 
 
+def test_normalize_entity_type_overrides_event_mislabeled_as_creature():
+    assert _normalize_entity_type(
+        "creature",
+        name="coronation of Prince Dain",
+        description="A grand ceremonial space with a throne and hundreds of attendees.",
+    ) == "concept"
+    assert _normalize_entity_type(
+        "creature",
+        name="moon wolf",
+        description="A silver wolf that guards the court during the coronation.",
+    ) == "creature"
+
+
 def test_normalize_entity_type_corrects_natural_spring_mislabeled_as_object():
     assert _normalize_entity_type(
         "object",
