@@ -130,11 +130,13 @@ class SemanticSupportAgent:
         reasoning_runtime: ReasoningRuntimeClient,
         minimum_factual_support_rate: float,
         maximum_unsupported_invention_rate: float,
+        innovation_max_attempts: int = 2,
     ) -> None:
         self.retrieval_runtime = retrieval_runtime
         self.reasoning_runtime = reasoning_runtime
         self.minimum_factual_support_rate = minimum_factual_support_rate
         self.maximum_unsupported_invention_rate = maximum_unsupported_invention_rate
+        self.innovation_max_attempts = max(1, min(3, int(innovation_max_attempts)))
 
     def run(self, state: NarrativeSupportState) -> dict[str, Any]:
         started = time.perf_counter()
@@ -287,28 +289,44 @@ class SemanticSupportAgent:
         unsupported = [item for item in claims if item.classification == "unsupported"]
         if not unsupported or not str(plan.get("divergence_plan") or "").strip():
             return claims, {}
-        response = self.reasoning_runtime.generate_json(
-            _build_innovation_adjudication_prompt(scene=scene, plan=plan, claims=unsupported),
-            strict=True,
-            max_tokens=1200,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "planned_innovation_adjudication",
-                    "schema": InnovationAdjudicationPayload.model_json_schema(),
+        prompt = _build_innovation_adjudication_prompt(scene=scene, plan=plan, claims=unsupported)
+        attempts: list[dict[str, Any]] = []
+        payload: InnovationAdjudicationPayload | None = None
+        failure_status = "provider_failed"
+        failure_code = ""
+        for attempt in range(1, self.innovation_max_attempts + 1):
+            response = self.reasoning_runtime.generate_json(
+                prompt,
+                strict=True,
+                max_tokens=1200,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "planned_innovation_adjudication",
+                        "schema": InnovationAdjudicationPayload.model_json_schema(),
+                    },
                 },
-            },
-        )
-        metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
-        if metadata.get("status") != "ok" or not isinstance(response, dict) or response.get("error"):
-            return claims, {"status": "provider_failed", "request_metadata": metadata}
-        try:
-            payload = InnovationAdjudicationPayload.model_validate(response)
-        except Exception as exc:
+            )
+            metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
+            attempt_record = {"attempt": attempt, "request_metadata": metadata}
+            if metadata.get("status") != "ok" or not isinstance(response, dict) or response.get("error"):
+                attempts.append({**attempt_record, "status": "provider_failed"})
+                continue
+            try:
+                payload = InnovationAdjudicationPayload.model_validate(response)
+            except Exception as exc:
+                failure_status = "payload_invalid"
+                failure_code = f"innovation_payload_validation_failed:{type(exc).__name__}"
+                attempts.append({**attempt_record, "status": failure_status, "error_code": failure_code})
+                continue
+            attempts.append({**attempt_record, "status": "ok"})
+            break
+        if payload is None:
             return claims, {
-                "status": "payload_invalid",
-                "error_code": f"innovation_payload_validation_failed:{type(exc).__name__}",
-                "request_metadata": metadata,
+                "status": failure_status,
+                "error_code": failure_code,
+                "attempt_count": len(attempts),
+                "attempts": attempts,
             }
         eligible = {item.claim_id for item in unsupported}
         authorized = {
@@ -325,9 +343,10 @@ class SemanticSupportAgent:
                 claim.evidence_ids = []
         return claims, {
             "status": "ok",
+            "attempt_count": len(attempts),
+            "attempts": attempts,
             "reviewed_claim_count": len(unsupported),
             "authorized_claim_count": len(authorized),
-            "request_metadata": metadata,
         }
 
 
