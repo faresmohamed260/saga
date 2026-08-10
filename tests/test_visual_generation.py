@@ -541,7 +541,7 @@ def test_planner_contract_normalizes_nested_provider_descriptions():
 
 
 def test_mistral_vision_uses_reasoning_runtime_client():
-    profile = ReasoningProfile(name="vision", mode="mistral", model_override="mistral-small-2506")
+    profile = ReasoningProfile(name="vision", mode="mistral", model_override="mistral-small-2603")
     client = create_reasoning_client(
         profile_name="vision",
         profile=profile,
@@ -557,5 +557,5 @@ def test_mistral_vision_uses_reasoning_runtime_client():
 
     assert result["defect_score"] == 0.1
     call = mistral.chat.complete.call_args.kwargs
-    assert call["model"] == "mistral-small-2506"
+    assert call["model"] == "mistral-small-2603"
     assert call["messages"][0]["content"][1]["image_url"].startswith("data:image/png;base64,")

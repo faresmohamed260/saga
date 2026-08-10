@@ -34,7 +34,7 @@ class VisualGenerationServiceConfig:
     planning_timeout_seconds: int = 180
     planning_max_retries: int = 2
     vision_mode: str = "mistral"
-    vision_model: str = "mistral-small-2506"
+    vision_model: str = "mistral-small-2603"
     vision_timeout_seconds: int = 180
     image_timeout_seconds: int = 900
     image_failover_attempts: int = 3
@@ -205,7 +205,7 @@ def load_visual_generation_service_config_from_env() -> VisualGenerationServiceC
         planning_timeout_seconds=max(30, int(os.getenv("SAGA_VISUAL_PLANNING_TIMEOUT_SECONDS") or "180")),
         planning_max_retries=max(1, int(os.getenv("SAGA_VISUAL_PLANNING_MAX_RETRIES") or "2")),
         vision_mode=str(os.getenv("SAGA_VISUAL_QUALITY_MODE") or "mistral").strip(),
-        vision_model=str(os.getenv("SAGA_VISUAL_QUALITY_MODEL") or "mistral-small-2506").strip(),
+        vision_model=str(os.getenv("SAGA_VISUAL_QUALITY_MODEL") or "mistral-small-2603").strip(),
         vision_timeout_seconds=max(30, int(os.getenv("SAGA_VISUAL_QUALITY_TIMEOUT_SECONDS") or "180")),
         image_timeout_seconds=max(60, int(os.getenv("SAGA_VISUAL_IMAGE_TIMEOUT_SECONDS") or "900")),
         image_failover_attempts=max(1, int(os.getenv("SAGA_VISUAL_IMAGE_FAILOVER_ATTEMPTS") or "3")),

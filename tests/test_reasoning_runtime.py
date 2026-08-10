@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime.client import ReasoningRuntimeClient
-from packages.reasoning_runtime.client import _mistral_usage
+from packages.reasoning_runtime.client import _mistral_usage, _wav_duration_seconds
 from packages.reasoning_runtime.factory import create_reasoning_client
 from packages.reasoning_runtime.models import (
     GeneralComputeAccount,
@@ -46,6 +46,49 @@ def test_mistral_native_usage_extraction_is_exact_and_mock_safe():
         "cached_input_tokens": 0.0, "compute_seconds": 0.0, "image_count": 0.0,
         "audio_seconds": 0.0, "native_cost_usd": None, "evidence_id": "",
     }
+
+
+def test_wav_duration_is_available_for_per_minute_transcription_pricing():
+    import io
+    import wave
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as stream:
+        stream.setnchannels(1)
+        stream.setsampwidth(2)
+        stream.setframerate(16000)
+        stream.writeframes(b"\x00\x00" * 32000)
+
+    audio = buffer.getvalue()
+    assert _wav_duration_seconds(audio) == 2.0
+
+    client = create_reasoning_client(
+        profile_name="transcription",
+        config=ReasoningRuntimeConfig(
+            profiles={
+                "transcription": ReasoningProfile(
+                    name="transcription",
+                    mode="mistral",
+                    model_override="voxtral-mini-latest",
+                )
+            }
+        ),
+    )
+    complete = SimpleNamespace(
+        text="spoken words",
+        language="en",
+        model="voxtral-mini-latest",
+        usage=SimpleNamespace(prompt_tokens=0, completion_tokens=0),
+    )
+    client._mistral_client = SimpleNamespace(
+        audio=SimpleNamespace(
+            transcriptions=SimpleNamespace(complete=lambda **_: complete)
+        )
+    )
+
+    client.transcribe_audio(audio_bytes=audio)
+
+    assert client.last_request_metadata()["usage"]["audio_seconds"] == 2.0
 
 
 def test_ollama_json_payload_enables_native_json_mode():

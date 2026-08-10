@@ -69,6 +69,19 @@ class CostRate(BaseModel):
     request_each: float = Field(default=0.0, ge=0)
     pricing_version: str
 
+    def model_post_init(self, __context: Any) -> None:
+        rates = (
+            self.input_per_million,
+            self.cached_input_per_million,
+            self.output_per_million,
+            self.compute_per_second,
+            self.image_each,
+            self.audio_per_second,
+            self.request_each,
+        )
+        if not any(rate > 0 for rate in rates):
+            raise ValueError("CostRate must contain at least one positive unit price.")
+
 
 class UsageBudgetPolicy(BaseModel):
     policy_id: str

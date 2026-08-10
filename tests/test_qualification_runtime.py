@@ -9,6 +9,7 @@ from PIL import Image
 
 from packages.production_orchestration import PackageChapter, PackageSourceBundle, build_epub
 from packages.qualification_runtime import ProductionQualificationReport, QualificationCheck, applicable_visual_types, audio_quality, epub_quality, image_quality
+from packages.qualification_runtime.evaluator import _provider_visibility_names
 
 
 class _Scene:
@@ -66,3 +67,12 @@ def test_visual_applicability_does_not_require_ungrounded_types():
     )
 
     assert types == {"scene", "character", "object"}
+
+
+def test_provider_visibility_uses_attributed_usage_when_metrics_are_aggregated():
+    names = _provider_visibility_names(
+        [{"name": "run.completed"}],
+        {"providers": ["ollama", "modal", "mistral"]},
+    )
+
+    assert names == ["provider.mistral", "provider.modal", "provider.ollama"]

@@ -102,7 +102,7 @@ def active_stage_version_overrides(explicit: dict[str, dict[str, Any]] | None = 
             ]),
             "model": "|".join(filter(None, [
                 _env("SAGA_VISUAL_PLANNING_MODEL", _DEFAULT_MODELS.get(_env("SAGA_VISUAL_PLANNING_MODE", "mistral"), "")),
-                _env("SAGA_VISUAL_QUALITY_MODEL", "mistral-small-2506"),
+                _env("SAGA_VISUAL_QUALITY_MODEL", "mistral-small-2603"),
             ])),
             "provider_config": "planning=" + _env("SAGA_VISUAL_PLANNING_MODE", "mistral") + ";vision=" + _env("SAGA_VISUAL_QUALITY_MODE", "mistral") + ";render=modal-comfyui",
         },
