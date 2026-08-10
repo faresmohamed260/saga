@@ -17,11 +17,17 @@ from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeC
 from packages.reasoning_runtime import ReasoningProfile, ReasoningRuntimeConfig, create_reasoning_client
 from packages.visual_generation import VisualGenerationRuntime
 from packages.visual_generation.contracts import (
+    CharacterVisualBaselineArtifact,
     CharacterSceneStateArtifact,
     SceneVisualPlanArtifact,
     VisualPromptArtifact,
 )
-from packages.visual_generation.pipeline import VisualPlanningPayload, _scene_visible_character_refs
+from packages.visual_generation.pipeline import (
+    VisualPlanningPayload,
+    _blocking_hard_violations,
+    _scene_cast_names,
+    _scene_visible_character_refs,
+)
 from packages.visual_generation.prompt_policy import compile_prompt
 from packages.visual_generation.quality import evaluate_image_technical_quality
 from packages.visual_generation.vision import ReasoningVisionSemanticEvaluator
@@ -323,6 +329,55 @@ def test_scene_cast_excludes_characters_that_are_only_offscreen_references():
     ]
 
     assert _scene_visible_character_refs(plan, states) == ["char-present"]
+
+
+def test_scene_cast_prefers_explicit_story_local_character_ids():
+    plan = SceneVisualPlanArtifact(
+        plan_id="plan-1",
+        series_id="series-1",
+        story_id="story-1",
+        source_scene_id="scene-1",
+        character_refs=["char-taryn"],
+        composition="foreground: type: character; id: archivist-elara-vey; pose: reading",
+    )
+    baselines = {
+        "char-taryn": CharacterVisualBaselineArtifact(
+            baseline_id="baseline-1",
+            series_id="series-1",
+            story_id="story-1",
+            character_id="char-taryn",
+            canonical_name="Taryn",
+            consistency_key="taryn-key",
+        )
+    }
+
+    assert _scene_cast_names(plan, baselines, ["char-taryn"]) == ["Archivist Elara Vey"]
+
+
+def test_scene_cast_uses_structured_visible_character_names_as_authority():
+    plan = SceneVisualPlanArtifact(
+        plan_id="plan-1",
+        series_id="series-1",
+        story_id="story-1",
+        source_scene_id="scene-1",
+        character_refs=["char-taryn"],
+        visible_character_names=["Elara Vey"],
+    )
+
+    assert _scene_cast_names(plan, {}, ["char-taryn"]) == ["Elara Vey"]
+
+
+def test_semantic_hard_violations_must_agree_with_hard_failure_scores():
+    violations = ["Character name mismatch", "Scene type violation"]
+
+    assert _blocking_hard_violations(
+        violations,
+        scores={"prompt_alignment_score": 0.85, "defect_score": 0.15},
+    ) == []
+    assert _blocking_hard_violations(
+        violations,
+        scores={"prompt_alignment_score": 0.4, "defect_score": 0.6},
+    ) == violations
 
 
 def test_vision_evaluator_does_not_require_written_character_names():

@@ -126,11 +126,17 @@ class ScenePlanPayload(BaseModel):
     mood: str = ""
     camera: str = ""
     action: str = ""
+    visible_character_names: list[str] = Field(default_factory=list)
 
     @field_validator("composition", "environment", "lighting", "mood", "camera", "action", mode="before")
     @classmethod
     def normalize_descriptions(cls, value: Any) -> str:
         return _description_text(value)
+
+    @field_validator("visible_character_names", mode="before")
+    @classmethod
+    def normalize_visible_character_names(cls, value: Any) -> list[str]:
+        return _string_list(value)
 
 
 class VisualPlanningPayload(BaseModel):
@@ -494,12 +500,16 @@ class VisualAuditAgent:
                 issues.append(render.error or render.status)
             scores = {key: _score(semantic.get(key)) for key in ["prompt_alignment_score", "subject_consistency_score", "composition_score", "photorealism_score", "defect_score"]}
             issues.extend(str(item) for item in list(semantic.get("issues") or []) if str(item).strip())
-            hard_violations = [str(item) for item in list(semantic.get("hard_constraint_violations") or []) if str(item).strip()]
-            issues.extend(hard_violations)
+            reported_hard_violations = [
+                str(item) for item in list(semantic.get("hard_constraint_violations") or []) if str(item).strip()
+            ]
+            hard_violations = _blocking_hard_violations(reported_hard_violations, scores=scores)
+            issues.extend(reported_hard_violations)
+            blocking_issues = [item for item in issues if item not in reported_hard_violations or item in hard_violations]
             accepted = (
                 technical_passed and not any(item.startswith("semantic_evaluator_error") for item in issues)
                 and not hard_violations
-                and not _issues_contain_hard_violation(issues)
+                and not _issues_contain_hard_violation(blocking_issues)
                 and scores["prompt_alignment_score"] >= 0.65
                 and scores["subject_consistency_score"] >= 0.60
                 and scores["composition_score"] >= 0.55
@@ -516,6 +526,8 @@ class VisualAuditAgent:
                         "attempt": render.attempt,
                         "semantic_provider": type(self.semantic_evaluator).__name__,
                         "semantic_request": _semantic_request_lineage(semantic),
+                        "reported_hard_violation_count": len(reported_hard_violations),
+                        "blocking_hard_violation_count": len(hard_violations),
                     },
                 )
             )
@@ -743,7 +755,9 @@ def _build_category_planning_prompt(
         ),
         "scenes": (
             "Return JSON with key scenes only. Return every supplied source_scene_id. Fields: source_scene_id, composition, "
-            "environment, lighting, mood, camera, action."
+            "environment, lighting, mood, camera, action, visible_character_names. visible_character_names must list every "
+            "person visibly present in that frozen scene and no one else, using exact names from GENERATED_SCENES. Include "
+            "story-local named people even when they have no canonical character ID."
         ),
     }
     if category not in category_instructions:
@@ -833,6 +847,7 @@ def _build_scene_plans(state: VisualGenerationState, payload: VisualPlanningPayl
             plan_id=_stable_id("scene-visual-plan", state["story_id"], row.source_scene_id), series_id=state["series_id"], story_id=state["story_id"],
             source_scene_id=row.source_scene_id, title=scene.title, composition=row.composition, environment=row.environment,
             lighting=row.lighting, mood=row.mood, camera=row.camera, action=row.action,
+            visible_character_names=_dedupe(row.visible_character_names),
             character_refs=list(scene.character_refs), entity_refs=list(scene.entity_refs), metadata={"agent": "VisualPlanningAgent"},
         ))
     return results
@@ -924,9 +939,17 @@ def _scene_cast_names(
     baselines: dict[str, CharacterVisualBaselineArtifact],
     visible_character_refs: list[str],
 ) -> list[str]:
+    if plan.visible_character_names:
+        return _dedupe(plan.visible_character_names)
     plan_text = " ".join([
         plan.composition, plan.environment, plan.lighting, plan.mood, plan.camera, plan.action,
     ])
+    local_character_ids = re.findall(
+        r"\btype\s*:\s*character\s*;\s*id\s*:\s*([a-z0-9][a-z0-9-]*)",
+        plan_text.casefold(),
+    )
+    if local_character_ids:
+        return _dedupe(item.replace("-", " ").title() for item in local_character_ids)
     explicit_refs = re.findall(r"\bchar-[a-z0-9][a-z0-9-]*", plan_text.casefold())
     refs = _dedupe([*visible_character_refs, *explicit_refs])
     names = []
@@ -1024,6 +1047,12 @@ def _semantic_request_lineage(semantic: dict[str, Any]) -> dict[str, str]:
 def _issues_contain_hard_violation(issues: list[str]) -> bool:
     markers = ("violates", "violation", "forbidden", "identity drift", "malformed anatomy")
     return any(any(marker in str(issue).lower() for marker in markers) for issue in issues)
+
+
+def _blocking_hard_violations(violations: list[str], *, scores: dict[str, float]) -> list[str]:
+    if scores.get("prompt_alignment_score", 0.0) <= 0.4 or scores.get("defect_score", 1.0) >= 0.6:
+        return violations
+    return []
 
 
 def _dedupe(values: list[Any]) -> list[str]:

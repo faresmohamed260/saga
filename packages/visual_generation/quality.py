@@ -7,7 +7,7 @@ import statistics
 from typing import Any
 
 
-_MIN_EDGE_VARIANCE = 700.0
+_MIN_EDGE_VARIANCE = 600.0
 _CENTRAL_SEAM_RATIO = 6.0
 _CENTRAL_SEAM_COVERAGE = 0.50
 

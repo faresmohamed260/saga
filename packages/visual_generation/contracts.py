@@ -70,6 +70,7 @@ class SceneVisualPlanArtifact(BaseModel):
     mood: str = ""
     camera: str = ""
     action: str = ""
+    visible_character_names: list[str] = Field(default_factory=list)
     character_refs: list[str] = Field(default_factory=list)
     entity_refs: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
