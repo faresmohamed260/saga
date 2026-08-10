@@ -32,9 +32,20 @@ ENTITY_NEGATIVE = {
     "creature": "people, handlers, riders, crowds, battle, attack pose, duplicate creature, extra heads, extra limbs, malformed anatomy, mascot, toy, anime, illustration, painting, CGI, text, logo, watermark, blurry",
     "object": "people, hands, fingers, characters, creatures, duplicate objects, product ad, pedestal, clutter, floating parts, broken perspective, anime, illustration, painting, CGI, text, logo, watermark, blurry",
 }
-SCENE_PREFIX = "Create a photorealistic narrative scene image faithful to the supplied production references and story moment."
-SCENE_SUFFIX = "Cinematic but physically plausible composition, coherent spatial layout, realistic anatomy and materials, natural detail, sharp subject readability, no text or watermark."
-SCENE_NEGATIVE = "anime, illustration, painting, cartoon, CGI, 3D render, duplicate characters, extra people, background people, crowds, silhouettes, reflections of people, portraits, inconsistent faces, extra limbs, malformed hands, broken anatomy, incoherent architecture, unrelated people, text, logo, watermark, blurry, low detail, black image"
+SCENE_PREFIX = (
+    "Create one photorealistic narrative scene image faithful to the supplied production references and story moment. "
+    "Use one continuous full-frame composition, one camera position, and one frozen instant."
+)
+SCENE_SUFFIX = (
+    "Cinematic but physically plausible single-frame composition, coherent spatial layout, realistic anatomy and materials, "
+    "natural detail, sharp subject readability, no text or watermark. Never divide the image into panels or separate views."
+)
+SCENE_NEGATIVE = (
+    "split screen, collage, montage, diptych, triptych, inset panel, storyboard, multiple frames, divided composition, "
+    "anime, illustration, painting, cartoon, CGI, 3D render, duplicate characters, extra people, background people, crowds, "
+    "silhouettes, reflections of people, portraits, inconsistent faces, extra limbs, malformed hands, broken anatomy, "
+    "incoherent architecture, unrelated people, text, logo, watermark, blurry, low detail, black image"
+)
 
 
 def compile_prompt(*, target_type: str, body: str, scene_character_names: list[str] | None = None) -> tuple[str, str, str]:

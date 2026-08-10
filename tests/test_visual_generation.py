@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 from unittest.mock import Mock, patch
 
 from packages.canon_extraction.contracts import EntityArtifact
@@ -106,7 +106,14 @@ class StubImageProvider:
     def render(self, **kwargs):
         self.calls.append(dict(kwargs))
         black = self.black_first and len(self.calls) == 1
-        return {"response": {"image_bytes": _png(black=black)}, "token_name": "modal-account-1"}
+        return {
+            "response": {"image_bytes": _png(
+                black=black,
+                width=int(kwargs.get("width") or 512),
+                height=int(kwargs.get("height") or 512),
+            )},
+            "token_name": "modal-account-1",
+        }
 
 
 class StubSemanticEvaluator:
@@ -125,6 +132,11 @@ class StubSemanticEvaluator:
                 "photorealism_score": 0.81,
                 "defect_score": 0.08,
                 "issues": [],
+                "request_metadata": {
+                    "provider": "mistral",
+                    "resolved_model": "mistral-small-2603",
+                    "status": "ok",
+                },
             }
         return {
             "prompt_alignment_score": 0.25,
@@ -202,13 +214,17 @@ def _seed(client, *, accepted: bool = True) -> None:
     ])
 
 
-def _png(*, black: bool) -> bytes:
-    image = Image.new("RGB", (512, 512), (0, 0, 0))
+def _png(*, black: bool, width: int = 512, height: int = 512) -> bytes:
+    image = Image.new("RGB", (width, height), (0, 0, 0))
     if not black:
         pixels = image.load()
-        for y in range(512):
-            for x in range(512):
-                pixels[x, y] = ((x * 3) % 256, (y * 5) % 256, ((x + y) * 7) % 256)
+        for y in range(height):
+            for x in range(width):
+                pixels[x, y] = (
+                    (x * 3 + y) % 256,
+                    (x + y * 5) % 256,
+                    ((x + y) * 7) % 256,
+                )
     output = io.BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
@@ -235,6 +251,44 @@ def test_technical_quality_accepts_valid_highly_compressed_png():
     assert result["issues"] == []
 
 
+def test_technical_quality_rejects_soft_focus_image():
+    image = Image.new("RGB", (512, 512), "white")
+    draw = ImageDraw.Draw(image)
+    for offset in range(0, 512, 16):
+        draw.line((offset, 0, 511 - offset, 511), fill="black", width=4)
+    image = image.filter(ImageFilter.GaussianBlur(radius=10))
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+
+    result = evaluate_image_technical_quality(
+        output.getvalue(), expected_width=512, expected_height=512, target_type="creature"
+    )
+
+    assert result["passed"] is False
+    assert "soft_or_blurred_image" in result["issues"]
+
+
+def test_technical_quality_rejects_central_scene_collage_seam():
+    image = Image.new("RGB", (512, 512))
+    pixels = image.load()
+    for y in range(512):
+        for x in range(512):
+            pixels[x, y] = (
+                ((x * 5) % 256, (y * 7) % 256, ((x + y) * 11) % 256)
+                if y < 256
+                else ((x * 13) % 256, (y * 3) % 256, 255)
+            )
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+
+    result = evaluate_image_technical_quality(
+        output.getvalue(), expected_width=512, expected_height=512, target_type="scene"
+    )
+
+    assert result["passed"] is False
+    assert "central_horizontal_seam_or_collage" in result["issues"]
+
+
 def test_scene_prompt_enforces_unique_whole_image_cast_cardinality():
     positive, negative, mode = compile_prompt(
         target_type="scene",
@@ -246,6 +300,8 @@ def test_scene_prompt_enforces_unique_whole_image_cast_cardinality():
     assert "Azriel, Elain, Cassian" in positive
     assert "Show each named person exactly once" in positive
     assert "background people" in negative
+    assert "one frozen instant" in positive
+    assert "split screen" in negative
     assert mode == "entity_generation"
 
 
@@ -326,7 +382,12 @@ def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     assert "EXACTLY 2 PEOPLE TOTAL" in scene_prompt.positive_prompt
     assert "Jude" in scene_prompt.positive_prompt
     assert "Archivist" in scene_prompt.positive_prompt
-    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v2"
+    assert (scene_prompt.width, scene_prompt.height) == (768, 512)
+    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v3"
+    assert all(
+        item.metadata["semantic_request"]["resolved_model"] == "mistral-small-2603"
+        for item in result.audits
+    )
 
 
 def test_black_image_retries_with_a_new_seed(tmp_path: Path):

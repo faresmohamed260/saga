@@ -351,14 +351,29 @@ class VisualPromptAgent:
                 per_scene = next((row for row in scene_states if row.source_scene_id == item.source_scene_id and row.character_id == ref), None)
                 if baseline:
                     consistency_keys.append(baseline.consistency_key)
-                    character_text.append(" ".join([baseline.canonical_name, baseline.appearance, baseline.clothing, per_scene.expression if per_scene else "", per_scene.action if per_scene else ""]))
+                    character_text.append(_bounded_text(" ".join([
+                        baseline.canonical_name,
+                        baseline.appearance,
+                        baseline.clothing,
+                        per_scene.expression if per_scene else "",
+                        per_scene.action if per_scene else "",
+                    ]), 240))
             entity_text = []
             for ref in item.entity_refs:
                 dossier = dossier_map.get(ref)
                 if dossier:
                     consistency_keys.append(dossier.consistency_key)
-                    entity_text.append(f"{dossier.canonical_name}: {dossier.visual_description}")
-            body = " ".join([item.title, item.composition, item.environment, item.lighting, item.mood, item.camera, item.action, *character_text, *entity_text])
+                    entity_text.append(_bounded_text(f"{dossier.canonical_name}: {dossier.visual_description}", 180))
+            body = " ".join([
+                f"Scene: {_bounded_text(item.title, 120)}.",
+                f"Composition: {_bounded_text(item.composition, 300)}.",
+                f"Environment: {_bounded_text(item.environment, 240)}.",
+                f"Lighting: {_bounded_text(item.lighting, 160)}.",
+                f"Mood: {_bounded_text(item.mood, 100)}.",
+                f"Frozen action: {_bounded_text(item.action, 300)}.",
+                *character_text,
+                *entity_text,
+            ])
             prompts.append(_prompt_artifact(
                 state, "scene", item.source_scene_id, body, versions=versions,
                 consistency_keys=consistency_keys, source_scene_id=item.source_scene_id,
@@ -405,7 +420,12 @@ class VisualRenderAgent:
                 )
                 response = dict(raw.get("response") or raw)
                 image_bytes = bytes(response.get("image_bytes") or b"")
-                technical = evaluate_image_technical_quality(image_bytes, expected_width=prompt.width, expected_height=prompt.height)
+                technical = evaluate_image_technical_quality(
+                    image_bytes,
+                    expected_width=prompt.width,
+                    expected_height=prompt.height,
+                    target_type=prompt.target_type,
+                )
                 render = VisualRenderArtifact(
                     render_id=render_id, series_id=prompt.series_id, story_id=prompt.story_id,
                     prompt_id=prompt.prompt_id, target_type=prompt.target_type, target_ref=prompt.target_ref,
@@ -451,12 +471,23 @@ class VisualAuditAgent:
             if render.render_id in audited_render_ids:
                 continue
             prompt = prompts[render.prompt_id]
-            issues = list((render.technical_metrics or {}).get("issues") or [])
             semantic: dict[str, Any] = {}
+            image_bytes = b""
+            if render.status == "rendered":
+                image_bytes = self.store.load_image(render)
+                render.technical_metrics = evaluate_image_technical_quality(
+                    image_bytes,
+                    expected_width=prompt.width,
+                    expected_height=prompt.height,
+                    target_type=prompt.target_type,
+                )
+                if not render.technical_metrics.get("passed"):
+                    render.status = "technical_rejection"
+            issues = list((render.technical_metrics or {}).get("issues") or [])
             technical_passed = render.status == "rendered" and bool((render.technical_metrics or {}).get("passed"))
             if technical_passed:
                 try:
-                    semantic = self.semantic_evaluator.evaluate(image_bytes=self.store.load_image(render), prompt=prompt)
+                    semantic = self.semantic_evaluator.evaluate(image_bytes=image_bytes, prompt=prompt)
                 except Exception as exc:
                     issues.append(f"semantic_evaluator_error:{type(exc).__name__}")
             else:
@@ -481,13 +512,22 @@ class VisualAuditAgent:
                     audit_id=_stable_id("visual-audit", render.render_id), series_id=render.series_id, story_id=render.story_id,
                     prompt_id=render.prompt_id, render_id=render.render_id, target_type=render.target_type, target_ref=render.target_ref,
                     accepted=accepted, status=status, technical_passed=technical_passed, issues=_dedupe(issues),
-                    **scores, metadata={"attempt": render.attempt, "semantic_provider": type(self.semantic_evaluator).__name__},
+                    **scores, metadata={
+                        "attempt": render.attempt,
+                        "semantic_provider": type(self.semantic_evaluator).__name__,
+                        "semantic_request": _semantic_request_lineage(semantic),
+                    },
                 )
             )
             logger.info("visual_generation audit prompt=%s attempt=%d status=%s", render.prompt_id, render.attempt, status)
+        self.store.replace_renders(series_id=state["series_id"], story_id=state["story_id"], items=renders)
         persisted = self.store.replace_audits(series_id=state["series_id"], story_id=state["story_id"], items=audits)
         metadata = _stage_metadata(state, f"audit_round_{_max_attempt(renders)}", started, audited_count=len(persisted))
-        return {"audits": [item.model_dump() for item in persisted], "run_metadata": metadata}
+        return {
+            "renders": [item.model_dump() for item in renders],
+            "audits": [item.model_dump() for item in persisted],
+            "run_metadata": metadata,
+        }
 
 
 class VisualDecisionAgent:
@@ -588,7 +628,7 @@ class VisualGenerationRuntime:
             entity_dossiers=self.store.list_dossiers(series_id=series_id, story_id=story_id),
             scene_plans=self.store.list_scene_plans(series_id=series_id, story_id=story_id),
             prompts=prompts,
-            renders=renders,
+            renders=[VisualRenderArtifact.model_validate(item) for item in state.get("renders") or []],
             audits=[VisualQualityDecisionArtifact.model_validate(item) for item in state.get("audits") or []],
             decision=VisualGenerationDecisionArtifact.model_validate(state["decision"]),
             run_metadata=dict(state.get("run_metadata") or {}),
@@ -818,7 +858,8 @@ def _prompt_artifact(
         prompt_id=_stable_id("visual-prompt", state["story_id"], target_type, target_ref), series_id=state["series_id"], story_id=state["story_id"],
         target_type=target_type, target_ref=target_ref, source_scene_id=source_scene_id, workflow_mode=mode,
         positive_prompt=positive, negative_prompt=negative, workflow_version=str(versions.get(mode) or "unknown"),
-        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v2"},
+        width=768 if target_type == "scene" else 512,
+        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v3"},
     )
 
 
@@ -971,6 +1012,15 @@ def _score(value: Any) -> float:
     except Exception: return 0.0
 
 
+def _semantic_request_lineage(semantic: dict[str, Any]) -> dict[str, str]:
+    metadata = dict(semantic.get("request_metadata") or {})
+    return {
+        key: str(metadata[key])
+        for key in ("provider", "resolved_model", "status", "account_name")
+        if metadata.get(key) not in (None, "")
+    }
+
+
 def _issues_contain_hard_violation(issues: list[str]) -> bool:
     markers = ("violates", "violation", "forbidden", "identity drift", "malformed anatomy")
     return any(any(marker in str(issue).lower() for marker in markers) for issue in issues)
@@ -994,6 +1044,14 @@ def _description_text(value: Any) -> str:
     if isinstance(value, list):
         return ", ".join(_description_text(item) for item in value if _description_text(item))
     return " ".join(str(value or "").split())
+
+
+def _bounded_text(value: Any, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    clipped = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:.-")
+    return clipped or text[:limit]
 
 
 def _string_list(value: Any) -> list[str]:
