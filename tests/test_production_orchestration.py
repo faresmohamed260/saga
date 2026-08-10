@@ -12,6 +12,7 @@ from packages.production_orchestration.packaging import PackageChapter, PackageS
 from packages.production_orchestration.bindings import ActiveStageBinding
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.policy import STAGE_ORDER, resolve_stage_plan
+from packages.production_orchestration.service import _run_scoped_service
 
 
 class FakeStage:
@@ -45,6 +46,35 @@ class FakeStage:
     def lineage_output(self, *, request, outcomes, outcome):
         del request, outcomes, outcome
         return {"stage": self.stage, "revision": self.revision}
+
+
+def test_scoped_stage_service_closes_persistence_on_success_and_failure():
+    class Persistence:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    class Service:
+        def __init__(self, error=None):
+            self.persistence = Persistence()
+            self.error = error
+
+        def run(self, request):
+            if self.error:
+                raise self.error
+            return request
+
+    successful = Service()
+    failing = Service(RuntimeError("failed"))
+
+    assert _run_scoped_service(successful, "request") == "request"
+    with pytest.raises(RuntimeError, match="failed"):
+        _run_scoped_service(failing, "request")
+
+    assert successful.persistence.closed is True
+    assert failing.persistence.closed is True
 
 
 def test_visual_attempt_budget_is_independent_and_bounded():
