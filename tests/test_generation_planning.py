@@ -8,7 +8,8 @@ from packages.canon_extraction.contracts import EntityArtifact, EventArtifact, R
 from packages.canon_extraction.store import CanonExtractionStore
 from packages.character_world_modeling.contracts import CharacterProfileArtifact, StableCharacterStateArtifact, WorldStateArtifact
 from packages.character_world_modeling.store import CharacterWorldModelingStore
-from packages.generation_planning import GenerationPlanningRuntime, evaluate_generation_blueprint
+from packages.generation_planning import GenerationPlanningRuntime, evaluate_generation_blueprint, has_live_planning_provider_proof
+from packages.generation_planning.service import load_generation_planning_service_config_from_env
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 
 
@@ -263,6 +264,7 @@ def test_generation_planning_persists_blueprint_and_passes_quality(tmp_path: Pat
         valid_entity_refs={"entity-silver-notebook"},
     )
     assert metrics.pass_quality_gate is True
+    assert has_live_planning_provider_proof(result.blueprint) is True
 
 
 def test_generation_planning_sanitizes_provider_refs(tmp_path: Path):
@@ -292,3 +294,12 @@ def test_generation_planning_fallback_remains_usable(tmp_path: Path):
     assert len(result.blueprint.chapter_outline) == 2
     assert len(result.blueprint.scene_plan) == 4
     assert result.blueprint.metadata["request_metadata"]["deterministic_fallback"] is True
+    assert has_live_planning_provider_proof(result.blueprint) is False
+
+
+def test_generation_planning_service_uses_bounded_rate_limit_retries_by_default(monkeypatch):
+    monkeypatch.delenv("SAGA_GENERATION_PLANNING_REASONING_MAX_RETRIES", raising=False)
+
+    config = load_generation_planning_service_config_from_env()
+
+    assert config.reasoning_max_retries == 3

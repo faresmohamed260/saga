@@ -22,6 +22,7 @@ from packages.canon_extraction.store import CanonExtractionStore
 from packages.character_world_modeling.store import CharacterWorldModelingStore
 from packages.character_world_modeling.quality import character_world_shape_complete
 from packages.generation_planning.store import GenerationPlanningStore
+from packages.generation_planning.quality import has_live_planning_provider_proof
 from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.production_orchestration import OrchestrationResult
 from packages.observability_runtime import UsageGovernanceRuntime
@@ -107,6 +108,18 @@ class ProductionQualificationEvaluator:
         blueprints = [item for item in self.planning.list_blueprints(series_id=request.series_id) if item.blueprint_id == blueprint_id]
         blueprint = blueprints[0] if blueprints else None
         self._check(checks, "planning.blueprint", "generation", bool(blueprint and blueprint.chapter_outline and blueprint.scene_plan), {"blueprint_id": blueprint_id, "chapters": len(blueprint.chapter_outline) if blueprint else 0, "scenes": len(blueprint.scene_plan) if blueprint else 0}, "non-empty grounded blueprint")
+        self._check(
+            checks,
+            "planning.live_provider",
+            "generation",
+            bool(blueprint and has_live_planning_provider_proof(blueprint)),
+            {
+                "provider": str((blueprint.metadata if blueprint else {}).get("reasoning_provider") or ""),
+                "model": str((blueprint.metadata if blueprint else {}).get("reasoning_model") or ""),
+                "status": str((blueprint.metadata if blueprint else {}).get("reasoning_status") or ""),
+            },
+            "successful live provider without fallback",
+        )
 
         story_id = str((outcomes.get("narrative_generation").output_context if outcomes.get("narrative_generation") else {}).get("story_id") or "")
         story = self.narrative.load_story(series_id=request.series_id, story_id=story_id)
