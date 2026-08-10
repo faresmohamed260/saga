@@ -90,9 +90,18 @@ class ActiveStageInspector:
         del outcomes
         profiles = self.character_world.list_character_profiles(series_id=request.series_id)
         world = self.character_world.list_world_states(series_id=request.series_id)
-        if not profiles or not world:
+        source_entities = self.canon.list_entities(series_id=request.series_id)
+        if not profiles or (source_entities and not world):
             return None
-        return _accepted("character_world_modeling", {}, {"character_profile_count": len(profiles), "world_state_count": len(world)})
+        return _accepted(
+            "character_world_modeling",
+            {},
+            {
+                "character_profile_count": len(profiles),
+                "source_entity_count": len(source_entities),
+                "world_state_count": len(world),
+            },
+        )
 
     def generation_planning(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageOutcomeArtifact | None:
         del outcomes

@@ -9,7 +9,7 @@ import pytest
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.production_orchestration.contracts import ArtifactReference, OrchestrationExecutionLimits, OrchestrationRequest, StageOutcomeArtifact
 from packages.production_orchestration.packaging import PackageChapter, PackageSourceBundle, VersionedDeliverablePackager, build_epub
-from packages.production_orchestration.bindings import ActiveStageBinding
+from packages.production_orchestration.bindings import ActiveStageBinding, ActiveStageInspector
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.policy import STAGE_ORDER, resolve_stage_plan
 from packages.production_orchestration.service import _run_scoped_service
@@ -116,6 +116,26 @@ def test_visual_attempt_budget_is_independent_and_bounded():
     assert limits.max_visual_attempts == 4
     with pytest.raises(ValueError):
         OrchestrationExecutionLimits(max_visual_attempts=7)
+
+
+def test_character_world_stage_accepts_empty_world_when_canon_has_no_entities():
+    inspector = ActiveStageInspector.__new__(ActiveStageInspector)
+    inspector.character_world = type(
+        "CharacterWorld",
+        (),
+        {
+            "list_character_profiles": lambda self, series_id: [object()],
+            "list_world_states": lambda self, series_id: [],
+        },
+    )()
+    inspector.canon = type("Canon", (), {"list_entities": lambda self, series_id: []})()
+    request = OrchestrationRequest(run_id="run-1", series_id="series-1")
+
+    outcome = inspector.character_world_modeling(request, {})
+
+    assert outcome is not None
+    assert outcome.metrics["source_entity_count"] == 0
+    assert outcome.metrics["world_state_count"] == 0
 
 
 class FakeSource:

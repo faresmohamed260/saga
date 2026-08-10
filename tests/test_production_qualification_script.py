@@ -1,4 +1,4 @@
-from scripts.run_production_qualification import _request_cancellation, _resume_stage
+from scripts.run_production_qualification import _qualification_queue_name, _request_cancellation, _resume_stage
 
 
 def test_qualification_cancellation_is_requested_only_once():
@@ -34,3 +34,7 @@ def test_resume_skips_historical_logs_and_tracks_failed_stage():
     ]
 
     assert _resume_stage(logs) == "canon_extraction"
+
+
+def test_qualification_queue_is_isolated_and_stable_per_run():
+    assert _qualification_queue_name("rc16/run 1") == "production-qualification-rc16-run-1"

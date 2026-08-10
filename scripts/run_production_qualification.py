@@ -63,6 +63,7 @@ def main() -> int:
     suffix = uuid.uuid4().hex[:10]
     run_id = args.run_id or f"qualification-{suffix}"
     series_id = args.series_id or f"qualification-series-{suffix}"
+    os.environ["SAGA_EXECUTION_QUEUE_NAME"] = _qualification_queue_name(run_id)
     service = ExecutionRuntimeService.from_env()
     try:
         _freshness_guard(
@@ -327,6 +328,13 @@ def _resume_stage(logs: list[dict[str, object]]) -> str:
         elif message in {"stage_cancelled", "stage_failed", "stage_rejected"}:
             current_stage = stage
     return current_stage
+
+
+def _qualification_queue_name(run_id: str) -> str:
+    normalized = "".join(char if char.isalnum() or char in "-_" else "-" for char in str(run_id or "").strip())
+    if not normalized:
+        raise ValueError("run_id is required to isolate the qualification queue.")
+    return f"production-qualification-{normalized}"[:180]
 
 
 def _reasoning_preflight(*, timeout_seconds: int) -> None:
