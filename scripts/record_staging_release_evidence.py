@@ -31,8 +31,20 @@ def main() -> int:
             persistence=persistence, service="staging-release-evidence", release_id=args.release_id,
         )
         usage = UsageGovernanceRuntime(store=persistence.usage).summary(run_id=report.run_id)
+        cohort_run_ids = {
+            str(item.get("run_id") or "")
+            for item in persistence.execution_queue.list(limit=10000)
+            if item.get("status") in {"succeeded", "cancelled", "dead_letter"}
+            and str(
+                dict(
+                    dict(item.get("payload") or {}).get("orchestration_request") or {}
+                ).get("metadata", {}).get("release_id")
+                or ""
+            )
+            == args.release_id
+        }
         slo = ObservabilityRuntime(store=persistence.observability).evaluate_slos(
-            default_execution_slos(), persist_alerts=False,
+            default_execution_slos(), persist_alerts=False, run_ids=cohort_run_ids,
         )
         evidence = record_staging_runtime_evidence(
             store=persistence.deployments,

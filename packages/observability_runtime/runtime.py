@@ -66,13 +66,23 @@ class ObservabilityRuntime:
                 export_errors.append({"exporter": type(exporter).__name__, "exception_type": type(exc).__name__, "message": str(exc)[:500]})
         return {"batch_id": batch.batch_id, "record_count": len(persisted), "exports": export_results, "export_errors": export_errors}
 
-    def evaluate_slos(self, definitions: list[SLODefinition], *, now_ms: int | None = None, persist_alerts: bool = True) -> list[SLOEvaluation]:
+    def evaluate_slos(
+        self,
+        definitions: list[SLODefinition],
+        *,
+        now_ms: int | None = None,
+        persist_alerts: bool = True,
+        run_ids: set[str] | None = None,
+    ) -> list[SLOEvaluation]:
         end = int(now_ms or _now_ms())
+        run_filter = None if run_ids is None else {str(item) for item in run_ids if str(item)}
         evaluations: list[SLOEvaluation] = []
         alerts: list[ObservationRecord] = []
         for definition in definitions:
             start = end - definition.window_seconds * 1000
             rows = self.store.list(kind="metric", name=definition.metric_name, component=definition.component, provider=definition.provider, since_ms=start, until_ms=end, limit=100000)
+            if run_filter is not None:
+                rows = [item for item in rows if str(item.get("run_id") or "") in run_filter]
             values = [float(item["value"]) for item in rows if item.get("value") is not None and math.isfinite(float(item["value"]))]
             if len(values) < definition.minimum_samples:
                 evaluations.append(SLOEvaluation(slo_id=definition.slo_id, status="insufficient_data", threshold=definition.threshold, sample_count=len(values), window_start_ms=start, window_end_ms=end))

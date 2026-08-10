@@ -107,6 +107,39 @@ def test_slo_aggregation_breach_alert_and_retention_are_deterministic(tmp_path: 
     assert runtime.enforce_retention(now_ms=86_410_000) == 4
 
 
+def test_slo_evaluation_can_be_scoped_to_an_explicit_release_cohort(tmp_path: Path):
+    client = _persistence(tmp_path)
+    runtime = ObservabilityRuntime(store=client.observability)
+    for run_id, value in (("candidate-run", 1.0), ("other-release-run", 0.0)):
+        client.observability.append({
+            "observation_id": f"success-{run_id}",
+            "kind": "metric",
+            "timestamp_ms": 9_500,
+            "run_id": run_id,
+            "name": "run.success",
+            "value": value,
+            "dimensions": {},
+            "payload": {},
+        })
+    definition = SLODefinition(
+        slo_id="candidate-success",
+        metric_name="run.success",
+        comparator="gte",
+        threshold=1.0,
+        minimum_samples=1,
+        window_seconds=10,
+    )
+
+    global_evaluation = runtime.evaluate_slos([definition], now_ms=10_000, persist_alerts=False)[0]
+    candidate_evaluation = runtime.evaluate_slos(
+        [definition], now_ms=10_000, persist_alerts=False, run_ids={"candidate-run"}
+    )[0]
+
+    assert global_evaluation.status == "breached"
+    assert candidate_evaluation.status == "healthy"
+    assert candidate_evaluation.sample_count == 1
+
+
 def test_exporter_failure_is_isolated_and_otel_mapping_is_portable(tmp_path: Path):
     client = _persistence(tmp_path)
     class FailingExporter:
