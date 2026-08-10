@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from packages.analysis_foundation.contracts import BookArtifact, SceneArtifact
@@ -20,7 +21,13 @@ from packages.retrieval_runtime import RetrievalProfile, RetrievalRuntimeConfig,
 
 
 class StubSupportReasoningRuntime:
-    def __init__(self, evaluations: list[dict], *, revision_prose: str = "") -> None:
+    def __init__(
+        self,
+        evaluations: list[dict],
+        *,
+        revision_prose: str = "",
+        innovation_disposition: str = "prior_canon",
+    ) -> None:
         self.evaluations = list(evaluations)
         self.revision_prose = revision_prose
         self._last = {}
@@ -28,11 +35,26 @@ class StubSupportReasoningRuntime:
         self.evaluation_calls = 0
         self.revision_calls = 0
         self.prompts: list[str] = []
+        self.innovation_disposition = innovation_disposition
+        self.adjudication_calls = 0
 
     def generate_json(self, prompt: str, **kwargs):
         self.prompts.append(prompt)
         self.last_kwargs = dict(kwargs)
         self._last = {"provider": "test-live", "resolved_model": "support-model", "status": "ok"}
+        if prompt.startswith("Adjudicate unsupported"):
+            self.adjudication_calls += 1
+            claims = json.loads(prompt.split("UNSUPPORTED_CLAIMS: ", 1)[1])
+            return {
+                "claims": [
+                    {
+                        "claim_id": item["claim_id"],
+                        "disposition": self.innovation_disposition,
+                        "rationale": "Compared with the explicit divergence plan.",
+                    }
+                    for item in claims
+                ]
+            }
         if prompt.startswith("Revise generated"):
             self.revision_calls += 1
             return {"title": "Revised scene", "prose": self.revision_prose}
@@ -333,6 +355,40 @@ def test_semantic_support_allows_blueprint_aligned_generated_story_innovation(tm
     assert claim.classification == "creative_expansion"
     assert claim.temporal_scope == "generated_story"
     assert "Introduce Mira as a new archivist" in reasoning.prompts[0]
+    assert "Never emit a second prior_canon interpretation" in reasoning.prompts[0]
+
+
+def test_semantic_support_adjudicates_unsupported_planned_innovation(tmp_path: Path):
+    client = _persistence(tmp_path)
+    series_id, story_id = _seed_story(client)
+    evaluation = _evaluation("supported")
+    evaluation["claims"].append(
+        {
+            "claim": "Mira is the court archivist.",
+            "claim_type": "canon_fact",
+            "classification": "unsupported",
+            "severity": "medium",
+            "temporal_scope": "prior_canon",
+            "plan_alignment": "not_applicable",
+            "evidence_ids": [],
+            "rationale": "No source-book evidence establishes Mira.",
+            "confidence": 0.99,
+        }
+    )
+    reasoning = StubSupportReasoningRuntime(
+        [evaluation], innovation_disposition="planned_innovation"
+    )
+    result = _runtime(client, reasoning).invoke(
+        series_id=series_id, story_id=story_id, thread_id="innovation-adjudication"
+    )
+
+    claim = next(item for item in result.audits[0].claims if item.claim.startswith("Mira"))
+    assert result.decision.accepted is True
+    assert claim.classification == "creative_expansion"
+    assert claim.temporal_scope == "generated_story"
+    assert reasoning.adjudication_calls == 1
+    assert "PLANNING_CONTEXT.premise, continuation_plan, divergence_plan" in reasoning.prompts[1]
+    assert result.audits[0].metadata["innovation_adjudication"]["authorized_claim_count"] == 1
 
 
 def test_semantic_support_revises_then_rechecks_unsupported_claims(tmp_path: Path):

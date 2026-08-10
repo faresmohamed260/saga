@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -75,6 +75,16 @@ class SceneEvaluationPayload(BaseModel):
 class SceneRevisionPayload(BaseModel):
     title: str = ""
     prose: str = ""
+
+
+class InnovationAdjudicationItem(BaseModel):
+    claim_id: str
+    disposition: Literal["planned_innovation", "prior_canon"]
+    rationale: str = Field(default="", max_length=300)
+
+
+class InnovationAdjudicationPayload(BaseModel):
+    claims: list[InnovationAdjudicationItem] = Field(default_factory=list, max_length=16)
 
 
 class CanonEvidenceIndexAgent:
@@ -219,6 +229,11 @@ class SemanticSupportAgent:
             evidence=evidence,
             request_ok=request_ok,
         )
+        claims, innovation_adjudication = self._adjudicate_planned_innovations(
+            scene=scene,
+            plan=plan_context,
+            claims=claims,
+        )
         factual_support_rate, unsupported_rate, contradiction_rate = _weighted_support_metrics(claims)
         accepted = (
             request_ok
@@ -257,9 +272,63 @@ class SemanticSupportAgent:
                 "reasoning_model": request_metadata.get("resolved_model"),
                 "request_metadata": request_metadata,
                 "response_normalization": response_normalization,
+                "innovation_adjudication": innovation_adjudication,
                 "evaluation_summary": payload.summary,
             },
         )
+
+    def _adjudicate_planned_innovations(
+        self,
+        *,
+        scene: SceneProseArtifact,
+        plan: dict[str, Any],
+        claims: list[ClaimSupportArtifact],
+    ) -> tuple[list[ClaimSupportArtifact], dict[str, Any]]:
+        unsupported = [item for item in claims if item.classification == "unsupported"]
+        if not unsupported or not str(plan.get("divergence_plan") or "").strip():
+            return claims, {}
+        response = self.reasoning_runtime.generate_json(
+            _build_innovation_adjudication_prompt(scene=scene, plan=plan, claims=unsupported),
+            strict=True,
+            max_tokens=1200,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "planned_innovation_adjudication",
+                    "schema": InnovationAdjudicationPayload.model_json_schema(),
+                },
+            },
+        )
+        metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
+        if metadata.get("status") != "ok" or not isinstance(response, dict) or response.get("error"):
+            return claims, {"status": "provider_failed", "request_metadata": metadata}
+        try:
+            payload = InnovationAdjudicationPayload.model_validate(response)
+        except Exception as exc:
+            return claims, {
+                "status": "payload_invalid",
+                "error_code": f"innovation_payload_validation_failed:{type(exc).__name__}",
+                "request_metadata": metadata,
+            }
+        eligible = {item.claim_id for item in unsupported}
+        authorized = {
+            item.claim_id
+            for item in payload.claims
+            if item.claim_id in eligible and item.disposition == "planned_innovation"
+        }
+        for claim in claims:
+            if claim.claim_id in authorized:
+                claim.claim_type = "story_local"
+                claim.classification = "creative_expansion"
+                claim.temporal_scope = "generated_story"
+                claim.plan_alignment = "aligned"
+                claim.evidence_ids = []
+        return claims, {
+            "status": "ok",
+            "reviewed_claim_count": len(unsupported),
+            "authorized_claim_count": len(authorized),
+            "request_metadata": metadata,
+        }
 
 
 class SupportRevisionAgent:
@@ -699,6 +768,8 @@ def _build_support_prompt(*, scene: SceneProseArtifact, plan: Any, evidence: lis
         "Use temporal_scope=generated_present for actions, dialogue, location, or transient state created in this scene. Use generated_story for a persistent character, role, object, location, relationship, or plot device explicitly introduced as new by PLANNING_CONTEXT.divergence_plan and used by its planned_scene. Use prior_canon for claims about pre-existing source-book history or world state.\n"
         "For generated_present and generated_story claims set plan_alignment=aligned only when entailed by PLANNING_CONTEXT; otherwise not_aligned. Prior-canon claims use not_applicable.\n"
         "A non-contradictory generated_present claim is story_local creative_expansion. A non-contradictory generated_story claim is story_local creative_expansion only when plan_alignment=aligned. The plan can never make a prior_canon claim supported or authorize a contradiction.\n"
+        "Never emit a second prior_canon interpretation of a detail already classified as generated_present or generated_story. Mentioning a planned archive, season, oath, role, object, or political condition in generated prose does not assert that it existed in source-book canon.\n"
+        "Do not generalize scene wording into existence claims such as 'exists in source-book canon' unless GENERATED_SCENE.prose explicitly makes that source-history assertion. If PLANNING_CONTEXT introduces the detail, classify it only in its generated scope.\n"
         "Claims must be atomic. Split prior canon facts from present generated actions or locations.\n"
         "Return at most 16 material claims. Prioritize every prior-canon claim and consequential generated-present claim; group minor set dressing when needed.\n"
         "Classifications:\n"
@@ -773,6 +844,28 @@ def _build_revision_prompt(*, scene: SceneProseArtifact, plan: Any, audit: Scene
         f"PLANNING_CONTEXT: {json.dumps(_as_dict(plan), ensure_ascii=False)}\n"
         f"PROBLEMS: {json.dumps(problematic, ensure_ascii=False)}\n"
         f"EVIDENCE: {json.dumps([item.model_dump() for item in audit.evidence], ensure_ascii=False)}"
+    )
+
+
+def _build_innovation_adjudication_prompt(
+    *,
+    scene: SceneProseArtifact,
+    plan: dict[str, Any],
+    claims: list[ClaimSupportArtifact],
+) -> str:
+    claim_payload = [
+        {"claim_id": item.claim_id, "claim": item.claim, "rationale": item.rationale}
+        for item in claims
+    ]
+    return (
+        "Adjudicate unsupported claims only against explicit generated-story planning intent.\n"
+        "Use planned_innovation only when PLANNING_CONTEXT.premise, continuation_plan, divergence_plan, or planned_scene explicitly states or requires the exact character, role, object, location, condition, or plot device as generated-story content.\n"
+        "Use prior_canon when the claim asserts source-book history beyond that explicit authorization. Planning never authorizes a contradiction; contradiction claims are intentionally absent from this review.\n"
+        "Return every supplied claim_id exactly once. Do not create claims. Return JSON only: "
+        "{\"claims\":[{\"claim_id\":str,\"disposition\":\"planned_innovation|prior_canon\",\"rationale\":str}]}.\n"
+        f"PLANNING_CONTEXT: {json.dumps(plan, ensure_ascii=False)}\n"
+        f"GENERATED_SCENE: {json.dumps({'title': scene.title, 'prose': scene.prose}, ensure_ascii=False)}\n"
+        f"UNSUPPORTED_CLAIMS: {json.dumps(claim_payload, ensure_ascii=False)}"
     )
 
 
