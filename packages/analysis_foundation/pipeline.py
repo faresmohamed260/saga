@@ -163,12 +163,11 @@ class SceneSegmentationAgent:
         self.min_scene_words = max(90, int(self.target_words * 0.45))
 
     def run(self, *, book_ids: list[str]) -> dict[str, Any]:
-        scenes: list[SceneArtifact] = []
+        segmented: list[SceneArtifact] = []
         for book_id in book_ids:
             chapters = self.store.list_chapters(book_id=book_id)
-            records = self._segment_book(chapters)
-            for row in records:
-                scenes.append(self.store.upsert_scene(row))
+            segmented.extend(self._segment_book(chapters))
+        scenes = self.store.upsert_scenes(segmented)
         return {"scenes": [item.model_dump() for item in scenes]}
 
     def _segment_book(self, chapters: list[ChapterArtifact]) -> list[SceneArtifact]:
@@ -399,7 +398,7 @@ class NarrativeGroundingAgent:
             identity_bundle=identity_bundle,
             chapter_texts=[chapter.content for chapter in chapters],
         )
-        persisted = [self.store.upsert_scene(scene) for scene in grounded_scenes]
+        persisted = self.store.upsert_scenes(grounded_scenes)
         return {
             "scenes": [scene.model_dump() for scene in persisted],
             "summary": narrative_grounding_summary(persisted),

@@ -415,28 +415,54 @@ class LibraryStore:
         text: str = "",
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        return self.upsert_scenes(
+            [{
+                "scene_id": scene_id,
+                "book_id": book_id,
+                "chapter_index": chapter_index,
+                "scene_index": scene_index,
+                "summary": summary,
+                "text": text,
+                "payload": payload,
+            }]
+        )[0]
+
+    def upsert_scenes(self, scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not scenes:
+            return []
+        normalized = [dict(item or {}) for item in scenes]
+        scene_ids = [_required(item.get("scene_id"), "scene_id") for item in normalized]
+        if len(set(scene_ids)) != len(scene_ids):
+            raise ValueError("Bulk scene upsert requires unique scene_id values.")
         with self.session_factory() as session:
-            row = session.get(LibrarySceneRow, scene_id)
-            if row is None:
-                row = LibrarySceneRow(
-                    scene_id=scene_id,
-                    book_id=book_id,
-                    chapter_index=chapter_index,
-                    scene_index=scene_index,
-                    summary=summary,
-                    text=text,
-                    payload=_json(payload),
-                )
-                session.add(row)
-            else:
-                row.book_id = book_id
-                row.chapter_index = chapter_index
-                row.scene_index = scene_index
-                row.summary = summary
-                row.text = text
-                row.payload = _json(payload)
+            existing = {
+                row.scene_id: row
+                for row in session.execute(
+                    select(LibrarySceneRow).where(LibrarySceneRow.scene_id.in_(scene_ids))
+                ).scalars()
+            }
+            rows: list[LibrarySceneRow] = []
+            for item, scene_id in zip(normalized, scene_ids, strict=True):
+                row = existing.get(scene_id)
+                values = {
+                    "book_id": _required(item.get("book_id"), "book_id"),
+                    "chapter_index": int(item.get("chapter_index") or 0),
+                    "scene_index": int(item.get("scene_index") or 0),
+                    "summary": str(item.get("summary") or ""),
+                    "text": str(item.get("text") or ""),
+                    "payload": _json(item.get("payload")),
+                }
+                if row is None:
+                    row = LibrarySceneRow(scene_id=scene_id, **values)
+                    session.add(row)
+                else:
+                    for key, value in values.items():
+                        setattr(row, key, value)
+                rows.append(row)
+            session.flush()
+            result = [self._scene_dict(row) for row in rows]
             session.commit()
-            return self._scene_dict(row)
+            return result
 
     def list_scenes(self, *, book_id: str, limit: int = 500) -> list[dict[str, Any]]:
         with self.session_factory() as session:
