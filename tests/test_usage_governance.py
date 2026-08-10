@@ -35,6 +35,11 @@ def _attribution(run_id: str = "run-1") -> UsageAttribution:
     )
 
 
+def test_cost_rate_rejects_an_all_zero_pricing_table():
+    with pytest.raises(ValueError, match="positive unit price"):
+        CostRate(provider="provider", pricing_version="invalid-zero-rate")
+
+
 def test_usage_reservation_settlement_is_append_only_idempotent_and_priced(tmp_path: Path):
     client, runtime = _runtime(tmp_path, rates=(CostRate(
         provider="general_compute", model="model-a", input_per_million=1.0,

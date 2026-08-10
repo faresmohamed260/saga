@@ -8,6 +8,7 @@ import requests
 from integrations.comfyui.pool_manager import ModalComfyUIPoolManager
 from integrations.comfyui.token_pool import load_tokens
 from packages.modal_runtime import ModalEndpointPool
+from packages.modal_runtime.pool import _modal_usage
 from packages.modal_runtime.profiling import ModalTimingCollector, collect_modal_timings, record_modal_timing
 from packages.modal_runtime.provider_config import (
     clear_modal_provider_config_cache,
@@ -115,6 +116,16 @@ class _StubModalPoolWithoutUpstreamTrace(_StubModalPool):
     def _invoke_endpoint(self, endpoint: dict[str, str], **kwargs) -> dict[str, str]:
         token_name = str(endpoint.get("token_name") or "")
         return {"ok": True, "token_name": token_name, "request_id": kwargs.get("request_id", "")}
+
+
+def test_modal_image_usage_reads_http_request_elapsed_time():
+    usage = _modal_usage(
+        "saga-image-runtime",
+        {"request_metrics": {"total_elapsed_seconds": 12.75}},
+    )
+
+    assert usage.compute_seconds == 12.75
+    assert usage.image_count == 1
 
 
 def test_modal_runtime_state_normalizes_legacy_request_keys(tmp_path: Path, monkeypatch) -> None:

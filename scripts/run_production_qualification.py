@@ -126,6 +126,11 @@ def main() -> int:
             queue_id=queue_id,
             source_sha256=source_sha256,
         )
+        historical_logs = (
+            list((service.persistence.jobs.get_job(run_id) or {}).get("logs") or [])
+            if args.resume
+            else []
+        )
         outcome: dict[str, object] = {}
 
         def work() -> None:
@@ -145,11 +150,11 @@ def main() -> int:
         worker.start()
         started = time.monotonic()
         deadline = started + max(60, args.timeout_seconds)
-        current_stage = ALL_STAGES[0]
+        current_stage = _resume_stage(historical_logs)
         stage_started = started
         cancellation_reason = ""
         cancellation_requested = False
-        seen_logs: set[int] = set()
+        seen_logs = {int(log.get("id") or 0) for log in historical_logs}
         while worker.is_alive() and time.monotonic() < deadline:
             job = service.persistence.jobs.get_job(run_id) or {}
             for log in job.get("logs") or []:
@@ -307,6 +312,21 @@ def _request_cancellation(
         return True
     service.cancel(queue_id, reason=reason)
     return True
+
+
+def _resume_stage(logs: list[dict[str, object]]) -> str:
+    current_stage = ALL_STAGES[0]
+    for log in logs:
+        stage = str(log.get("stage") or "")
+        message = str(log.get("message") or "")
+        if stage not in ALL_STAGES:
+            continue
+        if message == "stage_accepted":
+            index = ALL_STAGES.index(stage) + 1
+            current_stage = ALL_STAGES[index] if index < len(ALL_STAGES) else ""
+        elif message in {"stage_cancelled", "stage_failed", "stage_rejected"}:
+            current_stage = stage
+    return current_stage
 
 
 def _reasoning_preflight(*, timeout_seconds: int) -> None:

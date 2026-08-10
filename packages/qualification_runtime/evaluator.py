@@ -145,9 +145,9 @@ class ProductionQualificationEvaluator:
         exposed = [name for name in _secret_names() if os.getenv(name) and os.getenv(name) in serialized]
         self._check(checks, "security.secrets", "security", not exposed, exposed, [])
         observation_rows = self.persistence.observability.list(run_id=request.run_id, limit=10000)
-        provider_names = sorted({row.get("name") for row in observation_rows if str(row.get("name") or "").startswith("provider.")})
-        self._check(checks, "operations.provider_visibility", "operations", bool(provider_names), provider_names, "provider telemetry")
         usage_summary = UsageGovernanceRuntime(store=self.persistence.usage).summary(run_id=request.run_id)
+        provider_names = _provider_visibility_names(observation_rows, usage_summary)
+        self._check(checks, "operations.provider_visibility", "operations", bool(provider_names), provider_names, "provider telemetry")
         self._check(
             checks, "operations.usage_visibility", "operations", usage_summary["charge_count"] > 0,
             usage_summary, "at least one attributed provider charge",
@@ -220,6 +220,22 @@ def image_quality(data: bytes) -> dict[str, Any]:
         luma = image.convert("L")
         stats = ImageStat.Stat(luma)
         return {"format": image.format, "width": image.width, "height": image.height, "luma_mean": round(float(stats.mean[0]), 4), "luma_stddev": round(float(stats.stddev[0]), 4)}
+
+
+def _provider_visibility_names(
+    observation_rows: list[dict[str, Any]], usage_summary: dict[str, Any]
+) -> list[str]:
+    observed = {
+        str(row.get("name") or "")
+        for row in observation_rows
+        if str(row.get("name") or "").startswith("provider.")
+    }
+    attributed = {
+        f"provider.{provider}"
+        for provider in list(usage_summary.get("providers") or [])
+        if str(provider or "").strip()
+    }
+    return sorted(observed | attributed)
 
 
 def audio_quality(data: bytes) -> dict[str, Any]:

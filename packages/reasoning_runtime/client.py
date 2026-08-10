@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import os
 import re
 import time
+import wave
 from copy import deepcopy
 from typing import Any, Callable, Optional
 
@@ -206,6 +208,7 @@ class ReasoningRuntimeClient:
         self._pending_response_format_type = ""
         self._pending_tool_mode = ""
         self._begin_request_tracking()
+        audio_seconds = _wav_duration_seconds(audio_bytes)
         try:
             response = self._metered_call(
                 lambda: self._mistral_client_instance().audio.transcriptions.complete(
@@ -219,9 +222,15 @@ class ReasoningRuntimeClient:
                     context_bias=list(context_bias or []),
                     diarize=False,
                 ),
-                projected=ProviderUsage(request_count=1, audio_seconds=0, source="declared"),
+                projected=ProviderUsage(
+                    request_count=1,
+                    audio_seconds=audio_seconds,
+                    source="declared",
+                ),
                 operation="audio_transcription",
-                usage_extractor=_mistral_usage,
+                usage_extractor=lambda response: _mistral_usage(response).model_copy(
+                    update={"audio_seconds": audio_seconds}
+                ),
             )
             return {
                 "text": str(getattr(response, "text", "") or "").strip(),
@@ -1067,6 +1076,14 @@ def _mistral_usage(response: Any) -> ProviderUsage:
         source="provider",
         evidence_id=_scalar_text(_attribute(response, "id", _attribute(response, "request_id", ""))),
     )
+
+
+def _wav_duration_seconds(data: bytes) -> float:
+    try:
+        with wave.open(io.BytesIO(data), "rb") as stream:
+            return max(0.0, stream.getnframes() / max(1, stream.getframerate()))
+    except (EOFError, wave.Error):
+        return 0.0
 
 
 def _gemini_usage(response: Any) -> ProviderUsage:

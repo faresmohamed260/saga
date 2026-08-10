@@ -692,10 +692,12 @@ class ModalEndpointPool:
 def _modal_usage(app_name: str, payload: dict[str, Any]) -> ProviderUsage:
     response = dict(payload or {})
     technical = dict(response.get("technical_metrics") or {})
+    request_metrics = dict(response.get("request_metrics") or {})
     telemetry = dict(response.get("telemetry") or technical.get("telemetry") or {})
     compute_seconds = _first_number(
         response.get("runtime_seconds"), response.get("elapsed_seconds"),
         telemetry.get("total_elapsed_seconds"), technical.get("total_elapsed_seconds"),
+        request_metrics.get("total_elapsed_seconds"),
     )
     audio_seconds = _first_number(response.get("duration_seconds"), technical.get("duration_seconds"))
     normalized_app = str(app_name or "").casefold()
