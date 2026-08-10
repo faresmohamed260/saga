@@ -39,6 +39,10 @@ def test_fingerprints_are_canonical_and_secret_values_are_excluded():
     right = {"api_token": "different-secret", "nested": {"a": 1, "b": 2}}
     assert fingerprint(left) == fingerprint(right)
     assert sanitize(left)["api_token"] == "<redacted>"
+    assert sanitize({"usage": {"input_tokens": 12, "output_tokens": 3}})["usage"] == {
+        "input_tokens": 12,
+        "output_tokens": 3,
+    }
 
 
 def test_source_input_and_version_changes_have_distinct_fingerprints(tmp_path: Path):

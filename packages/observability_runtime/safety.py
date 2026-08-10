@@ -6,11 +6,13 @@ from typing import Any
 
 
 SECRET_FRAGMENTS = ("token", "secret", "password", "authorization", "api_key", "apikey", "credential", "cookie")
+SAFE_USAGE_KEYS = frozenset({"input_tokens", "output_tokens", "cached_input_tokens"})
 ALLOWED_DIMENSIONS = frozenset({"attempt", "execution_mode", "queue_name", "retryable", "severity", "model", "outcome"})
 
 
 def sanitize(value: Any, *, key: str = "", depth: int = 0) -> Any:
-    if key and any(fragment in key.lower() for fragment in SECRET_FRAGMENTS):
+    normalized_key = key.lower()
+    if key and normalized_key not in SAFE_USAGE_KEYS and any(fragment in normalized_key for fragment in SECRET_FRAGMENTS):
         return "<redacted>"
     if depth >= 8:
         return "<truncated>"

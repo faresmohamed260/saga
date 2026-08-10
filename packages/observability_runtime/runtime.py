@@ -158,14 +158,14 @@ class ObservabilityRuntime:
 
     def _cost_records(self, trace_id: str, metadata: dict[str, Any], base: dict[str, Any]) -> list[ObservationRecord]:
         usage = dict(metadata.get("usage") or {})
-        input_tokens = usage.get("input_tokens", usage.get("prompt_tokens"))
-        output_tokens = usage.get("output_tokens", usage.get("completion_tokens"))
-        cached_input_tokens = usage.get("cached_input_tokens", usage.get("cached_tokens"))
-        compute_seconds = usage.get("compute_seconds")
-        image_count = usage.get("image_count")
-        audio_seconds = usage.get("audio_seconds")
-        request_count = usage.get("request_count")
-        native_cost = usage.get("native_cost_usd")
+        input_tokens = _finite_float_or_none(usage.get("input_tokens", usage.get("prompt_tokens")))
+        output_tokens = _finite_float_or_none(usage.get("output_tokens", usage.get("completion_tokens")))
+        cached_input_tokens = _finite_float_or_none(usage.get("cached_input_tokens", usage.get("cached_tokens")))
+        compute_seconds = _finite_float_or_none(usage.get("compute_seconds"))
+        image_count = _finite_float_or_none(usage.get("image_count"))
+        audio_seconds = _finite_float_or_none(usage.get("audio_seconds"))
+        request_count = _finite_float_or_none(usage.get("request_count"))
+        native_cost = _finite_float_or_none(usage.get("native_cost_usd"))
         if all(value is None for value in (input_tokens, output_tokens, cached_input_tokens, compute_seconds, image_count, audio_seconds, request_count, native_cost)):
             return []
         model = str(metadata.get("model") or "")
@@ -193,6 +193,16 @@ class ObservabilityRuntime:
             )
             records.append(_metric("usage.estimated_cost", cost, unit="usd", dimensions={"model": model}, payload={"estimated": True, "pricing_version": rate.pricing_version}, identity=(trace_id,), **base))
         return records
+
+
+def _finite_float_or_none(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def _record(*, kind: str, name: str, timestamp_ms: int, identity: tuple[Any, ...], run_id: str = "", series_id: str = "", component: str = "", stage: str = "", provider: str = "", status: str = "", value: float | None = None, unit: str = "", dimensions: dict[str, Any] | None = None, payload: dict[str, Any] | None = None) -> ObservationRecord:
