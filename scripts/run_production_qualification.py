@@ -148,6 +148,7 @@ def main() -> int:
         current_stage = ALL_STAGES[0]
         stage_started = started
         cancellation_reason = ""
+        cancellation_requested = False
         seen_logs: set[int] = set()
         while worker.is_alive() and time.monotonic() < deadline:
             job = service.persistence.jobs.get_job(run_id) or {}
@@ -178,7 +179,12 @@ def main() -> int:
                 60, args.stage_timeout_seconds
             ):
                 cancellation_reason = f"Stage deadline exceeded: {current_stage}"
-                service.cancel(queue_id, reason=cancellation_reason)
+                cancellation_requested = _request_cancellation(
+                    service,
+                    queue_id=queue_id,
+                    reason=cancellation_reason,
+                    already_requested=cancellation_requested,
+                )
                 _emit(
                     "stage_deadline",
                     stage=current_stage,
@@ -190,7 +196,12 @@ def main() -> int:
             cancellation_reason = (
                 cancellation_reason or "Qualification global deadline exceeded."
             )
-            service.cancel(queue_id, reason=cancellation_reason)
+            cancellation_requested = _request_cancellation(
+                service,
+                queue_id=queue_id,
+                reason=cancellation_reason,
+                already_requested=cancellation_requested,
+            )
             _emit(
                 "deadline",
                 reason=cancellation_reason,
@@ -283,6 +294,19 @@ def _freshness_guard(
         raise RuntimeError(
             f"Freshness guard rejected existing input/state: series={existing_series is not None}, source_matches={len(matching_sources)}"
         )
+
+
+def _request_cancellation(
+    service: ExecutionRuntimeService,
+    *,
+    queue_id: str,
+    reason: str,
+    already_requested: bool,
+) -> bool:
+    if already_requested:
+        return True
+    service.cancel(queue_id, reason=reason)
+    return True
 
 
 def _reasoning_preflight(*, timeout_seconds: int) -> None:
