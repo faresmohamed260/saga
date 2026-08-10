@@ -14,7 +14,7 @@ CHARACTER_SUFFIX = (
 CHARACTER_NEGATIVE = (
     "illustration, painting, anime, cartoon, CGI, 3D render, game character, plastic skin, cel shading, exaggerated proportions, "
     "dramatic shadows, fantasy glow, environment, scenery, extra characters, duplicate person, inconsistent face, cropped body, "
-    "modern clothing, text, logo, watermark, blurry, malformed anatomy"
+    "modern clothing, transparent clothing, sheer fabric, skin-tight bodysuit, text, logo, watermark, blurry, malformed anatomy"
 )
 
 ENTITY_PREFIX = {
@@ -56,8 +56,9 @@ def compile_prompt(*, target_type: str, body: str, scene_character_names: list[s
     if normalized == "scene":
         cast = list(dict.fromkeys(name.strip() for name in (scene_character_names or []) if name.strip()))
         if cast:
+            subject_noun = "PERSON" if len(cast) == 1 else "PEOPLE"
             cast_constraint = (
-                f"HARD CAST LIMIT: Show EXACTLY {len(cast)} PEOPLE TOTAL in the entire image: {', '.join(cast)}. "
+                f"HARD CAST LIMIT: Show EXACTLY {len(cast)} {subject_noun} TOTAL in the entire image: {', '.join(cast)}. "
                 "Show each named person exactly once. Do not add any other person, duplicate, background figure, "
                 "silhouette, human reflection, or human portrait."
             )

@@ -23,8 +23,12 @@ from packages.visual_generation.contracts import (
     VisualPromptArtifact,
 )
 from packages.visual_generation.pipeline import (
+    CharacterPlanPayload,
     VisualPlanningPayload,
+    _build_baselines,
+    _build_category_planning_prompt,
     _blocking_hard_violations,
+    _refs_matching_structured_cast,
     _scene_cast_names,
     _scene_visible_character_refs,
 )
@@ -366,6 +370,70 @@ def test_scene_cast_uses_structured_visible_character_names_as_authority():
 
     assert _scene_cast_names(plan, {}, ["char-taryn"]) == ["Elara Vey"]
 
+    positive, _, _ = compile_prompt(
+        target_type="scene", body="Elara reads the oath.", scene_character_names=["Elara Vey"]
+    )
+    assert "EXACTLY 1 PERSON TOTAL" in positive
+
+
+def test_character_baseline_preserves_grounded_female_identity_when_planner_is_neutral():
+    profile = CharacterProfileArtifact(
+        profile_id="profile-jude",
+        series_id="series-1",
+        character_id="char-jude",
+        canonical_name="Jude",
+        overview="Jude is Taryn's mortal twin sister and she protects her family.",
+    )
+    payload = VisualPlanningPayload(characters=[CharacterPlanPayload(
+        character_id="char-jude", appearance="neutral presentation", body="average build"
+    )])
+
+    baseline = _build_baselines(
+        {"series_id": "series-1", "story_id": "story-1"}, payload, [profile]
+    )[0]
+
+    assert "female" in baseline.appearance
+    assert "female" in baseline.immutable_traits
+    assert baseline.clothing == "plain practical pre-industrial tunic, fitted trousers, and simple boots"
+    assert baseline.metadata["grounded_identity_cue"] == "female"
+
+
+def test_scene_planning_excludes_people_only_named_in_documents():
+    story = GeneratedStoryArtifact(
+        story_id="story-1", series_id="series-1", blueprint_id="blueprint-1"
+    )
+    scene = SceneProseArtifact(
+        scene_prose_id="prose-1", series_id="series-1", story_id="story-1",
+        blueprint_id="blueprint-1", source_scene_id="scene-1", chapter_index=1,
+        scene_index=1, prose="Elara reads signatures belonging to Taryn and Locke."
+    )
+
+    prompt = _build_category_planning_prompt(
+        category="scenes", story=story, scenes=[scene], profiles=[], entities=[], world_states=[]
+    )
+
+    assert "named in a signature or document" in prompt
+    assert "physical body is visibly present" in prompt
+
+
+def test_structured_scene_cast_removes_off_camera_character_reference_text():
+    plan = SceneVisualPlanArtifact(
+        plan_id="plan-1", series_id="series-1", story_id="story-1",
+        source_scene_id="scene-1", character_refs=["char-taryn", "char-locke"],
+        visible_character_names=["Elara"],
+    )
+    baselines = {
+        ref: CharacterVisualBaselineArtifact(
+            baseline_id=f"baseline-{ref}", series_id="series-1", story_id="story-1",
+            character_id=ref, canonical_name=name,
+        )
+        for ref, name in (("char-taryn", "Taryn"), ("char-locke", "Locke"))
+    }
+
+    assert _refs_matching_structured_cast(
+        plan, baselines, ["char-taryn", "char-locke"], ["Elara"]
+    ) == []
+
 
 def test_semantic_hard_violations_must_agree_with_hard_failure_scores():
     violations = ["Character name mismatch", "Scene type violation"]
@@ -438,7 +506,7 @@ def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     assert "Jude" in scene_prompt.positive_prompt
     assert "Archivist" in scene_prompt.positive_prompt
     assert (scene_prompt.width, scene_prompt.height) == (768, 512)
-    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v3"
+    assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v4"
     assert all(
         item.metadata["semantic_request"]["resolved_model"] == "mistral-small-2603"
         for item in result.audits

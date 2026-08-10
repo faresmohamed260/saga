@@ -351,6 +351,9 @@ class VisualPromptAgent:
             character_text = []
             visible_character_refs = _scene_visible_character_refs(item, scene_states)
             cast_names = _scene_cast_names(item, baseline_map, visible_character_refs)
+            visible_character_refs = _refs_matching_structured_cast(
+                item, baseline_map, visible_character_refs, cast_names
+            )
             consistency_keys: list[str] = []
             for ref in visible_character_refs:
                 baseline = baseline_map.get(ref)
@@ -746,7 +749,8 @@ def _build_category_planning_prompt(
             "Return JSON with keys characters and character_scene_states only. Return every supplied character ID and every "
             "scene-character combination that appears in GENERATED_SCENES. Character fields: character_id, appearance, body, "
             "face, hair, clothing, distinguishing_features, immutable_traits. Scene-state fields: source_scene_id, character_id, "
-            "expression, pose, clothing_state, physical_condition, action."
+            "expression, pose, clothing_state, physical_condition, action. Preserve each grounded_identity_cue exactly in the "
+            "character appearance and immutable_traits; never replace an explicit female or male cue with neutral or unspecified."
         ),
         "entities": (
             "Return JSON with key entities only. Return every supplied entity ID. Fields: entity_id, visual_description, "
@@ -756,8 +760,10 @@ def _build_category_planning_prompt(
         "scenes": (
             "Return JSON with key scenes only. Return every supplied source_scene_id. Fields: source_scene_id, composition, "
             "environment, lighting, mood, camera, action, visible_character_names. visible_character_names must list every "
-            "person visibly present in that frozen scene and no one else, using exact names from GENERATED_SCENES. Include "
-            "story-local named people even when they have no canonical character ID."
+            "person whose physical body is visibly present in that frozen scene and no one else, using exact names from "
+            "GENERATED_SCENES. A person who is only mentioned, remembered, quoted, named in a signature or document, heard, "
+            "or otherwise off-camera is not visible and must not be listed. Include story-local named people when physically "
+            "present even when they have no canonical character ID."
         ),
     }
     if category not in category_instructions:
@@ -770,7 +776,7 @@ def _build_category_planning_prompt(
     source_payload: dict[str, Any] = {"story": {"title": story.title, "premise": story.premise}}
     if category == "characters":
         source_payload.update(
-            character_profiles=[item.model_dump() for item in profiles],
+            character_profiles=[_profile_visual_source(item) for item in profiles],
             generated_scenes=[item.model_dump() for item in scenes],
         )
     elif category == "entities":
@@ -790,13 +796,24 @@ def _build_baselines(state: VisualGenerationState, payload: VisualPlanningPayloa
         profile = profile_map.get(row.character_id)
         if not profile:
             continue
+        identity_cue = _grounded_identity_cue(profile)
+        appearance = row.appearance
+        clothing = row.clothing
+        immutable_traits = _dedupe(row.immutable_traits)
+        if identity_cue:
+            combined = " ".join([row.appearance, row.body, row.face, *immutable_traits]).casefold()
+            if identity_cue not in combined:
+                appearance = f"{identity_cue} character; {appearance}".strip("; ")
+            immutable_traits = _dedupe([identity_cue, *immutable_traits])
+        if _is_unspecified_visual_detail(clothing):
+            clothing = "plain practical pre-industrial tunic, fitted trousers, and simple boots"
         results.append(CharacterVisualBaselineArtifact(
             baseline_id=_stable_id("character-visual-baseline", state["story_id"], row.character_id),
             series_id=state["series_id"], story_id=state["story_id"], character_id=row.character_id,
-            canonical_name=profile.canonical_name, appearance=row.appearance, body=row.body, face=row.face,
-            hair=row.hair, clothing=row.clothing, distinguishing_features=_dedupe(row.distinguishing_features),
-            immutable_traits=_dedupe(row.immutable_traits), consistency_key=_stable_id("character-consistency", row.character_id, row.appearance, row.face, row.hair),
-            metadata={"agent": "VisualPlanningAgent", "source_profile_id": profile.profile_id},
+            canonical_name=profile.canonical_name, appearance=appearance, body=row.body, face=row.face,
+            hair=row.hair, clothing=clothing, distinguishing_features=_dedupe(row.distinguishing_features),
+            immutable_traits=immutable_traits, consistency_key=_stable_id("character-consistency", row.character_id, appearance, row.face, row.hair),
+            metadata={"agent": "VisualPlanningAgent", "source_profile_id": profile.profile_id, "grounded_identity_cue": identity_cue},
         ))
     return results
 
@@ -874,8 +891,48 @@ def _prompt_artifact(
         target_type=target_type, target_ref=target_ref, source_scene_id=source_scene_id, workflow_mode=mode,
         positive_prompt=positive, negative_prompt=negative, workflow_version=str(versions.get(mode) or "unknown"),
         width=768 if target_type == "scene" else 512,
-        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v3"},
+        consistency_keys=_dedupe(consistency_keys), metadata={"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v4"},
     )
+
+
+def _profile_visual_source(profile: CharacterProfileArtifact) -> dict[str, Any]:
+    payload = profile.model_dump()
+    payload["grounded_identity_cue"] = _grounded_identity_cue(profile)
+    return payload
+
+
+def _grounded_identity_cue(profile: CharacterProfileArtifact) -> str:
+    evidence = " ".join([
+        profile.overview,
+        profile.role_or_archetype,
+        profile.first_seen_summary,
+        profile.latest_state_summary,
+    ]).casefold()
+    female = bool(re.search(r"\b(?:female|woman|girl|sister|daughter|mother|wife)\b", evidence))
+    male = bool(re.search(r"\b(?:male|man|boy|brother|son|father|husband)\b", evidence))
+    if female == male:
+        return ""
+    return "female" if female else "male"
+
+
+def _is_unspecified_visual_detail(value: str) -> bool:
+    normalized = " ".join(str(value or "").casefold().split()).strip(" .;:-")
+    return not normalized or normalized in {"unspecified", "not specified", "unknown", "neutral"}
+
+
+def _refs_matching_structured_cast(
+    plan: SceneVisualPlanArtifact,
+    baselines: dict[str, CharacterVisualBaselineArtifact],
+    refs: list[str],
+    cast_names: list[str],
+) -> list[str]:
+    if not plan.visible_character_names:
+        return refs
+    cast = {name.casefold() for name in cast_names}
+    return [
+        ref for ref in refs
+        if ref in baselines and baselines[ref].canonical_name.casefold() in cast
+    ]
 
 
 def _select_prompts(prompts: list[VisualPromptArtifact], *, include_types: list[str], max_per_type: int) -> list[VisualPromptArtifact]:
