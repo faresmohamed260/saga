@@ -21,6 +21,33 @@ class CharacterWorldQualityMetrics(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+def character_world_shape_complete(
+    *, profiles: list[Any], stable_states: list[Any], world_states: list[Any], source_entities: list[Any]
+) -> bool:
+    """Validate modeled coverage while allowing domains with no world entities."""
+    profile_ids = {
+        str(getattr(item, "character_id", ""))
+        for item in profiles
+        if str(getattr(item, "character_id", "") or "")
+    }
+    stable_state_ids = {
+        str(getattr(item, "character_id", ""))
+        for item in stable_states
+        if str(getattr(item, "character_id", "") or "")
+    }
+    source_entity_ids = {
+        str(getattr(item, "entity_id", ""))
+        for item in source_entities
+        if str(getattr(item, "entity_id", "") or "")
+    }
+    world_entity_ids = {
+        str(getattr(item, "entity_id", ""))
+        for item in world_states
+        if str(getattr(item, "entity_id", "") or "")
+    }
+    return bool(profile_ids) and profile_ids.issubset(stable_state_ids) and source_entity_ids.issubset(world_entity_ids)
+
+
 def evaluate_character_world_quality(result: CharacterWorldModelingResult) -> CharacterWorldQualityMetrics:
     profiles = list(result.character_profiles or [])
     states = list(result.stable_character_states or [])

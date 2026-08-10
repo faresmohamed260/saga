@@ -12,6 +12,7 @@ from packages.analysis_foundation.store import AnalysisFoundationStore
 from packages.audiobook_generation.store import AudiobookGenerationStore
 from packages.canon_extraction.store import CanonExtractionStore
 from packages.character_world_modeling.store import CharacterWorldModelingStore
+from packages.character_world_modeling.quality import character_world_shape_complete
 from packages.generation_planning.store import GenerationPlanningStore
 from packages.narrative_generation.contracts import (
     GeneratedStoryArtifact,
@@ -89,15 +90,22 @@ class ActiveStageInspector:
     def character_world_modeling(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageOutcomeArtifact | None:
         del outcomes
         profiles = self.character_world.list_character_profiles(series_id=request.series_id)
+        states = self.character_world.list_stable_character_states(series_id=request.series_id)
         world = self.character_world.list_world_states(series_id=request.series_id)
         source_entities = self.canon.list_entities(series_id=request.series_id)
-        if not profiles or (source_entities and not world):
+        if not character_world_shape_complete(
+            profiles=profiles,
+            stable_states=states,
+            world_states=world,
+            source_entities=source_entities,
+        ):
             return None
         return _accepted(
             "character_world_modeling",
             {},
             {
                 "character_profile_count": len(profiles),
+                "stable_character_state_count": len(states),
                 "source_entity_count": len(source_entities),
                 "world_state_count": len(world),
             },

@@ -10,6 +10,7 @@ from PIL import Image
 from packages.production_orchestration import PackageChapter, PackageSourceBundle, build_epub
 from packages.qualification_runtime import ProductionQualificationReport, QualificationCheck, applicable_visual_types, audio_quality, epub_quality, image_quality
 from packages.qualification_runtime.evaluator import _provider_visibility_names
+from packages.character_world_modeling import character_world_shape_complete
 
 
 class _Scene:
@@ -21,6 +22,11 @@ class _Entity:
     def __init__(self, entity_id: str, entity_type: str) -> None:
         self.entity_id = entity_id
         self.entity_type = entity_type
+
+
+class _Character:
+    def __init__(self, character_id: str) -> None:
+        self.character_id = character_id
 
 
 def test_qualification_report_fails_closed_on_critical_check():
@@ -76,3 +82,27 @@ def test_provider_visibility_uses_attributed_usage_when_metrics_are_aggregated()
     )
 
     assert names == ["provider.mistral", "provider.modal", "provider.ollama"]
+
+
+def test_character_world_shape_allows_no_world_entities_when_character_coverage_is_complete():
+    assert character_world_shape_complete(
+        profiles=[_Character("char-one")],
+        stable_states=[_Character("char-one")],
+        source_entities=[],
+        world_states=[],
+    )
+
+
+def test_character_world_shape_requires_character_and_entity_coverage():
+    assert not character_world_shape_complete(
+        profiles=[_Character("char-one")],
+        stable_states=[],
+        source_entities=[],
+        world_states=[],
+    )
+    assert not character_world_shape_complete(
+        profiles=[_Character("char-one")],
+        stable_states=[_Character("char-one")],
+        source_entities=[_Entity("entity-one", "location")],
+        world_states=[],
+    )
