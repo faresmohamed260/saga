@@ -78,6 +78,9 @@ class CharacterWorldModelingService:
     def run(self, request: CharacterWorldModelingRunRequest) -> CharacterWorldModelingResult:
         return self.runtime.invoke(series_id=request.series_id, thread_id=request.thread_id)
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def build_quality_audit(self, *, result: CharacterWorldModelingResult) -> dict[str, Any]:
         quality_metrics = evaluate_character_world_quality(result)
         character_ids = {item.character_id for item in result.character_profiles}

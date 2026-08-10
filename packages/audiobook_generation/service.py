@@ -109,6 +109,9 @@ class AudiobookGenerationService:
             max_attempts=request.max_attempts,
         )
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def retry_rejected(self, request: AudiobookGenerationRunRequest) -> AudiobookGenerationResult:
         if not request.run_id:
             raise ValueError("run_id is required to resume an audiobook run.")

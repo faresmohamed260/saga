@@ -90,14 +90,20 @@ class CanonExtractionService:
             if not source_paths:
                 raise ValueError("source_paths are required when run_analysis_foundation=True")
             analysis_service = AnalysisFoundationService.from_env()
-            analysis_service.run(
-                AnalysisFoundationRunRequest(
-                    series_id=request.series_id,
-                    source_paths=source_paths,
-                    thread_id=f"{request.thread_id}-analysis-foundation",
+            try:
+                analysis_service.run(
+                    AnalysisFoundationRunRequest(
+                        series_id=request.series_id,
+                        source_paths=source_paths,
+                        thread_id=f"{request.thread_id}-analysis-foundation",
+                    )
                 )
-            )
+            finally:
+                analysis_service.close()
         return self.runtime.invoke(series_id=request.series_id, thread_id=request.thread_id)
+
+    def close(self) -> None:
+        self.persistence.close()
 
     def build_quality_audit(self, *, result: CanonExtractionResult) -> dict[str, Any]:
         event_ids = {item.event_id for item in result.events}

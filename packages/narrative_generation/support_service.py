@@ -103,6 +103,9 @@ class NarrativeSupportService:
     def run(self, request: NarrativeSupportRunRequest) -> NarrativeSupportResult:
         return self.runtime.invoke(series_id=request.series_id, story_id=request.story_id, thread_id=request.thread_id)
 
+    def close(self) -> None:
+        self.persistence.close()
+
     def build_quality_audit(self, *, result: NarrativeSupportResult) -> dict[str, Any]:
         classifications: dict[str, int] = {}
         for audit in result.audits:
