@@ -34,6 +34,7 @@ from packages.visual_generation.pipeline import (
 )
 from packages.visual_generation.prompt_policy import compile_prompt
 from packages.visual_generation.quality import evaluate_image_technical_quality
+from packages.visual_generation.service import load_visual_generation_service_config_from_env
 from packages.visual_generation.vision import ReasoningVisionSemanticEvaluator
 
 
@@ -484,32 +485,38 @@ def test_vision_evaluator_does_not_require_written_character_names():
     assert "omitted minor expression" in runtime.prompt
 
 
-def test_vision_evaluator_rejects_mismatched_tiled_hard_cast():
-    class CountingRuntime:
-        calls = 0
+def test_vision_evaluator_rejects_mismatched_whole_frame_hard_cast():
+    class SemanticRuntime:
 
         def generate_vision_json(self, *, prompt, image_bytes):
-            self.calls += 1
-            if self.calls == 1:
-                return {
-                    "prompt_alignment_score": 0.9,
-                    "subject_consistency_score": 0.9,
-                    "composition_score": 0.9,
-                    "photorealism_score": 0.9,
-                    "defect_score": 0.1,
-                    "issues": [],
-                    "hard_constraint_violations": [],
-                }
             return {
-                "visible_head_center_count": 1 if self.calls in {2, 3} else 0,
-                "detections": [],
-                "uncertain_count": 0,
+                "prompt_alignment_score": 0.9,
+                "subject_consistency_score": 0.9,
+                "composition_score": 0.9,
+                "photorealism_score": 0.9,
+                "defect_score": 0.1,
+                "issues": [],
+                "hard_constraint_violations": [],
             }
 
         def last_request_metadata(self):
             return {"provider": "test"}
 
-    evaluator = ReasoningVisionSemanticEvaluator(CountingRuntime())
+    class HardConstraintRuntime:
+        def generate_vision_json(self, *, prompt, image_bytes):
+            assert "entire image" in prompt
+            return {
+                "visible_human_count": 2,
+                "uncertain_human_count": 0,
+                "detections": ["foreground", "background near pillars"],
+            }
+
+        def last_request_metadata(self):
+            return {"provider": "mistral", "resolved_model": "mistral-medium-2604"}
+
+    evaluator = ReasoningVisionSemanticEvaluator(
+        SemanticRuntime(), hard_constraint_runtime=HardConstraintRuntime()
+    )
     result = evaluator.evaluate(
         image_bytes=_png(black=False),
         prompt=VisualPromptArtifact(
@@ -521,10 +528,93 @@ def test_vision_evaluator_rejects_mismatched_tiled_hard_cast():
     )
 
     assert result["cast_audit"]["observed_visible_human_count"] == 2
+    assert result["cast_audit"]["detections"] == ["foreground", "background near pillars"]
+    assert result["cast_audit"]["request_metadata"]["resolved_model"] == "mistral-medium-2604"
     assert result["cast_audit"]["passed"] is False
     assert result["prompt_alignment_score"] == 0.4
     assert result["defect_score"] == 0.6
     assert result["hard_constraint_violations"]
+
+
+def test_vision_evaluator_accepts_partial_single_person_hard_cast():
+    semantic_runtime = Mock()
+    semantic_runtime.generate_vision_json.return_value = {
+        "prompt_alignment_score": 0.9,
+        "subject_consistency_score": 0.9,
+        "composition_score": 0.9,
+        "photorealism_score": 0.9,
+        "defect_score": 0.1,
+        "issues": [],
+        "hard_constraint_violations": [],
+    }
+    semantic_runtime.last_request_metadata.return_value = {"provider": "mistral"}
+    constraint_runtime = Mock()
+    constraint_runtime.generate_vision_json.return_value = {
+        "visible_human_count": 1,
+        "uncertain_human_count": 0,
+        "detections": ["partially framed at right edge"],
+    }
+    constraint_runtime.last_request_metadata.return_value = {
+        "provider": "mistral",
+        "resolved_model": "mistral-medium-2604",
+    }
+
+    result = ReasoningVisionSemanticEvaluator(
+        semantic_runtime, hard_constraint_runtime=constraint_runtime
+    ).evaluate(
+        image_bytes=_png(black=False),
+        prompt=VisualPromptArtifact(
+            prompt_id="prompt-2", series_id="series-1", story_id="story-1",
+            target_type="scene", target_ref="scene-2", workflow_mode="entity_generation",
+            positive_prompt="Show exactly one person.", negative_prompt="extra people",
+            metadata={"expected_visible_human_count": 1},
+        ),
+    )
+
+    assert result["cast_audit"]["passed"] is True
+    assert result["cast_audit"]["observed_visible_human_count"] == 1
+    assert result["hard_constraint_violations"] == []
+
+
+def test_vision_evaluator_fails_closed_on_invalid_hard_cast_payload():
+    semantic_runtime = Mock()
+    semantic_runtime.generate_vision_json.return_value = {
+        "prompt_alignment_score": 0.9,
+        "subject_consistency_score": 0.9,
+        "composition_score": 0.9,
+        "photorealism_score": 0.9,
+        "defect_score": 0.1,
+        "issues": [],
+        "hard_constraint_violations": [],
+    }
+    semantic_runtime.last_request_metadata.return_value = {"provider": "mistral"}
+    constraint_runtime = Mock()
+    constraint_runtime.generate_vision_json.return_value = {"visible_human_count": "one"}
+
+    with pytest.raises(ValueError, match="invalid count payload"):
+        ReasoningVisionSemanticEvaluator(
+            semantic_runtime, hard_constraint_runtime=constraint_runtime
+        ).evaluate(
+            image_bytes=_png(black=False),
+            prompt=VisualPromptArtifact(
+                prompt_id="prompt-3", series_id="series-1", story_id="story-1",
+                target_type="scene", target_ref="scene-3", workflow_mode="entity_generation",
+                positive_prompt="Show exactly one person.", negative_prompt="extra people",
+                metadata={"expected_visible_human_count": 1},
+            ),
+        )
+
+
+def test_visual_service_config_has_dedicated_hard_constraint_profile(monkeypatch):
+    monkeypatch.setenv("SAGA_VISUAL_HARD_CONSTRAINT_MODE", "mistral")
+    monkeypatch.setenv("SAGA_VISUAL_HARD_CONSTRAINT_MODEL", "mistral-medium-2604")
+    monkeypatch.setenv("SAGA_VISUAL_HARD_CONSTRAINT_TIMEOUT_SECONDS", "75")
+
+    config = load_visual_generation_service_config_from_env()
+
+    assert config.hard_constraint_mode == "mistral"
+    assert config.hard_constraint_model == "mistral-medium-2604"
+    assert config.hard_constraint_timeout_seconds == 75
 
 
 def test_vision_evaluator_rejects_character_sheet_clothing_drift():

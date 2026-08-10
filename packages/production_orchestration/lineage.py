@@ -19,7 +19,7 @@ STAGE_CONTRACT_VERSIONS: dict[str, dict[str, str]] = {
     "generation_planning": {"runtime": "generation-planning-v1", "schema_version": "blueprint-v1", "quality_policy": "planning-quality-v1"},
     "narrative_generation": {"runtime": "narrative-generation-v2", "schema_version": "story-v1", "quality_policy": "narrative-quality-v2"},
     "narrative_support": {"runtime": "narrative-support-v2", "schema_version": "support-v1", "quality_policy": "semantic-support-v2"},
-    "visual_generation": {"runtime": "visual-generation-v1", "schema_version": "visual-v1", "quality_policy": "visual-quality-v1"},
+    "visual_generation": {"runtime": "visual-generation-v1", "schema_version": "visual-v1", "quality_policy": "visual-quality-v2"},
     "audiobook_generation": {"runtime": "audiobook-generation-v1", "schema_version": "audiobook-v1", "quality_policy": "audio-quality-v1"},
     "artifact_packaging": {"runtime": "production-packaging-v1", "schema_version": "deliverable-manifest-v1", "quality_policy": "package-quality-v2"},
 }
@@ -103,8 +103,9 @@ def active_stage_version_overrides(explicit: dict[str, dict[str, Any]] | None = 
             "model": "|".join(filter(None, [
                 _env("SAGA_VISUAL_PLANNING_MODEL", _DEFAULT_MODELS.get(_env("SAGA_VISUAL_PLANNING_MODE", "mistral"), "")),
                 _env("SAGA_VISUAL_QUALITY_MODEL", "mistral-small-2603"),
+                _env("SAGA_VISUAL_HARD_CONSTRAINT_MODEL", "mistral-medium-2604"),
             ])),
-            "provider_config": "planning=" + _env("SAGA_VISUAL_PLANNING_MODE", "mistral") + ";vision=" + _env("SAGA_VISUAL_QUALITY_MODE", "mistral") + ";render=modal-comfyui",
+            "provider_config": "planning=" + _env("SAGA_VISUAL_PLANNING_MODE", "mistral") + ";vision=" + _env("SAGA_VISUAL_QUALITY_MODE", "mistral") + ";hard_constraints=" + _env("SAGA_VISUAL_HARD_CONSTRAINT_MODE", "mistral") + ";render=modal-comfyui",
         },
         "audiobook_generation": {
             "prompt": _file_digest(stage_files["audiobook_generation"]),
