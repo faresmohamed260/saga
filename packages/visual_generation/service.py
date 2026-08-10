@@ -36,6 +36,9 @@ class VisualGenerationServiceConfig:
     vision_mode: str = "mistral"
     vision_model: str = "mistral-small-2603"
     vision_timeout_seconds: int = 180
+    hard_constraint_mode: str = "mistral"
+    hard_constraint_model: str = "mistral-medium-2604"
+    hard_constraint_timeout_seconds: int = 180
     image_timeout_seconds: int = 900
     image_failover_attempts: int = 3
 
@@ -86,8 +89,20 @@ class VisualGenerationService:
             timeout_seconds=config.vision_timeout_seconds,
             max_retries=2,
         )
+        hard_constraint_profile = ReasoningProfile(
+            name="visual-hard-constraints",
+            mode=config.hard_constraint_mode,
+            model_override=config.hard_constraint_model,
+            prefer_local_ollama=config.hard_constraint_mode in {"gpt_oss", "deepseek"},
+            timeout_seconds=config.hard_constraint_timeout_seconds,
+            max_retries=2,
+        )
         reasoning_config = ReasoningRuntimeConfig(
-            profiles={planning_profile.name: planning_profile, vision_profile.name: vision_profile},
+            profiles={
+                planning_profile.name: planning_profile,
+                vision_profile.name: vision_profile,
+                hard_constraint_profile.name: hard_constraint_profile,
+            },
         )
         planning_runtime = create_reasoning_client(
             profile_name=planning_profile.name,
@@ -96,6 +111,11 @@ class VisualGenerationService:
         )
         vision_runtime = create_reasoning_client(
             profile_name=vision_profile.name,
+            config=reasoning_config,
+            persistence_client=self.persistence,
+        )
+        hard_constraint_runtime = create_reasoning_client(
+            profile_name=hard_constraint_profile.name,
             config=reasoning_config,
             persistence_client=self.persistence,
         )
@@ -112,7 +132,10 @@ class VisualGenerationService:
             persistence=self.persistence,
             reasoning_runtime=planning_runtime,
             image_provider=image_provider,
-            semantic_evaluator=ReasoningVisionSemanticEvaluator(vision_runtime),
+            semantic_evaluator=ReasoningVisionSemanticEvaluator(
+                vision_runtime,
+                hard_constraint_runtime=hard_constraint_runtime,
+            ),
         )
 
     @classmethod
@@ -210,6 +233,11 @@ def load_visual_generation_service_config_from_env() -> VisualGenerationServiceC
         vision_mode=str(os.getenv("SAGA_VISUAL_QUALITY_MODE") or "mistral").strip(),
         vision_model=str(os.getenv("SAGA_VISUAL_QUALITY_MODEL") or "mistral-small-2603").strip(),
         vision_timeout_seconds=max(30, int(os.getenv("SAGA_VISUAL_QUALITY_TIMEOUT_SECONDS") or "180")),
+        hard_constraint_mode=str(os.getenv("SAGA_VISUAL_HARD_CONSTRAINT_MODE") or "mistral").strip(),
+        hard_constraint_model=str(os.getenv("SAGA_VISUAL_HARD_CONSTRAINT_MODEL") or "mistral-medium-2604").strip(),
+        hard_constraint_timeout_seconds=max(
+            30, int(os.getenv("SAGA_VISUAL_HARD_CONSTRAINT_TIMEOUT_SECONDS") or "180")
+        ),
         image_timeout_seconds=max(60, int(os.getenv("SAGA_VISUAL_IMAGE_TIMEOUT_SECONDS") or "900")),
         image_failover_attempts=max(1, int(os.getenv("SAGA_VISUAL_IMAGE_FAILOVER_ATTEMPTS") or "3")),
     )

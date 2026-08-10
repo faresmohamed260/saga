@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 from packages.agent_runtime import SqlCheckpointSaver
 from packages.character_world_modeling.contracts import CharacterProfileArtifact, WorldStateArtifact
 from packages.canon_extraction.contracts import EntityArtifact
+from packages.lineage_runtime import sanitize
 from packages.narrative_generation.contracts import GeneratedStoryArtifact, SceneProseArtifact
 from packages.persistence_runtime import PersistenceRuntimeClient
 from packages.reasoning_runtime import ReasoningRuntimeClient
@@ -1130,10 +1131,8 @@ def _cast_audit_lineage(semantic: dict[str, Any]) -> dict[str, Any]:
         "expected_visible_human_count": int(audit.get("expected_visible_human_count") or 0),
         "observed_visible_human_count": int(audit.get("observed_visible_human_count") or 0),
         "uncertain_count": int(audit.get("uncertain_count") or 0),
-        "strip_counts": [
-            int(dict(item).get("visible_head_center_count") or 0)
-            for item in list(audit.get("strips") or [])
-        ],
+        "detections": [str(item) for item in list(audit.get("detections") or []) if str(item).strip()],
+        "request_metadata": sanitize(dict(audit.get("request_metadata") or {})),
     }
 
 

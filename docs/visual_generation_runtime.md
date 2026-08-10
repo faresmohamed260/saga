@@ -40,7 +40,7 @@ Characters route to `character_sheet`; locations, creatures, objects, and scenes
 
 ## Quality Policy
 
-Technical QA rejects corrupt data, wrong dimensions, undersized payloads, black images, and blank images. Semantic QA uses a Mistral vision profile and checks prompt alignment, subject consistency, composition, photorealism, defects, and explicit hard-constraint violations.
+Technical QA rejects corrupt data, wrong dimensions, undersized payloads, black images, and blank images. Semantic QA uses a cost-efficient Mistral vision profile for general scoring. Exact cast limits use a separately injected hard-constraint profile, pinned to `mistral-medium-2604`, that audits the whole frame and records count, detection locations, uncertainty, provider, and model lineage. This avoids crop-edge counting errors while keeping the stronger model off routine planning and scoring calls.
 
 Explicit negative-prompt or target violations override contradictory numeric scores. Failed semantic providers fail closed. Accepted renders are preserved while only rejected targets are eligible for retry.
 
@@ -69,7 +69,7 @@ Retry only persisted rejected targets:
 python scripts/run_visual_generation.py --series-id <series-id> --story-id <story-id> --retry-existing --max-attempts 2
 ```
 
-Required environment configuration follows the existing runtime conventions: `SAGA_RUNTIME_DB_*`, `SAGA_SUPABASE_*`, `MISTRAL_API_KEY`, and persisted `modal_comfyui` provider configuration. Visual-specific overrides are `SAGA_VISUAL_PLANNING_*`, `SAGA_VISUAL_QUALITY_MODE`, `SAGA_VISUAL_QUALITY_MODEL`, and `SAGA_VISUAL_IMAGE_*`.
+Required environment configuration follows the existing runtime conventions: `SAGA_RUNTIME_DB_*`, `SAGA_SUPABASE_*`, persisted Mistral credentials, and persisted `modal_comfyui` provider configuration. Visual-specific overrides are `SAGA_VISUAL_PLANNING_*`, `SAGA_VISUAL_QUALITY_*`, `SAGA_VISUAL_HARD_CONSTRAINT_*`, and `SAGA_VISUAL_IMAGE_*`. Production qualification must include a versioned cost rate for every selected model, including `mistral-medium-2604`; missing rates remain unpriced and block promotion.
 
 ## Live Validation
 
@@ -81,3 +81,5 @@ Validation used accepted persisted stories from *The Lost Sisters* and *The Quee
 - All attempts used distinct randomized seeds and the persisted Modal account pool (`47` accounts available; live tests used `member-01`).
 
 The rejected outputs are expected fail-closed evidence, not runtime failures. Preview files and complete JSON reports are under `tmp_live_visual_generation/`; durable reports and images are in Supabase object storage.
+
+The whole-frame hard-constraint regression corpus includes a scene with a small background person that must fail an exact-one cast limit and a scene with one partially framed edge subject that must pass it. The dedicated evaluator classified both correctly across repeated live calls; these artifacts remain release-gate fixtures rather than unit-test mocks.
