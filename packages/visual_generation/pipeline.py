@@ -335,7 +335,10 @@ class VisualPromptAgent:
         dossier_map = {item.entity_id: item for item in dossiers}
         for item in baselines:
             body = " ".join([item.canonical_name, item.appearance, item.body, item.face, item.hair, item.clothing, *item.distinguishing_features])
-            prompts.append(_prompt_artifact(state, "character", item.character_id, body, versions=versions, consistency_keys=[item.consistency_key]))
+            prompts.append(_prompt_artifact(
+                state, "character", item.character_id, body, versions=versions,
+                consistency_keys=[item.consistency_key], character_clothing=item.clothing,
+            ))
         for item in dossiers:
             if item.entity_type == "location":
                 body = " ".join([
@@ -530,6 +533,7 @@ class VisualAuditAgent:
                         "semantic_provider": type(self.semantic_evaluator).__name__,
                         "semantic_request": _semantic_request_lineage(semantic),
                         "cast_audit": _cast_audit_lineage(semantic),
+                        "character_consistency_audit": _character_consistency_audit_lineage(semantic),
                         "reported_hard_violation_count": len(reported_hard_violations),
                         "blocking_hard_violation_count": len(hard_violations),
                     },
@@ -881,6 +885,7 @@ def _prompt_artifact(
     consistency_keys: list[str],
     source_scene_id: str = "",
     scene_character_names: list[str] | None = None,
+    character_clothing: str = "",
 ) -> VisualPromptArtifact:
     positive, negative, mode = compile_prompt(
         target_type=target_type,
@@ -888,7 +893,14 @@ def _prompt_artifact(
         scene_character_names=scene_character_names,
     )
     metadata: dict[str, Any] = {"agent": "VisualPromptAgent", "policy_version": "visual-prompt-policy-v5"}
-    if target_type == "scene":
+    if target_type == "character":
+        clothing = " ".join(str(character_clothing or "").split())
+        metadata["expected_character_clothing"] = clothing
+        metadata["requires_footwear"] = (
+            not bool(re.search(r"\b(?:barefoot|unshod)\b", clothing, flags=re.IGNORECASE))
+            and bool(re.search(r"\b(?:boot|shoe|combat|durable|practical|court|travel)\w*\b", clothing, flags=re.IGNORECASE))
+        )
+    elif target_type == "scene":
         metadata["expected_visible_human_count"] = len(
             [name for name in (scene_character_names or []) if str(name).strip()]
         )
@@ -1122,6 +1134,21 @@ def _cast_audit_lineage(semantic: dict[str, Any]) -> dict[str, Any]:
             int(dict(item).get("visible_head_center_count") or 0)
             for item in list(audit.get("strips") or [])
         ],
+    }
+
+
+def _character_consistency_audit_lineage(semantic: dict[str, Any]) -> dict[str, Any]:
+    audit = dict(semantic.get("character_consistency_audit") or {})
+    if not audit:
+        return {}
+    return {
+        key: audit.get(key)
+        for key in (
+            "passed", "same_clothing_all_views", "same_sleeve_length_all_views",
+            "same_footwear_all_views", "all_views_full_body", "required_clothing_match_all_views",
+            "visible_skin_tight_bodysuit", "visible_transparent_or_sheer_clothing",
+            "visible_barefoot_any_view", "requires_footwear", "evidence",
+        )
     }
 
 

@@ -527,6 +527,50 @@ def test_vision_evaluator_rejects_mismatched_tiled_hard_cast():
     assert result["hard_constraint_violations"]
 
 
+def test_vision_evaluator_rejects_character_sheet_clothing_drift():
+    class CharacterAuditRuntime:
+        calls = 0
+
+        def generate_vision_json(self, *, prompt, image_bytes):
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "prompt_alignment_score": 0.9, "subject_consistency_score": 0.9,
+                    "composition_score": 0.9, "photorealism_score": 0.9, "defect_score": 0.1,
+                    "issues": [], "hard_constraint_violations": [],
+                }
+            return {
+                "same_clothing_all_views": True,
+                "same_sleeve_length_all_views": False,
+                "same_footwear_all_views": True,
+                "all_views_full_body": True,
+                "required_clothing_match_all_views": True,
+                "visible_skin_tight_bodysuit": False,
+                "visible_transparent_or_sheer_clothing": False,
+                "visible_barefoot_any_view": False,
+                "hard_constraint_violations": ["Sleeves differ across views."],
+                "evidence": ["front=long, side=sleeveless, back=long"],
+            }
+
+        def last_request_metadata(self):
+            return {"provider": "test"}
+
+    result = ReasoningVisionSemanticEvaluator(CharacterAuditRuntime()).evaluate(
+        image_bytes=_png(black=False),
+        prompt=VisualPromptArtifact(
+            prompt_id="character-1", series_id="series-1", story_id="story-1",
+            target_type="character", target_ref="character-1", workflow_mode="character_sheet",
+            positive_prompt="Three matching views.", negative_prompt="skin-tight bodysuit",
+            metadata={"expected_character_clothing": "practical durable combat attire", "requires_footwear": True},
+        ),
+    )
+
+    assert result["character_consistency_audit"]["passed"] is False
+    assert result["prompt_alignment_score"] == 0.4
+    assert result["defect_score"] == 0.6
+    assert "Sleeves differ across views." in result["hard_constraint_violations"]
+
+
 def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     client = _persistence(tmp_path)
     _seed(client)
@@ -552,6 +596,9 @@ def test_full_graph_routes_all_types_and_persists_images(tmp_path: Path):
     assert scene_prompt.metadata["policy_version"] == "visual-prompt-policy-v5"
     assert scene_prompt.metadata["expected_visible_human_count"] == 2
     assert location_prompt.metadata["expected_visible_human_count"] == 0
+    character_prompt = next(item for item in result.prompts if item.target_type == "character")
+    assert character_prompt.metadata["expected_character_clothing"]
+    assert character_prompt.metadata["requires_footwear"] is True
     assert all(
         item.metadata["semantic_request"]["resolved_model"] == "mistral-small-2603"
         for item in result.audits
