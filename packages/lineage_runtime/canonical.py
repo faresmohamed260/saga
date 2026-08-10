@@ -10,10 +10,12 @@ from typing import Any
 
 
 _SECRET_FRAGMENTS = ("token", "secret", "password", "authorization", "api_key", "apikey", "credential")
+_SAFE_USAGE_KEYS = frozenset({"input_tokens", "output_tokens", "cached_input_tokens"})
 
 
 def sanitize(value: Any, *, key: str = "") -> Any:
-    if key and any(fragment in key.lower() for fragment in _SECRET_FRAGMENTS):
+    normalized_key = key.lower()
+    if key and normalized_key not in _SAFE_USAGE_KEYS and any(fragment in normalized_key for fragment in _SECRET_FRAGMENTS):
         return "<redacted>"
     if hasattr(value, "model_dump"):
         value = value.model_dump()

@@ -68,6 +68,28 @@ def test_execution_observation_is_idempotent_complete_and_secret_safe(tmp_path: 
     serialized = json.dumps(rows)
     assert "must-not-persist" not in serialized
     assert sanitize({"nested": {"api_token": "must-not-persist"}})["nested"]["api_token"] == "<redacted>"
+    assert sanitize({"usage": {"input_tokens": 12}})["usage"]["input_tokens"] == 12
+
+
+def test_redacted_or_malformed_usage_does_not_drop_execution_observations(tmp_path: Path):
+    client = _persistence(tmp_path)
+    runtime = ObservabilityRuntime(store=client.observability)
+    item, events, result, lineage = _execution()
+    usage = result["outcomes"][0]["metadata"]["provider_trace"]["metadata"]["usage"]
+    usage.update({"input_tokens": "<redacted>", "output_tokens": "not-a-number"})
+
+    observed = runtime.observe_execution(
+        run_id="run-1",
+        queue_item=item,
+        events=events,
+        orchestration_result=result,
+        lineage_records=lineage,
+    )
+
+    assert observed["record_count"] > 0
+    names = {row["name"] for row in client.observability.list(run_id="run-1", limit=1000)}
+    assert {"run.success", "stage.accepted", "provider.latency"} <= names
+    assert "usage.input_tokens" not in names
 
 
 def test_slo_aggregation_breach_alert_and_retention_are_deterministic(tmp_path: Path):
