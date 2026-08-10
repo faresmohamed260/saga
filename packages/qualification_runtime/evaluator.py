@@ -20,6 +20,7 @@ from packages.analysis_foundation.store import AnalysisFoundationStore
 from packages.audiobook_generation.store import AudiobookGenerationStore
 from packages.canon_extraction.store import CanonExtractionStore
 from packages.character_world_modeling.store import CharacterWorldModelingStore
+from packages.character_world_modeling.quality import character_world_shape_complete
 from packages.generation_planning.store import GenerationPlanningStore
 from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.production_orchestration import OrchestrationResult
@@ -87,7 +88,19 @@ class ProductionQualificationEvaluator:
         states = self.character_world.list_stable_character_states(series_id=request.series_id)
         world = self.character_world.list_world_states(series_id=request.series_id)
         character_ids = {item.character_id for item in characters}
-        self._check(checks, "world.shape", "world", bool(profiles) and bool(world), {"profiles": len(profiles), "states": len(states), "world": len(world)}, "non-empty profiles and world state")
+        self._check(
+            checks,
+            "world.shape",
+            "world",
+            character_world_shape_complete(
+                profiles=profiles,
+                stable_states=states,
+                world_states=world,
+                source_entities=entities,
+            ),
+            {"profiles": len(profiles), "states": len(states), "source_entities": len(entities), "world": len(world)},
+            "stable state per profile and world state per extracted entity",
+        )
         self._check(checks, "world.references", "world", all(item.character_id in character_ids for item in profiles), len([item for item in profiles if item.character_id not in character_ids]), 0)
 
         blueprint_id = str((outcomes.get("generation_planning").output_context if outcomes.get("generation_planning") else {}).get("blueprint_id") or "")

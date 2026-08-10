@@ -119,12 +119,14 @@ def test_visual_attempt_budget_is_independent_and_bounded():
 
 
 def test_character_world_stage_accepts_empty_world_when_canon_has_no_entities():
+    profile = type("Profile", (), {"character_id": "char-one"})()
     inspector = ActiveStageInspector.__new__(ActiveStageInspector)
     inspector.character_world = type(
         "CharacterWorld",
         (),
         {
-            "list_character_profiles": lambda self, series_id: [object()],
+            "list_character_profiles": lambda self, series_id: [profile],
+            "list_stable_character_states": lambda self, series_id: [profile],
             "list_world_states": lambda self, series_id: [],
         },
     )()

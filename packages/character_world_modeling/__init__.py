@@ -13,7 +13,7 @@ from .pipeline import (
     WorldStateAgent,
     build_character_world_modeling_graph,
 )
-from .quality import CharacterWorldQualityMetrics, evaluate_character_world_quality
+from .quality import CharacterWorldQualityMetrics, character_world_shape_complete, evaluate_character_world_quality
 from .service import (
     CharacterWorldModelingRunRequest,
     CharacterWorldModelingService,
@@ -30,6 +30,7 @@ __all__ = [
     "CharacterWorldModelingService",
     "CharacterWorldModelingServiceConfig",
     "CharacterWorldQualityMetrics",
+    "character_world_shape_complete",
     "StableCharacterStateArtifact",
     "StableStateAgent",
     "WorldStateAgent",
