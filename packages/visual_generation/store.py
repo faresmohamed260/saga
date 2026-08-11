@@ -92,6 +92,7 @@ class VisualGenerationStore:
                 "target_type": render.target_type,
                 "seed": render.seed,
                 "attempt": render.attempt,
+                "render_status": render.status,
                 "workflow_mode": (render.metadata or {}).get("workflow_mode"),
             },
             record_type="generated_image",

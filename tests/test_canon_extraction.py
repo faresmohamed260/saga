@@ -685,6 +685,14 @@ def test_normalize_entity_type_overrides_event_mislabeled_as_creature():
     ) == "creature"
 
 
+def test_normalize_entity_type_overrides_legal_proceeding_mislabeled_as_object():
+    assert _normalize_entity_type(
+        "object",
+        name="High King's inquest",
+        description="A formal proceeding before the court.",
+    ) == "concept"
+
+
 def test_normalize_entity_type_corrects_natural_spring_mislabeled_as_object():
     assert _normalize_entity_type(
         "object",
