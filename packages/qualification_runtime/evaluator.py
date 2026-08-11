@@ -83,6 +83,7 @@ class ProductionQualificationEvaluator:
         event_ids, scene_ids = {item.event_id for item in events}, {item.scene_id for item in scenes}
         references_valid = all(item.event_id in event_ids and item.scene_id in scene_ids for item in timeline) and all(item.scene_id in scene_ids for item in events)
         self._check(checks, "canon.shape", "canon", bool(events) and bool(timeline), {"events": len(events), "entities": len(entities), "timeline": len(timeline)}, "non-empty events and timeline")
+        self._check(checks, "canon.entities_nonempty", "canon", bool(entities), len(entities), "at least one grounded non-character entity")
         self._check(checks, "canon.references", "canon", references_valid, references_valid, True)
 
         profiles = self.character_world.list_character_profiles(series_id=request.series_id)

@@ -36,6 +36,9 @@ CANON_EXTRACTION_PARALLELISM = max(1, int(os.getenv("SAGA_CANON_EXTRACTION_PARAL
 MAX_EVENTS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_EVENTS_PER_SCENE") or "5"))
 MAX_ENTITIES_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_ENTITIES_PER_SCENE") or "24"))
 MAX_RELATIONSHIPS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_RELATIONSHIPS_PER_SCENE") or "14"))
+MIN_ENTITY_COMPLETENESS_SOURCE_CHARS = max(
+    1, int(os.getenv("SAGA_CANON_MIN_ENTITY_COMPLETENESS_SOURCE_CHARS") or "2000")
+)
 ALLOWED_ENTITY_TYPES = {"location", "object", "creature", "organization", "artifact", "concept"}
 ALLOWED_RELATIONSHIP_TYPES = {
     "ally",
@@ -433,6 +436,12 @@ class EntityAgent:
         for result in sorted(completed_results, key=lambda item: int(item.get("job_index") or 0)):
             request_metadata_rows.append(dict(result.get("metadata") or {}))
             book_id = str(result["book_id"])
+            job_index = int(result.get("job_index") or 0)
+            valid_scene_ids = {
+                str(item.get("scene_id") or "")
+                for item in jobs[job_index]["scene_slices"]
+                if item.get("scene_id")
+            }
             for raw_payload in list(result["payloads"] or []):
                 payload = EntitiesPayload.model_validate(raw_payload)
                 for item in payload.entities:
@@ -442,7 +451,8 @@ class EntityAgent:
                     mention_scene_ids = [
                         scene_id
                         for scene_id in sorted(set(scene_id for scene_id in item.scene_ids if scene_id))
-                        if entity_counts_by_scene.get(scene_id, 0) < MAX_ENTITIES_PER_SCENE
+                        if scene_id in valid_scene_ids
+                        and entity_counts_by_scene.get(scene_id, 0) < MAX_ENTITIES_PER_SCENE
                     ]
                     if not mention_scene_ids:
                         continue
@@ -479,6 +489,12 @@ class EntityAgent:
                             book_ids=sorted(set([*existing.book_ids, *artifact.book_ids])),
                             metadata=dict(existing.metadata or artifact.metadata),
                         )
+        source_character_count = sum(len(scene.text.strip()) for scene in scenes)
+        if not merged and source_character_count >= MIN_ENTITY_COMPLETENESS_SOURCE_CHARS:
+            raise RuntimeError(
+                "Entity extraction completeness failed: no grounded non-character entities "
+                f"were extracted from {source_character_count} source characters."
+            )
         persisted = self.store.replace_entities(series_id=series_id, entities=sorted(merged.values(), key=lambda item: item.canonical_name.casefold()))
         return {"entities": [item.model_dump() for item in persisted], "request_metadata_rows": request_metadata_rows}
 
@@ -490,10 +506,17 @@ class EntityAgent:
         scene_slices: list[dict[str, Any]],
         identity_bundle: CanonicalIdentityBundle,
         reasoning_runtime: ReasoningRuntimeClient | None = None,
+        repair_empty: bool = False,
     ) -> EntitiesPayload:
         raise_if_cancelled(self.cancellation_checker)
         runtime = reasoning_runtime or self.reasoning_runtime
-        prompt = _build_entities_prompt(book=book, chapter=chapter, scene_slices=scene_slices, identity_bundle=identity_bundle)
+        prompt = _build_entities_prompt(
+            book=book,
+            chapter=chapter,
+            scene_slices=scene_slices,
+            identity_bundle=identity_bundle,
+            repair_empty=repair_empty,
+        )
         payload = runtime.generate_json(
             prompt,
             strict=True,
@@ -516,6 +539,15 @@ class EntityAgent:
     ) -> list[EntitiesPayload]:
         runtime = reasoning_runtime or self.reasoning_runtime
         try:
+            payload = self._extract_chapter_entities(
+                book=book,
+                chapter=chapter,
+                scene_slices=scene_slices,
+                identity_bundle=identity_bundle,
+                reasoning_runtime=runtime,
+            )
+            if payload.entities:
+                return [payload]
             return [
                 self._extract_chapter_entities(
                     book=book,
@@ -523,6 +555,7 @@ class EntityAgent:
                     scene_slices=scene_slices,
                     identity_bundle=identity_bundle,
                     reasoning_runtime=runtime,
+                    repair_empty=True,
                 )
             ]
         except RuntimeError as exc:
@@ -1186,7 +1219,21 @@ def _build_events_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scene_
     )
 
 
-def _build_entities_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scene_slices: list[dict[str, Any]], identity_bundle: CanonicalIdentityBundle) -> str:
+def _build_entities_prompt(
+    *,
+    book: BookArtifact,
+    chapter: ChapterArtifact,
+    scene_slices: list[dict[str, Any]],
+    identity_bundle: CanonicalIdentityBundle,
+    repair_empty: bool = False,
+) -> str:
+    repair_instruction = (
+        "A previous extraction returned an empty entities list. Re-read every scene slice and recover all evidence-backed "
+        "locations, objects, creatures, organizations, artifacts, and concepts. Return an empty list only when none are "
+        "present. Copy scene_ids exactly from the provided slices; never construct or infer an ID.\n"
+        if repair_empty
+        else ""
+    )
     return (
         "Return JSON with key 'entities'.\n"
         "Each entity must include: canonical_name, entity_type, description, aliases, scene_ids.\n"
@@ -1201,6 +1248,7 @@ def _build_entities_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scen
         "Never return entity_type=character or entity_type=event.\n"
         "Omit events and ceremonies such as coronations, weddings, funerals, battles, feasts, and festivals from entities; "
         "they belong in event extraction and must never be labeled as creatures, locations, or objects.\n"
+        f"{repair_instruction}"
         f"Book title: {book.title}\n"
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
         f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False, indent=2)}\n"
