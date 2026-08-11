@@ -252,7 +252,19 @@ class BlueprintSynthesisAgent:
         valid_entity_refs: set[str],
     ) -> tuple[BlueprintSynthesisPayload, dict[str, Any]]:
         prompt = _build_blueprint_prompt(intent=intent, grounding=grounding)
-        response = self.reasoning_runtime.generate_json(prompt, strict=True, max_tokens=4200)
+        response = self.reasoning_runtime.generate_json(
+            prompt,
+            strict=True,
+            max_tokens=4200,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "generation_blueprint",
+                    "schema": BlueprintSynthesisPayload.model_json_schema(),
+                    "strict": True,
+                },
+            },
+        )
         metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
         if isinstance(response, dict) and not response.get("error"):
             try:

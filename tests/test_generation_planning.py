@@ -17,6 +17,7 @@ class StubGenerationPlanningReasoningRuntime:
     def __init__(self, *, include_bad_refs: bool = False) -> None:
         self.include_bad_refs = include_bad_refs
         self._last = {}
+        self.response_format = None
 
     def provider_name(self) -> str:
         return "ollama"
@@ -25,7 +26,8 @@ class StubGenerationPlanningReasoningRuntime:
         return "gpt-oss:120b-cloud"
 
     def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None):
-        del prompt, strict, validator, max_tokens, response_format, tools, tool_choice
+        del prompt, strict, validator, max_tokens, tools, tool_choice
+        self.response_format = response_format
         canon_refs = ["event-meeting", "timeline-meeting"]
         character_refs = ["char-fares", "char-kareem"]
         entity_refs = ["entity-silver-notebook"]
@@ -239,9 +241,10 @@ def _seed_upstream_outputs(client, *, series_id: str = "series-1") -> None:
 def test_generation_planning_persists_blueprint_and_passes_quality(tmp_path: Path):
     client = _persistence(tmp_path)
     _seed_upstream_outputs(client)
+    reasoning = StubGenerationPlanningReasoningRuntime()
     result = GenerationPlanningRuntime(
         persistence=client,
-        reasoning_runtime=StubGenerationPlanningReasoningRuntime(),
+        reasoning_runtime=reasoning,
         allow_in_memory_checkpointer=True,
     ).invoke(
         series_id="series-1",
@@ -265,6 +268,9 @@ def test_generation_planning_persists_blueprint_and_passes_quality(tmp_path: Pat
     )
     assert metrics.pass_quality_gate is True
     assert has_live_planning_provider_proof(result.blueprint) is True
+    assert reasoning.response_format["type"] == "json_schema"
+    assert reasoning.response_format["json_schema"]["strict"] is True
+    assert "chapter_outline" in reasoning.response_format["json_schema"]["schema"]["properties"]
 
 
 def test_generation_planning_sanitizes_provider_refs(tmp_path: Path):
