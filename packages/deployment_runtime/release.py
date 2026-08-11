@@ -10,7 +10,7 @@ from typing import Any
 
 from packages.deployment_runtime.contracts import ReleaseManifest
 from packages.deployment_runtime.gates import ReleaseGateRuntime
-from packages.persistence_runtime import EXPECTED_SCHEMA_REVISION
+from packages.schema_revision import EXPECTED_SCHEMA_REVISION
 
 
 ALLOWED_TRANSITIONS = {
