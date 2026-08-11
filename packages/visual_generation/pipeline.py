@@ -448,7 +448,7 @@ class VisualRenderAgent:
                     elapsed_seconds=round(time.perf_counter() - call_started, 4), technical_metrics=technical,
                     metadata={"workflow_mode": prompt.workflow_mode, "workflow_version": prompt.workflow_version, "source_scene_id": prompt.source_scene_id, "request_metrics": response.get("request_metrics") or {}},
                 )
-                if technical.get("passed"):
+                if image_bytes:
                     stored = self.store.store_image(render=render, image_bytes=image_bytes)
                     render.bucket_name = str(stored.get("bucket_name") or "")
                     render.object_path = str(stored.get("object_path") or "")
@@ -486,7 +486,7 @@ class VisualAuditAgent:
             prompt = prompts[render.prompt_id]
             semantic: dict[str, Any] = {}
             image_bytes = b""
-            if render.status == "rendered":
+            if render.bucket_name and render.object_path:
                 image_bytes = self.store.load_image(render)
                 render.technical_metrics = evaluate_image_technical_quality(
                     image_bytes,
@@ -494,8 +494,7 @@ class VisualAuditAgent:
                     expected_height=prompt.height,
                     target_type=prompt.target_type,
                 )
-                if not render.technical_metrics.get("passed"):
-                    render.status = "technical_rejection"
+                render.status = "rendered" if render.technical_metrics.get("passed") else "technical_rejection"
             issues = list((render.technical_metrics or {}).get("issues") or [])
             technical_passed = render.status == "rendered" and bool((render.technical_metrics or {}).get("passed"))
             if technical_passed:

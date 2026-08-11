@@ -7,7 +7,7 @@ import statistics
 from typing import Any
 
 
-_MIN_EDGE_VARIANCE = 600.0
+_MIN_NORMALIZED_EDGE_VARIANCE = 0.12
 _CENTRAL_SEAM_RATIO = 6.0
 _CENTRAL_SEAM_COVERAGE = 0.50
 
@@ -39,13 +39,14 @@ def evaluate_image_technical_quality(
     border_y = max(1, int(image.height * 0.05))
     focus_region = image.crop((border_x, border_y, image.width - border_x, image.height - border_y)).convert("L")
     sharpness_variance = ImageStat.Stat(focus_region.filter(ImageFilter.FIND_EDGES)).var[0]
+    normalized_sharpness = sharpness_variance / max(1.0, variance)
     seam = _central_horizontal_seam_metrics(image) if target_type == "scene" else None
     issues: list[str] = []
     if image.width != expected_width or image.height != expected_height:
         issues.append(f"unexpected_dimensions:{image.width}x{image.height}")
     if mean <= 3.0 or variance <= 1.0 or black_ratio >= 0.98:
         issues.append("black_or_blank_image")
-    if sharpness_variance < _MIN_EDGE_VARIANCE:
+    if normalized_sharpness < _MIN_NORMALIZED_EDGE_VARIANCE:
         issues.append("soft_or_blurred_image")
     if seam and seam["detected"]:
         issues.append("central_horizontal_seam_or_collage")
@@ -59,6 +60,7 @@ def evaluate_image_technical_quality(
         "variance": round(variance, 4),
         "black_pixel_ratio": round(black_ratio, 6),
         "sharpness_edge_variance": round(sharpness_variance, 4),
+        "normalized_edge_variance": round(normalized_sharpness, 6),
         "central_horizontal_seam": seam,
     }
 

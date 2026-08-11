@@ -279,6 +279,25 @@ def test_technical_quality_rejects_soft_focus_image():
     assert "soft_or_blurred_image" in result["issues"]
 
 
+def test_technical_quality_accepts_sharp_low_texture_environment():
+    image = Image.new("RGB", (512, 512), "#d7d0c2")
+    draw = ImageDraw.Draw(image)
+    draw.polygon([(0, 340), (512, 300), (512, 512), (0, 512)], fill="#76543b")
+    draw.line((0, 340, 512, 300), fill="#3f3027", width=5)
+    draw.line((255, 70, 255, 330), fill="#8d877d", width=3)
+    for offset in range(0, 512, 32):
+        draw.line((offset, 340, min(512, offset + 180), 512), fill="#9b7454", width=2)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+
+    result = evaluate_image_technical_quality(
+        output.getvalue(), expected_width=512, expected_height=512, target_type="location"
+    )
+
+    assert result["passed"] is True
+    assert result["normalized_edge_variance"] >= 0.12
+
+
 def test_technical_quality_rejects_central_scene_collage_seam():
     image = Image.new("RGB", (512, 512))
     pixels = image.load()
@@ -710,6 +729,8 @@ def test_black_image_retries_with_a_new_seed(tmp_path: Path):
     assert result.decision.accepted is True
     assert [item.seed for item in result.renders] == [123, 456]
     assert [item.status for item in result.renders] == ["technical_rejection", "rendered"]
+    assert result.renders[0].bucket_name == "generated-images"
+    assert result.renders[0].object_path
     assert result.audits[0].status == "retry_required"
     assert result.audits[-1].status == "accepted"
 

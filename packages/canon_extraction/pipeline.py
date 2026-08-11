@@ -1246,7 +1246,7 @@ def _build_entities_prompt(
         "(including springs, pools, rivers, forests, buildings, and rooms); object means a portable physical item; artifact means a significant "
         "crafted, historical, or enchanted item. A natural water spring is always a location, never a coiled object.\n"
         "Never return entity_type=character or entity_type=event.\n"
-        "Omit events and ceremonies such as coronations, weddings, funerals, battles, feasts, and festivals from entities; "
+        "Omit events, proceedings, and ceremonies such as coronations, weddings, funerals, battles, feasts, festivals, trials, hearings, and inquests from entities; "
         "they belong in event extraction and must never be labeled as creatures, locations, or objects.\n"
         f"{repair_instruction}"
         f"Book title: {book.title}\n"
@@ -1517,7 +1517,7 @@ def _normalize_entity_type(value: str, *, name: str = "", description: str = "")
     ):
         return "location"
     if re.search(
-        r"\b(coronation|wedding|funeral|ceremony|festival|feast|battle|war|oath|promise|bargain|divination)\b",
+        r"\b(coronation|wedding|funeral|ceremony|festival|feast|battle|war|oath|promise|bargain|divination|inquest|trial|hearing|proceeding)\b",
         normalized_name,
     ):
         return "concept"
