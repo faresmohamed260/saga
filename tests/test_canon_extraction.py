@@ -12,6 +12,7 @@ from packages.canon_extraction.contracts import EntityArtifact, RelationshipArti
 from packages.canon_extraction import pipeline as canon_pipeline
 from packages.canon_extraction.service import load_canon_extraction_service_config_from_env
 from packages.canon_extraction.pipeline import (
+    EntityAgent,
     EventAgent,
     _augment_participant_names_from_event_text,
     _batched_scene_slices,
@@ -165,6 +166,63 @@ class AlwaysFailReasoningRuntime(StubReasoningRuntime):
         return {"error": "max_retries_exceeded"}
 
 
+class EmptyThenGroundedEntityRuntime(StubReasoningRuntime):
+    def __init__(self) -> None:
+        super().__init__()
+        self.entity_calls = 0
+        self.prompts: list[str] = []
+
+    def generate_json(self, prompt: str, **kwargs):
+        if "key 'entities'" not in prompt.lower():
+            return super().generate_json(prompt, **kwargs)
+        self.entity_calls += 1
+        self.prompts.append(prompt)
+        self._last = {"provider": "ollama", "resolved_model": self.resolved_model_name(), "status": "ok"}
+        if self.entity_calls == 1:
+            return {"entities": []}
+        return {
+            "entities": [{
+                "canonical_name": "Glass Palace",
+                "entity_type": "location",
+                "description": "A palace named in the source scene.",
+                "aliases": [],
+                "scene_ids": [_first_scene_id(prompt)],
+            }]
+        }
+
+
+class AlwaysEmptyEntityRuntime(StubReasoningRuntime):
+    def __init__(self) -> None:
+        super().__init__()
+        self.entity_calls = 0
+
+    def generate_json(self, prompt: str, **kwargs):
+        if "key 'entities'" not in prompt.lower():
+            return super().generate_json(prompt, **kwargs)
+        self.entity_calls += 1
+        self._last = {"provider": "ollama", "resolved_model": self.resolved_model_name(), "status": "ok"}
+        return {"entities": []}
+
+
+class EntityStoreStub:
+    def __init__(self) -> None:
+        self.persisted: list[EntityArtifact] | None = None
+
+    def list_stage_jobs(self, **kwargs):
+        return {}
+
+    def delete_stage_jobs(self, **kwargs):
+        return 0
+
+    def upsert_stage_job(self, **kwargs):
+        return kwargs["payload"]
+
+    def replace_entities(self, *, series_id: str, entities: list[EntityArtifact]):
+        del series_id
+        self.persisted = entities
+        return entities
+
+
 class _SimpleResult:
     def __init__(self, payload: dict):
         self.payload = payload
@@ -206,6 +264,113 @@ def _analysis_source(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def _entity_agent_inputs(*, text: str = "Taryn enters the Glass Palace."):
+    book = BookArtifact(
+        book_id="book-1",
+        series_id="series-1",
+        title="Fixture",
+        book_index=1,
+        source_uri="fixture.txt",
+        metadata={},
+    )
+    chapter = ChapterArtifact(
+        chapter_id="chapter-1",
+        series_id="series-1",
+        book_id="book-1",
+        chapter_index=1,
+        title="One",
+        content=text,
+        source_id="source-1",
+        word_count=len(text.split()),
+        metadata={},
+    )
+    scene = SceneArtifact(
+        scene_id="scene-1",
+        series_id="series-1",
+        book_id="book-1",
+        chapter_id="chapter-1",
+        chapter_index=1,
+        scene_index=1,
+        title="Arrival",
+        summary="Taryn enters the Glass Palace.",
+        text=text,
+        word_count=len(text.split()),
+        metadata={},
+    )
+    identity = CanonicalIdentityBundle(
+        series_id="series-1",
+        provider_name="modal_xcore_litbank",
+        book_ids=["book-1"],
+        characters=[CanonicalCharacter(character_id="char-taryn", display_name="Taryn")],
+        alias_map={},
+    )
+    return book, chapter, scene, identity
+
+
+def test_entity_extraction_repairs_schema_valid_empty_response_once():
+    runtime = EmptyThenGroundedEntityRuntime()
+    agent = EntityAgent(store=None, reasoning_runtime=runtime)  # type: ignore[arg-type]
+    book, chapter, scene, identity = _entity_agent_inputs()
+
+    payloads = agent._extract_chapter_entities_with_fallback(
+        book=book,
+        chapter=chapter,
+        scene_slices=[{
+            "scene_id": scene.scene_id,
+            "chapter_index": 1,
+            "scene_index": 1,
+            "chunk_index": 1,
+            "summary": scene.summary,
+            "excerpt": scene.text,
+            "narrative_grounding": {},
+        }],
+        identity_bundle=identity,
+    )
+
+    assert runtime.entity_calls == 2
+    assert len(payloads[0].entities) == 1
+    assert "previous extraction returned an empty entities list" in runtime.prompts[1]
+
+
+def test_entity_extraction_fails_closed_after_one_empty_repair_for_long_source():
+    runtime = AlwaysEmptyEntityRuntime()
+    store = EntityStoreStub()
+    book, chapter, scene, identity = _entity_agent_inputs(text="The abandoned glass palace has a silver gate. " * 80)
+
+    with pytest.raises(RuntimeError, match="Entity extraction completeness failed"):
+        EntityAgent(store=store, reasoning_runtime=runtime).run(
+            series_id="series-1",
+            books=[book],
+            chapters=[chapter],
+            scenes=[scene],
+            identity_bundle=identity,
+        )
+
+    assert runtime.entity_calls == 2
+    assert store.persisted is None
+
+
+def test_entity_extraction_discards_model_invented_scene_ids():
+    class InventedSceneRuntime(StubReasoningRuntime):
+        def generate_json(self, prompt: str, **kwargs):
+            payload = super().generate_json(prompt, **kwargs)
+            if "key 'entities'" in prompt.lower():
+                payload["entities"][0]["scene_ids"] = ["scene-1", "chapter-999-scene-999"]
+            return payload
+
+    store = EntityStoreStub()
+    book, chapter, scene, identity = _entity_agent_inputs()
+    result = EntityAgent(store=store, reasoning_runtime=InventedSceneRuntime()).run(
+        series_id="series-1",
+        books=[book],
+        chapters=[chapter],
+        scenes=[scene],
+        identity_bundle=identity,
+    )
+
+    assert result["entities"][0]["mention_scene_ids"] == ["scene-1"]
 
 
 def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_path: Path):
