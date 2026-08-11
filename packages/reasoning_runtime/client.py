@@ -398,7 +398,11 @@ class ReasoningRuntimeClient:
                 tool_choice=tool_choice,
             )
         if self.mode == self.MODE_MISTRAL:
-            return self._generate_json_mistral(prompt)
+            return self._generate_json_mistral(
+                prompt,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
         if self.mode == self.MODE_GEMINI:
             return self._generate_json_gemini(prompt)
         raise ValueError(f"Unsupported mode '{self.mode}'.")
@@ -564,11 +568,23 @@ class ReasoningRuntimeClient:
         response.raise_for_status()
         return self._extract_general_compute_content(response.json() or {}).strip()
 
-    def _generate_json_mistral(self, prompt: str) -> dict[str, Any]:
+    def _generate_json_mistral(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        response_format: Optional[dict] = None,
+    ) -> dict[str, Any]:
         client = self._mistral_client_instance()
+        resolved_response_format = response_format or {"type": "json_object"}
         response = self._metered_call(
-            lambda: client.chat.complete(model=self.resolved_model_name(), messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}),
-            projected=_projected_text_usage(prompt, 4096), operation="generate_json", usage_extractor=_mistral_usage,
+            lambda: client.chat.complete(
+                model=self.resolved_model_name(),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                response_format=resolved_response_format,
+            ),
+            projected=_projected_text_usage(prompt, max_tokens), operation="generate_json", usage_extractor=_mistral_usage,
         )
         return self._safe_parse_json(str(response.choices[0].message.content or ""))
 

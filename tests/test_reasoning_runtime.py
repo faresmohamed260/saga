@@ -48,6 +48,50 @@ def test_mistral_native_usage_extraction_is_exact_and_mock_safe():
     }
 
 
+def test_mistral_json_generation_forwards_schema_and_output_limit():
+    config = ReasoningRuntimeConfig(
+        profiles={"default": ReasoningProfile(name="default", mode="mistral", max_retries=1)},
+        mistral_api_key="test-key",
+    )
+    client = create_reasoning_client(profile_name="default", config=config)
+    captured = {}
+
+    def complete(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="request-1",
+            usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3, cached_tokens=0),
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"answer":"ready"}'))],
+        )
+
+    client._mistral_client = SimpleNamespace(chat=SimpleNamespace(complete=complete))
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "answer",
+            "schema": {
+                "type": "object",
+                "properties": {"answer": {"type": "string"}},
+                "required": ["answer"],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        },
+    }
+
+    result = client.generate_json(
+        "Return an answer.",
+        strict=True,
+        max_tokens=321,
+        response_format=response_format,
+    )
+
+    assert result == {"answer": "ready"}
+    assert captured["max_tokens"] == 321
+    assert captured["response_format"] == response_format
+    assert client.last_request_metadata()["response_format_type"] == "json_schema"
+
+
 def test_wav_duration_is_available_for_per_minute_transcription_pricing():
     import io
     import wave
