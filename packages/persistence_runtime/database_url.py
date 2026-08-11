@@ -19,7 +19,9 @@ def build_database_url_from_env() -> str:
         return explicit_url
 
     host = _env("SAGA_SUPABASE_DB_HOST", "SUPABASE_DB_HOST", default="127.0.0.1")
-    port = _env("SAGA_SUPABASE_DB_PORT", "SUPABASE_DB_PORT", default="5432")
+    # Supavisor exposes transaction pooling on 6543. The session endpoint on
+    # 5432 pins one server connection per independently composed runtime pool.
+    port = _env("SAGA_SUPABASE_DB_PORT", "SUPABASE_DB_PORT", default="6543")
     database = _env("SAGA_SUPABASE_DB_NAME", "SUPABASE_DB_NAME", default="postgres")
     password = _env("SAGA_SUPABASE_DB_PASSWORD", "SUPABASE_DB_PASSWORD", "POSTGRES_PASSWORD")
     sslmode = _env("SAGA_SUPABASE_DB_SSLMODE", "SUPABASE_DB_SSLMODE", default="disable")

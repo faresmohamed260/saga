@@ -301,6 +301,26 @@ def test_persistence_runtime_builds_self_hosted_supabase_url_from_env(monkeypatc
     )
 
 
+def test_persistence_runtime_defaults_self_hosted_supabase_to_transaction_pooler(monkeypatch):
+    for key in (
+        "SAGA_SUPABASE_DB_URL",
+        "SUPABASE_DB_URL",
+        "DATABASE_URL",
+        "SAGA_SUPABASE_DB_PORT",
+        "SUPABASE_DB_PORT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SUPABASE_DB_HOST", "supabase-pooler")
+    monkeypatch.setenv("SUPABASE_DB_USER", "postgres")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "secret-password")
+
+    url = build_database_url_from_env()
+
+    assert url == (
+        "postgresql+psycopg://postgres:secret-password@supabase-pooler:6543/postgres?sslmode=disable"
+    )
+
+
 def test_persistence_profile_rejects_invalid_runtime_values():
     try:
         PersistenceProfile(name="", provider="supabase", mode="supabase_postgres")
