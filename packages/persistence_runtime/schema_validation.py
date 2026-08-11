@@ -5,8 +5,9 @@ from __future__ import annotations
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from packages.schema_revision import EXPECTED_SCHEMA_REVISION
 
-EXPECTED_SCHEMA_REVISION = "202608090400"
+
 REQUIRED_TABLES = frozenset({
     "provider_configs", "provider_statuses", "library_series", "library_books", "library_scenes", "library_records",
     "identity_series", "jobs", "job_logs", "generated_stories", "audiobook_runs", "audiobook_chapters",
