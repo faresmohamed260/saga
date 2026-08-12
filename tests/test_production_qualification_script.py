@@ -1,4 +1,22 @@
-from scripts.run_production_qualification import _qualification_queue_name, _request_cancellation, _resume_stage
+from scripts.run_production_qualification import (
+    _qualification_queue_name,
+    _request_cancellation,
+    _resume_stage,
+    _stage_timeout_seconds,
+)
+
+
+def test_qualification_uses_distinct_generation_deadlines():
+    assert _stage_timeout_seconds(
+        "canon_extraction",
+        standard_timeout_seconds=300,
+        generation_timeout_seconds=900,
+    ) == 300
+    assert _stage_timeout_seconds(
+        "visual_generation",
+        standard_timeout_seconds=300,
+        generation_timeout_seconds=900,
+    ) == 900
 
 
 def test_qualification_cancellation_is_requested_only_once():

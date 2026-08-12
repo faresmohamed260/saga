@@ -33,6 +33,7 @@ ALL_STAGES = [
     "audiobook_generation",
     "artifact_packaging",
 ]
+GENERATION_STAGES = {"narrative_generation", "visual_generation", "audiobook_generation"}
 
 
 def main() -> int:
@@ -41,6 +42,7 @@ def main() -> int:
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=2400)
     parser.add_argument("--stage-timeout-seconds", type=int, default=900)
+    parser.add_argument("--generation-stage-timeout-seconds", type=int, default=900)
     parser.add_argument("--preflight-timeout-seconds", type=int, default=30)
     parser.add_argument(
         "--visual-max-attempts", type=int, choices=range(1, 7), default=2
@@ -186,8 +188,10 @@ def main() -> int:
                         message=log.get("message"),
                         elapsed_seconds=round(time.monotonic() - started, 1),
                     )
-                if current_stage and time.monotonic() - stage_started > max(
-                    60, args.stage_timeout_seconds
+                if current_stage and time.monotonic() - stage_started > _stage_timeout_seconds(
+                    current_stage,
+                    standard_timeout_seconds=args.stage_timeout_seconds,
+                    generation_timeout_seconds=args.generation_stage_timeout_seconds,
                 ):
                     cancellation_reason = f"Stage deadline exceeded: {current_stage}"
                     cancellation_requested = _request_cancellation(
@@ -341,6 +345,18 @@ def _resume_stage(logs: list[dict[str, object]]) -> str:
         elif message in {"stage_cancelled", "stage_failed", "stage_rejected"}:
             current_stage = stage
     return current_stage
+
+
+def _stage_timeout_seconds(
+    stage: str,
+    *,
+    standard_timeout_seconds: int,
+    generation_timeout_seconds: int,
+) -> int:
+    configured = (
+        generation_timeout_seconds if stage in GENERATION_STAGES else standard_timeout_seconds
+    )
+    return max(60, int(configured))
 
 
 def _qualification_queue_name(run_id: str) -> str:
