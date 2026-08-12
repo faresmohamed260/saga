@@ -801,6 +801,7 @@ def test_retry_existing_renders_only_rejected_targets_with_new_seed(tmp_path: Pa
     assert second.decision.accepted is True
     assert [item.seed for item in second.renders] == [10, 11]
     assert len(provider.calls) == 2
+    assert "Retry corrections:" in provider.calls[1]["prompt"]
 
 
 def test_category_planner_accepts_top_level_entity_and_scene_lists(tmp_path: Path):

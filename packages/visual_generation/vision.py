@@ -22,7 +22,11 @@ class ReasoningVisionSemanticEvaluator:
         instruction = (
             "Evaluate this generated image against the production prompt. Return JSON only with scores from 0 to 1: "
             "prompt_alignment_score, subject_consistency_score, composition_score, photorealism_score, defect_score; "
-            "also return issues and hard_constraint_violations as lists of concise strings. A hard constraint is any explicit target or "
+            "also return issues and hard_constraint_violations as lists of concise strings, plus defect_observations as a list of objects. "
+            "Each defect object must contain category, severity (low, medium, high), confidence (0 to 1), and concise visible evidence. "
+            "Allowed categories are anatomy, character_count, clothing, footwear, identity_consistency, action_alignment, composition, "
+            "wrong_target, forbidden_subject, technical, and other. Explicitly inspect hands/fingers, required frozen action, whether the "
+            "requested target itself is shown, and whether the image is one continuous frame. A hard constraint is any explicit target or "
             "negative-prompt violation; when present, alignment must be at most 0.4 and defect score at least 0.6. Defect score is higher "
             "when there are duplicate subjects, malformed anatomy, "
             "black/blank regions, blur or soft focus when sharp focus is required, unreadable composition, text/watermarks, "
