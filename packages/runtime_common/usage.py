@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -48,7 +49,11 @@ def reserve_usage(*, projected: ProviderUsage, **attribution: Any) -> UsageReser
     governor = _USAGE_GOVERNOR.get()
     if governor is None:
         return None
-    reservation = governor.reserve(current_usage_attribution(**attribution), projected)
+    try:
+        reservation = governor.reserve(current_usage_attribution(**attribution), projected)
+    except Exception as exc:  # Accounting availability must not become provider availability.
+        warnings.warn(f"Usage reservation telemetry failed open: {type(exc).__name__}", RuntimeWarning, stacklevel=2)
+        return None
     if not reservation.authorized:
         raise UsageBudgetExceededError("; ".join(reservation.reasons) or "Provider usage budget exceeded.")
     return reservation
@@ -58,11 +63,19 @@ def settle_usage(reservation: UsageReservation | None, actual: ProviderUsage, *,
     governor = _USAGE_GOVERNOR.get()
     if governor is None or reservation is None:
         return {}
-    return governor.settle(reservation, actual, evidence=evidence)
+    try:
+        return governor.settle(reservation, actual, evidence=evidence)
+    except Exception as exc:
+        warnings.warn(f"Usage settlement telemetry failed open: {type(exc).__name__}", RuntimeWarning, stacklevel=2)
+        return {}
 
 
 def release_usage(reservation: UsageReservation | None, *, reason: str = "") -> dict[str, Any]:
     governor = _USAGE_GOVERNOR.get()
     if governor is None or reservation is None:
         return {}
-    return governor.release(reservation, reason=reason)
+    try:
+        return governor.release(reservation, reason=reason)
+    except Exception as exc:
+        warnings.warn(f"Usage release telemetry failed open: {type(exc).__name__}", RuntimeWarning, stacklevel=2)
+        return {}

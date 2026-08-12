@@ -115,7 +115,7 @@ class StageAgent:
                 if current and not current.accepted and previous_attempt >= max(1, request.max_attempts):
                     return {}
                 with usage_scope(
-                    governor=self.usage_governor, release_id=self.release_id, run_id=request.run_id,
+                    governor=self.usage_governor, release_id=self.release_id, project_id=request.project_id, run_id=request.run_id,
                     series_id=request.series_id, stage=self.stage, agent=f"{self.stage}_agent",
                 ):
                     outcome = self.binding.execute(request=request, outcomes=stage_context)

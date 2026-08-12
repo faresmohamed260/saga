@@ -17,7 +17,7 @@ from packages.persistence_runtime import (
     PersistenceRuntimeConfig,
     create_persistence_client,
 )
-from packages.runtime_common import ProviderUsage, UsageAttribution
+from packages.runtime_common import ProviderUsage, UsageAttribution, UsageBudgetExceededError, reserve_usage, settle_usage, usage_scope
 
 
 def _runtime(tmp_path: Path, *, rates: tuple[CostRate, ...] = ()):
@@ -27,9 +27,9 @@ def _runtime(tmp_path: Path, *, rates: tuple[CostRate, ...] = ()):
     return client, UsageGovernanceRuntime(store=client.usage, cost_rates=rates)
 
 
-def _attribution(run_id: str = "run-1") -> UsageAttribution:
+def _attribution(run_id: str = "run-1", project_id: str = "project-1") -> UsageAttribution:
     return UsageAttribution(
-        release_id="release-1", run_id=run_id, series_id="series-1", stage="canon_extraction",
+        release_id="release-1", project_id=project_id, run_id=run_id, series_id="series-1", stage="canon_extraction",
         agent="entity-agent", component="reasoning_runtime", provider="general_compute",
         account_alias="account-01", model="model-a", operation="generate_json",
     )
@@ -166,3 +166,50 @@ def test_settlement_after_reservation_expiry_does_not_understate_usage(tmp_path:
     assert summary["request_count"] == pytest.approx(1)
     assert summary["charge_count"] == 1
     assert runtime.reserve(_attribution("next-run"), ProviderUsage(request_count=1)).authorized is False
+
+
+def test_project_budget_and_breakdown_are_isolated(tmp_path: Path):
+    _, runtime = _runtime(tmp_path)
+    runtime.configure_policy(UsageBudgetPolicy(
+        policy_id="per-project-requests", scope_type="project", limits={"request_count": 1}, hard_limit=True,
+    ))
+
+    first = runtime.reserve(_attribution("run-a", "project-a"), ProviderUsage(request_count=1))
+    runtime.settle(first, ProviderUsage(request_count=1, source="provider", evidence_id="native-a"))
+    assert runtime.reserve(_attribution("run-b", "project-a"), ProviderUsage(request_count=1)).authorized is False
+
+    second = runtime.reserve(_attribution("run-c", "project-b"), ProviderUsage(request_count=1))
+    runtime.settle(second, ProviderUsage(request_count=1, source="measured", evidence_id="measured-b"))
+    assert runtime.summary(project_id="project-a")["provider_confirmed_coverage"] == pytest.approx(1.0)
+    assert runtime.summary(project_id="project-b")["measured_charge_count"] == 1
+    assert {row["project_id"] for row in runtime.breakdown(group_by="project_id")} == {"project-a", "project-b"}
+
+
+def test_usage_telemetry_storage_errors_fail_open_but_budget_denials_do_not():
+    class BrokenGovernor:
+        def reserve(self, attribution, projected):
+            raise ConnectionError("ledger unavailable")
+
+        def settle(self, reservation, actual, *, evidence=None):
+            raise ConnectionError("ledger unavailable")
+
+        def release(self, reservation, *, reason=""):
+            raise ConnectionError("ledger unavailable")
+
+    with usage_scope(governor=BrokenGovernor(), project_id="project-a"):
+        with pytest.warns(RuntimeWarning, match="failed open"):
+            reservation = reserve_usage(projected=ProviderUsage(request_count=1), provider="test")
+        assert reservation is None
+        assert settle_usage(None, ProviderUsage(request_count=1)) == {}
+
+    class DenyingGovernor:
+        def reserve(self, attribution, projected):
+            from packages.runtime_common import UsageReservation
+            return UsageReservation(
+                reservation_id="denied", attribution=attribution, projected=projected,
+                authorized=False, reasons=["hard budget reached"],
+            )
+
+    with usage_scope(governor=DenyingGovernor(), project_id="project-a"):
+        with pytest.raises(UsageBudgetExceededError, match="hard budget reached"):
+            reserve_usage(projected=ProviderUsage(request_count=1), provider="test")

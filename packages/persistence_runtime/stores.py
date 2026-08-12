@@ -1324,10 +1324,10 @@ class UsageLedgerStore:
                 existing = row
             return self._entry_dict(existing)
 
-    def list(self, *, run_id: str = "", provider: str = "", account_alias: str = "", entry_kind: str = "", since_ms: int = 0, limit: int = 1000) -> list[dict[str, Any]]:
+    def list(self, *, project_id: str = "", run_id: str = "", provider: str = "", account_alias: str = "", entry_kind: str = "", since_ms: int = 0, limit: int = 1000) -> list[dict[str, Any]]:
         with self.session_factory() as session:
             stmt = select(UsageLedgerRow)
-            for value, column in ((run_id, UsageLedgerRow.run_id), (provider, UsageLedgerRow.provider), (account_alias, UsageLedgerRow.account_alias), (entry_kind, UsageLedgerRow.entry_kind)):
+            for value, column in ((project_id, UsageLedgerRow.project_id), (run_id, UsageLedgerRow.run_id), (provider, UsageLedgerRow.provider), (account_alias, UsageLedgerRow.account_alias), (entry_kind, UsageLedgerRow.entry_kind)):
                 if value:
                     stmt = stmt.where(column == value)
             if since_ms:
@@ -1337,7 +1337,7 @@ class UsageLedgerStore:
 
     def _applicable_policies(self, session: Session, row: UsageLedgerRow) -> list[UsageBudgetPolicyRow]:
         policies = session.execute(select(UsageBudgetPolicyRow).where(UsageBudgetPolicyRow.enabled.is_(True))).scalars().all()
-        values = {"global": "", "run": row.run_id, "provider": row.provider, "account": row.account_alias, "model": row.model}
+        values = {"global": "", "project": row.project_id, "run": row.run_id, "provider": row.provider, "account": row.account_alias, "model": row.model}
         return [policy for policy in policies if policy.scope_type in values and (not policy.scope_value or policy.scope_value == values[policy.scope_type])]
 
     @staticmethod
@@ -1354,7 +1354,7 @@ class UsageLedgerStore:
             stmt = select(UsageLedgerRow)
             if cutoff:
                 stmt = stmt.where(UsageLedgerRow.timestamp_ms >= cutoff)
-            scope_columns = {"run": (UsageLedgerRow.run_id, candidate.run_id), "provider": (UsageLedgerRow.provider, candidate.provider),
+            scope_columns = {"project": (UsageLedgerRow.project_id, candidate.project_id), "run": (UsageLedgerRow.run_id, candidate.run_id), "provider": (UsageLedgerRow.provider, candidate.provider),
                              "account": (UsageLedgerRow.account_alias, candidate.account_alias), "model": (UsageLedgerRow.model, candidate.model)}
             scope = scope_columns.get(policy.scope_type)
             if scope is not None:
@@ -1389,6 +1389,7 @@ class UsageLedgerStore:
             entry_id=_required(payload.get("entry_id"), "entry_id"), reservation_id=_required(payload.get("reservation_id"), "reservation_id"),
             entry_kind=_required(payload.get("entry_kind"), "entry_kind"), timestamp_ms=int(payload.get("timestamp_ms") or _now_ms()),
             expires_at_ms=max(0, int(payload.get("expires_at_ms") or 0)), release_id=str(payload.get("release_id") or ""),
+            project_id=str(payload.get("project_id") or ""),
             run_id=str(payload.get("run_id") or ""), series_id=str(payload.get("series_id") or ""), stage=str(payload.get("stage") or ""),
             agent=str(payload.get("agent") or ""), component=str(payload.get("component") or ""), provider=str(payload.get("provider") or ""),
             account_alias=str(payload.get("account_alias") or ""), model=str(payload.get("model") or ""), operation=str(payload.get("operation") or ""),
@@ -1401,7 +1402,7 @@ class UsageLedgerStore:
         if row is None:
             return None
         result = {column: getattr(row, column) for column in (
-            "entry_id", "reservation_id", "entry_kind", "timestamp_ms", "expires_at_ms", "release_id", "run_id", "series_id", "stage", "agent",
+            "entry_id", "reservation_id", "entry_kind", "timestamp_ms", "expires_at_ms", "release_id", "project_id", "run_id", "series_id", "stage", "agent",
             "component", "provider", "account_alias", "model", "operation", "request_count", "input_tokens", "output_tokens", "cached_input_tokens",
             "compute_seconds", "image_count", "audio_seconds", "cost_usd", "cost_status", "pricing_version",
         )}

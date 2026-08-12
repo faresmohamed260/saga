@@ -57,6 +57,7 @@ class ProviderUsage(BaseModel):
 
 class UsageAttribution(BaseModel):
     release_id: str = ""
+    project_id: str = ""
     run_id: str = ""
     series_id: str = ""
     stage: str = ""

@@ -46,6 +46,7 @@ class ArtifactReference(BaseModel):
 class OrchestrationRequest(BaseModel):
     run_id: str
     series_id: str
+    project_id: str = ""
     story_id: str = ""
     blueprint_id: str = ""
     audiobook_run_id: str = ""
