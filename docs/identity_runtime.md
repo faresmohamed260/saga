@@ -8,6 +8,7 @@ Reusable active identity runtime for canonical character clustering, backed by t
 - Client: `packages/identity_runtime/client.py`
 - Contracts: `packages/identity_runtime/contracts.py`
 - Review policy: `packages/identity_runtime/review.py`
+- Pairwise evaluation: `packages/identity_runtime/canonicalization_evaluation.py`
 
 **Ownership**
 
@@ -33,6 +34,7 @@ These contracts capture:
 - rejected aliases
 - dropped clusters
 - structured rejection diagnostics
+- canonical merge provenance with every contributing provider cluster ID
 
 **Current deterministic policy**
 
@@ -47,6 +49,10 @@ The active review pass rejects:
 - ambiguous aliases claimed by multiple clusters
 
 The review pass preserves grounded named aliases when they remain stable character surface forms.
+
+The same pass canonicalizes fragmented provider clusters only when a provider alias claim and compatible name structure agree. Honorific, full/partial-name, and evidence-linked descriptor variants are supported. Shared surnames and unrelated clusters that merely claim a popular character name do not merge.
+
+Pairwise quality gates report precision, recall, F1, over-merge rate, fragmentation rate, and contamination rate from portable labeled datasets.
 
 **Persistence and reporting**
 
@@ -80,3 +86,10 @@ Observed before/after improvement versus earlier contaminated Holly Black runs:
 - removed narrator-style alias noise such as `my sister`, `your sister`, `Twin sister`, `this Heather`
 - removed obvious non-character clusters such as `Faerie`, `Revelers in rags`, and `The fiddler`
 - reduced pronoun pollution in canonical identity bundles
+
+Validated additionally against persisted `Once Upon a Broken Heart` RC36 data:
+
+- 343 reviewed provider clusters and 107 real scenes evaluated in 36.2 seconds without provider inference
+- `Evangeline`, `Evangeline Fox`, `Miss Fox`, `Little Fox`, and titled forms unified with source-cluster provenance
+- `Maximilian Fox`, `Liana Fox`, unrelated contaminated clusters, and a malformed combined-name cluster remained separate
+- curated 18-pair quality gate: precision 1.0, recall 1.0, F1 1.0, over-merge 0.0, fragmentation 0.0, contamination 0.0

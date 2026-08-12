@@ -1,0 +1,38 @@
+{
+  "source": {
+    "series_id": "rc36-worker-foundation-series-20260811-01",
+    "title": "Once Upon a Broken Heart",
+    "provider": "modal_xcore_litbank",
+    "note": "Curated from persisted RC36 reviewed provider clusters; aliases are retained only where needed to evaluate identity links and contamination traps."
+  },
+  "chapters": [
+    {
+      "chapter_index": 1,
+      "content": "Evangeline Fox introduced herself as Evangeline. Jacks later addressed her as Little Fox. Others called her Miss Fox, Princess Evangeline, Princess Evangeline Fox, and Miss Evangeline Fox. Maximilian Fox and Liana Fox are distinct people."
+    }
+  ],
+  "scenes": [
+    {
+      "scene_id": "rc36-identity-evidence",
+      "chapter_index": 1,
+      "text": "I'm Evangeline Fox. Little Fox, listen. Miss Fox entered. Maximilian Fox and Liana Fox remained separate people."
+    }
+  ],
+  "clusters": [
+    {"cluster_id": 1, "display_name": "Evangeline", "aliases": [], "proper_mentions": ["Evangeline"], "mention_count": 2342},
+    {"cluster_id": 2, "display_name": "Little Fox", "aliases": ["Evangeline", "Miss Fox"], "proper_mentions": ["Little Fox"], "mention_count": 1551},
+    {"cluster_id": 4, "display_name": "Mr. Knightlinger", "aliases": ["Evangeline", "Little Fox", "Jacks"], "proper_mentions": ["Mr. Knightlinger"], "mention_count": 900},
+    {"cluster_id": 5, "display_name": "Evangeline Fox", "aliases": ["Evangeline", "Miss Fox", "Little Fox"], "proper_mentions": ["Evangeline Fox"], "mention_count": 711},
+    {"cluster_id": 7, "display_name": "Miss Fox", "aliases": ["Evangeline"], "proper_mentions": ["Miss Fox"], "mention_count": 533},
+    {"cluster_id": 10, "display_name": "Prince Apollo", "aliases": ["Evangeline", "Apollo"], "proper_mentions": ["Prince Apollo"], "mention_count": 420},
+    {"cluster_id": 12, "display_name": "Miss Tourmaline", "aliases": ["Evangeline", "Miss Fox", "Evangeline Fox"], "proper_mentions": ["Miss Tourmaline"], "mention_count": 220},
+    {"cluster_id": 13, "display_name": "Princess Evangeline", "aliases": ["Evangeline"], "proper_mentions": ["Princess Evangeline"], "mention_count": 180},
+    {"cluster_id": 28, "display_name": "Princess Evangeline Fox", "aliases": ["Evangeline", "Little Fox", "EVANGELINE FOX"], "proper_mentions": ["Princess Evangeline Fox"], "mention_count": 78},
+    {"cluster_id": 29, "display_name": "Kristof Knightlinger Evangeline Fox", "aliases": ["Evangeline", "Evangeline Fox"], "proper_mentions": ["Kristof Knightlinger Evangeline Fox"], "mention_count": 74},
+    {"cluster_id": 32, "display_name": "Miss Evangeline Fox", "aliases": ["Evangeline"], "proper_mentions": ["Miss Evangeline Fox"], "mention_count": 69},
+    {"cluster_id": 65, "display_name": "Maximilian Fox", "aliases": ["Maximilian"], "proper_mentions": ["Maximilian Fox"], "mention_count": 30},
+    {"cluster_id": 176, "display_name": "Liana Fox", "aliases": ["the Fate Slayer"], "proper_mentions": ["Liana Fox"], "mention_count": 5}
+  ],
+  "same_identity_pairs": [[1, 2], [1, 5], [1, 7], [1, 13], [1, 28], [1, 32], [2, 5], [5, 7]],
+  "different_identity_pairs": [[1, 4], [1, 10], [1, 12], [1, 29], [1, 65], [1, 176], [5, 65], [5, 176], [65, 176], [4, 10]]
+}

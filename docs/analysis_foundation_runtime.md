@@ -65,6 +65,14 @@ The runner:
 - persists source, books, chapters, scenes, identity bundle, and runtime report
 - emits a quality audit and timing metadata
 
+**Narrative grounding policy**
+
+Narrator perspective uses narration-only pronoun evidence; quoted dialogue is tracked separately. Addressee resolution is deliberately high precision and scene-local. It accepts explicit second-person names, quoted vocatives, and unambiguous named speech recipients such as `whispered to <character>`.
+
+The runtime does not propagate a globally frequent addressee into scenes and does not treat a named speaker (`asked <character>`) as the listener. Addressee matching uses canonical display names rather than unrestricted aliases, and each accepted assignment carries an auditable `NarrativeEvidenceSpan`.
+
+Quality evaluation is provided by `evaluate_addressees(...)`, reporting precision, recall, F1, coverage, unsupported attribution rate, and contamination rate against portable labeled cases.
+
 **Current hardening behavior**
 
 - EPUB ingestion prefers metadata title and TOC titles when available

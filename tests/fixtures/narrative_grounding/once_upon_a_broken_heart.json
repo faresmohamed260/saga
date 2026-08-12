@@ -1,0 +1,14 @@
+[
+  {"case_id":"real-third-person-01","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-001-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-02","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-008-scene-003","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-03","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-012-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-04","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-017-scene-002","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-05","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-023-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-06","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-031-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-07","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-035-scene-002","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-08","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-041-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-09","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-045-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-10","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-048-scene-003","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-11","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-053-scene-001","expected_perspective":"third_person","expected_narrator_character_id":""},
+  {"case_id":"real-third-person-12","scene_id":"book-rc36-worker-foundation-series-20260811-01-once-upon-a-broken-heart-001-chapter-057-scene-002","expected_perspective":"third_person","expected_narrator_character_id":""}
+]

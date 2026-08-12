@@ -5,13 +5,20 @@ from pathlib import Path
 import pytest
 
 from packages.analysis_foundation import AnalysisFoundationRuntime, CanonicalIdentityBundle, SceneSegmentationAgent
-from packages.analysis_foundation.contracts import ChapterArtifact
+from packages.analysis_foundation.contracts import ChapterArtifact, SceneArtifact
 from packages.analysis_foundation.pipeline import (
+    _build_narrator_reference,
     _epub_document_title,
     _is_epub_terminal_document,
     _select_character_display_name,
     _should_include_epub_document,
     _split_paragraphs,
+)
+from packages.analysis_foundation.contracts import CanonicalCharacter
+from packages.analysis_foundation.narrative_grounding import (
+    ground_scene_narration,
+    narrative_grounding_summary,
+    split_narration_and_dialogue,
 )
 from packages.analysis_foundation.store import AnalysisFoundationStore
 from packages.identity_runtime.contracts import IdentityRuntimeResult
@@ -220,6 +227,163 @@ def test_analysis_foundation_persists_scene_narrative_grounding(tmp_path: Path):
     assert "char-jude" in grounding["addressee_character_ids"]
     persisted_scene = client.library.list_scenes(book_id=result.books[0].book_id, limit=1)[0]
     assert persisted_scene["payload"]["narrative_grounding"]["narrator_character_id"] == "char-taryn"
+
+
+def test_dialogue_pronouns_do_not_change_third_person_narrative_evidence():
+    text = (
+        "PART I The Tale of Evangeline Fox. Evangeline crossed the empty chapel. "
+        "“I came because my parents are dead, and I need you to help me,” she said."
+    )
+    narration, dialogue = split_narration_and_dialogue(text)
+
+    assert "I came" not in narration
+    assert "I came" in dialogue
+    bundle = CanonicalIdentityBundle.model_validate(
+        {
+            "series_id": "series-third-person",
+            "provider_name": "modal_xcore_litbank",
+            "narrator": {"perspective": "third_person"},
+        }
+    )
+    scene = SceneArtifact(
+        scene_id="scene-dialogue",
+        book_id="book-1",
+        chapter_index=1,
+        scene_index=1,
+        text=text,
+        summary="Evangeline asks for help.",
+    )
+
+    grounding = ground_scene_narration(scenes=[scene], identity_bundle=bundle)[0]
+
+    assert grounding.perspective == "third_person"
+    assert grounding.first_person_count == 0
+    assert grounding.dialogue_first_person_count == 4
+    assert grounding.raw_first_person_count == 4
+    summary = narrative_grounding_summary(
+        [scene.model_copy(update={"metadata": {"narrative_grounding": grounding.model_dump()}})]
+    )
+    assert summary["first_person_perspective_scene_count"] == 0
+    assert summary["third_person_perspective_scene_count"] == 1
+    assert summary["narration_first_person_evidence_scene_count"] == 0
+    assert summary["dialogue_first_person_evidence_scene_count"] == 1
+
+
+def test_perspective_inference_uses_narration_instead_of_quoted_dialogue():
+    chapter = ChapterArtifact(
+        chapter_id="chapter-1",
+        series_id="series-1",
+        book_id="book-1",
+        chapter_index=1,
+        title="One",
+        source_id="source-1",
+        content=(
+            "Evangeline walked home while she considered what he had told her. "
+            "“I need my book. I know you have it. Give it to me,” Luc said."
+        ),
+    )
+
+    narrator = _build_narrator_reference(
+        [chapter],
+        [CanonicalCharacter(character_id="char-e", display_name="Evangeline", mention_count=3)],
+    )
+
+    assert narrator.perspective == "third_person"
+    assert narrator.first_person_pronoun_count == 0
+    assert narrator.third_person_pronoun_count >= 3
+
+
+def test_perspective_inference_preserves_genuine_first_person_narration():
+    chapter = ChapterArtifact(
+        chapter_id="chapter-1",
+        series_id="series-1",
+        book_id="book-1",
+        chapter_index=1,
+        title="One",
+        source_id="source-1",
+        content="I walked home with my book because I knew it was mine.",
+    )
+
+    narrator = _build_narrator_reference([chapter], [])
+
+    assert narrator.perspective == "first_person"
+    assert narrator.first_person_pronoun_count == 4
+
+
+def test_addressee_grounding_requires_scene_local_identity_evidence():
+    bundle = CanonicalIdentityBundle.model_validate(
+        {
+            "series_id": "series-addressee",
+            "provider_name": "modal_xcore_litbank",
+            "characters": [
+                {"character_id": "char-jacks", "display_name": "Jacks"},
+                {"character_id": "char-evangeline", "display_name": "Evangeline"},
+            ],
+            "narrator": {"perspective": "third_person"},
+        }
+    )
+    scenes = [
+        SceneArtifact(
+            scene_id="scene-unknown",
+            book_id="book-1",
+            chapter_index=1,
+            scene_index=1,
+            text='“You should leave. You cannot stay here,” she said.',
+            summary="An unnamed speaker issues a warning.",
+        ),
+        SceneArtifact(
+            scene_id="scene-inferable",
+            book_id="book-1",
+            chapter_index=1,
+            scene_index=2,
+            text='“You need to leave now,” Evangeline whispered to Jacks.',
+            summary="Evangeline warns Jacks.",
+        ),
+        SceneArtifact(
+            scene_id="scene-speaker",
+            book_id="book-1",
+            chapter_index=1,
+            scene_index=3,
+            text='“Why are you nervous?” asked Evangeline.',
+            summary="Evangeline asks an unnamed listener.",
+        ),
+    ]
+
+    groundings = ground_scene_narration(scenes=scenes, identity_bundle=bundle)
+
+    assert groundings[0].addressee_character_ids == []
+    assert groundings[1].addressee_character_ids == ["char-jacks"]
+    assert [item.kind for item in groundings[1].evidence_spans] == ["named_speech_recipient"]
+    assert groundings[2].addressee_character_ids == []
+
+
+def test_addressee_grounding_does_not_promote_identity_aliases_without_display_name_evidence():
+    bundle = CanonicalIdentityBundle.model_validate(
+        {
+            "series_id": "series-alias",
+            "provider_name": "modal_xcore_litbank",
+            "characters": [
+                {
+                    "character_id": "char-knightlinger",
+                    "display_name": "Mr. Knightlinger",
+                    "aliases": ["Coward"],
+                }
+            ],
+            "narrator": {"perspective": "third_person"},
+        }
+    )
+    scene = SceneArtifact(
+        scene_id="scene-alias",
+        book_id="book-1",
+        chapter_index=1,
+        scene_index=1,
+        text='“Coward,” she coughed.',
+        summary="A generic insult is spoken.",
+    )
+
+    grounding = ground_scene_narration(scenes=[scene], identity_bundle=bundle)[0]
+
+    assert grounding.addressee_character_ids == []
 
 
 def test_epub_document_filters_frontmatter_and_titles_content():

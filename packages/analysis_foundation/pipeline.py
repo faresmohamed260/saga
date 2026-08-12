@@ -33,6 +33,7 @@ from packages.persistence_runtime import PersistenceRuntimeClient
 from packages.analysis_foundation.narrative_grounding import (
     apply_scene_narrative_grounding,
     narrative_grounding_summary,
+    split_narration_and_dialogue,
 )
 
 
@@ -1009,7 +1010,8 @@ def _character_scene_ids(aliases: list[str], scenes: list[SceneArtifact]) -> lis
 
 
 def _build_narrator_reference(chapters: list[ChapterArtifact], characters: list[CanonicalCharacter]) -> NarratorReferenceData:
-    tokens = re.findall(r"[a-zA-Z']+", "\n".join(chapter.content for chapter in chapters).casefold())
+    narration = "\n".join(split_narration_and_dialogue(chapter.content)[0] for chapter in chapters)
+    tokens = re.findall(r"[a-zA-Z']+", narration.casefold())
     first_count = sum(1 for token in tokens if token in FIRST_PERSON_PRONOUNS)
     third_count = sum(1 for token in tokens if token in THIRD_PERSON_PRONOUNS)
     perspective = "first_person" if first_count > third_count else "third_person"

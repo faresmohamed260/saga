@@ -318,9 +318,8 @@ They should not reconstruct canon ad hoc from source text unless explicitly oper
 
 ### Remaining Hardening
 
-- provider-native token/compute usage and price-rate telemetry where upstream APIs expose it
 - stricter visual anatomy/action-alignment policy beyond the current automated acceptance thresholds
 
 ## Immediate Next Step
 
-Merge the stabilization pull request after CI passes, then publish immutable images from `main`. The next implementation slice should add provider-native cost telemetry; visual quality-policy hardening follows as a separate concern.
+Merge the stabilization pull request after CI passes, then publish immutable images from `main`. Provider usage telemetry now distinguishes confirmed and measured units with project-level attribution; the next implementation slice is visual quality-policy hardening.

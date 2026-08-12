@@ -9,6 +9,7 @@ from packages.identity_runtime.contracts import (
     IdentityAliasEvidence,
     IdentityCluster,
     IdentityGroundingReviewResult,
+    IdentityMergeEvidence,
     IdentityQualityDiagnostic,
     ReviewedIdentityCluster,
 )
@@ -75,6 +76,8 @@ GENERIC_ENTITY_TERMS = {
 }
 GENERIC_SINGLETON_TERMS = {"some", "there", "here", "someone", "something", "everyone", "everybody", "nobody", "nothing"}
 TITLE_WORDS = {"mr", "mrs", "ms", "sir", "lord", "lady", "king", "queen", "prince", "princess", "general", "high"}
+IDENTITY_TITLES = TITLE_WORDS | {"miss", "dr", "doctor", "captain"}
+IDENTITY_DESCRIPTORS = {"little", "young", "old"}
 PRONOUN_ONLY_FORMS = {
     "i",
     "me",
@@ -239,13 +242,16 @@ def review_identity_clusters(
         reviewed.append(reviewed_cluster)
         diagnostics.extend(cluster_diagnostics)
 
+    canonical_reviewed, merge_evidence = _canonicalize_reviewed_clusters(reviewed, prepared_clusters)
     return IdentityGroundingReviewResult(
-        reviewed_clusters=reviewed,
+        reviewed_clusters=canonical_reviewed,
         diagnostics=diagnostics,
-        kept_cluster_count=sum(1 for item in reviewed if item.keep_cluster),
+        kept_cluster_count=sum(1 for item in canonical_reviewed if item.keep_cluster),
         dropped_cluster_count=sum(1 for item in reviewed if not item.keep_cluster),
-        accepted_alias_count=sum(len(item.accepted_aliases) for item in reviewed),
+        accepted_alias_count=sum(len(item.accepted_aliases) for item in canonical_reviewed),
         rejected_alias_count=sum(len(item.rejected_aliases) for item in reviewed),
+        merge_count=sum(max(0, len(item.source_cluster_ids) - 1) for item in canonical_reviewed),
+        merge_evidence=merge_evidence,
     )
 
 
@@ -284,12 +290,176 @@ def _reviewed_cluster(
     )
     return ReviewedIdentityCluster(
         cluster=reviewed_cluster,
+        source_cluster_ids=[int(cluster.cluster_id or 0)],
         keep_cluster=keep_cluster,
         accepted_aliases=accepted_aliases,
         rejected_aliases=rejected_aliases,
         evidence=evidence,
         diagnostics=diagnostics,
     )
+
+
+def _canonicalize_reviewed_clusters(
+    reviewed: list[ReviewedIdentityCluster],
+    raw_clusters: list[IdentityCluster],
+) -> tuple[list[ReviewedIdentityCluster], list[IdentityMergeEvidence]]:
+    kept = [item for item in reviewed if item.keep_cluster]
+    dropped = [item for item in reviewed if not item.keep_cluster]
+    if len(kept) < 2:
+        return reviewed, []
+
+    raw_by_id = {int(item.cluster_id or 0): item for item in raw_clusters}
+    parent = list(range(len(kept)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    pair_signals: dict[tuple[int, int], list[str]] = {}
+    for left_index, left in enumerate(kept):
+        for right_index in range(left_index + 1, len(kept)):
+            right = kept[right_index]
+            signals = _merge_signals(
+                left.cluster,
+                right.cluster,
+                raw_by_id=raw_by_id,
+            )
+            if not signals:
+                continue
+            union(left_index, right_index)
+            pair_signals[(left_index, right_index)] = signals
+
+    groups: dict[int, list[int]] = {}
+    for index in range(len(kept)):
+        groups.setdefault(find(index), []).append(index)
+
+    canonical: list[ReviewedIdentityCluster] = []
+    evidence_rows: list[IdentityMergeEvidence] = []
+    for indices in groups.values():
+        members = [kept[index] for index in indices]
+        if len(members) == 1:
+            canonical.append(members[0])
+            continue
+        merged = _merge_reviewed_group(members)
+        canonical.append(merged)
+        signals = _unique_strings(
+            [signal for pair, values in pair_signals.items() if pair[0] in indices and pair[1] in indices for signal in values]
+        )
+        evidence_rows.append(
+            IdentityMergeEvidence(
+                source_cluster_ids=merged.source_cluster_ids,
+                source_display_names=_unique_strings([item.cluster.display_name for item in members]),
+                canonical_display_name=merged.cluster.display_name,
+                signals=signals,
+            )
+        )
+    canonical.sort(key=lambda item: (-int(item.cluster.mention_count or 0), item.cluster.display_name.casefold()))
+    return [*canonical, *dropped], evidence_rows
+
+
+def _merge_signals(
+    left: IdentityCluster,
+    right: IdentityCluster,
+    *,
+    raw_by_id: dict[int, IdentityCluster],
+) -> list[str]:
+    left_name, right_name = _clean_name(left.display_name), _clean_name(right.display_name)
+    if not left_name or not right_name:
+        return []
+    if _normalize_name(left_name) == _normalize_name(right_name):
+        return ["same_normalized_display_name"]
+    if len(left_name.split()) > 3 or len(right_name.split()) > 3:
+        return []
+
+    left_raw = raw_by_id.get(int(left.cluster_id or 0), left)
+    right_raw = raw_by_id.get(int(right.cluster_id or 0), right)
+    left_claims = {_normalize_name(item) for item in _candidate_aliases(left_raw, display_name=left_name)}
+    right_claims = {_normalize_name(item) for item in _candidate_aliases(right_raw, display_name=right_name)}
+    left_claims_right = _normalize_name(right_name) in left_claims
+    right_claims_left = _normalize_name(left_name) in right_claims
+    if not left_claims_right and not right_claims_left:
+        return []
+
+    left_core, left_modifier = _identity_name_parts(left_name)
+    right_core, right_modifier = _identity_name_parts(right_name)
+    if not left_core or not right_core:
+        return []
+    overlap = left_core & right_core
+    if not overlap:
+        return []
+    if not (left_core <= right_core or right_core <= left_core):
+        return []
+
+    signals = ["provider_alias_claim", "compatible_name_structure"]
+    if left_claims_right and right_claims_left:
+        signals.append("reciprocal_provider_alias_claim")
+    if left_modifier == "descriptor" or right_modifier == "descriptor":
+        descriptor_claims = left_claims if left_modifier == "descriptor" else right_claims
+        complete_core = right_core if left_modifier == "descriptor" else left_core
+        if not any(_identity_name_parts(alias)[0] & (complete_core - overlap) for alias in descriptor_claims):
+            return []
+        signals.append("descriptor_linked_to_distinctive_name")
+    elif left_modifier == "title" or right_modifier == "title":
+        signals.append("title_or_honorific_variant")
+    else:
+        signals.append("partial_full_name_variant")
+    return signals
+
+
+def _identity_name_parts(value: str) -> tuple[set[str], str]:
+    tokens = [token.casefold().strip(".") for token in _clean_name(value).split() if token]
+    modifier = ""
+    if tokens and tokens[0] in IDENTITY_TITLES:
+        modifier = "title"
+        tokens = tokens[1:]
+    elif tokens and tokens[0] in IDENTITY_DESCRIPTORS:
+        modifier = "descriptor"
+        tokens = tokens[1:]
+    return set(tokens), modifier
+
+
+def _merge_reviewed_group(members: list[ReviewedIdentityCluster]) -> ReviewedIdentityCluster:
+    canonical_member = sorted(members, key=_canonical_member_score)[0]
+    display_name = canonical_member.cluster.display_name
+    source_names = [item.cluster.display_name for item in members]
+    accepted_aliases = _unique_strings(
+        [*source_names, *[alias for item in members for alias in item.accepted_aliases]]
+    )
+    accepted_aliases = [alias for alias in accepted_aliases if _normalize_name(alias) != _normalize_name(display_name)]
+    source_ids = sorted({cluster_id for item in members for cluster_id in item.source_cluster_ids})
+    merged_cluster = IdentityCluster(
+        cluster_id=min(source_ids),
+        display_name=display_name,
+        aliases=accepted_aliases,
+        mentions=_unique_strings([mention for item in members for mention in item.cluster.mentions]),
+        mention_count=max(int(item.cluster.mention_count or 0) for item in members),
+        proper_mentions=_unique_strings([display_name, *source_names, *accepted_aliases]),
+        pronoun_mentions=_unique_strings([mention for item in members for mention in item.cluster.pronoun_mentions]),
+    )
+    return ReviewedIdentityCluster(
+        cluster=merged_cluster,
+        source_cluster_ids=source_ids,
+        keep_cluster=True,
+        accepted_aliases=accepted_aliases,
+        rejected_aliases=_unique_strings([alias for item in members for alias in item.rejected_aliases if alias not in source_names]),
+        evidence=[evidence for item in members for evidence in item.evidence],
+        diagnostics=[diagnostic for item in members for diagnostic in item.diagnostics],
+    )
+
+
+def _canonical_member_score(item: ReviewedIdentityCluster) -> tuple[int, int, int, int, str]:
+    name = _clean_name(item.cluster.display_name)
+    core, modifier = _identity_name_parts(name)
+    modifier_penalty = 1 if modifier else 0
+    descriptor_penalty = 1 if modifier == "descriptor" else 0
+    return (descriptor_penalty, modifier_penalty, -len(core), -int(item.cluster.mention_count or 0), name.casefold())
 
 
 def _select_display_name(cluster: IdentityCluster) -> str:
