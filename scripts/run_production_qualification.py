@@ -53,10 +53,11 @@ def main() -> int:
     parser.add_argument("--series-id", default="")
     parser.add_argument("--report", default="")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--stop-after-stage", choices=ALL_STAGES, default="artifact_packaging")
     args = parser.parse_args()
     if args.resume:
         os.environ["SAGA_CANON_RESUME_STAGES"] = (
-            "event_extraction,entity_extraction,relationship_extraction"
+            "chapter_canon_extraction"
         )
 
     source = Path(args.source).resolve()
@@ -80,14 +81,15 @@ def main() -> int:
         request = OrchestrationRequest(
             run_id=run_id,
             series_id=series_id,
+            project_id=f"qualification-project-{args.release_id}",
             source_paths=[str(source)],
             premise="During the first winter after the war, a court archivist discovers that a disputed Solstice oath could reopen an old alliance or destroy the fragile peace.",
             target_audience="adult fantasy readers",
             tone="intimate, wintry, politically tense, and hopeful",
             desired_chapter_count=1,
-            selected_stages=ALL_STAGES,
-            include_visuals=True,
-            include_audiobook=True,
+            selected_stages=[args.stop_after_stage],
+            include_visuals=args.stop_after_stage in {"visual_generation", "artifact_packaging"},
+            include_audiobook=args.stop_after_stage in {"audiobook_generation", "artifact_packaging"},
             max_attempts=args.max_attempts,
             execution_limits=OrchestrationExecutionLimits(
                 target_words_per_scene=100,
@@ -102,6 +104,10 @@ def main() -> int:
                 max_visual_attempts=args.visual_max_attempts,
                 audiobook_max_chapters=1,
                 audiobook_max_segment_chars=900,
+                provider_request_limits={
+                    "analysis_foundation": {"modal": 1},
+                    "canon_extraction": {"mistral": 40},
+                },
             ),
             metadata={
                 "validation_kind": "fresh_production_qualification",
@@ -121,7 +127,11 @@ def main() -> int:
             and queued
             and queued.get("status") in {"cancelled", "dead_letter"}
         ):
-            queued = service.retry(request, max_attempts=args.max_attempts)
+            queued = service.retry(
+                request,
+                max_attempts=args.max_attempts,
+                backoff_seconds=max(1, args.retry_backoff_seconds),
+            )
         if queued is None:
             raise RuntimeError("Qualification queue submission did not return an item.")
         queue_id = str(queued["queue_id"])

@@ -817,7 +817,8 @@ class ExecutionQueueStore:
 
     def requeue(
         self, queue_id: str, *, payload: dict[str, Any] | None = None, priority: int | None = None,
-        max_attempts: int | None = None, now_ms: int | None = None,
+        max_attempts: int | None = None, backoff_seconds: int | None = None,
+        now_ms: int | None = None,
     ) -> dict[str, Any] | None:
         now = int(now_ms or _now_ms())
         with self.session_factory.begin() as session:
@@ -834,6 +835,8 @@ class ExecutionQueueStore:
                 row.priority = int(priority)
             if max_attempts is not None:
                 row.max_attempts = max(1, int(max_attempts))
+            if backoff_seconds is not None:
+                row.backoff_seconds = max(0, int(backoff_seconds))
             row.status = "queued"
             row.available_at_ms = now
             row.attempt_count = 0

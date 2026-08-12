@@ -71,8 +71,12 @@ class VersionedDeliverablePackager:
             created_at=int(time.time()),
             artifacts=artifacts,
             stage_lineage=[outcomes[name] for name in outcomes],
-            provenance=bundle.provenance,
-            metadata={"chapter_count": len(bundle.chapters), "epub_sha256": hashlib.sha256(epub).hexdigest()},
+            provenance={**bundle.provenance, "project_id": request.project_id},
+            metadata={
+                "project_id": request.project_id,
+                "chapter_count": len(bundle.chapters),
+                "epub_sha256": hashlib.sha256(epub).hexdigest(),
+            },
         )
         manifest_ref = self.sink.store_manifest(
             request=resolved_request,

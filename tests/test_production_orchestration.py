@@ -131,7 +131,7 @@ def test_character_world_stage_accepts_empty_world_when_canon_has_no_entities():
         },
     )()
     inspector.canon = type("Canon", (), {"list_entities": lambda self, series_id: []})()
-    request = OrchestrationRequest(run_id="run-1", series_id="series-1")
+    request = OrchestrationRequest(run_id="run-1", series_id="series-1", project_id="project-1")
 
     outcome = inspector.character_world_modeling(request, {})
 
@@ -202,7 +202,7 @@ def _runtime(tmp_path: Path, bindings, sink, *, client=None, version_overrides=N
 
 def _request(run_id="run-1", **kwargs):
     payload = {
-        "run_id": run_id, "series_id": "series-1", "story_id": "story-1",
+        "run_id": run_id, "series_id": "series-1", "project_id": "project-1", "story_id": "story-1",
         "selected_stages": ["artifact_packaging"], "include_visuals": False, "include_audiobook": False,
     }
     payload.update(kwargs)

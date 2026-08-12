@@ -52,6 +52,7 @@ class ExecutionQueueRuntime:
             payload={"orchestration_request": submission.request.model_dump()},
             priority=submission.priority,
             max_attempts=submission.max_attempts,
+            backoff_seconds=submission.backoff_seconds,
         )
 
     def claim(self, *, worker_id: str, lease_seconds: int, now_ms: int | None = None) -> dict[str, Any] | None:

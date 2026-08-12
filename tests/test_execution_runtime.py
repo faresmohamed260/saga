@@ -113,6 +113,7 @@ def _request(run_id: str, series_id: str = "series-1"):
     return OrchestrationRequest(
         run_id=run_id,
         series_id=series_id,
+        project_id="project-1",
         story_id=f"story-{series_id}",
         selected_stages=["artifact_packaging"],
         include_visuals=False,
@@ -162,6 +163,7 @@ def test_retry_resets_only_top_level_orchestration_checkpoint(monkeypatch):
 
         def requeue(self, submission):
             assert submission.queue_id == queue_id
+            assert submission.backoff_seconds == 60
             return {"status": "queued"}
 
     deleted = []
@@ -173,7 +175,7 @@ def test_retry_resets_only_top_level_orchestration_checkpoint(monkeypatch):
     service.queue = QueueStub()
     service.persistence = SimpleNamespace(engine=object())
 
-    assert service.retry(request) == {"status": "queued"}
+    assert service.retry(request, backoff_seconds=60) == {"status": "queued"}
     assert deleted == ["run-retry"]
 
 
@@ -520,10 +522,13 @@ def test_dead_letter_can_be_explicitly_requeued_with_new_payload(tmp_path: Path)
         retryable=False,
     )
     assert failed["status"] == "dead_letter"
-    replay = store.requeue("queue-replay", payload={"version": 2}, max_attempts=2)
+    replay = store.requeue(
+        "queue-replay", payload={"version": 2}, max_attempts=2, backoff_seconds=60,
+    )
     assert replay["status"] == "queued"
     assert replay["attempt_count"] == 0
     assert replay["payload"] == {"version": 2}
+    assert replay["backoff_seconds"] == 60
 
 
 def test_terminal_purge_is_scoped_and_rejects_active_work(tmp_path: Path):

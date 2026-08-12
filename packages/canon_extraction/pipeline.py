@@ -32,7 +32,8 @@ from packages.reasoning_runtime import ReasoningRuntimeClient
 from packages.runtime_common import CancellationChecker, raise_if_cancelled
 
 SCENE_SLICE_BATCH_SIZE = max(1, int(os.getenv("SAGA_CANON_SCENE_SLICE_BATCH_SIZE") or "12"))
-CANON_EXTRACTION_PARALLELISM = max(1, int(os.getenv("SAGA_CANON_EXTRACTION_PARALLELISM") or "4"))
+CANON_EXTRACTION_PARALLELISM = max(1, int(os.getenv("SAGA_CANON_EXTRACTION_PARALLELISM") or "3"))
+CANON_CHAPTER_MAX_TOKENS = max(3000, int(os.getenv("SAGA_CANON_CHAPTER_MAX_TOKENS") or "8000"))
 MAX_EVENTS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_EVENTS_PER_SCENE") or "5"))
 MAX_ENTITIES_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_ENTITIES_PER_SCENE") or "24"))
 MAX_RELATIONSHIPS_PER_SCENE = max(1, int(os.getenv("SAGA_CANON_MAX_RELATIONSHIPS_PER_SCENE") or "14"))
@@ -104,7 +105,7 @@ class SceneEventExtraction(BaseModel):
 
 class SceneEntityExtraction(BaseModel):
     canonical_name: str
-    entity_type: str
+    entity_type: str = ""
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
     scene_ids: list[str] = Field(default_factory=list)
@@ -127,6 +128,12 @@ class EntitiesPayload(BaseModel):
 
 
 class RelationshipsPayload(BaseModel):
+    relationships: list[SceneRelationshipExtraction] = Field(default_factory=list)
+
+
+class CanonChapterPayload(BaseModel):
+    events: list[SceneEventExtraction] = Field(default_factory=list)
+    entities: list[SceneEntityExtraction] = Field(default_factory=list)
     relationships: list[SceneRelationshipExtraction] = Field(default_factory=list)
 
 
@@ -817,6 +824,220 @@ class RelationshipAgent:
             ]
 
 
+class ChapterCanonAgent:
+    """Extract all chapter canon in one bounded structured request."""
+
+    def __init__(self, *, store: CanonExtractionStore, reasoning_runtime: ReasoningRuntimeClient, cancellation_checker: CancellationChecker | None = None) -> None:
+        self.store = store
+        self.reasoning_runtime = reasoning_runtime
+        self.cancellation_checker = cancellation_checker
+
+    def run(
+        self, *, series_id: str, books: list[BookArtifact], chapters: list[ChapterArtifact],
+        scenes: list[SceneArtifact], identity_bundle: CanonicalIdentityBundle,
+    ) -> dict[str, Any]:
+        book_map = {book.book_id: book for book in books}
+        chapter_map = {(chapter.book_id, chapter.chapter_index): chapter for chapter in chapters}
+        scene_groups = _group_scenes_by_chapter(scenes)
+        jobs: list[dict[str, Any]] = []
+        for (book_id, chapter_index), chapter_scenes in scene_groups.items():
+            chapter = chapter_map.get((book_id, chapter_index))
+            if chapter is None:
+                continue
+            scene_slices = _scene_slices(chapter_scenes)
+            jobs.append({
+                "job_index": len(jobs),
+                "job_id": _canon_stage_job_id(
+                    stage_name="chapter_canon_extraction", book_id=book_id,
+                    chapter_index=chapter_index, scene_slices=scene_slices,
+                ),
+                "book_id": book_id,
+                "chapter_index": chapter_index,
+                "book": book_map[book_id],
+                "chapter": chapter,
+                "scene_slices": scene_slices,
+            })
+
+        stage_name = "chapter_canon_extraction"
+        resumed = self.store.list_stage_jobs(series_id=series_id, stage_name=stage_name) if _resume_stage_enabled(stage_name) else {}
+        if not _resume_stage_enabled(stage_name):
+            self.store.delete_stage_jobs(series_id=series_id, stage_name=stage_name)
+
+        def run_job(job: dict[str, Any]) -> dict[str, Any]:
+            raise_if_cancelled(self.cancellation_checker)
+            runtime = _clone_reasoning_runtime(self.reasoning_runtime)
+            started_at = time.perf_counter()
+            prompt = _build_chapter_canon_prompt(
+                book=job["book"], chapter=job["chapter"],
+                scene_slices=list(job["scene_slices"]), identity_bundle=identity_bundle,
+            )
+            payload = runtime.generate_json(
+                prompt, strict=True, max_tokens=CANON_CHAPTER_MAX_TOKENS,
+                response_format=_structured_response_format("canon_chapter", CanonChapterPayload),
+                cancellation_checker=self.cancellation_checker,
+            )
+            if payload.get("error"):
+                raise RuntimeError(f"Chapter canon extraction failed: {payload.get('error')}")
+            validated = CanonChapterPayload.model_validate(
+                _validate_extraction_payload(CanonChapterPayload, payload, "Chapter canon extraction")
+            )
+            result = {
+                "job_index": int(job["job_index"]), "job_id": str(job["job_id"]),
+                "book_id": str(job["book_id"]), "chapter_index": int(job["chapter_index"]),
+                "scene_slices": list(job["scene_slices"]), "payload": validated.model_dump(),
+                "metadata": _request_metadata_with_job_stats(
+                    runtime, started_at=started_at, scene_slice_count=len(job["scene_slices"]),
+                ),
+            }
+            self.store.upsert_stage_job(
+                series_id=series_id, stage_name=stage_name, job_id=str(job["job_id"]),
+                job_index=int(job["job_index"]), payload=result,
+            )
+            return result
+
+        completed = [resumed[str(job["job_id"])] for job in jobs if str(job["job_id"]) in resumed]
+        missing = [job for job in jobs if str(job["job_id"]) not in resumed]
+        completed.extend(_run_ordered_parallel_jobs(missing, run_job, cancellation_checker=self.cancellation_checker))
+        completed.sort(key=lambda item: int(item.get("job_index") or 0))
+        return self._materialize(
+            series_id=series_id, scenes=scenes, identity_bundle=identity_bundle,
+            jobs=completed, planned_job_count=len(jobs), resumed_job_count=len(resumed),
+        )
+
+    def _materialize(
+        self, *, series_id: str, scenes: list[SceneArtifact], identity_bundle: CanonicalIdentityBundle,
+        jobs: list[dict[str, Any]], planned_job_count: int, resumed_job_count: int,
+    ) -> dict[str, Any]:
+        scene_map = {scene.scene_id: scene for scene in scenes}
+        entities: dict[str, EntityArtifact] = {}
+        entity_counts: dict[str, int] = {}
+        metadata_rows = [dict(job.get("metadata") or {}) for job in jobs]
+
+        for job in jobs:
+            payload = CanonChapterPayload.model_validate(job.get("payload") or {})
+            valid_scene_ids = {str(item.get("scene_id") or "") for item in job.get("scene_slices") or []}
+            for item in payload.entities:
+                name = normalize_entity_name(item.canonical_name)
+                if not _should_keep_entity_name(name, identity_bundle=identity_bundle):
+                    continue
+                scene_ids = [
+                    scene_id for scene_id in sorted(set(item.scene_ids))
+                    if scene_id in valid_scene_ids and entity_counts.get(scene_id, 0) < MAX_ENTITIES_PER_SCENE
+                ]
+                if not scene_ids:
+                    continue
+                for scene_id in scene_ids:
+                    entity_counts[scene_id] = entity_counts.get(scene_id, 0) + 1
+                entity_id = _entity_id(name)
+                artifact = EntityArtifact(
+                    entity_id=entity_id, series_id=series_id, canonical_name=name,
+                    entity_type=_normalize_entity_type(item.entity_type, name=name, description=item.description),
+                    description=item.description.strip(), aliases=_unique_strings(item.aliases),
+                    mention_scene_ids=scene_ids, book_ids=[str(job["book_id"])],
+                    metadata={"reasoning_provider": self.reasoning_runtime.provider_name(), "reasoning_model": self.reasoning_runtime.resolved_model_name()},
+                )
+                existing = entities.get(entity_id)
+                entities[entity_id] = artifact if existing is None else existing.model_copy(update={
+                    "description": existing.description or artifact.description,
+                    "aliases": _unique_strings([*existing.aliases, *artifact.aliases]),
+                    "mention_scene_ids": sorted(set([*existing.mention_scene_ids, *artifact.mention_scene_ids])),
+                    "book_ids": sorted(set([*existing.book_ids, *artifact.book_ids])),
+                })
+        persisted_entities = self.store.replace_entities(
+            series_id=series_id, entities=sorted(entities.values(), key=lambda item: item.canonical_name.casefold())
+        )
+        entity_name_to_id = _entity_name_to_id(persisted_entities)
+
+        events: list[EventArtifact] = []
+        event_keys: set[tuple[str, str, str, str]] = set()
+        event_counts: dict[str, int] = {}
+        for job in jobs:
+            payload = CanonChapterPayload.model_validate(job.get("payload") or {})
+            for item in payload.events:
+                scene = scene_map.get(item.scene_id)
+                if scene is None or event_counts.get(scene.scene_id, 0) >= MAX_EVENTS_PER_SCENE:
+                    continue
+                key = (scene.scene_id, _normalize_label(item.title), _normalize_label(item.event_type), _normalize_label(item.summary[:120]))
+                if key in event_keys:
+                    continue
+                event_keys.add(key)
+                event_counts[scene.scene_id] = event_counts.get(scene.scene_id, 0) + 1
+                grounding = _scene_narrative_grounding(scene)
+                participant_refs = _resolve_participant_refs(
+                    _augment_participant_names_from_event_text(
+                        item.participant_names, identity_bundle=identity_bundle,
+                        event_title=item.title, event_summary=item.summary,
+                    ),
+                    scene=scene, event_title=item.title, event_summary=item.summary,
+                    identity_bundle=identity_bundle, entity_name_to_id=entity_name_to_id,
+                    narrative_grounding=grounding,
+                )
+                events.append(EventArtifact(
+                    event_id=f"event-{series_id}-{scene.book_id}-{scene.chapter_index:03d}-{scene.scene_index:03d}-{event_counts[scene.scene_id]:03d}",
+                    series_id=series_id, book_id=scene.book_id, scene_id=scene.scene_id,
+                    chapter_index=scene.chapter_index, scene_index=scene.scene_index,
+                    event_index=event_counts[scene.scene_id], title=item.title.strip(), summary=item.summary.strip(),
+                    event_type=item.event_type.strip(), participant_refs=participant_refs,
+                    entity_refs=_unique_strings([
+                        entity_name_to_id.get(normalize_entity_name(name).casefold(), "")
+                        for name in item.entity_names
+                        if entity_name_to_id.get(normalize_entity_name(name).casefold(), "")
+                    ]),
+                    metadata={"reasoning_provider": self.reasoning_runtime.provider_name(), "reasoning_model": self.reasoning_runtime.resolved_model_name()},
+                ))
+        persisted_events = self.store.replace_events(series_id=series_id, events=events)
+
+        relationships: dict[str, RelationshipArtifact] = {}
+        relationship_counts: dict[str, int] = {}
+        for job in jobs:
+            payload = CanonChapterPayload.model_validate(job.get("payload") or {})
+            slices = list(job.get("scene_slices") or [])
+            for item in payload.relationships:
+                valid_scene_ids = [scene_id for scene_id in sorted(set(item.scene_ids)) if scene_id in scene_map]
+                grounding = _batch_narrative_grounding(slices, valid_scene_ids)
+                source_ref = _resolve_single_name_ref(item.source_name, identity_bundle=identity_bundle, entity_name_to_id=entity_name_to_id, narrative_grounding=grounding)
+                target_ref = _resolve_single_name_ref(item.target_name, identity_bundle=identity_bundle, entity_name_to_id=entity_name_to_id, narrative_grounding=grounding)
+                if not source_ref or not target_ref or source_ref == target_ref:
+                    continue
+                scene_ids = [scene_id for scene_id in valid_scene_ids if relationship_counts.get(scene_id, 0) < MAX_RELATIONSHIPS_PER_SCENE]
+                if not scene_ids:
+                    continue
+                for scene_id in scene_ids:
+                    relationship_counts[scene_id] = relationship_counts.get(scene_id, 0) + 1
+                relationship_type = _normalize_relationship_type(
+                    _normalize_label(item.relationship_type), description=item.description,
+                    source_ref=source_ref, target_ref=target_ref,
+                )
+                relationship_id = _relationship_id(source_ref, target_ref, relationship_type)
+                artifact = RelationshipArtifact(
+                    relationship_id=relationship_id, series_id=series_id, source_ref=source_ref,
+                    target_ref=target_ref, relationship_type=relationship_type,
+                    description=item.description.strip(), scene_ids=scene_ids,
+                    book_ids=[str(job["book_id"])],
+                    metadata={"reasoning_provider": self.reasoning_runtime.provider_name(), "reasoning_model": self.reasoning_runtime.resolved_model_name()},
+                )
+                if not _should_keep_relationship_artifact(artifact):
+                    continue
+                existing = relationships.get(relationship_id)
+                relationships[relationship_id] = artifact if existing is None else existing.model_copy(update={
+                    "description": existing.description or artifact.description,
+                    "scene_ids": sorted(set([*existing.scene_ids, *artifact.scene_ids])),
+                    "book_ids": sorted(set([*existing.book_ids, *artifact.book_ids])),
+                })
+        persisted_relationships = self.store.replace_relationships(
+            series_id=series_id, relationships=sorted(relationships.values(), key=lambda item: item.relationship_id)
+        )
+        return {
+            "events": [item.model_dump() for item in persisted_events],
+            "entities": [item.model_dump() for item in persisted_entities],
+            "relationships": [item.model_dump() for item in persisted_relationships],
+            "request_metadata_rows": metadata_rows,
+            "planned_job_count": planned_job_count,
+            "completed_job_count": len(jobs),
+            "resumed_job_count": resumed_job_count,
+        }
+
+
 class TimelineAgent:
     def __init__(self, *, store: CanonExtractionStore) -> None:
         self.store = store
@@ -848,6 +1069,67 @@ class TimelineAgent:
             )
         persisted = self.store.replace_timeline(series_id=series_id, timeline=timeline)
         return {"timeline": [item.model_dump() for item in persisted]}
+
+
+def build_chapter_canon_extraction_graph(
+    *, chapter_agent: ChapterCanonAgent, timeline_agent: TimelineAgent,
+    checkpointer: BaseCheckpointSaver | None = None,
+) -> Any:
+    def canon_node(state: CanonExtractionState) -> dict[str, Any]:
+        started_at = time.perf_counter()
+        payload = chapter_agent.run(
+            series_id=str(state.get("series_id") or ""),
+            books=[BookArtifact.model_validate(item) for item in list(state.get("books") or [])],
+            chapters=[ChapterArtifact.model_validate(item) for item in list(state.get("chapters") or [])],
+            scenes=[SceneArtifact.model_validate(item) for item in list(state.get("scenes") or [])],
+            identity_bundle=CanonicalIdentityBundle.model_validate(state.get("identity_bundle") or {}),
+        )
+        metadata_rows = list(payload.get("request_metadata_rows") or [])
+        request_count = int(sum(float((row.get("usage") or {}).get("request_count") or 0) for row in metadata_rows))
+        error_count = sum(1 for row in metadata_rows if str(row.get("status") or "") == "error")
+        return {
+            "events": list(payload["events"]), "entities": list(payload["entities"]),
+            "relationships": list(payload["relationships"]),
+            "run_metadata": _append_stage_metadata(
+                state.get("run_metadata"), stage_name="chapter_canon_extraction",
+                elapsed_seconds=time.perf_counter() - started_at,
+                extra={
+                    "event_count": len(payload["events"]), "entity_count": len(payload["entities"]),
+                    "relationship_count": len(payload["relationships"]),
+                    "planned_jobs": int(payload["planned_job_count"]),
+                    "completed_jobs": int(payload["completed_job_count"]),
+                    "resumed_jobs": int(payload["resumed_job_count"]),
+                    "reasoning_requests": request_count, "reasoning_errors": error_count,
+                    "parallelism": CANON_EXTRACTION_PARALLELISM,
+                    "max_output_tokens_per_chapter": CANON_CHAPTER_MAX_TOKENS,
+                    "job_latency_seconds": _job_latency_summary(metadata_rows),
+                },
+            ),
+        }
+
+    def timeline_node(state: CanonExtractionState) -> dict[str, Any]:
+        started_at = time.perf_counter()
+        payload = timeline_agent.run(
+            series_id=str(state.get("series_id") or ""),
+            scenes=[SceneArtifact.model_validate(item) for item in list(state.get("scenes") or [])],
+            events=[EventArtifact.model_validate(item) for item in list(state.get("events") or [])],
+        )
+        return {
+            "timeline": list(payload["timeline"]),
+            "run_metadata": _append_stage_metadata(
+                state.get("run_metadata"), stage_name="timeline_construction",
+                elapsed_seconds=time.perf_counter() - started_at,
+                extra={"timeline_count": len(payload["timeline"])},
+            ),
+        }
+
+    builder = StateGraph(CanonExtractionState)
+    builder.add_node("chapter_canon", canon_node)
+    builder.add_node("timeline", timeline_node)
+    builder.add_edge(START, "chapter_canon")
+    builder.add_edge("chapter_canon", "timeline")
+    builder.add_edge("timeline", END)
+    return builder.compile(checkpointer=checkpointer)
 
 
 def build_canon_extraction_graph(
@@ -1052,19 +1334,18 @@ class CanonExtractionRuntime:
         self.persistence = persistence
         self.persistence.initialize()
         self.store = CanonExtractionStore(persistence)
-        self.event_agent = EventAgent(store=self.store, reasoning_runtime=reasoning_runtime, cancellation_checker=cancellation_checker)
-        self.entity_agent = EntityAgent(store=self.store, reasoning_runtime=reasoning_runtime, cancellation_checker=cancellation_checker)
-        self.relationship_agent = RelationshipAgent(store=self.store, reasoning_runtime=reasoning_runtime, cancellation_checker=cancellation_checker)
+        self.chapter_agent = ChapterCanonAgent(
+            store=self.store, reasoning_runtime=reasoning_runtime,
+            cancellation_checker=cancellation_checker,
+        )
         self.timeline_agent = TimelineAgent(store=self.store)
         self.checkpointer = _resolve_checkpointer(
             persistence=persistence,
             checkpointer=checkpointer,
             allow_in_memory_checkpointer=allow_in_memory_checkpointer,
         )
-        self.graph = build_canon_extraction_graph(
-            event_agent=self.event_agent,
-            entity_agent=self.entity_agent,
-            relationship_agent=self.relationship_agent,
+        self.graph = build_chapter_canon_extraction_graph(
+            chapter_agent=self.chapter_agent,
             timeline_agent=self.timeline_agent,
             checkpointer=self.checkpointer,
         )
@@ -1216,6 +1497,24 @@ def _build_events_prompt(*, book: BookArtifact, chapter: ChapterArtifact, scene_
         f"Chapter: {chapter.chapter_index} - {chapter.title}\n"
         f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False, indent=2)}\n"
         f"Scene slices JSON:\n{json.dumps(scene_slices, ensure_ascii=False, indent=2)}\n"
+    )
+
+
+def _build_chapter_canon_prompt(
+    *, book: BookArtifact, chapter: ChapterArtifact, scene_slices: list[dict[str, Any]],
+    identity_bundle: CanonicalIdentityBundle,
+) -> str:
+    return (
+        "Return one JSON object with keys 'events', 'entities', and 'relationships'.\n"
+        "Events require scene_id, title, summary, event_type, participant_names, and entity_names.\n"
+        "Entities require canonical_name, entity_type, description, aliases, and scene_ids. "
+        "Extract only non-character locations, objects, creatures, organizations, artifacts, or concepts.\n"
+        "Relationships require source_name, target_name, relationship_type, description, and scene_ids.\n"
+        "Use only supplied evidence and copy scene_ids exactly. Prefer canonical character names. "
+        "Omit uncertain claims rather than guessing. Cover every material scene beat while deduplicating repeated facts.\n"
+        f"Book title: {book.title}\nChapter: {chapter.chapter_index} - {chapter.title}\n"
+        f"Canonical characters JSON:\n{json.dumps(_identity_character_context(identity_bundle, scene_slices=scene_slices), ensure_ascii=False)}\n"
+        f"Scene slices JSON:\n{json.dumps(scene_slices, ensure_ascii=False)}\n"
     )
 
 

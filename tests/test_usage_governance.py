@@ -213,3 +213,27 @@ def test_usage_telemetry_storage_errors_fail_open_but_budget_denials_do_not():
     with usage_scope(governor=DenyingGovernor(), project_id="project-a"):
         with pytest.raises(UsageBudgetExceededError, match="hard budget reached"):
             reserve_usage(projected=ProviderUsage(request_count=1), provider="test")
+
+
+def test_provider_request_budget_fails_closed_without_a_governor():
+    with usage_scope(project_id="project-a", request_limits={"mistral": 2}):
+        reserve_usage(projected=ProviderUsage(request_count=1), provider="mistral")
+        reserve_usage(projected=ProviderUsage(request_count=1), provider="mistral")
+        with pytest.raises(UsageBudgetExceededError, match="2/2"):
+            reserve_usage(projected=ProviderUsage(request_count=1), provider="mistral")
+
+    with usage_scope(project_id="project-a", request_limits={"mistral": 1}):
+        with pytest.raises(UsageBudgetExceededError, match="not configured"):
+            reserve_usage(projected=ProviderUsage(request_count=1), provider="other-provider")
+
+    with usage_scope(project_id="project-a", request_limits={"mistral": 0}):
+        with pytest.raises(UsageBudgetExceededError, match="0/0"):
+            reserve_usage(projected=ProviderUsage(request_count=1), provider="mistral")
+
+    with usage_scope(
+        project_id="project-a",
+        request_limits={"mistral": 2},
+        initial_request_counts={"mistral": 2},
+    ):
+        with pytest.raises(UsageBudgetExceededError, match="2/2"):
+            reserve_usage(projected=ProviderUsage(request_count=1), provider="mistral")

@@ -14,6 +14,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run or resume the production pipeline and package accepted deliverables.")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--series-id", required=True)
+    parser.add_argument("--project-id", required=True)
     parser.add_argument("--story-id", default="")
     parser.add_argument("--blueprint-id", default="")
     parser.add_argument("--audiobook-run-id", default="")
@@ -32,6 +33,7 @@ def main() -> int:
     request = OrchestrationRequest(
         run_id=args.run_id,
         series_id=args.series_id,
+        project_id=args.project_id,
         story_id=args.story_id,
         blueprint_id=args.blueprint_id,
         audiobook_run_id=args.audiobook_run_id,

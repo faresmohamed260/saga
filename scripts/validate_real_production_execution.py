@@ -40,6 +40,7 @@ def main() -> int:
     request = OrchestrationRequest(
         run_id=run_id,
         series_id=series_id,
+        project_id=f"validation-project-{suffix}",
         source_paths=[str(source)],
         premise=args.premise,
         target_audience="young adult fantasy readers",
