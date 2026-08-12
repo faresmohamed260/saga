@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from packages.persistence_runtime.database_url import build_database_url_from_env
+from packages.persistence_runtime.database_url import build_admin_database_url_from_env
 
 
 config = context.config
@@ -14,7 +14,7 @@ if config.config_file_name:
 
 
 def _database_url() -> str:
-    value = build_database_url_from_env()
+    value = build_admin_database_url_from_env()
     if not value:
         raise RuntimeError("Database migration requires the Supabase database environment.")
     return value

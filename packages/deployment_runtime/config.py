@@ -7,11 +7,11 @@ import os
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 
 
-def create_deployment_persistence_client(*, initialize: bool = True):
+def create_deployment_persistence_client(*, initialize: bool = True, database_url: str = ""):
     profile = PersistenceProfile(
         name="deployment-runtime", provider=str(os.getenv("SAGA_RUNTIME_DB_PROVIDER") or "supabase"),
         mode=str(os.getenv("SAGA_RUNTIME_DB_MODE") or "supabase_postgres"),
-        database_url=str(os.getenv("SAGA_RUNTIME_DB_URL") or ""), application_name="saga-deployment-runtime",
+        database_url=str(database_url or os.getenv("SAGA_RUNTIME_DB_URL") or ""), application_name="saga-deployment-runtime",
         local_storage_root_dir=str(os.getenv("SAGA_RUNTIME_LOCAL_STORAGE_ROOT") or "analysis_outputs/unified_storage"),
     )
     client = create_persistence_client(profile=profile, config=PersistenceRuntimeConfig(

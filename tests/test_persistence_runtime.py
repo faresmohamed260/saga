@@ -321,6 +321,23 @@ def test_persistence_runtime_defaults_self_hosted_supabase_to_transaction_pooler
     )
 
 
+def test_admin_database_url_requires_direct_postgres(monkeypatch):
+    from packages.persistence_runtime.database_url import build_admin_database_url_from_env
+
+    monkeypatch.setenv(
+        "SAGA_ADMIN_DB_URL",
+        "postgresql+psycopg://postgres:secret@supabase-db:5432/postgres?sslmode=disable",
+    )
+    assert "supabase-db:5432" in build_admin_database_url_from_env()
+
+    monkeypatch.setenv(
+        "SAGA_ADMIN_DB_URL",
+        "postgresql+psycopg://postgres.tenant:secret@supabase-pooler:6543/postgres",
+    )
+    with pytest.raises(RuntimeError, match="direct Postgres connection"):
+        build_admin_database_url_from_env()
+
+
 def test_persistence_profile_rejects_invalid_runtime_values():
     try:
         PersistenceProfile(name="", provider="supabase", mode="supabase_postgres")

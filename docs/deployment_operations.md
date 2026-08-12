@@ -24,7 +24,7 @@ Use `uv.lock`, digest-pinned base images, and the production Dockerfiles. CI pub
 
 Set `SAGA_RUNTIME_IMAGE` and `SAGA_DASHBOARD_IMAGE` to the manifest's complete GHCR `name@sha256:digest` references. Runtime roles join both the private `saga-production` network and the configurable external `SAGA_PERSISTENCE_NETWORK`; the default `supabase_default` value supports the documented self-hosted Supabase topology without exposing PostgreSQL or Storage through ad hoc host routing.
 
-Copy `deploy/production/.env.example` to a secret-managed deployment environment. Inject database fields, Supabase keys, and provider credentials at deployment time. Do not commit the populated file or pass passwords in command arguments. Production startup validates Alembic revision `202608090400` and fails closed if schema or dependencies are unavailable.
+Copy `deploy/production/.env.example` to a secret-managed deployment environment. Inject database fields, Supabase keys, and provider credentials at deployment time. Do not commit the populated file or pass passwords in command arguments. Production startup validates Alembic revision `202608120100` and fails closed if schema or dependencies are unavailable.
 
 Self-hosted Supabase Storage must set `FILE_SIZE_LIMIT` explicitly for the largest supported source book; the validated baseline is 512 MiB. Treat the storage service limit as infrastructure configuration, not an application retry condition. Qualification must prove an upload larger than 50 MiB, checksum-verified download, and cleanup before admitting an environment.
 
@@ -49,6 +49,8 @@ The deployment runtime rejects canary and production promotion unless the manife
 Application rollback uses the prior immutable image digests. Mark the failed release `rolled_back`, deploy the prior API/process images, and verify readiness and heartbeats. Do not downgrade a database revision unless its documented downgrade is data-safe and a tested backup exists. Forward-fix is preferred after a migration has served writes.
 
 ## Database Recovery
+
+`SAGA_ADMIN_DB_URL` must point directly to Postgres, never Supavisor or another pooler. Alembic and `saga-deploy backup` fail fast on known pooled endpoints because migrations, dumps, and restores require session-oriented database administration. Runtime services continue to use the pooled `SAGA_RUNTIME_DB_URL`.
 
 `saga-deploy backup create --output <file>` creates a custom-format backup of application-owned `public` data only, excludes ownership/ACL coupling, writes a SHA-256 manifest, and keeps passwords out of argv. Restore requires an exact database-name confirmation, provisions the required `vector` extension, and restores only configured application schemas.
 
@@ -89,7 +91,7 @@ For a consistent recovery point, pause new execution leases, wait for active wri
 
 The 2026-08-09 staging validation established:
 
-- Alembic upgrade, rollback, re-upgrade, and one-head checks on isolated PostgreSQL; release-gate schema validated at `202608090400`.
+- Alembic upgrade, rollback, re-upgrade, and one-head checks on isolated PostgreSQL; usage-project attribution schema validated at `202608120100`.
 - Concurrent PostgreSQL promotion attempts both completed while the unique invariant retained exactly one production release.
 - Runtime and frontend images built successfully; runtime executes as non-root and frontend dependency audit reports zero vulnerabilities.
 - API liveness remained 200 while an unavailable database produced readiness 503.
@@ -102,4 +104,4 @@ The 2026-08-09 staging validation established:
 - Runtime and dashboard containers build from digest-pinned bases and run as non-root users; the dashboard image passed its internal health check as UID 101.
 - The obsolete 96.5 MB SQLite seed deployment was removed from the active tree; Supabase/PostgreSQL remains the only production persistence path.
 
-The original qualification release is explicitly marked `source_state=dirty`; it remains validation metadata and cannot be promoted. Release stabilization verified the complete migration chain through `202608090200`; usage governance added `202608090300`; immutable release-gate evidence and canary state add `202608090400`.
+The original qualification release is explicitly marked `source_state=dirty`; it remains validation metadata and cannot be promoted. Release stabilization verified the complete migration chain through `202608090200`; usage governance added `202608090300`; immutable release-gate evidence and canary state add `202608090400`; usage project attribution adds `202608120100`.

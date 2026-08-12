@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from urllib.parse import quote_plus
 
+from sqlalchemy.engine import make_url
+
 
 def build_database_url_from_env() -> str:
     def _env(*names: str, default: str = "") -> str:
@@ -40,3 +42,21 @@ def build_database_url_from_env() -> str:
         "postgresql+psycopg://"
         f"{quote_plus(username)}:{quote_plus(password)}@{host}:{port}/{database}?sslmode={sslmode}"
     )
+
+
+def build_admin_database_url_from_env() -> str:
+    """Resolve a direct Postgres URL for migrations and backup operations."""
+    database_url = str(os.getenv("SAGA_ADMIN_DB_URL") or "").strip()
+    if not database_url:
+        database_url = build_database_url_from_env()
+    if not database_url:
+        return ""
+
+    parsed = make_url(database_url)
+    host = str(parsed.host or "").lower()
+    if "pooler" in host or parsed.port in {5433, 6543}:
+        raise RuntimeError(
+            "Database administration requires a direct Postgres connection in "
+            "SAGA_ADMIN_DB_URL; pooled endpoints are not supported."
+        )
+    return database_url
