@@ -12,7 +12,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from benchmarks.reasoning.scorecard import build_scorecard
-from benchmarks.reasoning.task_suite import TASK_SUITE_VERSION
+from benchmarks.reasoning.gold_evaluation import EXTRACTION_FAMILIES
+from benchmarks.reasoning.task_suite import TASK_FAMILIES, TASK_SUITE_VERSION
 from packages.reasoning_runtime import QualificationTrial
 
 
@@ -21,6 +22,8 @@ def main() -> int:
     parser.add_argument("--checkpoints", default="analysis_outputs/local_reasoning/qualification")
     parser.add_argument("--output", default="analysis_outputs/local_reasoning/scorecard.json")
     parser.add_argument("--scope", choices=("screening", "full"), default="full")
+    parser.add_argument("--max-peak-vram-gib", type=float, default=10.0)
+    parser.add_argument("--max-peak-host-ram-gib", type=float, default=112.0)
     args = parser.parse_args()
 
     trials = []
@@ -31,6 +34,10 @@ def main() -> int:
     scorecard = build_scorecard(
         trials, minimum_sources=3 if args.scope == "full" else 1,
         required_families=TASK_FAMILIES,
+        require_gold_for_families=EXTRACTION_FAMILIES,
+        require_resource_metrics=True,
+        max_peak_vram_bytes=int(args.max_peak_vram_gib * 1024 ** 3),
+        max_peak_host_ram_bytes=int(args.max_peak_host_ram_gib * 1024 ** 3),
     )
     payload = {"task_suite_version": TASK_SUITE_VERSION, **scorecard}
     target = Path(args.output).resolve()
