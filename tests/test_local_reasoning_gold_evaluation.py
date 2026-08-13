@@ -46,3 +46,46 @@ def test_gold_evaluator_fails_closed_when_annotation_is_missing():
     }]}})
     assert result.accepted is False
     assert result.metrics["gold_available"] is False
+
+
+def test_gold_evaluator_fails_closed_when_annotation_is_not_reviewed():
+    evaluator = build_gold_evaluator({"annotations": [{
+        "family": "canon_entities", "case_id": "case",
+        "items": [{"aliases": ["silver key"]}], "review_status": "pending",
+    }]})
+    task = QualificationTask(
+        task_id="canon_entities:case", operation="json", prompt="extract",
+        metadata={
+            "family": "canon_entities", "case_id": "case", "result_key": "entities",
+            "minimum_items": 1, "source_text": "A silver key.",
+        },
+    )
+
+    result = evaluator(task, {"payload": {"entities": [{
+        "name": "silver key", "evidence_quote": "A silver key.",
+    }]}})
+
+    assert result.accepted is False
+    assert result.metrics["gold_reviewed"] is False
+    assert "gold_annotation_not_reviewed" in result.reasons
+
+
+def test_gold_evaluator_accepts_reviewed_annotation_that_meets_thresholds():
+    evaluator = build_gold_evaluator({"annotations": [{
+        "family": "canon_entities", "case_id": "case",
+        "items": [{"aliases": ["silver key"]}], "review_status": "reviewed",
+    }]})
+    task = QualificationTask(
+        task_id="canon_entities:case", operation="json", prompt="extract",
+        metadata={
+            "family": "canon_entities", "case_id": "case", "result_key": "entities",
+            "minimum_items": 1, "source_text": "A silver key.",
+        },
+    )
+
+    result = evaluator(task, {"payload": {"entities": [{
+        "name": "silver key", "evidence_quote": "A silver key.",
+    }]}})
+
+    assert result.accepted is True
+    assert result.metrics["gold_reviewed"] is True

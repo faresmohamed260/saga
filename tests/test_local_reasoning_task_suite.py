@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
-from scripts.qualify_local_reasoning import _assert_host_idle, _prepare_local_model, _unload_other_models
+from scripts.qualify_local_reasoning import (
+    _assert_host_idle,
+    _prepare_local_model,
+    _unload_other_models,
+    _validate_gold_corpus,
+)
 
 
 def _corpus():
@@ -79,6 +87,25 @@ def test_qualification_cli_is_directly_executable():
     )
     assert result.returncode == 0, result.stderr
     assert "Exact local Ollama model tag" in result.stdout
+
+
+def test_gold_corpus_validation_requires_exact_versioned_artifact(tmp_path):
+    corpus_path = tmp_path / "corpus.json"
+    corpus_path.write_text('{"corpus_version":"1"}', encoding="utf-8")
+    corpus = {"corpus_version": "1"}
+    matching_gold = {
+        "corpus_version": "1",
+        "corpus_sha256": hashlib.sha256(corpus_path.read_bytes()).hexdigest(),
+    }
+
+    _validate_gold_corpus(corpus_path=corpus_path, corpus=corpus, gold=matching_gold)
+
+    with pytest.raises(ValueError, match="exact corpus artifact"):
+        _validate_gold_corpus(
+            corpus_path=corpus_path,
+            corpus=corpus,
+            gold={**matching_gold, "corpus_sha256": "stale"},
+        )
 
 
 def test_model_preload_uses_the_qualified_context_window(monkeypatch):

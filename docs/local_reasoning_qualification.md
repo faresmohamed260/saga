@@ -70,7 +70,7 @@ The installed-model screening matrix completed for Mistral 7B Instruct, Llama 3.
 - Qwen2.5 14B: relationship extraction, 9/9 accepted, 10.71-second median warm task time.
 - Mistral 7B Instruct: exact structured JSON, 9/9 accepted, 0.70-second median; native tool use, 9/9 accepted, 0.90-second median.
 
-Llama 3.1 8B planning passed its screening passage but failed 3/3 on the first full-book case and was eliminated. No installed model currently qualifies for events, entities, character/world modeling, planning, continuity, or narrative generation. Extraction completeness is only a minimum-item proxy because the corpus does not yet have human-labeled gold sets; true precision/recall remains a production-readiness blocker.
+Llama 3.1 8B planning passed its screening passage but failed 3/3 on the first full-book case and was eliminated. No installed model currently qualifies for events, entities, character/world modeling, planning, continuity, or narrative generation. Extraction completeness is only a minimum-item proxy because the corpus does not yet have human-labeled gold sets; true precision/recall remains a production-readiness blocker. Gold-backed qualification is bound to the exact corpus artifact and fails closed for missing, empty, pending, or stale annotations.
 
 Candidate acquisition is externally constrained. The Ollama registry delivered approximately 0.25 MB/s on a bounded range test; direct Hugging Face delivered approximately 0.45 MB/s. Hugging Face Xet transferred no data and returned HTTP 416 from its CAS reconstruction endpoint. Partial downloads remain resumable. Qwen3.5 9B is being acquired as one below-normal-priority Ollama transfer; qualification does not begin until the transfer completes and host admission passes.
 

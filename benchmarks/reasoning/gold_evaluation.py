@@ -35,6 +35,18 @@ def build_gold_evaluator(
                 accepted=False, metrics={**base.metrics, "gold_available": False},
                 reasons=[*base.reasons, "gold_annotation_missing"],
             )
+        if str(annotation.get("review_status") or "") != "reviewed":
+            return QualificationEvaluation(
+                accepted=False,
+                metrics={**base.metrics, "gold_available": True, "gold_reviewed": False},
+                reasons=[*base.reasons, "gold_annotation_not_reviewed"],
+            )
+        if not list(annotation.get("items") or []):
+            return QualificationEvaluation(
+                accepted=False,
+                metrics={**base.metrics, "gold_available": True, "gold_reviewed": True},
+                reasons=[*base.reasons, "gold_annotation_empty"],
+            )
         payload = output.get("payload") if isinstance(output, dict) else None
         metrics = evaluate_gold_payload(
             family=family, payload=payload if isinstance(payload, dict) else {},
@@ -46,7 +58,8 @@ def build_gold_evaluator(
             and float(metrics["gold_recall"]) >= minimum_recall
         )
         return QualificationEvaluation(
-            accepted=accepted, metrics={**base.metrics, **metrics, "gold_available": True},
+            accepted=accepted,
+            metrics={**base.metrics, **metrics, "gold_available": True, "gold_reviewed": True},
             reasons=base.reasons if accepted else [*base.reasons, "gold_quality_gate_failed"],
         )
 

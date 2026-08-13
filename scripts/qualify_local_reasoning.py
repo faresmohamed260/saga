@@ -138,6 +138,14 @@ def _arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _validate_gold_corpus(*, corpus_path: Path, corpus: dict[str, Any], gold: dict[str, Any]) -> None:
+    if str(gold.get("corpus_version") or "") != str(corpus.get("corpus_version") or ""):
+        raise ValueError("Gold annotations do not match the corpus version.")
+    corpus_sha256 = hashlib.sha256(corpus_path.read_bytes()).hexdigest()
+    if str(gold.get("corpus_sha256") or "") != corpus_sha256:
+        raise ValueError("Gold annotations do not match the exact corpus artifact.")
+
+
 def main() -> int:
     args = _arguments()
     if not 1 <= args.timeout_seconds <= 300:
@@ -155,8 +163,10 @@ def main() -> int:
     gold_variant = ""
     if args.gold:
         gold = json.loads(Path(args.gold).resolve().read_text(encoding="utf-8"))
-        if str(gold.get("corpus_version") or "") != str(corpus.get("corpus_version") or ""):
-            raise SystemExit("Gold annotations do not match the corpus version.")
+        try:
+            _validate_gold_corpus(corpus_path=corpus_path, corpus=corpus, gold=gold)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
         evaluator = build_gold_evaluator(gold)
         gold_variant = f"-gold{gold.get('version', 'unknown')}"
     tasks = build_tasks(corpus, scope=args.scope)
