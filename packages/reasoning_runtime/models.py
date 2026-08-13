@@ -47,6 +47,7 @@ class ReasoningProfile:
     ollama_gpu_layers: int | None = None
     ollama_threads: int | None = None
     ollama_stream_metrics: bool = False
+    ollama_thinking: bool | str | None = None
     lm_studio_model: str = ""
     lm_studio_stream_metrics: bool = False
     lm_studio_reasoning_effort: str = ""
@@ -77,6 +78,8 @@ class ReasoningProfile:
             raise ValueError("ReasoningProfile.ollama_gpu_layers cannot be negative.")
         if self.ollama_threads is not None and int(self.ollama_threads) < 1:
             raise ValueError("ReasoningProfile.ollama_threads must be positive.")
+        if self.ollama_thinking not in {None, False, True, "low", "medium", "high"}:
+            raise ValueError("ReasoningProfile.ollama_thinking is invalid.")
         if self.lm_studio_reasoning_effort not in {"", "low", "medium", "high"}:
             raise ValueError("ReasoningProfile.lm_studio_reasoning_effort must be low, medium, or high.")
 

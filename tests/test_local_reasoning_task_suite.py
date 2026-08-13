@@ -92,6 +92,25 @@ def test_qualification_cli_is_directly_executable():
     assert "Exact model identifier" in result.stdout
 
 
+def test_qualification_cli_requires_explicit_engine():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "scripts" / "qualify_local_reasoning.py"),
+            "--model",
+            "candidate",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode != 0
+    assert "--engine" in result.stderr
+
+
 def test_gold_corpus_validation_requires_exact_versioned_artifact(tmp_path):
     corpus_path = tmp_path / "corpus.json"
     corpus_path.write_text('{"corpus_version":"1"}', encoding="utf-8")
@@ -172,7 +191,7 @@ def test_lm_studio_preload_uses_bounded_explicit_placement(monkeypatch):
         context_tokens=4096,
         gpu_offload="0.5",
         ttl_seconds=300,
-        models_url="http://localhost:1234/api/v1/models",
+        models_url="http://localhost:1234/api/v0/models/openai%2Fgpt-oss-20b",
     )
 
     assert captured["command"] == [
@@ -181,6 +200,7 @@ def test_lm_studio_preload_uses_bounded_explicit_placement(monkeypatch):
         "--parallel", "1", "--ttl", "300", "--yes",
     ]
     assert captured["kwargs"]["stdout"] is subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] is subprocess.PIPE
     assert evidence["gpu_offload"] == "0.5"
 
 

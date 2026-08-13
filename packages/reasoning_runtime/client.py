@@ -531,6 +531,8 @@ class ReasoningRuntimeClient:
                 "num_ctx": int(self.profile.context_window_tokens),
             },
         }
+        if self.profile.ollama_thinking is not None:
+            payload["think"] = self.profile.ollama_thinking
         self._apply_local_resource_options(payload["options"])
         response = self._metered_call(
             lambda: requests.post(
@@ -1049,7 +1051,9 @@ class ReasoningRuntimeClient:
             payload["options"]["num_ctx"] = int(self.profile.context_window_tokens)
             payload["keep_alive"] = self.profile.ollama_keep_alive
             self._apply_local_resource_options(payload["options"])
-        if "gpt-oss" in translated_model.lower():
+        if self.mode == self.MODE_OLLAMA_LOCAL and self.profile.ollama_thinking is not None:
+            payload["think"] = self.profile.ollama_thinking
+        elif "gpt-oss" in translated_model.lower():
             payload["think"] = "low"
         if json_mode:
             payload["format"] = self._ollama_json_format_payload(response_format)

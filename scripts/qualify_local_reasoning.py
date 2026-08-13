@@ -6,6 +6,7 @@ import argparse
 import ctypes
 import hashlib
 import json
+import re
 import shutil
 import statistics
 import subprocess
@@ -14,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import psutil
 import requests
@@ -119,7 +121,12 @@ class NvmlMemoryReader:
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--engine", choices=("ollama", "lm_studio"), default="ollama")
+    parser.add_argument(
+        "--engine",
+        choices=("ollama", "lm_studio"),
+        required=True,
+        help="Local inference engine to qualify; no engine is selected implicitly.",
+    )
     parser.add_argument("--model", required=True, help="Exact model identifier for the selected local engine.")
     parser.add_argument("--corpus", default="analysis_outputs/local_reasoning/corpus_v1.json")
     parser.add_argument("--gold", help="Versioned local extraction gold annotations.")
@@ -134,8 +141,16 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--keep-alive", default="30m")
     parser.add_argument("--gpu-layers", type=int, default=32)
     parser.add_argument("--threads", type=int, default=8)
+    parser.add_argument(
+        "--ollama-thinking", choices=("off", "on", "low", "medium", "high"),
+        default="off",
+    )
     parser.add_argument("--lm-studio-gpu-offload", default="0.5")
-    parser.add_argument("--lm-studio-reasoning-effort", choices=("low", "medium", "high"), default="low")
+    parser.add_argument(
+        "--lm-studio-reasoning-effort",
+        choices=("none", "low", "medium", "high"),
+        default="none",
+    )
     parser.add_argument("--max-vram-gib", type=float, default=10.0)
     parser.add_argument("--max-host-ram-gib", type=float, default=112.0)
     parser.add_argument("--cpu-warning-percent", type=float, default=80.0)
@@ -186,6 +201,7 @@ def main() -> int:
 
     checkpoint_root = Path(args.checkpoints).resolve()
     config = ReasoningRuntimeConfig()
+    engine_version = _local_engine_version(engine=args.engine, config=config)
     host_admission = _assess_host_resources(
         cpu_warning_percent=args.cpu_warning_percent,
         min_available_ram_bytes=int(args.min_available_ram_gib * 1024 ** 3),
@@ -213,7 +229,9 @@ def main() -> int:
                 context_tokens=args.context_tokens,
                 gpu_offload=args.lm_studio_gpu_offload,
                 ttl_seconds=_duration_seconds(args.keep_alive),
-                models_url=_lm_studio_models_url(config.lm_studio_chat_url),
+                models_url=_lm_studio_model_status_url(
+                    config.lm_studio_chat_url, args.model,
+                ),
             )
     finally:
         load_resource_metrics = load_monitor.stop()
@@ -221,6 +239,7 @@ def main() -> int:
     load_evidence["resource_metrics"] = load_resource_metrics
     load_evidence["evicted_models"] = evicted_models
     load_evidence["engine"] = args.engine
+    load_evidence["engine_version"] = engine_version
     _save_load_evidence(checkpoint_root, args.model, args.context_tokens, load_evidence)
     try:
         _assert_resource_limits(
@@ -236,6 +255,10 @@ def main() -> int:
         raise
 
     if args.engine == "ollama":
+        ollama_thinking: bool | str = {
+            "off": False, "on": True,
+            "low": "low", "medium": "medium", "high": "high",
+        }[args.ollama_thinking]
         profile = ReasoningProfile(
             name="qualification-local", mode="ollama_local", ollama_model=args.model,
             timeout_seconds=args.timeout_seconds, max_retries=1,
@@ -243,8 +266,12 @@ def main() -> int:
             ollama_keep_alive=args.keep_alive,
             ollama_gpu_layers=args.gpu_layers, ollama_threads=args.threads,
             ollama_stream_metrics=True,
+            ollama_thinking=ollama_thinking,
         )
-        allocation_variant = f"gpu{args.gpu_layers}-threads{args.threads}-stream1"
+        allocation_variant = (
+            f"gpu{args.gpu_layers}-threads{args.threads}-stream1"
+            f"-thinking{args.ollama_thinking}"
+        )
     else:
         profile = ReasoningProfile(
             name="qualification-local", mode="lm_studio_local",
@@ -252,10 +279,13 @@ def main() -> int:
             timeout_seconds=args.timeout_seconds, max_retries=1,
             allow_account_rotation=False, context_window_tokens=args.context_tokens,
             lm_studio_stream_metrics=True,
-            lm_studio_reasoning_effort=args.lm_studio_reasoning_effort,
+            lm_studio_reasoning_effort=(
+                "" if args.lm_studio_reasoning_effort == "none"
+                else args.lm_studio_reasoning_effort
+            ),
         )
         allocation_variant = (
-            f"gpu{args.lm_studio_gpu_offload}-parallel1-stream1"
+            f"gpu{args.lm_studio_gpu_offload}-parallel1-stream1-lifecycle2"
             f"-reasoning{args.lm_studio_reasoning_effort}"
         )
     config.profiles[profile.name] = profile
@@ -275,7 +305,8 @@ def main() -> int:
     trials = runner.run_model(
         suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
         client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluator,
-        run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-ctx{args.context_tokens}"
+        run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-{engine_version}"
+                     f"-ctx{args.context_tokens}"
                      f"-{allocation_variant}{gold_variant}"),
     )
     wall_times = [trial.wall_seconds for trial in trials]
@@ -323,6 +354,41 @@ def _prepare_local_model(
     }
 
 
+def _local_engine_version(*, engine: str, config: ReasoningRuntimeConfig) -> str:
+    if engine == "ollama":
+        base = config.ollama_local_url.split("/api/", 1)[0].rstrip("/")
+        response = requests.get(f"{base}/api/version", timeout=10)
+        response.raise_for_status()
+        version = str(dict(response.json() or {}).get("version") or "").strip()
+        if not version:
+            raise RuntimeError("Ollama did not report an engine version.")
+        return f"ollama-{version}"
+    executable = shutil.which("lms")
+    if not executable:
+        raise RuntimeError("LM Studio CLI 'lms' is not installed.")
+    result = subprocess.run(
+        [executable, "runtime", "ls"],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"LM Studio runtime query failed: {result.stderr.strip()}")
+    lines = result.stdout.splitlines()
+    header = lines[0] if lines else ""
+    selected_start = header.find("SELECTED")
+    format_start = header.find("MODEL FORMAT")
+    for line in lines[1:]:
+        selected = (
+            line[selected_start:format_start].strip()
+            if selected_start >= 0 and format_start > selected_start
+            else ""
+        )
+        if "llama.cpp" in line and selected:
+            match = re.search(r"@([0-9]+(?:\.[0-9]+)+)", line)
+            if match:
+                return f"lmstudio-llamacpp-{match.group(1)}"
+    raise RuntimeError("LM Studio selected runtime version could not be determined.")
+
+
 def _prepare_lm_studio_model(
     *, model: str, timeout_seconds: int, context_tokens: int,
     gpu_offload: str, ttl_seconds: int, models_url: str,
@@ -351,7 +417,8 @@ def _prepare_lm_studio_model(
             "--yes",
         ],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     deadline = started + timeout_seconds
     try:
@@ -359,17 +426,24 @@ def _prepare_lm_studio_model(
             if _lm_studio_model_loaded(model=model, models_url=models_url):
                 break
             if process.poll() not in {None, 0}:
-                raise RuntimeError(f"LM Studio model load failed with exit code {process.returncode}.")
+                details = process.stderr.read().strip() if process.stderr is not None else ""
+                suffix = f": {details}" if details else "."
+                raise RuntimeError(
+                    f"LM Studio model load failed with exit code {process.returncode}{suffix}"
+                )
             time.sleep(0.5)
         else:
             raise TimeoutError(f"LM Studio model load exceeded {timeout_seconds} seconds.")
     finally:
         if process.poll() is None:
-            process.terminate()
             try:
-                process.wait(timeout=5)
+                process.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                process.kill()
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
     return {
         "model": model,
         "wall_seconds": round(time.perf_counter() - started, 6),
@@ -380,15 +454,18 @@ def _prepare_lm_studio_model(
     }
 
 
-def _lm_studio_models_url(chat_url: str) -> str:
+def _lm_studio_model_status_url(chat_url: str, model: str) -> str:
     base = str(chat_url).split("/v1/", 1)[0].rstrip("/")
-    return f"{base}/api/v1/models"
+    return f"{base}/api/v0/models/{quote(str(model), safe='')}"
 
 
 def _lm_studio_model_loaded(*, model: str, models_url: str) -> bool:
     response = requests.get(models_url, timeout=10)
     response.raise_for_status()
-    for item in list(dict(response.json() or {}).get("models") or []):
+    payload = dict(response.json() or {})
+    if "state" in payload:
+        return str(payload.get("id") or "") == model and payload.get("state") == "loaded"
+    for item in list(payload.get("models") or []):
         if str(item.get("key") or "") == model and list(item.get("loaded_instances") or []):
             return True
     return False
@@ -518,6 +595,7 @@ def _save_load_evidence(root: Path, model: str, context_tokens: int, payload: di
     root.mkdir(parents=True, exist_ok=True)
     identity_payload = {
         "engine": payload.get("engine"),
+        "engine_version": payload.get("engine_version"),
         "model": model,
         "context_tokens": context_tokens,
         "gpu_offload": payload.get("gpu_offload"),

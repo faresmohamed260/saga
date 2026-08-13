@@ -4,11 +4,13 @@
 
 Local inference is the required production baseline. Cloud LLM providers are excluded from model qualification and may not be used as hidden fallback paths. Agents continue to depend only on the reasoning runtime contract; model engines and task routing remain runtime-owned concerns.
 
-The evaluation order is:
+Engine selection is evidence-driven and explicit; the qualification CLI has no default engine:
 
-1. Ollama local inference using conventional quantized models.
-2. LM Studio comparison using the same runtime and qualification contracts when it can isolate an engine effect.
-3. Colibri research preflight only when conventional models fail quality thresholds.
+1. LM Studio is the primary controlled desktop engine for compatible conventional models. Its load API exposes memory estimation, GPU offload, context length, Flash Attention, KV-cache placement, MoE expert count, TTL, and explicit unload behavior.
+2. Ollama is a supported lightweight engine and cross-engine reference. It is not the architectural default and may be selected when its model compatibility or measured behavior is better.
+3. Colibri is an isolated MoE weight-streaming research engine. It must pass model-support, fast-storage capacity, I/O throughput, and latency preflight before integration; it is not treated as a generic GGUF engine.
+
+The reasoning runtime contract remains engine-neutral. Production routes bind a task profile to a qualified engine and exact model artifact; agents do not select engines directly.
 
 Model selection is per task. A model that is strong at extraction is not assumed to be suitable for narrative generation.
 
@@ -83,6 +85,8 @@ The reasoning package also provides optional provider-neutral bounded admission.
 LM Studio is now a native loopback-only reasoning provider using the same JSON, text, tool, LangGraph, checkpoint, and evaluation contracts. The shared qualifier controls GPU offload ratio, context, parallelism, TTL, lifecycle polling, and resource gates without duplicating task logic. An installed GPT-OSS 20B Q5_1 derivative at 50% GPU placement used 9.38 GiB total VRAM. Warm real-book structured JSON passed in 5.40 seconds with 5.20-second TTFT at low reasoning effort; the same streamed request took 59.76 seconds at the model's uncontrolled reasoning behavior. Native tool use passed in 11.65 seconds. Cold loading from file cache completed in 4.29 seconds, while an earlier CLI-attached load exceeded 120 seconds despite the server completing the load; lifecycle polling now detects server readiness directly.
 
 These LM Studio measurements establish engine feasibility, not production model qualification. The installed artifact is an abliterated community derivative and is excluded from production routing. A fair Ollama-versus-LM Studio comparison still requires the same official model artifact or equivalent quantization on both engines.
+
+The exact Qwen3.5 9B Q4_K_M GGUF was exposed to both engines through hard links, with no duplicated model bytes. LM Studio estimated 7.63 GB including 4K context and had more than 11 GB free VRAM, but both its selected llama.cpp CUDA runtime 2.27.1 and the stable update 2.28.2 returned a worker `load-error`. The artifact remains valid in Ollama. This engine/model pair is classified unsupported, not resource-rejected, and is not retried further. Engine versions are now included in load evidence and checkpoint identity.
 
 Qualification defaults to at most 32 GPU layers and 8 CPU threads, rejects trials above 10 GiB total VRAM or 112 GiB host RAM, and includes allocation settings in checkpoint identity. A safe qwen2.5 14B trial used 7.28 GiB VRAM but fell to 0.95 tokens/second due to CPU offload, so that model is not suitable for interactive desktop work under the headroom policy. The next preferred candidate is `qwen3.5:9b-q4_K_M`: its official 6.6 GB artifact and 32-layer architecture should fit fully on this GPU under the safety limits. Suitability must still be proven by measured load, responsiveness, and real-book quality tests.
 
