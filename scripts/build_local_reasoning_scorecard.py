@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from benchmarks.reasoning.scorecard import build_scorecard
+from benchmarks.reasoning.model_fit import qualification_artifacts
 from benchmarks.reasoning.gold_evaluation import EXTRACTION_FAMILIES
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, TASK_SUITE_VERSION
 from packages.reasoning_runtime import QualificationTrial
@@ -21,10 +22,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoints", default="analysis_outputs/local_reasoning/qualification")
     parser.add_argument("--output", default="analysis_outputs/local_reasoning/scorecard.json")
+    parser.add_argument(
+        "--candidate-manifest",
+        default="benchmarks/reasoning/local_model_candidates.json",
+    )
     parser.add_argument("--scope", choices=("screening", "full"), default="full")
     parser.add_argument("--max-peak-vram-gib", type=float, default=10.0)
     parser.add_argument("--max-peak-host-ram-gib", type=float, default=112.0)
     args = parser.parse_args()
+
+    candidate_manifest = json.loads(
+        Path(args.candidate_manifest).resolve().read_text(encoding="utf-8")
+    )
+    allowed_provider_models = qualification_artifacts(candidate_manifest)
 
     trials = []
     for path in sorted(Path(args.checkpoints).resolve().glob("reasoning-trial-*.json")):
@@ -38,8 +48,13 @@ def main() -> int:
         require_resource_metrics=True,
         max_peak_vram_bytes=int(args.max_peak_vram_gib * 1024 ** 3),
         max_peak_host_ram_bytes=int(args.max_peak_host_ram_gib * 1024 ** 3),
+        allowed_provider_models=allowed_provider_models,
     )
-    payload = {"task_suite_version": TASK_SUITE_VERSION, **scorecard}
+    payload = {
+        "task_suite_version": TASK_SUITE_VERSION,
+        "candidate_manifest_version": str(candidate_manifest["version"]),
+        **scorecard,
+    }
     target = Path(args.output).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(".tmp")

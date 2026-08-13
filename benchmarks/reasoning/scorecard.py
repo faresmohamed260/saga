@@ -17,14 +17,22 @@ def build_scorecard(
     require_resource_metrics: bool = False,
     max_peak_vram_bytes: int | None = None,
     max_peak_host_ram_bytes: int | None = None,
+    allowed_provider_models: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     gold_required = {str(family) for family in require_gold_for_families}
-    grouped: dict[tuple[str, str], list[QualificationTrial]] = defaultdict(list)
+    grouped: dict[tuple[str, str, str], list[QualificationTrial]] = defaultdict(list)
+    excluded_trial_count = 0
     for trial in trials:
-        grouped[(trial.task_id.split(":", 1)[0], trial.model)].append(trial)
+        if (
+            allowed_provider_models is not None
+            and (trial.provider, trial.model) not in allowed_provider_models
+        ):
+            excluded_trial_count += 1
+            continue
+        grouped[(trial.task_id.split(":", 1)[0], trial.provider, trial.model)].append(trial)
 
     rows: list[dict[str, Any]] = []
-    for (family, model), items in sorted(grouped.items()):
+    for (family, provider, model), items in sorted(grouped.items()):
         accepted = sum(item.status == "accepted" for item in items)
         failed = sum(item.status == "failed" for item in items)
         acceptance_rate = accepted / len(items)
@@ -54,6 +62,7 @@ def build_scorecard(
         )
         rows.append({
             "task_family": family,
+            "provider": provider,
             "model": model,
             "trials": len(items),
             "accepted": accepted,
@@ -89,9 +98,13 @@ def build_scorecard(
         if not eligible:
             routes[family] = {"status": "unqualified", "model": None}
             continue
-        winner = min(eligible, key=lambda row: (row["median_wall_seconds"], row["model"]))
+        winner = min(
+            eligible,
+            key=lambda row: (row["median_wall_seconds"], row["provider"], row["model"]),
+        )
         routes[family] = {
             "status": "qualified",
+            "provider": winner["provider"],
             "model": winner["model"],
             "acceptance_rate": winner["acceptance_rate"],
             "median_wall_seconds": winner["median_wall_seconds"],
@@ -106,7 +119,9 @@ def build_scorecard(
             "max_peak_vram_bytes": max_peak_vram_bytes,
             "max_peak_host_ram_bytes": max_peak_host_ram_bytes,
             "require_gold_for_families": sorted(gold_required),
+            "artifact_allowlist_enforced": allowed_provider_models is not None,
         },
+        "excluded_trial_count": excluded_trial_count,
         "routes": routes,
         "results": rows,
     }

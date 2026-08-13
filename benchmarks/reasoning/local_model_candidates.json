@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "host": {
     "gpu": "NVIDIA RTX 3060",
     "vram_gib": 12.0,
@@ -7,57 +7,162 @@
     "required_free_vram_gib": 2.0,
     "max_total_vram_gib": 10.0,
     "ram_gib": 128.0,
+    "desktop_baseline_ram_gib": 80.0,
     "max_host_ram_gib": 112.0
   },
   "fit_policy": {
     "estimated_runtime_multiplier": 1.15,
     "estimated_kv_and_compute_gib": 0.5,
-    "interactive_requires_full_gpu_fit": true
+    "controlled_hybrid_allowed": true,
+    "minimum_gpu_fraction": 0.4,
+    "qualification_requires_measured_resource_evidence": true
   },
   "candidates": [
     {
-      "model": "qwen3.5:9b-q4_K_M",
-      "source": "https://ollama.com/library/qwen3.5/tags",
-      "artifact_gib": 6.15,
+      "model_id": "qwen3.5-9b",
       "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
-      "decision": "qualify_interactive",
-      "priority": 1
+      "priority": 1,
+      "artifacts": [
+        {
+          "engine": "ollama",
+          "provider": "ollama_local",
+          "engine_model": "qwen3.5:9b-q4_K_M",
+          "source": "https://ollama.com/library/qwen3.5/tags",
+          "artifact_gib": 6.15,
+          "gpu_fraction": 1.0,
+          "engine_status": "supported",
+          "decision": "qualify"
+        },
+        {
+          "engine": "lm_studio",
+          "provider": "lm_studio_local",
+          "engine_model": "qwen3.5-9b",
+          "source": "https://lmstudio.ai/models/qwen/qwen3.5-9b",
+          "artifact_gib": 6.15,
+          "gpu_fraction": 1.0,
+          "engine_status": "unsupported_load_error",
+          "decision": "exclude_engine_unsupported"
+        }
+      ]
     },
     {
-      "model": "qwen3:8b-q4_K_M",
-      "source": "https://ollama.com/library/qwen3/tags",
-      "artifact_gib": 4.84,
+      "model_id": "qwen3-8b",
       "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
-      "decision": "qualify_if_primary_fails",
-      "priority": 2
+      "priority": 2,
+      "artifacts": [
+        {
+          "engine": "lm_studio",
+          "provider": "lm_studio_local",
+          "engine_model": "qwen/qwen3-8b",
+          "source": "https://lmstudio.ai/models/qwen/qwen3-8b",
+          "artifact_gib": 4.6,
+          "gpu_fraction": 1.0,
+          "engine_status": "supported",
+          "decision": "qualify_if_primary_fails"
+        }
+      ]
     },
     {
-      "model": "qwen3:14b-q4_K_M",
-      "source": "https://ollama.com/library/qwen3/tags",
-      "artifact_gib": 8.66,
-      "decision": "reject_interactive_fit",
-      "priority": 0
+      "model_id": "qwen3-14b",
+      "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
+      "priority": 3,
+      "artifacts": [
+        {
+          "engine": "lm_studio",
+          "provider": "lm_studio_local",
+          "engine_model": "qwen/qwen3-14b",
+          "source": "https://lmstudio.ai/models/qwen3-2504",
+          "artifact_gib": 8.4,
+          "gpu_fraction": 0.75,
+          "engine_status": "supported",
+          "decision": "qualify_controlled_hybrid"
+        }
+      ]
     },
     {
-      "model": "qwen3:30b-a3b-instruct-2507-q4_K_M",
-      "source": "https://ollama.com/library/qwen3/tags",
-      "artifact_gib": 17.7,
-      "decision": "reject_interactive_fit",
-      "priority": 0
+      "model_id": "qwen3-30b-a3b-2507",
+      "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
+      "priority": 4,
+      "artifacts": [
+        {
+          "engine": "lm_studio",
+          "provider": "lm_studio_local",
+          "engine_model": "qwen/qwen3-30b-a3b-2507",
+          "source": "https://lmstudio.ai/models/qwen3",
+          "artifact_gib": 17.4,
+          "gpu_fraction": 0.4,
+          "engine_status": "supported",
+          "decision": "qualify_controlled_hybrid"
+        }
+      ]
     },
     {
-      "model": "gpt-oss:20b",
-      "source": "https://ollama.com/library/gpt-oss/tags",
-      "artifact_gib": 13.04,
-      "decision": "reject_interactive_fit",
-      "priority": 0
+      "model_id": "gpt-oss-20b",
+      "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
+      "priority": 2,
+      "artifacts": [
+        {
+          "engine": "lm_studio",
+          "provider": "lm_studio_local",
+          "engine_model": "openai/gpt-oss-20b",
+          "source": "https://lmstudio.ai/models/openai/gpt-oss-20b",
+          "artifact_gib": 11.28,
+          "gpu_fraction": 0.5,
+          "engine_status": "supported",
+          "decision": "qualify_controlled_hybrid"
+        }
+      ]
     },
     {
-      "model": "phi4:14b-q4_K_M",
-      "source": "https://ollama.com/library/phi4/tags",
-      "artifact_gib": 8.48,
-      "decision": "reject_interactive_fit",
-      "priority": 0
+      "model_id": "mistral-7b-instruct",
+      "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
+      "priority": 10,
+      "artifacts": [
+        {
+          "engine": "ollama",
+          "provider": "ollama_local",
+          "engine_model": "mistral:7b-instruct",
+          "source": "https://ollama.com/library/mistral/tags",
+          "artifact_gib": 4.1,
+          "gpu_fraction": 1.0,
+          "engine_status": "supported",
+          "decision": "qualify_baseline"
+        }
+      ]
+    },
+    {
+      "model_id": "llama-3.1-8b",
+      "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
+      "priority": 10,
+      "artifacts": [
+        {
+          "engine": "ollama",
+          "provider": "ollama_local",
+          "engine_model": "llama3.1:8b",
+          "source": "https://ollama.com/library/llama3.1/tags",
+          "artifact_gib": 4.56,
+          "gpu_fraction": 1.0,
+          "engine_status": "supported",
+          "decision": "qualify_baseline"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen2.5-14b",
+      "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
+      "priority": 10,
+      "artifacts": [
+        {
+          "engine": "ollama",
+          "provider": "ollama_local",
+          "engine_model": "qwen2.5:14b",
+          "source": "https://ollama.com/library/qwen2.5/tags",
+          "artifact_gib": 8.38,
+          "gpu_fraction": 0.65,
+          "engine_status": "supported",
+          "decision": "qualify_baseline_hybrid"
+        }
+      ]
     }
   ]
 }

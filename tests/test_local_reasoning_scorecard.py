@@ -10,7 +10,8 @@ from benchmarks.reasoning.scorecard import build_scorecard
 
 def _trial(
     model: str, family: str, repetition: int, accepted: bool, wall: float,
-    *, peak_vram_bytes: int | None = None, gold_reviewed: bool = False,
+    *, provider: str = "ollama_local", peak_vram_bytes: int | None = None,
+    gold_reviewed: bool = False,
 ) -> QualificationTrial:
     request_metadata = {}
     if peak_vram_bytes is not None:
@@ -20,7 +21,7 @@ def _trial(
         }
     return QualificationTrial(
         trial_id=f"{model}-{family}-{repetition}", suite_id="suite", corpus_version="1",
-        model=model, provider="ollama_local", run_variant="tasks-1.1.0-full-ollama-ctx4096",
+        model=model, provider=provider, run_variant="tasks-1.1.0-full-local-ctx4096",
         task_id=f"{family}:case", repetition=repetition,
         status="accepted" if accepted else "rejected", wall_seconds=wall,
         request_metadata=request_metadata,
@@ -42,6 +43,7 @@ def test_scorecard_routes_only_fully_reliable_models_and_prefers_latency():
     scorecard = build_scorecard(trials, minimum_sources=0, required_families=["narrative_generation"])
 
     assert scorecard["routes"]["tool_use"]["model"] == "fast"
+    assert scorecard["routes"]["tool_use"]["provider"] == "ollama_local"
     assert scorecard["routes"]["canon_events"] == {"status": "unqualified", "model": None}
     assert scorecard["routes"]["narrative_generation"] == {"status": "unqualified", "model": None}
     assert scorecard["policy"]["allow_unqualified_fallback"] is False
@@ -115,3 +117,43 @@ def test_scorecard_requires_reviewed_gold_for_extraction_routes():
     )
 
     assert reviewed_scorecard["routes"]["canon_entities"]["status"] == "qualified"
+
+
+def test_scorecard_never_merges_same_model_across_engines():
+    trials = [
+        _trial(
+            "shared-model", "tool_use", repetition, True, 1.0,
+            provider="ollama_local",
+        )
+        for repetition in range(1, 3)
+    ]
+    trials.append(_trial(
+        "shared-model", "tool_use", 3, True, 0.5,
+        provider="lm_studio_local",
+    ))
+
+    scorecard = build_scorecard(trials, minimum_sources=0)
+
+    assert len(scorecard["results"]) == 2
+    assert scorecard["routes"]["tool_use"] == {"status": "unqualified", "model": None}
+
+
+def test_scorecard_excludes_trials_outside_artifact_allowlist():
+    trials = [
+        _trial(
+            "unapproved-derivative", "structured_json", repetition, True, 0.5,
+            provider="lm_studio_local",
+        )
+        for repetition in range(1, 4)
+    ]
+
+    scorecard = build_scorecard(
+        trials,
+        minimum_sources=0,
+        allowed_provider_models={("lm_studio_local", "approved-model")},
+    )
+
+    assert scorecard["results"] == []
+    assert scorecard["excluded_trial_count"] == 3
+    assert scorecard["routes"] == {}
+    assert scorecard["policy"]["artifact_allowlist_enforced"] is True
