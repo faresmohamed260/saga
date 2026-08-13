@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, TASK_SUITE_VERSION, build_tasks, evaluate_task
+from benchmarks.reasoning.gold_evaluation import build_gold_evaluator
 from packages.reasoning_runtime import (
     JsonQualificationCheckpointStore,
     ReasoningProfile,
@@ -118,6 +119,7 @@ def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="Exact local Ollama model tag.")
     parser.add_argument("--corpus", default="analysis_outputs/local_reasoning/corpus_v1.json")
+    parser.add_argument("--gold", help="Versioned local extraction gold annotations.")
     parser.add_argument("--checkpoints", default="analysis_outputs/local_reasoning/qualification")
     parser.add_argument("--scope", choices=("screening", "full"), default="screening")
     parser.add_argument("--task-family", action="append", choices=TASK_FAMILIES)
@@ -149,6 +151,14 @@ def main() -> int:
 
     corpus_path = Path(args.corpus).resolve()
     corpus = json.loads(corpus_path.read_text(encoding="utf-8"))
+    evaluator = evaluate_task
+    gold_variant = ""
+    if args.gold:
+        gold = json.loads(Path(args.gold).resolve().read_text(encoding="utf-8"))
+        if str(gold.get("corpus_version") or "") != str(corpus.get("corpus_version") or ""):
+            raise SystemExit("Gold annotations do not match the corpus version.")
+        evaluator = build_gold_evaluator(gold)
+        gold_variant = f"-gold{gold.get('version', 'unknown')}"
     tasks = build_tasks(corpus, scope=args.scope)
     if args.task_family:
         selected = set(args.task_family)
@@ -201,9 +211,9 @@ def main() -> int:
     )
     trials = runner.run_model(
         suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
-        client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluate_task,
+        client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluator,
         run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-ollama-ctx{args.context_tokens}"
-                     f"-gpu{args.gpu_layers}-threads{args.threads}-stream1"),
+                     f"-gpu{args.gpu_layers}-threads{args.threads}-stream1{gold_variant}"),
     )
     wall_times = [trial.wall_seconds for trial in trials]
     summary = {
