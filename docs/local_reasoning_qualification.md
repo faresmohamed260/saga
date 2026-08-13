@@ -95,3 +95,16 @@ The versioned candidate manifest now separates canonical model identity from eng
 Qualification defaults to at most 32 GPU layers and 8 CPU threads, rejects trials above 10 GiB total VRAM or 112 GiB host RAM, and includes allocation settings in checkpoint identity. A safe qwen2.5 14B trial used 7.28 GiB VRAM but fell to 0.95 tokens/second due to CPU offload, so that model is not suitable for interactive desktop work under the headroom policy. The next preferred candidate is `qwen3.5:9b-q4_K_M`: its official 6.6 GB artifact and 32-layer architecture should fit fully on this GPU under the safety limits. Suitability must still be proven by measured load, responsiveness, and real-book quality tests.
 
 Production scorecard generation requires complete per-trial resource evidence and applies the same 10 GiB VRAM and 112 GiB host-RAM ceilings. Extraction routes additionally require reviewed exact-corpus gold metrics. Rebuilding the scorecard from the current 30 full-scope real-book trials leaves only Mistral 7B structured JSON and native tool use qualified; no unqualified fallback is permitted.
+
+## Fast empirical funnel
+
+Model discovery now precedes full qualification. Each candidate first receives one bounded trial on entity extraction, generation planning, and native tool use. A request is capped at 90 seconds; poor quality or latency eliminates the route before repeated nine-family testing. Only the top one or two candidates proceed to three-source repeated qualification.
+
+The first equal-task shootout produced:
+
+| Model | Accepted | Cold load | Median task | Entity evidence | Planning evidence | Tool use |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Qwen3.5 9B Q4_K_M | 1/3 | 13.16 s | 14.52 s | 0.17 | 0.33 | pass |
+| Mistral 7B Instruct | 2/3 | 19.55 s | 13.86 s | 0.90 | 1.00 | pass |
+
+Both stayed below 6.4 GiB total VRAM during inference and were unloaded immediately afterward. The Qwen failures were genuine grounding errors: it merged dialogue separated by narration and inserted ellipses into purported verbatim quotations. Mistral is the current quality leader, but its entity route remains unqualified because one of ten evidence quotations was unsupported. The official GPT-OSS 20B LM Studio artifact is the next and final discovery candidate before selecting the repeated-qualification shortlist.
