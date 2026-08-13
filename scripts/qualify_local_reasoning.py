@@ -131,6 +131,8 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--max-vram-gib", type=float, default=10.0)
     parser.add_argument("--max-host-ram-gib", type=float, default=112.0)
+    parser.add_argument("--max-baseline-cpu-percent", type=float, default=50.0)
+    parser.add_argument("--min-available-ram-gib", type=float, default=16.0)
     return parser.parse_args()
 
 
@@ -159,6 +161,10 @@ def main() -> int:
 
     checkpoint_root = Path(args.checkpoints).resolve()
     config = ReasoningRuntimeConfig()
+    _assert_host_idle(
+        max_cpu_percent=args.max_baseline_cpu_percent,
+        min_available_ram_bytes=int(args.min_available_ram_gib * 1024 ** 3),
+    )
     evicted_models = _unload_other_models(
         requested_model=args.model, generate_url=config.ollama_local_url,
     )
@@ -240,6 +246,21 @@ def _prepare_local_model(
         "keep_alive": keep_alive,
         "created_at_ms": int(time.time() * 1000),
     }
+
+
+def _assert_host_idle(*, max_cpu_percent: float, min_available_ram_bytes: int) -> None:
+    cpu_percent = float(psutil.cpu_percent(interval=1.0))
+    available_ram = int(psutil.virtual_memory().available)
+    failures = []
+    if cpu_percent > max_cpu_percent:
+        failures.append(f"baseline CPU {cpu_percent:.1f}% exceeds {max_cpu_percent:.1f}%")
+    if available_ram < min_available_ram_bytes:
+        failures.append(
+            f"available RAM {available_ram / 1024 ** 3:.1f} GiB is below "
+            f"{min_available_ram_bytes / 1024 ** 3:.1f} GiB"
+        )
+    if failures:
+        raise RuntimeError("Host resource admission rejected: " + "; ".join(failures))
 
 
 def _unload_other_models(*, requested_model: str, generate_url: str) -> list[str]:

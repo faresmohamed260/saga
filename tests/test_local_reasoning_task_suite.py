@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
-from scripts.qualify_local_reasoning import _prepare_local_model, _unload_other_models
+from scripts.qualify_local_reasoning import _assert_host_idle, _prepare_local_model, _unload_other_models
 
 
 def _corpus():
@@ -139,3 +139,18 @@ def test_model_switch_evicts_only_other_resident_models(monkeypatch):
 
     assert evicted == ["qwen2.5:14b"]
     assert calls == [{"model": "qwen2.5:14b", "prompt": "", "stream": False, "keep_alive": 0}]
+
+
+def test_host_admission_rejects_busy_workstation(monkeypatch):
+    monkeypatch.setattr("scripts.qualify_local_reasoning.psutil.cpu_percent", lambda interval: 75.0)
+    monkeypatch.setattr(
+        "scripts.qualify_local_reasoning.psutil.virtual_memory",
+        lambda: type("Memory", (), {"available": 64 * 1024 ** 3})(),
+    )
+
+    try:
+        _assert_host_idle(max_cpu_percent=50.0, min_available_ram_bytes=16 * 1024 ** 3)
+    except RuntimeError as exc:
+        assert "baseline CPU" in str(exc)
+    else:
+        raise AssertionError("Expected busy-host admission rejection.")
