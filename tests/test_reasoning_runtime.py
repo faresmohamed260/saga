@@ -70,6 +70,56 @@ def test_ollama_local_profile_rejects_non_loopback_transport():
         )
 
 
+def test_ollama_local_tool_use_calls_native_chat_endpoint(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "message": {"tool_calls": [{"function": {
+                    "name": "lookup_book",
+                    "arguments": {"book_id": "book-1"},
+                }}]},
+                "prompt_eval_count": 12,
+                "eval_count": 8,
+                "eval_duration": 1_000_000_000,
+            }
+
+    def post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(requests, "post", post)
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                max_retries=1,
+            )
+        }),
+    )
+    tools = [{"type": "function", "function": {
+        "name": "lookup_book",
+        "description": "Load one book.",
+        "parameters": {
+            "type": "object",
+            "properties": {"book_id": {"type": "string"}},
+            "required": ["book_id"],
+        },
+    }}]
+
+    result = client.generate_json("Load book-1.", tools=tools, max_tokens=64)
+
+    assert result == {"tool_calls": [{"tool": "lookup_book", "arguments": {"book_id": "book-1"}}]}
+    assert captured["url"] == "http://localhost:11434/api/chat"
+    assert captured["json"]["tools"] == tools
+    assert client.last_request_metadata()["tool_mode"] == "tool_calling"
+
+
 def test_ollama_provider_metrics_preserve_native_load_and_decode_timings():
     client = create_reasoning_client(
         profile_name="local",

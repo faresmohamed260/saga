@@ -22,6 +22,8 @@ class QualificationTask(BaseModel):
     max_tokens: int = Field(default=1024, ge=1)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     response_format: dict[str, Any] = Field(default_factory=dict)
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    tool_choice: Any | None = None
     expected_keys: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -38,6 +40,7 @@ class QualificationTrial(BaseModel):
     corpus_version: str
     model: str
     provider: str
+    run_variant: str = ""
     task_id: str
     repetition: int
     status: Literal["accepted", "rejected", "failed"]
@@ -54,6 +57,12 @@ class QualificationCheckpointStore(Protocol):
     def load(self, trial_id: str) -> QualificationTrial | None: ...
 
     def save(self, trial: QualificationTrial) -> None: ...
+
+
+class QualificationResourceMonitor(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> dict[str, Any]: ...
 
 
 class JsonQualificationCheckpointStore:
@@ -79,6 +88,7 @@ class JsonQualificationCheckpointStore:
 
 
 QualificationEvaluator = Callable[[QualificationTask, dict[str, Any]], QualificationEvaluation]
+QualificationResourceMonitorFactory = Callable[[], QualificationResourceMonitor]
 
 
 class ReasoningQualificationRunner:
@@ -89,11 +99,13 @@ class ReasoningQualificationRunner:
         max_request_seconds: int = 300,
         min_trials_before_elimination: int = 3,
         minimum_acceptance_rate: float = 0.34,
+        resource_monitor_factory: QualificationResourceMonitorFactory | None = None,
     ) -> None:
         self.checkpoints = checkpoint_store
         self.max_request_seconds = max(1, int(max_request_seconds))
         self.min_trials_before_elimination = max(1, int(min_trials_before_elimination))
         self.minimum_acceptance_rate = min(1.0, max(0.0, float(minimum_acceptance_rate)))
+        self.resource_monitor_factory = resource_monitor_factory
 
     def run_model(
         self,
@@ -104,6 +116,7 @@ class ReasoningQualificationRunner:
         tasks: list[QualificationTask],
         repetitions: int,
         evaluator: QualificationEvaluator | None = None,
+        run_variant: str = "",
     ) -> list[QualificationTrial]:
         if int(getattr(client, "timeout", self.max_request_seconds)) > self.max_request_seconds:
             raise ValueError("Reasoning client timeout exceeds the qualification request deadline.")
@@ -112,7 +125,10 @@ class ReasoningQualificationRunner:
         resolved_evaluator = evaluator or required_keys_evaluator
         for task in tasks:
             for repetition in range(1, max(1, int(repetitions)) + 1):
-                trial_id = _trial_id(suite_id, corpus_version, provider, model, task.task_id, repetition)
+                trial_id = _trial_id(
+                    suite_id, corpus_version, provider, model, run_variant,
+                    task.model_dump(mode="json"), repetition,
+                )
                 existing = self.checkpoints.load(trial_id)
                 if existing is not None:
                     results.append(existing)
@@ -121,6 +137,7 @@ class ReasoningQualificationRunner:
                     trial_id=trial_id, suite_id=suite_id, corpus_version=corpus_version,
                     model=model, provider=provider, client=client, task=task,
                     repetition=repetition, evaluator=resolved_evaluator,
+                    run_variant=run_variant,
                 )
                 self.checkpoints.save(trial)
                 results.append(trial)
@@ -131,17 +148,21 @@ class ReasoningQualificationRunner:
     def _execute(
         self, *, trial_id: str, suite_id: str, corpus_version: str, model: str,
         provider: str, client: ReasoningClient, task: QualificationTask,
-        repetition: int, evaluator: QualificationEvaluator,
+        repetition: int, evaluator: QualificationEvaluator, run_variant: str,
     ) -> QualificationTrial:
-        started = time.perf_counter()
         output: dict[str, Any] = {}
         error_type = ""
         error_message = ""
+        monitor = self.resource_monitor_factory() if self.resource_monitor_factory else None
+        if monitor is not None:
+            monitor.start()
+        started = time.perf_counter()
         try:
             if task.operation == "json":
                 payload = client.generate_json(
                     task.prompt, strict=True, max_tokens=task.max_tokens,
                     response_format=task.response_format or None,
+                    tools=task.tools or None, tool_choice=task.tool_choice,
                 )
                 output = {"payload": payload}
             else:
@@ -160,11 +181,15 @@ class ReasoningQualificationRunner:
             error_type, error_message = type(exc).__name__, str(exc)[:2000]
             evaluation = QualificationEvaluation(accepted=False, reasons=[error_message])
             status = "failed"
+        resource_metrics = monitor.stop() if monitor is not None else {}
+        request_metadata = dict(client.last_request_metadata() or {})
+        if resource_metrics:
+            request_metadata["resource_metrics"] = resource_metrics
         return QualificationTrial(
             trial_id=trial_id, suite_id=suite_id, corpus_version=corpus_version,
-            model=model, provider=provider, task_id=task.task_id,
+            model=model, provider=provider, run_variant=run_variant, task_id=task.task_id,
             repetition=repetition, status=status, wall_seconds=round(elapsed, 6),
-            output=output, request_metadata=dict(client.last_request_metadata() or {}),
+            output=output, request_metadata=request_metadata,
             evaluation=evaluation, error_type=error_type, error_message=error_message,
             created_at_ms=int(time.time() * 1000),
         )

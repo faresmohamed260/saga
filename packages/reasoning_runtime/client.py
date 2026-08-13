@@ -60,6 +60,7 @@ class ReasoningRuntimeClient:
         self.mode = str(profile.mode or self.MODE_GPT_OSS).strip().lower()
         if self.mode == self.MODE_OLLAMA_LOCAL:
             self._validate_loopback_url(self.config.ollama_local_url)
+            self._validate_loopback_url(self.config.ollama_local_chat_url)
             if not self.resolved_model_name():
                 raise ValueError("ollama_local profiles require ollama_model or model_override.")
         self.timeout = max(30, int(profile.timeout_seconds))
@@ -103,7 +104,7 @@ class ReasoningRuntimeClient:
         tool_choice: Optional[object] = None,
         cancellation_checker: CancellationChecker | None = None,
     ) -> dict[str, Any]:
-        effective_prompt = self._apply_strict_mode(prompt) if strict else prompt
+        effective_prompt = self._apply_strict_mode(prompt) if strict and not tools else prompt
         self._pending_request_kind = "json"
         self._pending_json_mode = "strict_prompt" if strict else "plain_prompt"
         self._pending_response_format_type = self._response_format_type(response_format)
@@ -398,7 +399,13 @@ class ReasoningRuntimeClient:
         tools: Optional[list],
         tool_choice: Optional[object],
     ) -> dict[str, Any]:
+        if self.mode == self.MODE_OLLAMA_LOCAL and tools:
+            return self._generate_tools_ollama(
+                prompt, max_tokens=max_tokens, tools=tools, tool_choice=tool_choice,
+            )
         if self.mode in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
+            if tools:
+                raise ValueError("Cloud-oriented Ollama modes do not expose the local tool contract.")
             return self._generate_json_ollama(prompt, max_tokens=max_tokens, response_format=response_format)
         if self.mode == self.MODE_GENERAL_COMPUTE:
             return self._generate_json_general_compute(
@@ -471,6 +478,35 @@ class ReasoningRuntimeClient:
         self._capture_ollama_metrics(response)
         payload = response.json() or {}
         return self._safe_parse_json(str(payload.get("response") or ""))
+
+    def _generate_tools_ollama(
+        self, prompt: str, *, max_tokens: int, tools: list, tool_choice: Optional[object],
+    ) -> dict[str, Any]:
+        if tool_choice is not None:
+            raise ValueError("ollama_local does not support explicit tool_choice.")
+        payload = {
+            "model": self.resolved_model_name(),
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "tools": tools,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": max(1, int(max_tokens)),
+                "num_ctx": int(self.profile.context_window_tokens),
+            },
+        }
+        response = self._metered_call(
+            lambda: requests.post(
+                self.config.ollama_local_chat_url, headers={}, json=payload,
+                timeout=self.timeout,
+            ),
+            projected=_projected_text_usage(prompt, max_tokens),
+            operation="generate_tools", usage_extractor=_http_ollama_usage,
+        )
+        response.raise_for_status()
+        self._capture_ollama_metrics(response)
+        tool_calls = self._extract_ollama_tool_calls(dict(response.json() or {}))
+        return {"tool_calls": tool_calls} if tool_calls else {"error": "missing_tool_call"}
 
     def _generate_text_ollama(self, prompt: str, *, temperature: float, max_tokens: int) -> str:
         url, headers, direct_cloud = self._ollama_transport()
@@ -1066,6 +1102,17 @@ class ReasoningRuntimeClient:
                     arguments = {}
             normalized.append({"tool": name, "arguments": arguments})
         return {"tool_calls": normalized} if normalized else None
+
+    @staticmethod
+    def _extract_ollama_tool_calls(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in list(dict(payload.get("message") or {}).get("tool_calls") or []):
+            function = dict(item.get("function") or {}) if isinstance(item, dict) else {}
+            name = str(function.get("name") or "").strip()
+            arguments = function.get("arguments")
+            if name and isinstance(arguments, dict):
+                normalized.append({"tool": name, "arguments": arguments})
+        return normalized
 
     @classmethod
     def _safe_parse_json(cls, content: str) -> dict[str, Any]:

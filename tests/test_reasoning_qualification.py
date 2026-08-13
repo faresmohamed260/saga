@@ -24,6 +24,7 @@ class FakeReasoningClient:
 
     def generate_json(self, *args, **kwargs):
         self.calls += 1
+        self.last_json_kwargs = kwargs
         return {"answer": 42} if self.valid else {"error": "parse_failed"}
 
     def generate_text(self, *args, **kwargs):
@@ -97,3 +98,44 @@ def test_qualification_rejects_clients_with_an_unbounded_timeout(tmp_path: Path)
         assert "exceeds" in str(exc)
     else:
         raise AssertionError("Expected an explicit timeout-bound failure.")
+
+
+def test_qualification_forwards_provider_neutral_tools(tmp_path: Path):
+    client = FakeReasoningClient()
+    task = QualificationTask(
+        task_id="tool", operation="json", prompt="Load the book.",
+        expected_keys=["answer"],
+        tools=[{"type": "function", "function": {
+            "name": "load_book", "parameters": {"type": "object"},
+        }}],
+    )
+
+    ReasoningQualificationRunner(
+        checkpoint_store=JsonQualificationCheckpointStore(tmp_path / "trials"),
+    ).run_model(
+        suite_id="suite", corpus_version="v1", client=client,
+        tasks=[task], repetitions=1,
+    )
+
+    assert client.last_json_kwargs["tools"] == task.tools
+
+
+def test_qualification_records_resource_monitor_metrics(tmp_path: Path):
+    class Monitor:
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            assert self.started
+            return {"peak_ram_bytes": 123, "peak_vram_bytes": 456}
+
+    trials = ReasoningQualificationRunner(
+        checkpoint_store=JsonQualificationCheckpointStore(tmp_path / "trials"),
+        resource_monitor_factory=Monitor,
+    ).run_model(
+        suite_id="suite", corpus_version="v1", client=FakeReasoningClient(),
+        tasks=[QualificationTask(task_id="resource", operation="text", prompt="test")],
+        repetitions=1,
+    )
+
+    assert trials[0].request_metadata["resource_metrics"]["peak_vram_bytes"] == 456

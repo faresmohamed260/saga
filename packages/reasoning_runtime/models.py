@@ -75,6 +75,7 @@ class ReasoningRuntimeConfig:
     general_compute_active_index: int = 0
     general_compute_last_request_index: int = -1
     ollama_local_url: str = "http://localhost:11434/api/generate"
+    ollama_local_chat_url: str = "http://localhost:11434/api/chat"
     ollama_cloud_url: str = "https://ollama.com/api/generate"
     general_compute_chat_url: str = "https://api.generalcompute.com/v1/chat/completions"
     mistral_api_key: str = ""
@@ -83,6 +84,8 @@ class ReasoningRuntimeConfig:
     def __post_init__(self) -> None:
         if str(self.ollama_local_url or "").strip() and not str(self.ollama_local_url).strip().startswith(("http://", "https://")):
             raise ValueError("ReasoningRuntimeConfig.ollama_local_url must be an HTTP(S) URL.")
+        if str(self.ollama_local_chat_url or "").strip() and not str(self.ollama_local_chat_url).strip().startswith(("http://", "https://")):
+            raise ValueError("ReasoningRuntimeConfig.ollama_local_chat_url must be an HTTP(S) URL.")
         if str(self.ollama_cloud_url or "").strip() and not str(self.ollama_cloud_url).strip().startswith(("http://", "https://")):
             raise ValueError("ReasoningRuntimeConfig.ollama_cloud_url must be an HTTP(S) URL.")
         if str(self.general_compute_chat_url or "").strip() and not str(self.general_compute_chat_url).strip().startswith(("http://", "https://")):
