@@ -47,6 +47,9 @@ class ReasoningProfile:
     ollama_gpu_layers: int | None = None
     ollama_threads: int | None = None
     ollama_stream_metrics: bool = False
+    lm_studio_model: str = ""
+    lm_studio_stream_metrics: bool = False
+    lm_studio_reasoning_effort: str = ""
     context_window_tokens: int = 8192
     deepseek_model: str = "deepseek-v3.1:671b-cloud"
     gpt_oss_model: str = "gpt-oss:120b-cloud"
@@ -74,6 +77,8 @@ class ReasoningProfile:
             raise ValueError("ReasoningProfile.ollama_gpu_layers cannot be negative.")
         if self.ollama_threads is not None and int(self.ollama_threads) < 1:
             raise ValueError("ReasoningProfile.ollama_threads must be positive.")
+        if self.lm_studio_reasoning_effort not in {"", "low", "medium", "high"}:
+            raise ValueError("ReasoningProfile.lm_studio_reasoning_effort must be low, medium, or high.")
 
 
 @dataclass
@@ -86,6 +91,8 @@ class ReasoningRuntimeConfig:
     general_compute_last_request_index: int = -1
     ollama_local_url: str = "http://localhost:11434/api/generate"
     ollama_local_chat_url: str = "http://localhost:11434/api/chat"
+    lm_studio_chat_url: str = "http://localhost:1234/v1/chat/completions"
+    lm_studio_api_token: str = ""
     ollama_cloud_url: str = "https://ollama.com/api/generate"
     general_compute_chat_url: str = "https://api.generalcompute.com/v1/chat/completions"
     mistral_api_key: str = ""
@@ -96,6 +103,8 @@ class ReasoningRuntimeConfig:
             raise ValueError("ReasoningRuntimeConfig.ollama_local_url must be an HTTP(S) URL.")
         if str(self.ollama_local_chat_url or "").strip() and not str(self.ollama_local_chat_url).strip().startswith(("http://", "https://")):
             raise ValueError("ReasoningRuntimeConfig.ollama_local_chat_url must be an HTTP(S) URL.")
+        if str(self.lm_studio_chat_url or "").strip() and not str(self.lm_studio_chat_url).strip().startswith(("http://", "https://")):
+            raise ValueError("ReasoningRuntimeConfig.lm_studio_chat_url must be an HTTP(S) URL.")
         if str(self.ollama_cloud_url or "").strip() and not str(self.ollama_cloud_url).strip().startswith(("http://", "https://")):
             raise ValueError("ReasoningRuntimeConfig.ollama_cloud_url must be an HTTP(S) URL.")
         if str(self.general_compute_chat_url or "").strip() and not str(self.general_compute_chat_url).strip().startswith(("http://", "https://")):

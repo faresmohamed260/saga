@@ -7,7 +7,7 @@ Local inference is the required production baseline. Cloud LLM providers are exc
 The evaluation order is:
 
 1. Ollama local inference using conventional quantized models.
-2. LM Studio comparison for the top two models only when it can isolate an engine effect.
+2. LM Studio comparison using the same runtime and qualification contracts when it can isolate an engine effect.
 3. Colibri research preflight only when conventional models fail quality thresholds.
 
 Model selection is per task. A model that is strong at extraction is not assumed to be suitable for narrative generation.
@@ -27,9 +27,9 @@ The planned Qwen3 14B, Qwen3 30B-A3B, and GPT-OSS 20B downloads require approxim
 
 ## Colibri decision
 
-Status: **deferred, do not download**.
+Status: **no-go on current storage, do not download**.
 
-Colibri is an experimental multi-tier MoE engine rather than a general replacement for Ollama. Its relevant model families require roughly 142 GiB or more of model storage, while the reference GLM-5.2 container is roughly 372 GiB. The only currently spacious local volume is a mechanical HDD, which is unsuitable for expert streaming. Colibri remains eligible only after conventional candidates fail quality gates and a dedicated NVMe capacity and random-read preflight passes.
+Colibri is an experimental model-specific multi-tier MoE engine rather than a general GGUF replacement for Ollama or LM Studio. Its official GLM-5.2 path requires approximately 380 GB on fast NVMe and streams roughly 11 GB of expert weights per token. This workstation has 71.9 GiB free on its NVMe; the spacious drives are HDDs and are unsuitable for the documented disk-bound path. Colibri remains eligible only after a dedicated NVMe capacity and random-read preflight passes. Weight streaming is useful for capacity, but it does not improve interactive latency on the current disks.
 
 ## Initial runtime evidence
 
@@ -79,6 +79,10 @@ Candidate acquisition is externally constrained. The Ollama registry delivered a
 Desktop responsiveness is a hard qualification SLO. Earlier qwen2.5 14B runs reached 11.03 GiB of the 12 GiB GPU and made the workstation nearly unusable. Models are now unloaded between sessions, and the Ollama server is configured for one resident model, one parallel request, queue depth 8, 2 GiB reserved VRAM, 4K request context, q8 KV cache, flash attention, cloud disabled, and below-normal process priority.
 
 The reasoning package also provides optional provider-neutral bounded admission. Production agent compositions can cap concurrent inference, bound waiting requests, reject overload immediately, enforce queue deadlines and cancellation, and record per-request queue outcomes without coupling agents to Ollama. This boundary prevents unbounded agent fan-out even if the backing engine's own queue configuration changes.
+
+LM Studio is now a native loopback-only reasoning provider using the same JSON, text, tool, LangGraph, checkpoint, and evaluation contracts. The shared qualifier controls GPU offload ratio, context, parallelism, TTL, lifecycle polling, and resource gates without duplicating task logic. An installed GPT-OSS 20B Q5_1 derivative at 50% GPU placement used 9.38 GiB total VRAM. Warm real-book structured JSON passed in 5.40 seconds with 5.20-second TTFT at low reasoning effort; the same streamed request took 59.76 seconds at the model's uncontrolled reasoning behavior. Native tool use passed in 11.65 seconds. Cold loading from file cache completed in 4.29 seconds, while an earlier CLI-attached load exceeded 120 seconds despite the server completing the load; lifecycle polling now detects server readiness directly.
+
+These LM Studio measurements establish engine feasibility, not production model qualification. The installed artifact is an abliterated community derivative and is excluded from production routing. A fair Ollama-versus-LM Studio comparison still requires the same official model artifact or equivalent quantization on both engines.
 
 Qualification defaults to at most 32 GPU layers and 8 CPU threads, rejects trials above 10 GiB total VRAM or 112 GiB host RAM, and includes allocation settings in checkpoint identity. A safe qwen2.5 14B trial used 7.28 GiB VRAM but fell to 0.95 tokens/second due to CPU offload, so that model is not suitable for interactive desktop work under the headroom policy. The next preferred candidate is `qwen3.5:9b-q4_K_M`: its official 6.6 GB artifact and 32-layer architecture should fit fully on this GPU under the safety limits. Suitability must still be proven by measured load, responsiveness, and real-book quality tests.
 

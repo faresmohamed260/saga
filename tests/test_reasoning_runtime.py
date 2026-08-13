@@ -71,6 +71,162 @@ def test_ollama_local_profile_rejects_non_loopback_transport():
         )
 
 
+def test_lm_studio_local_profile_is_explicit_and_loopback_only():
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local",
+                mode="lm_studio_local",
+                lm_studio_model="qwen/local-model",
+            )
+        }),
+    )
+
+    assert client.provider_name() == "lm_studio_local"
+    assert client.resolved_model_name() == "qwen/local-model"
+    assert client._rotate_account() is False
+
+    with pytest.raises(ValueError, match="loopback-only"):
+        create_reasoning_client(
+            profile_name="local",
+            config=ReasoningRuntimeConfig(
+                profiles={
+                    "local": ReasoningProfile(
+                        name="local",
+                        mode="lm_studio_local",
+                        lm_studio_model="qwen/local-model",
+                    )
+                },
+                lm_studio_chat_url="https://example.com/v1/chat/completions",
+            ),
+        )
+
+
+def test_lm_studio_local_structured_output_uses_native_schema(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "id": "chat-1",
+                "choices": [{"message": {"content": '{"answer":42}'}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4},
+            }
+
+    def post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(requests, "post", post)
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="lm_studio_local",
+                lm_studio_model="qwen/local-model", max_retries=1,
+                lm_studio_reasoning_effort="low",
+            )
+        }),
+    )
+    schema = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "answer",
+            "schema": {
+                "type": "object",
+                "properties": {"answer": {"type": "integer"}},
+                "required": ["answer"],
+            },
+        },
+    }
+
+    result = client.generate_json("Return 42.", response_format=schema, max_tokens=32)
+
+    assert result == {"answer": 42}
+    assert captured["url"] == "http://localhost:1234/v1/chat/completions"
+    assert captured["json"]["response_format"] == schema
+    assert captured["json"]["reasoning_effort"] == "low"
+    assert captured["json"]["stream"] is False
+    assert client.last_request_metadata()["usage"]["output_tokens"] == 4
+
+
+def test_lm_studio_local_tool_use_preserves_portable_tool_contract(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"tool_calls": [{
+                    "type": "function",
+                    "function": {
+                        "name": "fetch_passage",
+                        "arguments": '{"source_id":"book-1","chapter_index":2}',
+                    },
+                }]}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 8},
+            }
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Response())
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="lm_studio_local",
+                lm_studio_model="qwen/local-model", max_retries=1,
+            )
+        }),
+    )
+    tools = [{"type": "function", "function": {
+        "name": "fetch_passage",
+        "parameters": {"type": "object", "properties": {}},
+    }}]
+
+    result = client.generate_json("Fetch it.", tools=tools, max_tokens=32)
+
+    assert result == {"tool_calls": [{
+        "tool": "fetch_passage",
+        "arguments": {"source_id": "book-1", "chapter_index": 2},
+    }]}
+
+
+def test_lm_studio_local_streaming_captures_ttft(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return iter([
+                b'data: {"choices":[{"delta":{"content":"{\\"answer\\":"}}]}',
+                b'data: {"choices":[{"delta":{"content":"42}"}}]}',
+                b'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}',
+                b'data: [DONE]',
+            ])
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Response())
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="lm_studio_local",
+                lm_studio_model="qwen/local-model", max_retries=1,
+                lm_studio_stream_metrics=True,
+            )
+        }),
+    )
+
+    result = client.generate_json("Return 42.", max_tokens=16)
+
+    assert result == {"answer": 42}
+    metrics = client.last_request_metadata()["provider_metrics"]
+    assert metrics["ttft_seconds"] >= 0
+    assert metrics["output_tokens"] == 2
+
+
 def test_ollama_local_tool_use_calls_native_chat_endpoint(monkeypatch):
     captured = {}
 
@@ -340,6 +496,8 @@ def test_database_owned_sdk_provider_keys_override_process_composition_without_l
         profiles={"default": ReasoningProfile(name="default")},
         mistral_api_key="process-mistral-secret",
         gemini_api_key="process-gemini-secret",
+        lm_studio_chat_url="http://127.0.0.1:1234/v1/chat/completions",
+        lm_studio_api_token="local-lm-secret",
     )
 
     resolved = apply_persistence_provider_configs(config, persistence_client=persistence)
@@ -347,6 +505,8 @@ def test_database_owned_sdk_provider_keys_override_process_composition_without_l
 
     assert resolved.mistral_api_key == "db-mistral-secret"
     assert resolved.gemini_api_key == "db-gemini-secret"
+    assert resolved.lm_studio_chat_url == "http://127.0.0.1:1234/v1/chat/completions"
+    assert resolved.lm_studio_api_token == "local-lm-secret"
     assert summary["mistral"]["configured"] is True
     assert summary["gemini"]["configured"] is True
     assert "secret" not in str(summary)

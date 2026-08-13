@@ -9,7 +9,10 @@ import pytest
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
 from scripts.qualify_local_reasoning import (
-    _assert_host_idle,
+    _assess_host_resources,
+    _assert_resource_limits,
+    _duration_seconds,
+    _prepare_lm_studio_model,
     _prepare_local_model,
     _unload_other_models,
     _validate_gold_corpus,
@@ -86,7 +89,7 @@ def test_qualification_cli_is_directly_executable():
         cwd=root, capture_output=True, text=True, timeout=15,
     )
     assert result.returncode == 0, result.stderr
-    assert "Exact local Ollama model tag" in result.stdout
+    assert "Exact model identifier" in result.stdout
 
 
 def test_gold_corpus_validation_requires_exact_versioned_artifact(tmp_path):
@@ -135,6 +138,58 @@ def test_model_preload_uses_the_qualified_context_window(monkeypatch):
     assert evidence["provider_load_seconds"] == 1.0
 
 
+def test_lm_studio_preload_uses_bounded_explicit_placement(monkeypatch):
+    captured = {}
+    monkeypatch.setattr("scripts.qualify_local_reasoning.shutil.which", lambda name: "lms")
+    states = iter([False, True])
+    monkeypatch.setattr(
+        "scripts.qualify_local_reasoning._lm_studio_model_loaded",
+        lambda **kwargs: next(states),
+    )
+
+    class Process:
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout):
+            return 0
+
+    def popen(command, **kwargs):
+        captured.update(command=command, kwargs=kwargs)
+        return Process()
+
+    monkeypatch.setattr("scripts.qualify_local_reasoning.subprocess.Popen", popen)
+    monkeypatch.setattr("scripts.qualify_local_reasoning.time.sleep", lambda seconds: None)
+
+    evidence = _prepare_lm_studio_model(
+        model="openai/gpt-oss-20b",
+        timeout_seconds=120,
+        context_tokens=4096,
+        gpu_offload="0.5",
+        ttl_seconds=300,
+        models_url="http://localhost:1234/api/v1/models",
+    )
+
+    assert captured["command"] == [
+        "lms", "load", "openai/gpt-oss-20b",
+        "--gpu", "0.5", "--context-length", "4096",
+        "--parallel", "1", "--ttl", "300", "--yes",
+    ]
+    assert captured["kwargs"]["stdout"] is subprocess.DEVNULL
+    assert evidence["gpu_offload"] == "0.5"
+
+
+def test_keep_alive_duration_is_normalized_for_lm_studio_ttl():
+    assert _duration_seconds("5m") == 300
+    assert _duration_seconds("1h") == 3600
+    assert _duration_seconds("30s") == 30
+
+
 def test_model_switch_evicts_only_other_resident_models(monkeypatch):
     calls = []
 
@@ -168,16 +223,43 @@ def test_model_switch_evicts_only_other_resident_models(monkeypatch):
     assert calls == [{"model": "qwen2.5:14b", "prompt": "", "stream": False, "keep_alive": 0}]
 
 
-def test_host_admission_rejects_busy_workstation(monkeypatch):
+def test_host_admission_records_busy_cpu_without_rejecting_gpu_inference(monkeypatch):
     monkeypatch.setattr("scripts.qualify_local_reasoning.psutil.cpu_percent", lambda interval: 75.0)
     monkeypatch.setattr(
         "scripts.qualify_local_reasoning.psutil.virtual_memory",
         lambda: type("Memory", (), {"available": 64 * 1024 ** 3})(),
     )
 
-    try:
-        _assert_host_idle(max_cpu_percent=50.0, min_available_ram_bytes=16 * 1024 ** 3)
-    except RuntimeError as exc:
-        assert "baseline CPU" in str(exc)
-    else:
-        raise AssertionError("Expected busy-host admission rejection.")
+    assessment = _assess_host_resources(
+        cpu_warning_percent=50.0,
+        min_available_ram_bytes=16 * 1024 ** 3,
+    )
+
+    assert assessment["cpu_warning"] is True
+    assert assessment["baseline_cpu_percent"] == 75.0
+
+
+def test_host_admission_still_rejects_insufficient_ram(monkeypatch):
+    monkeypatch.setattr("scripts.qualify_local_reasoning.psutil.cpu_percent", lambda interval: 10.0)
+    monkeypatch.setattr(
+        "scripts.qualify_local_reasoning.psutil.virtual_memory",
+        lambda: type("Memory", (), {"available": 8 * 1024 ** 3})(),
+    )
+
+    with pytest.raises(RuntimeError, match="available RAM"):
+        _assess_host_resources(
+            cpu_warning_percent=80.0,
+            min_available_ram_bytes=16 * 1024 ** 3,
+        )
+
+
+def test_model_preload_rejects_vram_overflow():
+    with pytest.raises(RuntimeError, match="peak VRAM"):
+        _assert_resource_limits(
+            {
+                "peak_vram_used_bytes": 11 * 1024 ** 3,
+                "peak_host_used_bytes": 64 * 1024 ** 3,
+            },
+            max_peak_vram_bytes=10 * 1024 ** 3,
+            max_peak_host_ram_bytes=112 * 1024 ** 3,
+        )

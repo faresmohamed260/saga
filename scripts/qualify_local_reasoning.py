@@ -6,7 +6,9 @@ import argparse
 import ctypes
 import hashlib
 import json
+import shutil
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -117,7 +119,8 @@ class NvmlMemoryReader:
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", required=True, help="Exact local Ollama model tag.")
+    parser.add_argument("--engine", choices=("ollama", "lm_studio"), default="ollama")
+    parser.add_argument("--model", required=True, help="Exact model identifier for the selected local engine.")
     parser.add_argument("--corpus", default="analysis_outputs/local_reasoning/corpus_v1.json")
     parser.add_argument("--gold", help="Versioned local extraction gold annotations.")
     parser.add_argument("--checkpoints", default="analysis_outputs/local_reasoning/qualification")
@@ -131,9 +134,11 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--keep-alive", default="30m")
     parser.add_argument("--gpu-layers", type=int, default=32)
     parser.add_argument("--threads", type=int, default=8)
+    parser.add_argument("--lm-studio-gpu-offload", default="0.5")
+    parser.add_argument("--lm-studio-reasoning-effort", choices=("low", "medium", "high"), default="low")
     parser.add_argument("--max-vram-gib", type=float, default=10.0)
     parser.add_argument("--max-host-ram-gib", type=float, default=112.0)
-    parser.add_argument("--max-baseline-cpu-percent", type=float, default=50.0)
+    parser.add_argument("--cpu-warning-percent", type=float, default=80.0)
     parser.add_argument("--min-available-ram-gib", type=float, default=16.0)
     return parser.parse_args()
 
@@ -181,30 +186,78 @@ def main() -> int:
 
     checkpoint_root = Path(args.checkpoints).resolve()
     config = ReasoningRuntimeConfig()
-    _assert_host_idle(
-        max_cpu_percent=args.max_baseline_cpu_percent,
+    host_admission = _assess_host_resources(
+        cpu_warning_percent=args.cpu_warning_percent,
         min_available_ram_bytes=int(args.min_available_ram_gib * 1024 ** 3),
     )
-    evicted_models = _unload_other_models(
-        requested_model=args.model, generate_url=config.ollama_local_url,
-    )
-    load_evidence = _prepare_local_model(
-        model=args.model, url=config.ollama_local_url,
-        keep_alive=args.keep_alive, timeout_seconds=args.load_timeout_seconds,
-        context_tokens=args.context_tokens, gpu_layers=args.gpu_layers,
-        threads=args.threads,
-    )
+    if args.engine == "ollama":
+        evicted_models = _unload_other_models(
+            requested_model=args.model, generate_url=config.ollama_local_url,
+        )
+    else:
+        evicted_models = _unload_other_lm_studio_models(requested_model=args.model)
+    load_monitor = LocalResourceMonitor()
+    load_monitor.start()
+    try:
+        if args.engine == "ollama":
+            load_evidence = _prepare_local_model(
+                model=args.model, url=config.ollama_local_url,
+                keep_alive=args.keep_alive, timeout_seconds=args.load_timeout_seconds,
+                context_tokens=args.context_tokens, gpu_layers=args.gpu_layers,
+                threads=args.threads,
+            )
+        else:
+            load_evidence = _prepare_lm_studio_model(
+                model=args.model,
+                timeout_seconds=args.load_timeout_seconds,
+                context_tokens=args.context_tokens,
+                gpu_offload=args.lm_studio_gpu_offload,
+                ttl_seconds=_duration_seconds(args.keep_alive),
+                models_url=_lm_studio_models_url(config.lm_studio_chat_url),
+            )
+    finally:
+        load_resource_metrics = load_monitor.stop()
+    load_evidence["host_admission"] = host_admission
+    load_evidence["resource_metrics"] = load_resource_metrics
     load_evidence["evicted_models"] = evicted_models
+    load_evidence["engine"] = args.engine
     _save_load_evidence(checkpoint_root, args.model, args.context_tokens, load_evidence)
+    try:
+        _assert_resource_limits(
+            load_resource_metrics,
+            max_peak_vram_bytes=int(args.max_vram_gib * 1024 ** 3),
+            max_peak_host_ram_bytes=int(args.max_host_ram_gib * 1024 ** 3),
+        )
+    except RuntimeError:
+        if args.engine == "ollama":
+            _unload_model(model=args.model, generate_url=config.ollama_local_url)
+        else:
+            _unload_lm_studio_model(args.model)
+        raise
 
-    profile = ReasoningProfile(
-        name="qualification-local", mode="ollama_local", ollama_model=args.model,
-        timeout_seconds=args.timeout_seconds, max_retries=1,
-        allow_account_rotation=False, context_window_tokens=args.context_tokens,
-        ollama_keep_alive=args.keep_alive,
-        ollama_gpu_layers=args.gpu_layers, ollama_threads=args.threads,
-        ollama_stream_metrics=True,
-    )
+    if args.engine == "ollama":
+        profile = ReasoningProfile(
+            name="qualification-local", mode="ollama_local", ollama_model=args.model,
+            timeout_seconds=args.timeout_seconds, max_retries=1,
+            allow_account_rotation=False, context_window_tokens=args.context_tokens,
+            ollama_keep_alive=args.keep_alive,
+            ollama_gpu_layers=args.gpu_layers, ollama_threads=args.threads,
+            ollama_stream_metrics=True,
+        )
+        allocation_variant = f"gpu{args.gpu_layers}-threads{args.threads}-stream1"
+    else:
+        profile = ReasoningProfile(
+            name="qualification-local", mode="lm_studio_local",
+            lm_studio_model=args.model,
+            timeout_seconds=args.timeout_seconds, max_retries=1,
+            allow_account_rotation=False, context_window_tokens=args.context_tokens,
+            lm_studio_stream_metrics=True,
+            lm_studio_reasoning_effort=args.lm_studio_reasoning_effort,
+        )
+        allocation_variant = (
+            f"gpu{args.lm_studio_gpu_offload}-parallel1-stream1"
+            f"-reasoning{args.lm_studio_reasoning_effort}"
+        )
     config.profiles[profile.name] = profile
     client = create_reasoning_client(
         profile_name=profile.name,
@@ -222,12 +275,13 @@ def main() -> int:
     trials = runner.run_model(
         suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
         client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluator,
-        run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-ollama-ctx{args.context_tokens}"
-                     f"-gpu{args.gpu_layers}-threads{args.threads}-stream1{gold_variant}"),
+        run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-ctx{args.context_tokens}"
+                     f"-{allocation_variant}{gold_variant}"),
     )
     wall_times = [trial.wall_seconds for trial in trials]
     summary = {
         "model": args.model,
+        "engine": args.engine,
         "scope": args.scope,
         "selected_tasks": len(tasks),
         "completed_trials": len(trials),
@@ -269,19 +323,176 @@ def _prepare_local_model(
     }
 
 
-def _assert_host_idle(*, max_cpu_percent: float, min_available_ram_bytes: int) -> None:
+def _prepare_lm_studio_model(
+    *, model: str, timeout_seconds: int, context_tokens: int,
+    gpu_offload: str, ttl_seconds: int, models_url: str,
+) -> dict[str, Any]:
+    executable = shutil.which("lms")
+    if not executable:
+        raise RuntimeError("LM Studio CLI 'lms' is not installed.")
+    started = time.perf_counter()
+    if _lm_studio_model_loaded(model=model, models_url=models_url):
+        return {
+            "model": model,
+            "wall_seconds": 0.0,
+            "provider_load_seconds": 0.0,
+            "keep_alive": f"{ttl_seconds}s",
+            "gpu_offload": str(gpu_offload),
+            "reused_loaded_instance": True,
+            "created_at_ms": int(time.time() * 1000),
+        }
+    process = subprocess.Popen(
+        [
+            executable, "load", model,
+            "--gpu", str(gpu_offload),
+            "--context-length", str(context_tokens),
+            "--parallel", "1",
+            "--ttl", str(ttl_seconds),
+            "--yes",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = started + timeout_seconds
+    try:
+        while time.perf_counter() < deadline:
+            if _lm_studio_model_loaded(model=model, models_url=models_url):
+                break
+            if process.poll() not in {None, 0}:
+                raise RuntimeError(f"LM Studio model load failed with exit code {process.returncode}.")
+            time.sleep(0.5)
+        else:
+            raise TimeoutError(f"LM Studio model load exceeded {timeout_seconds} seconds.")
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+    return {
+        "model": model,
+        "wall_seconds": round(time.perf_counter() - started, 6),
+        "provider_load_seconds": 0.0,
+        "keep_alive": f"{ttl_seconds}s",
+        "gpu_offload": str(gpu_offload),
+        "created_at_ms": int(time.time() * 1000),
+    }
+
+
+def _lm_studio_models_url(chat_url: str) -> str:
+    base = str(chat_url).split("/v1/", 1)[0].rstrip("/")
+    return f"{base}/api/v1/models"
+
+
+def _lm_studio_model_loaded(*, model: str, models_url: str) -> bool:
+    response = requests.get(models_url, timeout=10)
+    response.raise_for_status()
+    for item in list(dict(response.json() or {}).get("models") or []):
+        if str(item.get("key") or "") == model and list(item.get("loaded_instances") or []):
+            return True
+    return False
+
+
+def _duration_seconds(value: str) -> int:
+    normalized = str(value or "").strip().lower()
+    multiplier = 1
+    if normalized.endswith("m"):
+        multiplier, normalized = 60, normalized[:-1]
+    elif normalized.endswith("h"):
+        multiplier, normalized = 3600, normalized[:-1]
+    elif normalized.endswith("s"):
+        normalized = normalized[:-1]
+    try:
+        return max(1, int(float(normalized) * multiplier))
+    except ValueError as exc:
+        raise ValueError(f"Unsupported keep-alive duration '{value}'.") from exc
+
+
+def _lm_studio_processes() -> list[dict[str, Any]]:
+    executable = shutil.which("lms")
+    if not executable:
+        raise RuntimeError("LM Studio CLI 'lms' is not installed.")
+    result = subprocess.run(
+        [executable, "ps", "--json"],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"LM Studio process query failed: {result.stderr.strip()}")
+    payload = json.loads(result.stdout or "[]")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _unload_other_lm_studio_models(*, requested_model: str) -> list[str]:
+    evicted = []
+    for item in _lm_studio_processes():
+        identifier = str(item.get("identifier") or item.get("modelKey") or item.get("model") or "").strip()
+        model_key = str(item.get("modelKey") or item.get("model") or identifier).strip()
+        if not identifier or model_key == requested_model:
+            continue
+        _unload_lm_studio_model(identifier)
+        evicted.append(identifier)
+    return evicted
+
+
+def _unload_lm_studio_model(identifier: str) -> None:
+    executable = shutil.which("lms")
+    if not executable:
+        raise RuntimeError("LM Studio CLI 'lms' is not installed.")
+    result = subprocess.run(
+        [executable, "unload", identifier],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"LM Studio model unload failed: {result.stderr.strip() or result.stdout.strip()}")
+
+
+def _assess_host_resources(
+    *, cpu_warning_percent: float, min_available_ram_bytes: int,
+) -> dict[str, Any]:
     cpu_percent = float(psutil.cpu_percent(interval=1.0))
     available_ram = int(psutil.virtual_memory().available)
-    failures = []
-    if cpu_percent > max_cpu_percent:
-        failures.append(f"baseline CPU {cpu_percent:.1f}% exceeds {max_cpu_percent:.1f}%")
     if available_ram < min_available_ram_bytes:
-        failures.append(
+        raise RuntimeError(
             f"available RAM {available_ram / 1024 ** 3:.1f} GiB is below "
             f"{min_available_ram_bytes / 1024 ** 3:.1f} GiB"
         )
+    return {
+        "baseline_cpu_percent": cpu_percent,
+        "available_ram_bytes": available_ram,
+        "cpu_warning": cpu_percent > cpu_warning_percent,
+        "cpu_warning_percent": cpu_warning_percent,
+    }
+
+
+def _assert_resource_limits(
+    metrics: dict[str, Any], *, max_peak_vram_bytes: int,
+    max_peak_host_ram_bytes: int,
+) -> None:
+    failures = []
+    peak_vram = int(metrics.get("peak_vram_used_bytes") or 0)
+    peak_host_ram = int(metrics.get("peak_host_used_bytes") or 0)
+    if peak_vram > max_peak_vram_bytes:
+        failures.append(
+            f"peak VRAM {peak_vram / 1024 ** 3:.1f} GiB exceeds "
+            f"{max_peak_vram_bytes / 1024 ** 3:.1f} GiB"
+        )
+    if peak_host_ram > max_peak_host_ram_bytes:
+        failures.append(
+            f"peak host RAM {peak_host_ram / 1024 ** 3:.1f} GiB exceeds "
+            f"{max_peak_host_ram_bytes / 1024 ** 3:.1f} GiB"
+        )
     if failures:
-        raise RuntimeError("Host resource admission rejected: " + "; ".join(failures))
+        raise RuntimeError("Model preload resource limit exceeded: " + "; ".join(failures))
+
+
+def _unload_model(*, model: str, generate_url: str) -> None:
+    response = requests.post(
+        generate_url,
+        json={"model": model, "prompt": "", "stream": False, "keep_alive": 0},
+        timeout=30,
+    )
+    response.raise_for_status()
 
 
 def _unload_other_models(*, requested_model: str, generate_url: str) -> list[str]:
@@ -305,7 +516,15 @@ def _unload_other_models(*, requested_model: str, generate_url: str) -> list[str
 
 def _save_load_evidence(root: Path, model: str, context_tokens: int, payload: dict[str, Any]) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    identity = hashlib.sha256(f"{model}:{context_tokens}".encode("utf-8")).hexdigest()[:16]
+    identity_payload = {
+        "engine": payload.get("engine"),
+        "model": model,
+        "context_tokens": context_tokens,
+        "gpu_offload": payload.get("gpu_offload"),
+    }
+    identity = hashlib.sha256(
+        json.dumps(identity_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
     target = root / f"model-load-{identity}.json"
     temporary = target.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
