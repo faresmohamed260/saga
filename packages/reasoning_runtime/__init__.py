@@ -23,6 +23,12 @@ from .qualification import (
     QualificationTrial,
     ReasoningQualificationRunner,
 )
+from .queueing import (
+    QueuedReasoningClient,
+    ReasoningOverloadedError,
+    ReasoningQueuePolicy,
+    ReasoningQueueTimeoutError,
+)
 
 __all__ = [
     "GeneralComputeAccount",
@@ -37,6 +43,10 @@ __all__ = [
     "QualificationTask",
     "QualificationTrial",
     "ReasoningQualificationRunner",
+    "QueuedReasoningClient",
+    "ReasoningOverloadedError",
+    "ReasoningQueuePolicy",
+    "ReasoningQueueTimeoutError",
     "apply_persistence_provider_configs",
     "create_reasoning_client",
     "import_general_compute_accounts_from_file",
