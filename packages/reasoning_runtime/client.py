@@ -496,6 +496,7 @@ class ReasoningRuntimeClient:
                 "num_ctx": int(self.profile.context_window_tokens),
             },
         }
+        self._apply_local_resource_options(payload["options"])
         response = self._metered_call(
             lambda: requests.post(
                 self.config.ollama_local_chat_url, headers={}, json=payload,
@@ -859,11 +860,18 @@ class ReasoningRuntimeClient:
         if self.mode == self.MODE_OLLAMA_LOCAL:
             payload["options"]["num_ctx"] = int(self.profile.context_window_tokens)
             payload["keep_alive"] = self.profile.ollama_keep_alive
+            self._apply_local_resource_options(payload["options"])
         if "gpt-oss" in translated_model.lower():
             payload["think"] = "low"
         if json_mode:
             payload["format"] = self._ollama_json_format_payload(response_format)
         return payload
+
+    def _apply_local_resource_options(self, options: dict[str, Any]) -> None:
+        if self.profile.ollama_gpu_layers is not None:
+            options["num_gpu"] = int(self.profile.ollama_gpu_layers)
+        if self.profile.ollama_threads is not None:
+            options["num_thread"] = int(self.profile.ollama_threads)
 
     def _general_compute_headers(self) -> dict[str, str]:
         api_key = self._general_compute_pool.acquire_api_key_for_request()

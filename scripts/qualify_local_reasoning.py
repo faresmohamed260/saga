@@ -57,6 +57,7 @@ class LocalResourceMonitor:
             "peak_host_used_bytes": self._peak.get("host_used_bytes", 0),
             "baseline_vram_used_bytes": self._baseline.get("vram_used_bytes", 0),
             "peak_vram_used_bytes": self._peak.get("vram_used_bytes", 0),
+            "peak_host_cpu_percent": self._peak.get("host_cpu_percent", 0),
         }
         self._nvml.close()
         return metrics
@@ -69,6 +70,7 @@ class LocalResourceMonitor:
         values = {
             "host_used_bytes": int(psutil.virtual_memory().used),
             "vram_used_bytes": self._nvml.used_bytes(),
+            "host_cpu_percent": int(round(psutil.cpu_percent(interval=None))),
         }
         for key, value in values.items():
             self._peak[key] = max(self._peak.get(key, 0), value)
@@ -125,6 +127,10 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--load-timeout-seconds", type=int, default=180)
     parser.add_argument("--context-tokens", type=int, default=4096)
     parser.add_argument("--keep-alive", default="30m")
+    parser.add_argument("--gpu-layers", type=int, default=32)
+    parser.add_argument("--threads", type=int, default=8)
+    parser.add_argument("--max-vram-gib", type=float, default=10.0)
+    parser.add_argument("--max-host-ram-gib", type=float, default=112.0)
     return parser.parse_args()
 
 
@@ -136,6 +142,8 @@ def main() -> int:
         raise SystemExit("--load-timeout-seconds must be between 1 and 300.")
     if args.repetitions < 1:
         raise SystemExit("--repetitions must be positive.")
+    if args.gpu_layers < 0 or args.threads < 1:
+        raise SystemExit("Resource allocation values are invalid.")
 
     corpus_path = Path(args.corpus).resolve()
     corpus = json.loads(corpus_path.read_text(encoding="utf-8"))
@@ -151,11 +159,16 @@ def main() -> int:
 
     checkpoint_root = Path(args.checkpoints).resolve()
     config = ReasoningRuntimeConfig()
+    evicted_models = _unload_other_models(
+        requested_model=args.model, generate_url=config.ollama_local_url,
+    )
     load_evidence = _prepare_local_model(
         model=args.model, url=config.ollama_local_url,
         keep_alive=args.keep_alive, timeout_seconds=args.load_timeout_seconds,
-        context_tokens=args.context_tokens,
+        context_tokens=args.context_tokens, gpu_layers=args.gpu_layers,
+        threads=args.threads,
     )
+    load_evidence["evicted_models"] = evicted_models
     _save_load_evidence(checkpoint_root, args.model, args.context_tokens, load_evidence)
 
     profile = ReasoningProfile(
@@ -163,6 +176,7 @@ def main() -> int:
         timeout_seconds=args.timeout_seconds, max_retries=1,
         allow_account_rotation=False, context_window_tokens=args.context_tokens,
         ollama_keep_alive=args.keep_alive,
+        ollama_gpu_layers=args.gpu_layers, ollama_threads=args.threads,
     )
     config.profiles[profile.name] = profile
     client = create_reasoning_client(
@@ -173,12 +187,16 @@ def main() -> int:
     runner = ReasoningQualificationRunner(
         checkpoint_store=JsonQualificationCheckpointStore(checkpoint_root),
         max_request_seconds=args.timeout_seconds,
+        min_trials_before_elimination=(len(tasks) * args.repetitions + 1) if args.scope == "screening" else 3,
         resource_monitor_factory=LocalResourceMonitor,
+        max_peak_vram_bytes=int(args.max_vram_gib * 1024 ** 3),
+        max_peak_host_ram_bytes=int(args.max_host_ram_gib * 1024 ** 3),
     )
     trials = runner.run_model(
         suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
         client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluate_task,
-        run_variant=f"tasks-{TASK_SUITE_VERSION}-ollama-ctx{args.context_tokens}",
+        run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-ollama-ctx{args.context_tokens}"
+                     f"-gpu{args.gpu_layers}-threads{args.threads}"),
     )
     wall_times = [trial.wall_seconds for trial in trials]
     summary = {
@@ -199,14 +217,17 @@ def main() -> int:
 
 def _prepare_local_model(
     *, model: str, url: str, keep_alive: str, timeout_seconds: int,
-    context_tokens: int,
+    context_tokens: int, gpu_layers: int, threads: int,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     response = requests.post(
         url,
         json={
             "model": model, "prompt": "", "stream": False,
-            "keep_alive": keep_alive, "options": {"num_ctx": context_tokens},
+            "keep_alive": keep_alive, "options": {
+                "num_ctx": context_tokens, "num_gpu": gpu_layers,
+                "num_thread": threads,
+            },
         },
         timeout=timeout_seconds,
     )
@@ -219,6 +240,25 @@ def _prepare_local_model(
         "keep_alive": keep_alive,
         "created_at_ms": int(time.time() * 1000),
     }
+
+
+def _unload_other_models(*, requested_model: str, generate_url: str) -> list[str]:
+    ps_url = generate_url.rsplit("/", 1)[0] + "/ps"
+    response = requests.get(ps_url, timeout=10)
+    response.raise_for_status()
+    evicted: list[str] = []
+    for item in list(dict(response.json() or {}).get("models") or []):
+        model = str(item.get("name") or item.get("model") or "").strip()
+        if not model or model == requested_model:
+            continue
+        unload = requests.post(
+            generate_url,
+            json={"model": model, "prompt": "", "stream": False, "keep_alive": 0},
+            timeout=30,
+        )
+        unload.raise_for_status()
+        evicted.append(model)
+    return evicted
 
 
 def _save_load_evidence(root: Path, model: str, context_tokens: int, payload: dict[str, Any]) -> None:

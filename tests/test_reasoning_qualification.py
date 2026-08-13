@@ -139,3 +139,25 @@ def test_qualification_records_resource_monitor_metrics(tmp_path: Path):
     )
 
     assert trials[0].request_metadata["resource_metrics"]["peak_vram_bytes"] == 456
+    assert trials[0].task_metadata == {}
+
+
+def test_qualification_fails_trials_that_violate_resource_headroom(tmp_path: Path):
+    class Monitor:
+        def start(self):
+            pass
+
+        def stop(self):
+            return {"peak_vram_used_bytes": 11 * 1024 ** 3, "peak_host_used_bytes": 1}
+
+    trials = ReasoningQualificationRunner(
+        checkpoint_store=JsonQualificationCheckpointStore(tmp_path / "trials"),
+        resource_monitor_factory=Monitor, max_peak_vram_bytes=10 * 1024 ** 3,
+    ).run_model(
+        suite_id="suite", corpus_version="v1", client=FakeReasoningClient(),
+        tasks=[QualificationTask(task_id="resource", operation="text", prompt="test")],
+        repetitions=1,
+    )
+
+    assert trials[0].status == "failed"
+    assert trials[0].error_type == "ResourceLimitExceeded"

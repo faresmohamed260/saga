@@ -152,7 +152,7 @@ def _narrative_generation(case: dict[str, Any]) -> QualificationTask:
         task_id=f"narrative_generation:{case['case_id']}", operation="json",
         prompt=f"Write a 120-220 word continuation consistent with the passage. Do not introduce unsupported named facts. Return prose and exact grounding_quotes copied from the passage.\n\nPASSAGE:\n{case['text']}",
         max_tokens=700, response_format=schema, expected_keys=["prose", "grounding_quotes"],
-        metadata={"family": "narrative_generation", "source_text": case["text"], "case_id": case["case_id"]},
+        metadata={"family": "narrative_generation", "source_text": case["text"], "case_id": case["case_id"], "source_id": case["source_id"]},
     )
 
 
@@ -169,7 +169,7 @@ def _continuity_grounding(case: dict[str, Any]) -> QualificationTask:
         task_id=f"continuity_grounding:{case['case_id']}", operation="json",
         prompt=f"Classify each claim against the passage. For unsupported claims, evidence_quote must be an empty string.\nClaims:\n- supported: {quote}\n- fabricated: {fabricated}\n\nPASSAGE:\n{case['text']}",
         max_tokens=300, response_format=schema, expected_keys=["classifications"],
-        metadata={"family": "continuity_grounding", "source_text": case["text"], "case_id": case["case_id"]},
+        metadata={"family": "continuity_grounding", "source_text": case["text"], "case_id": case["case_id"], "source_id": case["source_id"]},
     )
 
 
@@ -182,7 +182,7 @@ def _structured_json(case: dict[str, Any]) -> QualificationTask:
         task_id=f"structured_json:{case['case_id']}", operation="json",
         prompt=f"Return this metadata exactly: {expected}", max_tokens=100,
         response_format=schema, expected_keys=list(expected),
-        metadata={"family": "structured_json", "expected": expected, "case_id": case["case_id"]},
+        metadata={"family": "structured_json", "expected": expected, "case_id": case["case_id"], "source_id": case["source_id"]},
     )
 
 
@@ -198,7 +198,7 @@ def _tool_use(case: dict[str, Any]) -> QualificationTask:
         task_id=f"tool_use:{case['case_id']}", operation="json",
         prompt=f"Use fetch_passage for source_id={case['source_id']} and chapter_index={case['chapter_index']}.",
         max_tokens=100, tools=tools,
-        metadata={"family": "tool_use", "expected_arguments": expected, "case_id": case["case_id"]},
+        metadata={"family": "tool_use", "expected_arguments": expected, "case_id": case["case_id"], "source_id": case["source_id"]},
     )
 
 
@@ -215,7 +215,7 @@ def _evidence_task(
         task_id=f"{family}:{case['case_id']}", operation="json",
         prompt=f"{instruction} Every item must include a short verbatim evidence_quote copied from the passage.\n\nPASSAGE:\n{case['text']}",
         max_tokens=900, response_format=schema, expected_keys=[result_key],
-        metadata={"family": family, "result_key": result_key, "minimum_items": minimum, "source_text": case["text"], "case_id": case["case_id"]},
+        metadata={"family": family, "result_key": result_key, "minimum_items": minimum, "source_text": case["text"], "case_id": case["case_id"], "source_id": case["source_id"]},
     )
 
 

@@ -38,6 +38,7 @@ def test_ollama_local_profile_is_explicit_and_cannot_use_cloud_accounts():
             profiles={
                 "local": ReasoningProfile(
                     name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                    ollama_gpu_layers=32, ollama_threads=8,
                 )
             },
             ollama_accounts=[OllamaAccount(label="cloud", api_key="secret")],
@@ -51,7 +52,7 @@ def test_ollama_local_profile_is_explicit_and_cannot_use_cloud_accounts():
     )
     assert client._ollama_payload(
         prompt="probe", model_name=client.resolved_model_name(), direct_cloud=False,
-    )["options"]["num_ctx"] == 8192
+    )["options"] == {"temperature": 0.0, "num_predict": 4096, "num_ctx": 8192, "num_gpu": 32, "num_thread": 8}
     assert client._rotate_account() is False
 
 

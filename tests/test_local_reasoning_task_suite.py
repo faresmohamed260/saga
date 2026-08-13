@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
-from scripts.qualify_local_reasoning import _prepare_local_model
+from scripts.qualify_local_reasoning import _prepare_local_model, _unload_other_models
 
 
 def _corpus():
@@ -99,7 +99,43 @@ def test_model_preload_uses_the_qualified_context_window(monkeypatch):
     evidence = _prepare_local_model(
         model="qwen2.5:14b", url="http://localhost:11434/api/generate",
         keep_alive="30m", timeout_seconds=180, context_tokens=4096,
+        gpu_layers=32, threads=8,
     )
 
-    assert captured["json"]["options"] == {"num_ctx": 4096}
+    assert captured["json"]["options"] == {
+        "num_ctx": 4096, "num_gpu": 32, "num_thread": 8,
+    }
     assert evidence["provider_load_seconds"] == 1.0
+
+
+def test_model_switch_evicts_only_other_resident_models(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    monkeypatch.setattr(
+        "scripts.qualify_local_reasoning.requests.get",
+        lambda *args, **kwargs: Response({"models": [
+            {"name": "qwen2.5:14b"}, {"name": "mistral:7b-instruct"},
+        ]}),
+    )
+    monkeypatch.setattr(
+        "scripts.qualify_local_reasoning.requests.post",
+        lambda *args, **kwargs: calls.append(kwargs["json"]) or Response({}),
+    )
+
+    evicted = _unload_other_models(
+        requested_model="mistral:7b-instruct",
+        generate_url="http://localhost:11434/api/generate",
+    )
+
+    assert evicted == ["qwen2.5:14b"]
+    assert calls == [{"model": "qwen2.5:14b", "prompt": "", "stream": False, "keep_alive": 0}]

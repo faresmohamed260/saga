@@ -42,6 +42,7 @@ class QualificationTrial(BaseModel):
     provider: str
     run_variant: str = ""
     task_id: str
+    task_metadata: dict[str, Any] = Field(default_factory=dict)
     repetition: int
     status: Literal["accepted", "rejected", "failed"]
     wall_seconds: float
@@ -100,12 +101,16 @@ class ReasoningQualificationRunner:
         min_trials_before_elimination: int = 3,
         minimum_acceptance_rate: float = 0.34,
         resource_monitor_factory: QualificationResourceMonitorFactory | None = None,
+        max_peak_vram_bytes: int | None = None,
+        max_peak_host_ram_bytes: int | None = None,
     ) -> None:
         self.checkpoints = checkpoint_store
         self.max_request_seconds = max(1, int(max_request_seconds))
         self.min_trials_before_elimination = max(1, int(min_trials_before_elimination))
         self.minimum_acceptance_rate = min(1.0, max(0.0, float(minimum_acceptance_rate)))
         self.resource_monitor_factory = resource_monitor_factory
+        self.max_peak_vram_bytes = max_peak_vram_bytes
+        self.max_peak_host_ram_bytes = max_peak_host_ram_bytes
 
     def run_model(
         self,
@@ -182,17 +187,36 @@ class ReasoningQualificationRunner:
             evaluation = QualificationEvaluation(accepted=False, reasons=[error_message])
             status = "failed"
         resource_metrics = monitor.stop() if monitor is not None else {}
+        resource_reasons = self._resource_limit_reasons(resource_metrics)
+        if resource_reasons:
+            evaluation = QualificationEvaluation(
+                accepted=False,
+                metrics={**evaluation.metrics, "resource_limit_exceeded": True},
+                reasons=[*evaluation.reasons, *resource_reasons],
+            )
+            status = "failed"
+            error_type = error_type or "ResourceLimitExceeded"
+            error_message = error_message or "; ".join(resource_reasons)
         request_metadata = dict(client.last_request_metadata() or {})
         if resource_metrics:
             request_metadata["resource_metrics"] = resource_metrics
         return QualificationTrial(
             trial_id=trial_id, suite_id=suite_id, corpus_version=corpus_version,
             model=model, provider=provider, run_variant=run_variant, task_id=task.task_id,
+            task_metadata=dict(task.metadata),
             repetition=repetition, status=status, wall_seconds=round(elapsed, 6),
             output=output, request_metadata=request_metadata,
             evaluation=evaluation, error_type=error_type, error_message=error_message,
             created_at_ms=int(time.time() * 1000),
         )
+
+    def _resource_limit_reasons(self, metrics: dict[str, Any]) -> list[str]:
+        reasons: list[str] = []
+        if self.max_peak_vram_bytes is not None and int(metrics.get("peak_vram_used_bytes") or 0) > self.max_peak_vram_bytes:
+            reasons.append("peak_vram_limit_exceeded")
+        if self.max_peak_host_ram_bytes is not None and int(metrics.get("peak_host_used_bytes") or 0) > self.max_peak_host_ram_bytes:
+            reasons.append("peak_host_ram_limit_exceeded")
+        return reasons
 
     def _should_eliminate(self, results: list[QualificationTrial]) -> bool:
         if len(results) < self.min_trials_before_elimination:

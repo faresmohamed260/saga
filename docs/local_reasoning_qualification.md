@@ -53,7 +53,7 @@ The corpus manifest is `benchmarks/reasoning/local_books_v1.json`. It contains s
 
 Every model/task/repetition produces one atomic checkpoint. Completed trials are reused by stable identity, and models can be eliminated only by an explicit minimum-trial acceptance policy. Individual reasoning requests are capped at five minutes.
 
-The executable qualification entrypoint is `scripts/qualify_local_reasoning.py`. It separates bounded model preload from task inference, pins the qualified model for the requested session, records cold-load evidence, and samples host RAM and GPU VRAM through local NVML. Screening runs one passage per task family; full qualification runs every family against all three books.
+The executable qualification entrypoint is `scripts/qualify_local_reasoning.py`. It separates bounded model preload from task inference, pins the qualified model for the requested session, records cold-load evidence, and samples host RAM and GPU VRAM through local NVML. Screening runs one passage per task family and cannot eliminate a model before every family is represented. Full qualification runs every family against all three books and is reserved for models that pass at least one relevant screening route.
 
 ## Qualification findings
 
@@ -62,3 +62,20 @@ The initial qwen2.5 14B load failures were caused by context allocation, not inf
 Native tool use passed on real corpus metadata in 1.84 seconds. Canon-event extraction is fast and stable but currently below the strict grounding gate: three of three trials were rejected, with the first versioned evaluator run producing five items at 0.80 verbatim evidence precision. Typographic quote normalization is evaluator-owned and versioned; paraphrased evidence remains a model error.
 
 Official Ollama candidate tags and default artifact sizes verified for this host are `qwen3:14b` (9.3 GB), `qwen3:30b-a3b-instruct-2507-q4_K_M` (19 GB), and `gpt-oss:20b` (14 GB). Downloads remain staged one model at a time.
+
+## Baseline decision
+
+The installed-model screening matrix completed for Mistral 7B Instruct, Llama 3.1 8B, and Qwen2.5 14B across all nine task families. Full three-book qualification currently establishes only these provisional routes:
+
+- Qwen2.5 14B: relationship extraction, 9/9 accepted, 10.71-second median warm task time.
+- Mistral 7B Instruct: exact structured JSON, 9/9 accepted, 0.70-second median; native tool use, 9/9 accepted, 0.90-second median.
+
+Llama 3.1 8B planning passed its screening passage but failed 3/3 on the first full-book case and was eliminated. No installed model currently qualifies for events, entities, character/world modeling, planning, continuity, or narrative generation. Extraction completeness is only a minimum-item proxy because the corpus does not yet have human-labeled gold sets; true precision/recall remains a production-readiness blocker.
+
+Candidate acquisition is externally constrained. The Ollama registry delivered approximately 0.25 MB/s on a bounded range test; direct Hugging Face delivered approximately 0.45 MB/s. Hugging Face Xet transferred no data and returned HTTP 416 from its CAS reconstruction endpoint. Partial downloads remain resumable, but no long-running background download is active.
+
+## Workstation resource policy
+
+Desktop responsiveness is a hard qualification SLO. Earlier qwen2.5 14B runs reached 11.03 GiB of the 12 GiB GPU and made the workstation nearly unusable. Models are now unloaded between sessions, and the Ollama server is configured for one resident model, one parallel request, queue depth 8, 2 GiB reserved VRAM, 4K request context, q8 KV cache, flash attention, cloud disabled, and below-normal process priority.
+
+Qualification defaults to at most 32 GPU layers and 8 CPU threads, rejects trials above 10 GiB total VRAM or 112 GiB host RAM, and includes allocation settings in checkpoint identity. A safe qwen2.5 14B trial used 7.28 GiB VRAM but fell to 0.95 tokens/second due to CPU offload, so that model is not suitable for interactive desktop work under the headroom policy. The next preferred candidate is `qwen3.5:9b-q4_K_M`: its official 6.6 GB artifact and 32-layer architecture should fit fully on this GPU under the safety limits. Suitability must still be proven by measured load, responsiveness, and real-book quality tests.

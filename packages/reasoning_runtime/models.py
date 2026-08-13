@@ -44,6 +44,8 @@ class ReasoningProfile:
     prefer_local_ollama: bool = False
     ollama_model: str = ""
     ollama_keep_alive: str = "5m"
+    ollama_gpu_layers: int | None = None
+    ollama_threads: int | None = None
     context_window_tokens: int = 8192
     deepseek_model: str = "deepseek-v3.1:671b-cloud"
     gpt_oss_model: str = "gpt-oss:120b-cloud"
@@ -67,6 +69,10 @@ class ReasoningProfile:
             raise ValueError("ReasoningProfile.context_window_tokens must be at least 1024.")
         if not str(self.ollama_keep_alive or "").strip():
             raise ValueError("ReasoningProfile.ollama_keep_alive is required.")
+        if self.ollama_gpu_layers is not None and int(self.ollama_gpu_layers) < 0:
+            raise ValueError("ReasoningProfile.ollama_gpu_layers cannot be negative.")
+        if self.ollama_threads is not None and int(self.ollama_threads) < 1:
+            raise ValueError("ReasoningProfile.ollama_threads must be positive.")
 
 
 @dataclass
