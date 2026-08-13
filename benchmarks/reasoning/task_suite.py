@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from packages.reasoning_runtime import QualificationEvaluation, QualificationTask
@@ -19,6 +20,7 @@ TASK_FAMILIES = (
     "structured_json",
     "tool_use",
 )
+TASK_SUITE_VERSION = "1.1.0"
 
 
 def build_tasks(corpus: dict[str, Any], *, scope: str = "full") -> list[QualificationTask]:
@@ -234,7 +236,13 @@ def _evidence_precision(rows: list[Any], source_text: str) -> float:
 
 
 def _normalize(value: str) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+    punctuation = str.maketrans({
+        "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
+        "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
+        "\u2013": "-", "\u2014": "-", "\u2212": "-", "\u00a0": " ",
+    })
+    canonical = unicodedata.normalize("NFKC", str(value or "")).translate(punctuation)
+    return re.sub(r"\s+", " ", canonical).strip().casefold()
 
 
 def _representative_sentence(value: str) -> str:

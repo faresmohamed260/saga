@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
+from scripts.qualify_local_reasoning import _prepare_local_model
 
 
 def _corpus():
@@ -40,6 +41,17 @@ def test_evidence_evaluator_rejects_invented_quotes_and_accepts_verbatim_quotes(
     assert rejected.metrics["evidence_precision"] == 0.5
 
 
+def test_evidence_evaluator_normalizes_typographic_punctuation_only():
+    task = build_tasks(_corpus(), scope="screening")[0]
+    task.metadata["source_text"] = "\u201cMara entered Hall 0.\u201d She carried the silver key."
+    result = evaluate_task(task, {"payload": {"events": [
+        {"evidence_quote": '"Mara entered Hall 0."'},
+        {"evidence_quote": "She carried the silver key."},
+    ]}})
+    assert result.accepted is True
+    assert result.metrics["evidence_precision"] == 1.0
+
+
 def test_tool_and_metadata_evaluators_require_exact_arguments():
     tasks = build_tasks(_corpus(), scope="screening")
     metadata_task = next(task for task in tasks if task.metadata["family"] == "structured_json")
@@ -67,3 +79,27 @@ def test_qualification_cli_is_directly_executable():
     )
     assert result.returncode == 0, result.stderr
     assert "Exact local Ollama model tag" in result.stdout
+
+
+def test_model_preload_uses_the_qualified_context_window(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"load_duration": 1_000_000_000}
+
+    def post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr("scripts.qualify_local_reasoning.requests.post", post)
+    evidence = _prepare_local_model(
+        model="qwen2.5:14b", url="http://localhost:11434/api/generate",
+        keep_alive="30m", timeout_seconds=180, context_tokens=4096,
+    )
+
+    assert captured["json"]["options"] == {"num_ctx": 4096}
+    assert evidence["provider_load_seconds"] == 1.0

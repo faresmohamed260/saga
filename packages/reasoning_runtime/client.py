@@ -488,6 +488,7 @@ class ReasoningRuntimeClient:
             "model": self.resolved_model_name(),
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
+            "keep_alive": self.profile.ollama_keep_alive,
             "tools": tools,
             "options": {
                 "temperature": 0.0,
@@ -857,6 +858,7 @@ class ReasoningRuntimeClient:
         }
         if self.mode == self.MODE_OLLAMA_LOCAL:
             payload["options"]["num_ctx"] = int(self.profile.context_window_tokens)
+            payload["keep_alive"] = self.profile.ollama_keep_alive
         if "gpt-oss" in translated_model.lower():
             payload["think"] = "low"
         if json_mode:

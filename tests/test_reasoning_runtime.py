@@ -117,6 +117,7 @@ def test_ollama_local_tool_use_calls_native_chat_endpoint(monkeypatch):
     assert result == {"tool_calls": [{"tool": "lookup_book", "arguments": {"book_id": "book-1"}}]}
     assert captured["url"] == "http://localhost:11434/api/chat"
     assert captured["json"]["tools"] == tools
+    assert captured["json"]["keep_alive"] == "5m"
     assert client.last_request_metadata()["tool_mode"] == "tool_calling"
 
 

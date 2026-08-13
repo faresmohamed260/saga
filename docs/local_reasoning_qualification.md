@@ -52,3 +52,13 @@ An uncontrolled 32K context probe exhausted the 170-second request deadline whil
 The corpus manifest is `benchmarks/reasoning/local_books_v1.json`. It contains source paths, SHA-256 identities, chapter counts, and deterministic sampling instructions only. Source text remains outside the repository.
 
 Every model/task/repetition produces one atomic checkpoint. Completed trials are reused by stable identity, and models can be eliminated only by an explicit minimum-trial acceptance policy. Individual reasoning requests are capped at five minutes.
+
+The executable qualification entrypoint is `scripts/qualify_local_reasoning.py`. It separates bounded model preload from task inference, pins the qualified model for the requested session, records cold-load evidence, and samples host RAM and GPU VRAM through local NVML. Screening runs one passage per task family; full qualification runs every family against all three books.
+
+## Qualification findings
+
+The initial qwen2.5 14B load failures were caused by context allocation, not inference. A preload without explicit `num_ctx` used Ollama's 32K model default, allocated approximately 6 GiB of KV buffers, reduced GPU offload to 33 of 49 layers, and exceeded 180 seconds. The corrected 4K preload completed in 47.4 seconds with full GPU placement. Warm structured output then completed in 1.83 seconds.
+
+Native tool use passed on real corpus metadata in 1.84 seconds. Canon-event extraction is fast and stable but currently below the strict grounding gate: three of three trials were rejected, with the first versioned evaluator run producing five items at 0.80 verbatim evidence precision. Typographic quote normalization is evaluator-owned and versioned; paraphrased evidence remains a model error.
+
+Official Ollama candidate tags and default artifact sizes verified for this host are `qwen3:14b` (9.3 GB), `qwen3:30b-a3b-instruct-2507-q4_K_M` (19 GB), and `gpt-oss:20b` (14 GB). Downloads remain staged one model at a time.

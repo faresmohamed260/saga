@@ -43,6 +43,7 @@ class ReasoningProfile:
     allow_account_rotation: bool = True
     prefer_local_ollama: bool = False
     ollama_model: str = ""
+    ollama_keep_alive: str = "5m"
     context_window_tokens: int = 8192
     deepseek_model: str = "deepseek-v3.1:671b-cloud"
     gpt_oss_model: str = "gpt-oss:120b-cloud"
@@ -64,6 +65,8 @@ class ReasoningProfile:
             raise ValueError("ReasoningProfile.base_delay_seconds cannot be negative.")
         if int(self.context_window_tokens) < 1024:
             raise ValueError("ReasoningProfile.context_window_tokens must be at least 1024.")
+        if not str(self.ollama_keep_alive or "").strip():
+            raise ValueError("ReasoningProfile.ollama_keep_alive is required.")
 
 
 @dataclass

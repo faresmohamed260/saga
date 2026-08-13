@@ -4,20 +4,23 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import statistics
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 import psutil
+import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
+from benchmarks.reasoning.task_suite import TASK_FAMILIES, TASK_SUITE_VERSION, build_tasks, evaluate_task
 from packages.reasoning_runtime import (
     JsonQualificationCheckpointStore,
     ReasoningProfile,
@@ -119,7 +122,9 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--case-id", action="append")
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=int, default=180)
+    parser.add_argument("--load-timeout-seconds", type=int, default=180)
     parser.add_argument("--context-tokens", type=int, default=4096)
+    parser.add_argument("--keep-alive", default="30m")
     return parser.parse_args()
 
 
@@ -127,6 +132,8 @@ def main() -> int:
     args = _arguments()
     if not 1 <= args.timeout_seconds <= 300:
         raise SystemExit("--timeout-seconds must be between 1 and 300.")
+    if not 1 <= args.load_timeout_seconds <= 300:
+        raise SystemExit("--load-timeout-seconds must be between 1 and 300.")
     if args.repetitions < 1:
         raise SystemExit("--repetitions must be positive.")
 
@@ -142,17 +149,27 @@ def main() -> int:
     if not tasks:
         raise SystemExit("No qualification tasks matched the requested filters.")
 
+    checkpoint_root = Path(args.checkpoints).resolve()
+    config = ReasoningRuntimeConfig()
+    load_evidence = _prepare_local_model(
+        model=args.model, url=config.ollama_local_url,
+        keep_alive=args.keep_alive, timeout_seconds=args.load_timeout_seconds,
+        context_tokens=args.context_tokens,
+    )
+    _save_load_evidence(checkpoint_root, args.model, args.context_tokens, load_evidence)
+
     profile = ReasoningProfile(
         name="qualification-local", mode="ollama_local", ollama_model=args.model,
         timeout_seconds=args.timeout_seconds, max_retries=1,
         allow_account_rotation=False, context_window_tokens=args.context_tokens,
+        ollama_keep_alive=args.keep_alive,
     )
+    config.profiles[profile.name] = profile
     client = create_reasoning_client(
         profile_name=profile.name,
         profile=profile,
-        config=ReasoningRuntimeConfig(profiles={profile.name: profile}),
+        config=config,
     )
-    checkpoint_root = Path(args.checkpoints).resolve()
     runner = ReasoningQualificationRunner(
         checkpoint_store=JsonQualificationCheckpointStore(checkpoint_root),
         max_request_seconds=args.timeout_seconds,
@@ -161,7 +178,7 @@ def main() -> int:
     trials = runner.run_model(
         suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
         client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluate_task,
-        run_variant=f"ollama-ctx{args.context_tokens}",
+        run_variant=f"tasks-{TASK_SUITE_VERSION}-ollama-ctx{args.context_tokens}",
     )
     wall_times = [trial.wall_seconds for trial in trials]
     summary = {
@@ -174,9 +191,43 @@ def main() -> int:
         "failed": sum(trial.status == "failed" for trial in trials),
         "median_wall_seconds": round(statistics.median(wall_times), 3) if wall_times else None,
         "checkpoint_root": str(checkpoint_root),
+        "model_load_wall_seconds": load_evidence["wall_seconds"],
     }
     print(json.dumps(summary, indent=2))
     return 2 if summary["failed"] else 0
+
+
+def _prepare_local_model(
+    *, model: str, url: str, keep_alive: str, timeout_seconds: int,
+    context_tokens: int,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    response = requests.post(
+        url,
+        json={
+            "model": model, "prompt": "", "stream": False,
+            "keep_alive": keep_alive, "options": {"num_ctx": context_tokens},
+        },
+        timeout=timeout_seconds,
+    )
+    response.raise_for_status()
+    payload = dict(response.json() or {})
+    return {
+        "model": model,
+        "wall_seconds": round(time.perf_counter() - started, 6),
+        "provider_load_seconds": round(float(payload.get("load_duration") or 0) / 1_000_000_000, 6),
+        "keep_alive": keep_alive,
+        "created_at_ms": int(time.time() * 1000),
+    }
+
+
+def _save_load_evidence(root: Path, model: str, context_tokens: int, payload: dict[str, Any]) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    identity = hashlib.sha256(f"{model}:{context_tokens}".encode("utf-8")).hexdigest()[:16]
+    target = root / f"model-load-{identity}.json"
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary.replace(target)
 
 
 if __name__ == "__main__":
