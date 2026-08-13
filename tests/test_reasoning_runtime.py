@@ -31,6 +31,73 @@ def test_ollama_cloud_payload_drops_cloud_suffix():
     assert payload["options"] == {"temperature": 0.25, "num_predict": 17}
 
 
+def test_ollama_local_profile_is_explicit_and_cannot_use_cloud_accounts():
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(
+            profiles={
+                "local": ReasoningProfile(
+                    name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                )
+            },
+            ollama_accounts=[OllamaAccount(label="cloud", api_key="secret")],
+        ),
+    )
+
+    assert client.provider_name() == "ollama_local"
+    assert client.resolved_model_name() == "qwen2.5:14b"
+    assert client._ollama_transport() == (
+        "http://localhost:11434/api/generate", {}, False,
+    )
+    assert client._ollama_payload(
+        prompt="probe", model_name=client.resolved_model_name(), direct_cloud=False,
+    )["options"]["num_ctx"] == 8192
+    assert client._rotate_account() is False
+
+
+def test_ollama_local_profile_rejects_non_loopback_transport():
+    with pytest.raises(ValueError, match="loopback-only"):
+        create_reasoning_client(
+            profile_name="local",
+            config=ReasoningRuntimeConfig(
+                profiles={
+                    "local": ReasoningProfile(
+                        name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                    )
+                },
+                ollama_local_url="https://ollama.com/api/generate",
+            ),
+        )
+
+
+def test_ollama_provider_metrics_preserve_native_load_and_decode_timings():
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+            )
+        }),
+    )
+    response = SimpleNamespace(json=lambda: {
+        "total_duration": 2_000_000_000,
+        "load_duration": 500_000_000,
+        "prompt_eval_duration": 250_000_000,
+        "eval_duration": 1_000_000_000,
+        "eval_count": 25,
+    })
+
+    client._capture_ollama_metrics(response)
+
+    assert client._provider_metrics == {
+        "total_duration_seconds": 2.0,
+        "load_duration_seconds": 0.5,
+        "prompt_eval_duration_seconds": 0.25,
+        "eval_duration_seconds": 1.0,
+        "tokens_per_second": 25.0,
+    }
+
+
 def test_mistral_native_usage_extraction_is_exact_and_mock_safe():
     usage = _mistral_usage(SimpleNamespace(
         id="request-1",

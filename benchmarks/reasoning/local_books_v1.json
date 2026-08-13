@@ -1,0 +1,60 @@
+{
+  "suite_id": "saga-local-reasoning-books",
+  "corpus_version": "1.0.0",
+  "content_policy": "Source text remains in authorized local files and is never copied into benchmark artifacts.",
+  "sampling": {
+    "max_chars_per_case": 12000,
+    "normalization": "utf8-nfkc-newlines",
+    "selection": "chapter-index-and-segment",
+    "segments": ["opening", "middle", "closing"]
+  },
+  "sources": [
+    {
+      "source_id": "the-cruel-prince",
+      "path": "D:\\Books\\Ebooks\\Holly Black\\The Cruel Prince\\The Cruel Prince.epub",
+      "sha256": "7f5f66d8a365071ce11d3a8a7ab88390cfc3dab5e5fd606ce7f1fec372d0553b",
+      "title": "The Cruel Prince: The Folk of the Air [Book 1]",
+      "chapter_count": 32,
+      "cases": [
+        {"chapter_index": 3, "segment": "opening"},
+        {"chapter_index": 6, "segment": "middle"},
+        {"chapter_index": 12, "segment": "closing"}
+      ]
+    },
+    {
+      "source_id": "a-court-of-thorns-and-roses",
+      "path": "D:\\Books\\Ebooks\\Sarah J. Maas\\A Court of Thorns and Roses\\A Court of Thorns and Roses.epub",
+      "sha256": "fafcb0e4420ba70c6e1f78749882cbff2e3b6d2207a62305f10f9996a1033bcf",
+      "title": "A Court of Thorns and Roses",
+      "chapter_count": 46,
+      "cases": [
+        {"chapter_index": 1, "segment": "opening"},
+        {"chapter_index": 7, "segment": "middle"},
+        {"chapter_index": 15, "segment": "closing"}
+      ]
+    },
+    {
+      "source_id": "caraval",
+      "path": "D:\\Books\\Ebooks\\Stephanie Garber\\Caraval\\Caraval.epub",
+      "sha256": "cb244b85e06e4af79854cdbcc6c036d9205b8471f363939f1b451f52b6254fda",
+      "title": "Caraval",
+      "chapter_count": 50,
+      "cases": [
+        {"chapter_index": 2, "segment": "opening"},
+        {"chapter_index": 8, "segment": "middle"},
+        {"chapter_index": 16, "segment": "closing"}
+      ]
+    }
+  ],
+  "task_families": [
+    "canon_events",
+    "canon_entities",
+    "canon_relationships",
+    "character_world_modeling",
+    "generation_planning",
+    "narrative_generation",
+    "continuity_grounding",
+    "structured_json",
+    "tool_use"
+  ]
+}

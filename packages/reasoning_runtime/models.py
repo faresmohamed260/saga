@@ -42,6 +42,8 @@ class ReasoningProfile:
     base_delay_seconds: float = 0.0
     allow_account_rotation: bool = True
     prefer_local_ollama: bool = False
+    ollama_model: str = ""
+    context_window_tokens: int = 8192
     deepseek_model: str = "deepseek-v3.1:671b-cloud"
     gpt_oss_model: str = "gpt-oss:120b-cloud"
     general_compute_model: str = "deepseek-v3.1"
@@ -60,6 +62,8 @@ class ReasoningProfile:
             raise ValueError("ReasoningProfile.max_retries must be at least 1.")
         if float(self.base_delay_seconds) < 0:
             raise ValueError("ReasoningProfile.base_delay_seconds cannot be negative.")
+        if int(self.context_window_tokens) < 1024:
+            raise ValueError("ReasoningProfile.context_window_tokens must be at least 1024.")
 
 
 @dataclass

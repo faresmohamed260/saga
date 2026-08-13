@@ -11,6 +11,7 @@ import time
 import wave
 from copy import deepcopy
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse
 
 import requests
 from langchain_core.tools import StructuredTool
@@ -46,6 +47,7 @@ from packages.runtime_common import (
 
 
 class ReasoningRuntimeClient:
+    MODE_OLLAMA_LOCAL = "ollama_local"
     MODE_DEEPSEEK = "deepseek"
     MODE_GPT_OSS = "gpt_oss"
     MODE_GENERAL_COMPUTE = "general_compute"
@@ -56,6 +58,10 @@ class ReasoningRuntimeClient:
         self.profile = profile
         self.config = deepcopy(config)
         self.mode = str(profile.mode or self.MODE_GPT_OSS).strip().lower()
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            self._validate_loopback_url(self.config.ollama_local_url)
+            if not self.resolved_model_name():
+                raise ValueError("ollama_local profiles require ollama_model or model_override.")
         self.timeout = max(30, int(profile.timeout_seconds))
         self.max_retries = max(1, int(profile.max_retries))
         self.base_delay = max(0.0, float(profile.base_delay_seconds))
@@ -71,6 +77,7 @@ class ReasoningRuntimeClient:
         self._pending_tool_mode = ""
         self._request_account_alias = ""
         self._request_usage = ProviderUsage(request_count=0)
+        self._provider_metrics: dict[str, Any] = {}
         self._ollama_pool = SimpleRotationPool(
             accounts=self.config.ollama_accounts,
             active_index=self.config.ollama_active_index,
@@ -162,7 +169,7 @@ class ReasoningRuntimeClient:
         response_format: Optional[dict] = None,
     ) -> dict[str, Any]:
         """Run structured multimodal inference through the configured Ollama pool."""
-        if self.mode not in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS, self.MODE_MISTRAL}:
+        if self.mode not in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS, self.MODE_MISTRAL}:
             raise ValueError("Vision inference requires an Ollama or Mistral reasoning profile.")
         if not image_bytes:
             raise ValueError("image_bytes is required for vision inference.")
@@ -245,6 +252,8 @@ class ReasoningRuntimeClient:
             self._finalize_request_tracking()
 
     def provider_name(self) -> str:
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            return "ollama_local"
         if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return "ollama"
         if self.mode == self.MODE_GENERAL_COMPUTE:
@@ -256,6 +265,8 @@ class ReasoningRuntimeClient:
             if self.mode == self.MODE_GENERAL_COMPUTE and self.profile.model_override.endswith("-cloud"):
                 return self.profile.general_compute_model
             return self.profile.model_override
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            return self.profile.ollama_model
         if self.mode == self.MODE_DEEPSEEK:
             return self.profile.deepseek_model
         if self.mode == self.MODE_GPT_OSS:
@@ -387,7 +398,7 @@ class ReasoningRuntimeClient:
         tools: Optional[list],
         tool_choice: Optional[object],
     ) -> dict[str, Any]:
-        if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
+        if self.mode in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return self._generate_json_ollama(prompt, max_tokens=max_tokens, response_format=response_format)
         if self.mode == self.MODE_GENERAL_COMPUTE:
             return self._generate_json_general_compute(
@@ -415,7 +426,7 @@ class ReasoningRuntimeClient:
         temperature: float,
         max_tokens: int,
     ) -> str:
-        if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
+        if self.mode in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return self._generate_text_ollama(
                 self._compose_text_prompt(system_prompt, prompt),
                 temperature=temperature,
@@ -457,6 +468,7 @@ class ReasoningRuntimeClient:
             projected=_projected_text_usage(prompt, max_tokens), operation="generate_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
+        self._capture_ollama_metrics(response)
         payload = response.json() or {}
         return self._safe_parse_json(str(payload.get("response") or ""))
 
@@ -471,6 +483,7 @@ class ReasoningRuntimeClient:
             projected=_projected_text_usage(prompt, max_tokens), operation="generate_text", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
+        self._capture_ollama_metrics(response)
         return str((response.json() or {}).get("response") or "").strip()
 
     def _generate_vision_json_ollama(
@@ -493,6 +506,7 @@ class ReasoningRuntimeClient:
             projected=_projected_text_usage(prompt, 4096), operation="vision_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
+        self._capture_ollama_metrics(response)
         payload = response.json() or {}
         content = str(payload.get("response") or (payload.get("message") or {}).get("content") or "")
         return self._safe_parse_json(content)
@@ -771,6 +785,9 @@ class ReasoningRuntimeClient:
         return False
 
     def _ollama_transport(self) -> tuple[str, dict[str, str], bool]:
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            self._request_account_alias = self._ollama_pool.local_alias
+            return self.config.ollama_local_url, {}, False
         if self.profile.prefer_local_ollama:
             self._request_account_alias = self._ollama_pool.local_alias
             return self.config.ollama_local_url, {}, False
@@ -802,6 +819,8 @@ class ReasoningRuntimeClient:
                 "num_predict": max(1, int(max_tokens)),
             },
         }
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            payload["options"]["num_ctx"] = int(self.profile.context_window_tokens)
         if "gpt-oss" in translated_model.lower():
             payload["think"] = "low"
         if json_mode:
@@ -839,6 +858,7 @@ class ReasoningRuntimeClient:
     def _begin_request_tracking(self) -> None:
         self._request_account_alias = ""
         self._request_usage = ProviderUsage(request_count=0)
+        self._provider_metrics = {}
         trace_context = current_trace_context()
         self._last_request_metadata = ReasoningRequestMetadata(
             trace_id=create_trace(
@@ -873,6 +893,7 @@ class ReasoningRuntimeClient:
         self._last_request_metadata.provider_account_alias = self._current_account_alias()
         self._last_request_metadata.provider = self.provider_name()
         self._last_request_metadata.usage = self._request_usage.model_dump()
+        self._last_request_metadata.provider_metrics = dict(self._provider_metrics)
         self._last_request_metadata.completed_at_ms = completed_at_ms
         self._last_request_metadata.latency_ms = max(
             0,
@@ -912,12 +933,32 @@ class ReasoningRuntimeClient:
         values["evidence_id"] = usage.evidence_id
         self._request_usage = ProviderUsage.model_validate(values)
 
+    def _capture_ollama_metrics(self, response: Any) -> None:
+        payload = dict(response.json() or {})
+        eval_count = max(0, int(payload.get("eval_count") or 0))
+        eval_seconds = max(0.0, float(payload.get("eval_duration") or 0) / 1_000_000_000)
+        self._provider_metrics = {
+            "total_duration_seconds": max(0.0, float(payload.get("total_duration") or 0) / 1_000_000_000),
+            "load_duration_seconds": max(0.0, float(payload.get("load_duration") or 0) / 1_000_000_000),
+            "prompt_eval_duration_seconds": max(0.0, float(payload.get("prompt_eval_duration") or 0) / 1_000_000_000),
+            "eval_duration_seconds": eval_seconds,
+            "tokens_per_second": (eval_count / eval_seconds) if eval_seconds else 0.0,
+        }
+
     def _current_account_alias(self) -> str:
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            return self._ollama_pool.local_alias
         if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return self._request_account_alias or self._ollama_pool.current_label()
         if self.mode == self.MODE_GENERAL_COMPUTE:
             return self._general_compute_pool.current_label()
         return ""
+
+    @staticmethod
+    def _validate_loopback_url(value: str) -> None:
+        parsed = urlparse(str(value or "").strip())
+        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("ollama_local requires a loopback-only ollama_local_url.")
 
     @staticmethod
     def _should_retry_http(exc: requests.HTTPError, attempt: int, max_retries: int) -> bool:

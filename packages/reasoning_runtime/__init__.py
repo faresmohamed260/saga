@@ -16,6 +16,13 @@ from .provider_config import (
     import_ollama_accounts_from_file,
     summarize_reasoning_provider_configs,
 )
+from .qualification import (
+    JsonQualificationCheckpointStore,
+    QualificationEvaluation,
+    QualificationTask,
+    QualificationTrial,
+    ReasoningQualificationRunner,
+)
 
 __all__ = [
     "GeneralComputeAccount",
@@ -25,6 +32,11 @@ __all__ = [
     "ReasoningProfile",
     "ReasoningRuntimeClient",
     "ReasoningRuntimeConfig",
+    "JsonQualificationCheckpointStore",
+    "QualificationEvaluation",
+    "QualificationTask",
+    "QualificationTrial",
+    "ReasoningQualificationRunner",
     "apply_persistence_provider_configs",
     "create_reasoning_client",
     "import_general_compute_accounts_from_file",
