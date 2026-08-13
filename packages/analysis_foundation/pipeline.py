@@ -98,7 +98,7 @@ class IngestionAgent:
             path = Path(raw_path)
             raw_bytes = path.read_bytes()
             source_type = path.suffix.lstrip(".").lower() or "txt"
-            parsed_source = _parse_source_document(path, source_type=source_type, raw_bytes=raw_bytes)
+            parsed_source = parse_source_document(path, source_type=source_type, raw_bytes=raw_bytes)
             text = parsed_source["text"]
             title = parsed_source["title"]
             book_index = int(book_index_start) + offset
@@ -565,10 +565,10 @@ def _resolve_checkpointer(
 
 
 def _extract_text(path: Path, *, source_type: str, raw_bytes: bytes) -> str:
-    return str(_parse_source_document(path, source_type=source_type, raw_bytes=raw_bytes)["text"])
+    return str(parse_source_document(path, source_type=source_type, raw_bytes=raw_bytes)["text"])
 
 
-def _parse_source_document(path: Path, *, source_type: str, raw_bytes: bytes) -> dict[str, Any]:
+def parse_source_document(path: Path, *, source_type: str, raw_bytes: bytes) -> dict[str, Any]:
     normalized = str(source_type or "").strip().lower()
     if normalized in {"txt", "md"}:
         text = raw_bytes.decode("utf-8", errors="ignore").strip()

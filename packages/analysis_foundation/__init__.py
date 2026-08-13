@@ -19,6 +19,7 @@ from .pipeline import (
     NarrativeGroundingAgent,
     SceneSegmentationAgent,
     build_analysis_foundation_graph,
+    parse_source_document,
 )
 from .addressee_evaluation import (
     AddresseeEvaluation,
@@ -61,6 +62,7 @@ __all__ = [
     "SceneSegmentationAgent",
     "SourceDocumentArtifact",
     "build_analysis_foundation_graph",
+    "parse_source_document",
     "evaluate_addressees",
     "evaluate_narrative_grounding",
     "load_analysis_foundation_service_config_from_env",
