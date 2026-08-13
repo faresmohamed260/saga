@@ -46,6 +46,7 @@ class ReasoningProfile:
     ollama_keep_alive: str = "5m"
     ollama_gpu_layers: int | None = None
     ollama_threads: int | None = None
+    ollama_stream_metrics: bool = False
     context_window_tokens: int = 8192
     deepseek_model: str = "deepseek-v3.1:671b-cloud"
     gpt_oss_model: str = "gpt-oss:120b-cloud"

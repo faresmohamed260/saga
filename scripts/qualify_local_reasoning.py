@@ -183,6 +183,7 @@ def main() -> int:
         allow_account_rotation=False, context_window_tokens=args.context_tokens,
         ollama_keep_alive=args.keep_alive,
         ollama_gpu_layers=args.gpu_layers, ollama_threads=args.threads,
+        ollama_stream_metrics=True,
     )
     config.profiles[profile.name] = profile
     client = create_reasoning_client(
@@ -202,7 +203,7 @@ def main() -> int:
         suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
         client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluate_task,
         run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-ollama-ctx{args.context_tokens}"
-                     f"-gpu{args.gpu_layers}-threads{args.threads}"),
+                     f"-gpu{args.gpu_layers}-threads{args.threads}-stream1"),
     )
     wall_times = [trial.wall_seconds for trial in trials]
     summary = {

@@ -46,6 +46,19 @@ from packages.runtime_common import (
 )
 
 
+class _BufferedOllamaResponse:
+    """Minimal response facade for a fully consumed Ollama event stream."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+
 class ReasoningRuntimeClient:
     MODE_OLLAMA_LOCAL = "ollama_local"
     MODE_DEEPSEEK = "deepseek"
@@ -464,14 +477,12 @@ class ReasoningRuntimeClient:
 
     def _generate_json_ollama(self, prompt: str, *, max_tokens: int, response_format: Optional[dict] = None) -> dict[str, Any]:
         url, headers, direct_cloud = self._ollama_transport()
+        payload = self._ollama_payload(
+            prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
+            json_mode=True, response_format=response_format, max_tokens=max_tokens, temperature=0.0,
+        )
         response = self._metered_call(
-            lambda: requests.post(
-                url, headers=headers,
-                json=self._ollama_payload(
-                    prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
-                    json_mode=True, response_format=response_format, max_tokens=max_tokens, temperature=0.0,
-                ), timeout=self.timeout,
-            ),
+            lambda: self._post_ollama(url, headers=headers, payload=payload),
             projected=_projected_text_usage(prompt, max_tokens), operation="generate_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
@@ -512,12 +523,12 @@ class ReasoningRuntimeClient:
 
     def _generate_text_ollama(self, prompt: str, *, temperature: float, max_tokens: int) -> str:
         url, headers, direct_cloud = self._ollama_transport()
+        payload = self._ollama_payload(
+            prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
+            temperature=temperature, max_tokens=max_tokens,
+        )
         response = self._metered_call(
-            lambda: requests.post(
-                url, headers=headers,
-                json=self._ollama_payload(prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
-                                          temperature=temperature, max_tokens=max_tokens), timeout=self.timeout,
-            ),
+            lambda: self._post_ollama(url, headers=headers, payload=payload),
             projected=_projected_text_usage(prompt, max_tokens), operation="generate_text", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
@@ -990,6 +1001,35 @@ class ReasoningRuntimeClient:
             "eval_duration_seconds": eval_seconds,
             "tokens_per_second": (eval_count / eval_seconds) if eval_seconds else 0.0,
         }
+        if payload.get("_ttft_seconds") is not None:
+            self._provider_metrics["ttft_seconds"] = max(0.0, float(payload["_ttft_seconds"]))
+
+    def _post_ollama(self, url: str, *, headers: dict[str, str], payload: dict[str, Any]) -> Any:
+        if self.mode != self.MODE_OLLAMA_LOCAL or not self.profile.ollama_stream_metrics:
+            return requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        streamed_payload = dict(payload)
+        streamed_payload["stream"] = True
+        started = time.perf_counter()
+        response = requests.post(
+            url, headers=headers, json=streamed_payload,
+            stream=True, timeout=self.timeout,
+        )
+        response.raise_for_status()
+        chunks: list[str] = []
+        final_payload: dict[str, Any] = {}
+        first_token_seconds: float | None = None
+        for line in response.iter_lines():
+            if not line:
+                continue
+            event = json.loads(line.decode("utf-8") if isinstance(line, bytes) else str(line))
+            chunk = str(event.get("response") or "")
+            if chunk and first_token_seconds is None:
+                first_token_seconds = time.perf_counter() - started
+            chunks.append(chunk)
+            final_payload.update(event)
+        final_payload["response"] = "".join(chunks)
+        final_payload["_ttft_seconds"] = first_token_seconds
+        return _BufferedOllamaResponse(final_payload)
 
     def _current_account_alias(self) -> str:
         if self.mode == self.MODE_OLLAMA_LOCAL:

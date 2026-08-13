@@ -150,6 +150,34 @@ def test_ollama_provider_metrics_preserve_native_load_and_decode_timings():
     }
 
 
+def test_ollama_local_streaming_captures_ttft_and_reassembles_response(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return iter([
+                b'{"response":"{\\"answer\\":"}',
+                b'{"response":"42}","done":true,"eval_count":2,"eval_duration":1000000000}',
+            ])
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Response())
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="mistral:7b-instruct",
+                ollama_stream_metrics=True,
+            )
+        }),
+    )
+
+    result = client.generate_json("Return the answer.", max_tokens=10)
+
+    assert result == {"answer": 42}
+    assert client.last_request_metadata()["provider_metrics"]["ttft_seconds"] >= 0
+
+
 def test_mistral_native_usage_extraction_is_exact_and_mock_safe():
     usage = _mistral_usage(SimpleNamespace(
         id="request-1",
