@@ -153,7 +153,16 @@ The tracked current-suite incumbent report is `benchmarks/reasoning/local_incumb
 
 Qwen3 14B acquisition first reached an integrity stop. The pre-existing Ollama sparse partial remained corrupt after bounded hole repair and was never registered or loaded. A separate official Q4_K_M artifact was then acquired resumably from ModelScope. Its exact 9,001,752,960-byte size and authoritative SHA-256 `500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0` were verified before LM Studio registration.
 
-Qwen3 14B passed the workstation resource gate at 70% GPU offload and 4K context, peaking near 8.03 GiB VRAM and 88.85 GiB host RAM. It failed all three real-book discovery cases: entity extraction and generation planning exceeded the 60-second request SLO, while native tool use returned an invalid payload after 21.46 seconds. A deadline regression run proved streamed inference now stops at 30.17 seconds and unloads automatically. Qwen3 14B is eliminated; Qwen3 30B-A3B is a no-go because the smaller candidate failed the discovery gate, so a larger download and slower hybrid placement are not justified.
+Qwen3 14B passed the workstation resource gate at 70% GPU offload and 4K context, peaking near 8.03 GiB VRAM and 88.85 GiB host RAM. It failed all three real-book discovery cases: entity extraction and generation planning exceeded the 60-second request SLO, while native tool use returned an invalid payload after 21.46 seconds. A deadline regression run proved streamed inference now stops at 30.17 seconds and unloads automatically. Qwen3 14B is eliminated. Qwen3 30B-A3B would normally be deferred by the discovery funnel, but it remains a mandatory isolated evaluation because the qualification objective names it explicitly.
+
+The tracked repeated challenger report is `benchmarks/reasoning/local_challenger_scorecard_v1.json`. Current task-suite 1.2 evidence supersedes earlier one-off conclusions:
+
+- Llama 3.1 8B rejected reviewed-gold entities 3/3, passed screening planning 3/3, and passed tool use 3/3. Planning then failed its full promotion case 3/3, so no route was added.
+- Qwen2.5 14B hit the true 30-second deadline in all three reviewed-gold entity trials at the conservative 32-layer placement and was eliminated before additional current-suite families.
+- Official GPT-OSS 20B rejected reviewed-gold entities 3/3 and planning 3/3. Tool use passed 3/3 at a 5.30-second median, materially slower than Mistral's 1.22-second production route.
+- Qwen3 14B failed all three entity and planning trials at the 30-second deadline and rejected tool use 3/3 at an 11.88-second median.
+
+Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Plain official endpoints measured about 1.3 MB/s. A single bounded Hugging Face Xet attempt produced an 836,536,766-byte resumable partial before the five-minute deadline, approximately 2.8 MB/s effective; no unbounded downloader remains active.
 
 ## Execution-process correction
 

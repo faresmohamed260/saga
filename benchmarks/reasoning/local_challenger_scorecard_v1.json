@@ -1,0 +1,836 @@
+{
+  "task_suite_version": "1.2.0",
+  "candidate_manifest_version": "2.2.0",
+  "policy": {
+    "minimum_trials": 3,
+    "minimum_acceptance_rate": 1.0,
+    "minimum_sources": 1,
+    "allow_unqualified_fallback": false,
+    "require_resource_metrics": true,
+    "max_peak_vram_bytes": 10737418240,
+    "max_peak_host_ram_bytes": 120259084288,
+    "require_gold_for_families": [
+      "canon_entities",
+      "canon_events",
+      "canon_relationships"
+    ],
+    "artifact_allowlist_enforced": true
+  },
+  "excluded_trial_count": 0,
+  "superseded_trial_count": 0,
+  "routes": {
+    "canon_entities": {
+      "status": "unqualified",
+      "model": null
+    },
+    "canon_events": {
+      "status": "unqualified",
+      "model": null
+    },
+    "canon_relationships": {
+      "status": "unqualified",
+      "model": null
+    },
+    "character_world_modeling": {
+      "status": "unqualified",
+      "model": null
+    },
+    "continuity_grounding": {
+      "status": "unqualified",
+      "model": null
+    },
+    "generation_planning": {
+      "status": "qualified",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 19.8451
+    },
+    "narrative_generation": {
+      "status": "unqualified",
+      "model": null
+    },
+    "structured_json": {
+      "status": "unqualified",
+      "model": null
+    },
+    "tool_use": {
+      "status": "qualified",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 1.119021
+    }
+  },
+  "results": [
+    {
+      "task_family": "canon_entities",
+      "provider": "lm_studio_local",
+      "model": "gpt-oss-20b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 18.980122,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 8193703936,
+      "peak_host_ram_bytes": 97207795712,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.666667,
+          "minimum": 0.4,
+          "maximum": 0.666667
+        },
+        "gold_available": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_f1": {
+          "samples": 3,
+          "median": 0.142857,
+          "minimum": 0.125,
+          "maximum": 0.142857
+        },
+        "gold_item_count": {
+          "samples": 3,
+          "median": 11.0,
+          "minimum": 11.0,
+          "maximum": 11.0
+        },
+        "gold_matched_items": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_precision": {
+          "samples": 3,
+          "median": 0.333333,
+          "minimum": 0.2,
+          "maximum": 0.333333
+        },
+        "gold_recall": {
+          "samples": 3,
+          "median": 0.090909,
+          "minimum": 0.090909,
+          "maximum": 0.090909
+        },
+        "gold_reviewed": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 0.333333,
+          "minimum": 0.333333,
+          "maximum": 0.6
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 3.0,
+          "minimum": 3.0,
+          "maximum": 5.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "input_tokens": {
+          "samples": 3,
+          "median": 3016.0,
+          "minimum": 3016.0,
+          "maximum": 3016.0
+        },
+        "output_tokens": {
+          "samples": 3,
+          "median": 94.0,
+          "minimum": 94.0,
+          "maximum": 151.0
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 7.386167,
+          "minimum": 6.730153,
+          "maximum": 7.801726
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 6.252693,
+          "minimum": 5.937103,
+          "maximum": 17.549951
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline45-gpu0.5-parallel1-stream1-lifecycle2-reasoninglow-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "canon_entities",
+      "provider": "lm_studio_local",
+      "model": "qwen3-14b",
+      "trials": 4,
+      "accepted": 0,
+      "failed": 4,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 30.255783,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 8624406528,
+      "peak_host_ram_bytes": 94387458048,
+      "resource_limits_met": true,
+      "gold_evidence_complete": false,
+      "quality_metrics": {},
+      "provider_metrics": {
+        "input_tokens": {
+          "samples": 1,
+          "median": 2999.0,
+          "minimum": 2999.0,
+          "maximum": 2999.0
+        },
+        "output_tokens": {
+          "samples": 1,
+          "median": 900.0,
+          "minimum": 900.0,
+          "maximum": 900.0
+        },
+        "tokens_per_second": {
+          "samples": 1,
+          "median": 4.975615,
+          "minimum": 4.975615,
+          "maximum": 4.975615
+        },
+        "ttft_seconds": {
+          "samples": 1,
+          "median": 13.179608,
+          "minimum": 13.179608,
+          "maximum": 13.179608
+        }
+      },
+      "failure_modes": {
+        "TimeoutError": 4
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline30-gpu0.7-parallel1-stream1-lifecycle2-reasoningnone-gold1.1.0",
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-gpu0.7-parallel1-stream1-lifecycle2-reasoningnone-gold1.1.0"
+      ],
+      "execution_profile_consistent": false,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "canon_entities",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 12.460472,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6682968064,
+      "peak_host_ram_bytes": 84968849408,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "gold_available": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_f1": {
+          "samples": 3,
+          "median": 0.285714,
+          "minimum": 0.285714,
+          "maximum": 0.285714
+        },
+        "gold_item_count": {
+          "samples": 3,
+          "median": 11.0,
+          "minimum": 11.0,
+          "maximum": 11.0
+        },
+        "gold_matched_items": {
+          "samples": 3,
+          "median": 3.0,
+          "minimum": 3.0,
+          "maximum": 3.0
+        },
+        "gold_precision": {
+          "samples": 3,
+          "median": 0.3,
+          "minimum": 0.3,
+          "maximum": 0.3
+        },
+        "gold_recall": {
+          "samples": 3,
+          "median": 0.272727,
+          "minimum": 0.272727,
+          "maximum": 0.272727
+        },
+        "gold_reviewed": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 10.0,
+          "minimum": 10.0,
+          "maximum": 10.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 11.5842,
+          "minimum": 11.279681,
+          "maximum": 11.81076
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.698551,
+          "minimum": 0.694513,
+          "maximum": 0.713562
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.114705,
+          "minimum": 0.098008,
+          "maximum": 2.225704
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 29.177673,
+          "minimum": 28.617972,
+          "maximum": 29.965386
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 12.439939,
+          "minimum": 12.103571,
+          "maximum": 14.764058
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.863422,
+          "minimum": 0.830515,
+          "maximum": 2.958824
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "canon_entities",
+      "provider": "ollama_local",
+      "model": "qwen2.5:14b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 3,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 30.128282,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 7995326464,
+      "peak_host_ram_bytes": 88357298176,
+      "resource_limits_met": true,
+      "gold_evidence_complete": false,
+      "quality_metrics": {},
+      "provider_metrics": {},
+      "failure_modes": {
+        "TimeoutError": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-ollama-ollama-0.32.5-ctx4096-deadline30-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "generation_planning",
+      "provider": "lm_studio_local",
+      "model": "gpt-oss-20b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 8.950977,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 8192720896,
+      "peak_host_ram_bytes": 96566394880,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 0.333333,
+          "minimum": 0.333333,
+          "maximum": 0.333333
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "input_tokens": {
+          "samples": 3,
+          "median": 3010.0,
+          "minimum": 3010.0,
+          "maximum": 3010.0
+        },
+        "output_tokens": {
+          "samples": 3,
+          "median": 99.0,
+          "minimum": 63.0,
+          "maximum": 99.0
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 19.532463,
+          "minimum": 19.163377,
+          "maximum": 21.850097
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 3.784142,
+          "minimum": 3.760458,
+          "maximum": 10.408672
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline45-gpu0.5-parallel1-stream1-lifecycle2-reasoninglow"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "generation_planning",
+      "provider": "lm_studio_local",
+      "model": "qwen3-14b",
+      "trials": 4,
+      "accepted": 0,
+      "failed": 4,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 30.151946,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 8616148992,
+      "peak_host_ram_bytes": 94842445824,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {},
+      "provider_metrics": {
+        "input_tokens": {
+          "samples": 1,
+          "median": 2958.0,
+          "minimum": 2958.0,
+          "maximum": 2958.0
+        },
+        "output_tokens": {
+          "samples": 1,
+          "median": 249.0,
+          "minimum": 249.0,
+          "maximum": 249.0
+        },
+        "tokens_per_second": {
+          "samples": 1,
+          "median": 4.954748,
+          "minimum": 4.954748,
+          "maximum": 4.954748
+        },
+        "ttft_seconds": {
+          "samples": 1,
+          "median": 10.386196,
+          "minimum": 10.386196,
+          "maximum": 10.386196
+        }
+      },
+      "failure_modes": {
+        "TimeoutError": 4
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline30-gpu0.7-parallel1-stream1-lifecycle2-reasoningnone",
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-gpu0.7-parallel1-stream1-lifecycle2-reasoningnone-gold1.1.0"
+      ],
+      "execution_profile_consistent": false,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "generation_planning",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "trials": 3,
+      "accepted": 3,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 19.8451,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6682050560,
+      "peak_host_ram_bytes": 85256052736,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 6.0,
+          "minimum": 3.0,
+          "maximum": 6.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 19.090994,
+          "minimum": 10.891334,
+          "maximum": 19.289897
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.65718,
+          "minimum": 0.436535,
+          "maximum": 0.659415
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.113329,
+          "minimum": 0.082218,
+          "maximum": 1.673217
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 32.815105,
+          "minimum": 28.922077,
+          "maximum": 33.156995
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 19.82941,
+          "minimum": 13.358934,
+          "maximum": 19.895405
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.809544,
+          "minimum": 0.54515,
+          "maximum": 2.472985
+        }
+      },
+      "failure_modes": {},
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": true
+    },
+    {
+      "task_family": "tool_use",
+      "provider": "lm_studio_local",
+      "model": "gpt-oss-20b",
+      "trials": 3,
+      "accepted": 3,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 5.301823,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 8166244352,
+      "peak_host_ram_bytes": 96785989632,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "tool_call_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "input_tokens": {
+          "samples": 3,
+          "median": 141.0,
+          "minimum": 141.0,
+          "maximum": 141.0
+        },
+        "output_tokens": {
+          "samples": 3,
+          "median": 71.0,
+          "minimum": 71.0,
+          "maximum": 71.0
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "failure_modes": {},
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline45-gpu0.5-parallel1-stream1-lifecycle2-reasoninglow"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": true
+    },
+    {
+      "task_family": "tool_use",
+      "provider": "lm_studio_local",
+      "model": "qwen3-14b",
+      "trials": 4,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 11.952334,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 8618844160,
+      "peak_host_ram_bytes": 95397924864,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "schema_valid": {
+          "samples": 4,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "provider_metrics": {
+        "input_tokens": {
+          "samples": 4,
+          "median": 184.0,
+          "minimum": 184.0,
+          "maximum": 184.0
+        },
+        "output_tokens": {
+          "samples": 4,
+          "median": 100.0,
+          "minimum": 100.0,
+          "maximum": 100.0
+        },
+        "tokens_per_second": {
+          "samples": 4,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "failure_modes": {
+        "rejected": 4
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline30-gpu0.7-parallel1-stream1-lifecycle2-reasoningnone",
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-gpu0.7-parallel1-stream1-lifecycle2-reasoningnone-gold1.1.0"
+      ],
+      "execution_profile_consistent": false,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "tool_use",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "trials": 3,
+      "accepted": 3,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 1.119021,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6683754496,
+      "peak_host_ram_bytes": 85591617536,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "tool_call_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.673524,
+          "minimum": 0.666171,
+          "maximum": 0.687399
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.404552,
+          "minimum": 0.399211,
+          "maximum": 0.412147
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.026685,
+          "minimum": 0.026326,
+          "maximum": 0.142954
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 40.087658,
+          "minimum": 39.278498,
+          "maximum": 40.530134
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 1.113085,
+          "minimum": 1.112746,
+          "maximum": 1.332477
+        }
+      },
+      "failure_modes": {},
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": true
+    }
+  ]
+}

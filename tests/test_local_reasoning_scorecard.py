@@ -147,6 +147,21 @@ def test_scorecard_never_merges_same_model_across_engines():
     assert scorecard["routes"]["tool_use"] == {"status": "unqualified", "model": None}
 
 
+def test_scorecard_never_qualifies_mixed_execution_profiles():
+    trials = [
+        _trial("model", "tool_use", repetition, True, 1.0)
+        for repetition in range(1, 4)
+    ]
+    trials[-1].run_variant = "tasks-1.1.0-full-local-ctx8192"
+
+    scorecard = build_scorecard(trials, minimum_sources=0)
+
+    assert scorecard["routes"]["tool_use"] == {
+        "status": "unqualified", "model": None,
+    }
+    assert scorecard["results"][0]["execution_profile_consistent"] is False
+
+
 def test_scorecard_excludes_trials_outside_artifact_allowlist():
     trials = [
         _trial(

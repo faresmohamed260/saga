@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "host": {
     "gpu": "NVIDIA RTX 3060",
     "vram_gib": 12.0,
@@ -82,20 +82,20 @@
       ]
     },
     {
-      "model_id": "qwen3-30b-a3b-2507",
+      "model_id": "qwen3-30b-a3b",
       "capabilities": ["structured_output", "tools", "reasoning", "narrative"],
       "priority": 4,
       "artifacts": [
         {
           "engine": "lm_studio",
           "provider": "lm_studio_local",
-          "engine_model": "qwen/qwen3-30b-a3b-2507",
-          "source": "https://lmstudio.ai/models/qwen3",
-          "artifact_gib": 17.4,
+          "engine_model": "qwen3-30b-a3b",
+          "source": "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF",
+          "artifact_gib": 17.28,
           "gpu_fraction": 0.4,
           "engine_status": "supported",
-          "decision": "defer",
-          "execution_status": "no_go_qwen14_failed_discovery_gate"
+          "decision": "qualify_controlled_hybrid",
+          "execution_status": "acquisition_partial_836536766_of_18556685824"
         }
       ]
     },

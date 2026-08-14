@@ -100,6 +100,8 @@ def build_scorecard(
             for item in items
             if (match := re.search(r"(?:^|-)ctx(\d+)(?:-|$)", item.run_variant))
         })
+        run_variants = sorted({item.run_variant for item in items})
+        execution_profile_consistent = len(run_variants) == 1
         rows.append({
             "task_family": family,
             "provider": provider,
@@ -122,6 +124,8 @@ def build_scorecard(
             "provider_metrics": provider_metrics,
             "failure_modes": dict(sorted(failure_modes.items())),
             "context_windows_tested": context_windows,
+            "run_variants": run_variants,
+            "execution_profile_consistent": execution_profile_consistent,
             "checkpoint_evidence_complete": len(items) > 0,
             "qualified": (
                 len(items) >= minimum_trials
@@ -133,6 +137,7 @@ def build_scorecard(
                 and acceptance_rate >= minimum_acceptance_rate
                 and resource_limits_met
                 and gold_evidence_complete
+                and execution_profile_consistent
             ),
         })
 

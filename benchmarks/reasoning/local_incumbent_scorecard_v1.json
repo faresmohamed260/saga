@@ -1,6 +1,6 @@
 {
   "task_suite_version": "1.2.0",
-  "candidate_manifest_version": "2.1.0",
+  "candidate_manifest_version": "2.2.0",
   "policy": {
     "minimum_trials": 3,
     "minimum_acceptance_rate": 1.0,
@@ -196,6 +196,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -332,6 +336,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -468,6 +476,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -562,6 +574,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -650,6 +666,108 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "generation_planning",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 6.946663,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6685196288,
+      "peak_host_ram_bytes": 85576126464,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 3.0,
+          "minimum": 3.0,
+          "maximum": 3.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 5.394251,
+          "minimum": 5.209036,
+          "maximum": 6.01286
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.573909,
+          "minimum": 0.487972,
+          "maximum": 0.753309
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.122434,
+          "minimum": 0.083618,
+          "maximum": 2.15384
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 28.919678,
+          "minimum": 25.944393,
+          "maximum": 29.94796
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 6.923008,
+          "minimum": 5.996565,
+          "maximum": 7.966914
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.916441,
+          "minimum": 0.609337,
+          "maximum": 2.7624
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -744,6 +862,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -826,6 +948,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": false
     },
@@ -900,6 +1026,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": true
     },
@@ -962,6 +1092,10 @@
       "context_windows_tested": [
         4096
       ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
       "checkpoint_evidence_complete": true,
       "qualified": true
     }
