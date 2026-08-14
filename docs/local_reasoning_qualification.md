@@ -25,7 +25,7 @@ Model selection is per task. A model that is strong at extraction is not assumed
 - Free space on `B:` at latest inventory: approximately 70 GiB.
 - System NVMe `C:` free space at latest inventory: approximately 70 GiB; model storage remains on `B:`.
 
-Model storage is already off the system NVMe. The verified GPT-OSS artifact is stored on `B:`; Qwen3 14B and Qwen3 30B-A3B are not required downloads and remain deferred research candidates.
+Model storage is already off the system NVMe. Verified GPT-OSS and Qwen3 14B artifacts are stored on `B:`. Qwen3 30B-A3B remains a mandatory qualification candidate whose artifact acquisition is still pending.
 
 ## Colibri decision
 
@@ -75,7 +75,7 @@ The initial qwen2.5 14B load failures were caused by context allocation, not inf
 
 Native tool use passed on real corpus metadata in 1.84 seconds. Canon-event extraction is fast and stable but currently below the strict grounding gate: three of three trials were rejected, with the first versioned evaluator run producing five items at 0.80 verbatim evidence precision. Typographic quote normalization is evaluator-owned and versioned; paraphrased evidence remains a model error.
 
-Official candidate artifacts were preflighted for this host. Qwen3 14B and Qwen3 30B-A3B require hybrid CPU/GPU placement and are deferred because the already-tested 14B hybrid baseline became either over-budget or slower than one token/second. GPT-OSS 20B was acquired, hash-verified, tested, and eliminated below.
+Official candidate artifacts were preflighted for this host. Qwen3 14B was acquired, verified, measured under hybrid placement, and eliminated below. Qwen3 30B-A3B also requires controlled hybrid placement and remains pending because its mandatory artifact has not completed acquisition. GPT-OSS 20B was acquired, hash-verified, tested, and eliminated below.
 
 ## Baseline decision
 
@@ -162,7 +162,7 @@ The tracked repeated challenger report is `benchmarks/reasoning/local_challenger
 - Official GPT-OSS 20B rejected reviewed-gold entities 3/3 and planning 3/3. Tool use passed 3/3 at a 5.30-second median, materially slower than Mistral's 1.22-second production route.
 - Qwen3 14B failed all three entity and planning trials at the 30-second deadline and rejected tool use 3/3 at an 11.88-second median.
 
-Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Plain official endpoints measured about 1.3 MB/s, while four HTTP ranges achieved only 3.24 MB/s aggregate. Hugging Face Xet buffered 836 MB but reset its incomplete file to zero on restart, so it is not crash-resumable here. Aria2 created no file or network connection and entered a CPU loop; it was terminated. No downloader or model remains active. Acquisition is pending a durable transfer window or a faster artifact source, not represented as completed inference evidence.
+Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Four HTTP ranges achieved only 3.24 MB/s aggregate. Hugging Face Xet reset interrupted data to zero, and Aria2 entered a no-network CPU loop; both paths were stopped. A plain official-source `curl -C -` window is durable and resumable: the first bounded window persisted 983,567,990 bytes (5.30%) at 3.28 MB/s. No downloader or model remains active, and the partial is not represented as inference evidence.
 
 ## Execution-process correction
 

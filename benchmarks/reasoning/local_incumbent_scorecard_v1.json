@@ -1,6 +1,6 @@
 {
   "task_suite_version": "1.2.0",
-  "candidate_manifest_version": "2.3.0",
+  "candidate_manifest_version": "2.4.0",
   "policy": {
     "minimum_trials": 3,
     "minimum_acceptance_rate": 1.0,
