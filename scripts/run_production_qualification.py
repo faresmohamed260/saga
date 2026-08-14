@@ -77,7 +77,8 @@ def main() -> int:
             series_id=series_id,
             allow_resume=args.resume,
         )
-        _reasoning_preflight(timeout_seconds=args.preflight_timeout_seconds)
+        if _requires_generation_preflight(args.stop_after_stage):
+            _reasoning_preflight(timeout_seconds=args.preflight_timeout_seconds)
         request = OrchestrationRequest(
             run_id=run_id,
             series_id=series_id,
@@ -106,7 +107,11 @@ def main() -> int:
                 audiobook_max_segment_chars=900,
                 provider_request_limits={
                     "analysis_foundation": {"modal": 1},
-                    "canon_extraction": {"mistral": 40},
+                    "canon_extraction": {
+                        _reasoning_budget_provider(
+                            os.getenv("SAGA_CANON_EXTRACTION_REASONING_MODE", "gpt_oss")
+                        ): 40
+                    },
                 },
             ),
             metadata={
@@ -267,6 +272,47 @@ def main() -> int:
                 if worker_result.orchestration_result.decision.status == "cancelled"
                 else 2
             )
+        if args.stop_after_stage != "artifact_packaging":
+            slice_report = _build_stage_slice_report(
+                result=worker_result.orchestration_result,
+                source=source,
+                source_sha256=source_sha256,
+                release_id=args.release_id,
+                elapsed_seconds=round(time.monotonic() - started, 1),
+            )
+            stored = service.persistence.artifacts.store_json(
+                artifact_type="runtime_report",
+                filename=f"{run_id}-{args.stop_after_stage}-qualification.json",
+                payload=slice_report,
+                provider_name="qualification_runtime",
+                report_kind="production_stage_slice",
+                series_id=series_id,
+                run_id=run_id,
+                metadata={
+                    "accepted": True,
+                    "release_id": args.release_id,
+                    "stop_after_stage": args.stop_after_stage,
+                },
+            )
+            slice_report["artifact_reference"] = stored
+            if args.report:
+                report_path = Path(args.report).resolve()
+                report_path.parent.mkdir(parents=True, exist_ok=True)
+                report_path.write_text(
+                    json.dumps(slice_report, ensure_ascii=False, indent=2, default=str),
+                    encoding="utf-8",
+                )
+            _emit(
+                "stage_slice_complete",
+                accepted=True,
+                run_id=run_id,
+                series_id=series_id,
+                stop_after_stage=args.stop_after_stage,
+                elapsed_seconds=slice_report["metrics"]["elapsed_seconds"],
+                stage_seconds=slice_report["metrics"]["stage_seconds"],
+                report_artifact=stored,
+            )
+            return 0
         from packages.qualification_runtime import ProductionQualificationEvaluator
 
         evaluator = ProductionQualificationEvaluator(persistence=service.persistence)
@@ -367,6 +413,46 @@ def _stage_timeout_seconds(
         generation_timeout_seconds if stage in GENERATION_STAGES else standard_timeout_seconds
     )
     return max(60, int(configured))
+
+
+def _requires_generation_preflight(stop_after_stage: str) -> bool:
+    return ALL_STAGES.index(stop_after_stage) >= ALL_STAGES.index("generation_planning")
+
+
+def _reasoning_budget_provider(mode: str) -> str:
+    normalized = str(mode or "").strip().lower()
+    if normalized in {"ollama_local", "lm_studio_local", "mistral", "gemini", "general_compute"}:
+        return normalized
+    if normalized in {"gpt_oss", "deepseek"}:
+        return "ollama"
+    raise ValueError(f"Unsupported reasoning mode for provider budgeting: {mode!r}")
+
+
+def _build_stage_slice_report(
+    *,
+    result,
+    source: Path,
+    source_sha256: str,
+    release_id: str,
+    elapsed_seconds: float,
+) -> dict[str, object]:
+    return {
+        "report_id": f"qualification-{result.request.run_id}-{result.request.selected_stages[-1]}",
+        "run_id": result.request.run_id,
+        "series_id": result.request.series_id,
+        "source_path": str(source),
+        "source_sha256": source_sha256,
+        "release_id": release_id,
+        "accepted": result.decision.accepted,
+        "completed_stages": list(result.decision.completed_stages),
+        "metrics": {
+            "elapsed_seconds": elapsed_seconds,
+            "stage_seconds": {
+                item.stage: float(item.elapsed_seconds or 0.0) for item in result.outcomes
+            },
+        },
+        "result": result.model_dump(),
+    }
 
 
 def _qualification_queue_name(run_id: str) -> str:

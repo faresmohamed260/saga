@@ -877,7 +877,10 @@ class ChapterCanonAgent:
                 cancellation_checker=self.cancellation_checker,
             )
             if payload.get("error"):
-                raise RuntimeError(f"Chapter canon extraction failed: {payload.get('error')}")
+                detail = payload.get("last_error") or payload.get("error")
+                raise RuntimeError(
+                    f"Chapter canon extraction failed: {payload.get('error')}: {detail}"
+                )
             validated = CanonChapterPayload.model_validate(
                 _validate_extraction_payload(CanonChapterPayload, payload, "Chapter canon extraction")
             )
