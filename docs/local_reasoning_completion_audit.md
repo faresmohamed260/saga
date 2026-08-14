@@ -16,13 +16,13 @@ This audit treats the persistent qualification objective as authoritative. `Prov
 | Qwen2.5 14B evaluation | Proven by early elimination | Three bounded current-suite entity deadline failures under safe hybrid placement; earlier cross-family baseline checkpoints remain preserved |
 | GPT-OSS 20B evaluation | Proven | Official hash-verified artifact; three repeated current-suite entity, planning, and tool trials |
 | Qwen3 14B evaluation | Proven | Official hash-verified artifact; repeated current-suite entity, planning, and tool trials |
-| Qwen3 30B-A3B evaluation | Pending | Official identity and fit are verified; durable acquisition is 14,464,418,763 / 18,556,685,824 bytes (77.95%), but inference evidence is absent |
+| Qwen3 30B-A3B evaluation | Proven by early elimination | Official Q4_K_M artifact hash verified; controlled LM Studio load completed in 65.66-70.75 seconds and all three real-book entity trials hit the 30-second deadline with no accepted output |
 | Schema, evidence, hallucination, contradiction, completeness, reliability, TTFT, throughput, wall, RAM/VRAM, and context evidence | Proven for evaluated routes | Aggregated `quality_metrics`, `provider_metrics`, resource peaks, failure modes, and context variants in tracked scorecards |
 | Failure recovery | Proven | Exact checkpoint planning skips model loading; real Qwen3 14B resume returned in 7.76 seconds at baseline VRAM |
 | Per-task routing, SLOs, and single-machine queue policy | Proven | `local_production_routes_v1.json`, `routing.py`, and `queueing.py` |
 | Colibri written go/no-go decision | Proven | Storage/I/O preflight records a no-go without downloading frontier weights |
-| Final model scorecard and readiness decision | Pending | Incumbent and challenger scorecards exist; final scorecard cannot include Qwen3 30B evidence yet |
+| Final model scorecard and readiness decision | Proven | Current incumbent and challenger scorecards include all required candidate decisions; `local_production_routes_v1.json` is the fail-closed release decision |
 
 ## Current decision
 
-Local reasoning is **partial ready**. Structured JSON and native tool use are qualified through Mistral 7B. All semantic families fail closed. The full objective remains incomplete until Qwen3 30B-A3B receives bounded real-book evaluation and the final scorecard/readiness audit is regenerated.
+Local reasoning is **partial ready**. Structured JSON and native tool use are qualified through Mistral 7B. All semantic families fail closed. Every named candidate has now received bounded evidence or valid early elimination; further model research is optional product improvement, not a release-readiness prerequisite.

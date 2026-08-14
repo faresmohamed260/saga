@@ -249,6 +249,36 @@
     },
     {
       "task_family": "canon_entities",
+      "provider": "lm_studio_local",
+      "model": "qwen3-30b-a3b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 3,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 30.088371,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 9713418240,
+      "peak_host_ram_bytes": 104214142976,
+      "resource_limits_met": true,
+      "gold_evidence_complete": false,
+      "quality_metrics": {},
+      "provider_metrics": {},
+      "failure_modes": {
+        "TimeoutError": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-screening-lm_studio-lmstudio-llamacpp-2.28.2-ctx4096-deadline30-gpu0.4-parallel1-stream1-lifecycle2-reasoningnone-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "canon_entities",
       "provider": "ollama_local",
       "model": "llama3.1:8b",
       "trials": 3,
