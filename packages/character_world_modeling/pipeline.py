@@ -31,6 +31,9 @@ from packages.reasoning_runtime import ReasoningRuntimeClient
 
 CHARACTER_BATCH_SIZE = max(1, int(os.getenv("SAGA_CWM_CHARACTER_BATCH_SIZE") or "6"))
 ENTITY_BATCH_SIZE = max(1, int(os.getenv("SAGA_CWM_ENTITY_BATCH_SIZE") or "8"))
+CWM_MAX_CHARACTER_PROMPT_CHARS = max(
+    8_000, int(os.getenv("SAGA_CWM_MAX_CHARACTER_PROMPT_CHARS") or "14000")
+)
 CWM_PARALLELISM = max(1, int(os.getenv("SAGA_CWM_PARALLELISM") or "4"))
 CWM_RESUME_STAGES = {
     value.strip()
@@ -40,6 +43,9 @@ CWM_RESUME_STAGES = {
 MAX_EVENT_EVIDENCE = 8
 MAX_RELATIONSHIP_EVIDENCE = 8
 MAX_SCENE_EVIDENCE = 4
+MAX_PROMPT_ALIASES = 12
+MAX_PROMPT_REFERENCE_IDS = 8
+MAX_PROMPT_TEXT_CHARS = 360
 STABLE_ATTRIBUTE_KEYS = {
     "role",
     "title",
@@ -163,36 +169,53 @@ class CharacterProfileAgent:
         timeline: list[TimelineArtifact],
     ) -> dict[str, Any]:
         scene_map = {scene.scene_id: scene for scene in scenes}
+        grounded_character_ids = _grounded_character_ids(
+            events=events, relationships=relationships
+        )
         evidence_rows = [
-            _build_character_evidence(
+            _compact_character_prompt_evidence(_build_character_evidence(
                 character=character,
                 scene_map=scene_map,
                 events=events,
                 relationships=relationships,
                 timeline=timeline,
-            )
+            ))
             for character in identity_bundle.characters
+            if character.character_id in grounded_character_ids
         ]
+        existing_by_id = {
+            item.character_id: item
+            for item in self.store.list_character_profiles(series_id=series_id)
+        } if _resume_stage_enabled("character_profile_synthesis") else {}
+        if not _resume_stage_enabled("character_profile_synthesis"):
+            self.store.delete_character_profiles(series_id=series_id)
         request_metadata_rows: list[dict[str, Any]] = []
-        synthesized_by_id: dict[str, CharacterProfileSynthesis] = {}
-        for batch in _batched(evidence_rows, CHARACTER_BATCH_SIZE):
+        persisted_by_id: dict[str, CharacterProfileArtifact] = dict(existing_by_id)
+        missing_rows = [row for row in evidence_rows if row["character_id"] not in existing_by_id]
+        for batch in _prompt_batched(
+            missing_rows,
+            max_rows=CHARACTER_BATCH_SIZE,
+            max_chars=CWM_MAX_CHARACTER_PROMPT_CHARS,
+            prompt_builder=_build_character_profile_prompt,
+        ):
+            synthesized_by_id: dict[str, CharacterProfileSynthesis] = {}
             for payload in self._synthesize_profiles_with_fallback(batch=batch):
                 request_metadata_rows.append(dict(self.reasoning_runtime.last_request_metadata() or {}))
                 for item in payload.profiles:
                     synthesized_by_id[item.character_id] = item
-        persisted = self.store.replace_character_profiles(
-            series_id=series_id,
-            profiles=[
+            batch_profiles = [
                 _profile_artifact_from_evidence(
                     series_id=series_id,
                     evidence=row,
                     synthesis=synthesized_by_id.get(row["character_id"]),
                     reasoning_runtime=self.reasoning_runtime,
                 )
-                for row in evidence_rows
-            ],
-        )
-        return {"character_profiles": [item.model_dump() for item in persisted], "request_metadata_rows": request_metadata_rows}
+                for row in batch
+            ]
+            for item in self.store.upsert_character_profiles(profiles=batch_profiles):
+                persisted_by_id[item.character_id] = item
+        ordered = [persisted_by_id[row["character_id"]] for row in evidence_rows if row["character_id"] in persisted_by_id]
+        return {"character_profiles": [item.model_dump() for item in ordered], "request_metadata_rows": request_metadata_rows}
 
     def _synthesize_profiles(self, *, batch: list[dict[str, Any]]) -> CharacterProfilesPayload:
         prompt = _build_character_profile_prompt(batch=batch)
@@ -230,35 +253,48 @@ class StableStateAgent:
         timeline: list[TimelineArtifact],
     ) -> dict[str, Any]:
         evidence_rows = [
-            _build_stable_state_evidence(
+            _compact_character_prompt_evidence(_build_stable_state_evidence(
                 profile=profile,
                 identity_bundle=identity_bundle,
                 events=events,
                 relationships=relationships,
                 timeline=timeline,
-            )
+            ))
             for profile in character_profiles
         ]
+        existing_by_id = {
+            item.character_id: item
+            for item in self.store.list_stable_character_states(series_id=series_id)
+        } if _resume_stage_enabled("stable_state_synthesis") else {}
+        if not _resume_stage_enabled("stable_state_synthesis"):
+            self.store.delete_stable_character_states(series_id=series_id)
         request_metadata_rows: list[dict[str, Any]] = []
-        synthesized_by_id: dict[str, StableCharacterStateSynthesis] = {}
-        for batch in _batched(evidence_rows, CHARACTER_BATCH_SIZE):
+        persisted_by_id: dict[str, StableCharacterStateArtifact] = dict(existing_by_id)
+        missing_rows = [row for row in evidence_rows if row["character_id"] not in existing_by_id]
+        for batch in _prompt_batched(
+            missing_rows,
+            max_rows=CHARACTER_BATCH_SIZE,
+            max_chars=CWM_MAX_CHARACTER_PROMPT_CHARS,
+            prompt_builder=_build_stable_state_prompt,
+        ):
+            synthesized_by_id: dict[str, StableCharacterStateSynthesis] = {}
             for payload in self._synthesize_stable_states_with_fallback(batch=batch):
                 request_metadata_rows.append(dict(self.reasoning_runtime.last_request_metadata() or {}))
                 for item in payload.stable_states:
                     synthesized_by_id[item.character_id] = item
-        persisted = self.store.replace_stable_character_states(
-            series_id=series_id,
-            states=[
+            batch_states = [
                 _stable_state_artifact_from_evidence(
                     series_id=series_id,
                     evidence=row,
                     synthesis=synthesized_by_id.get(row["character_id"]),
                     reasoning_runtime=self.reasoning_runtime,
                 )
-                for row in evidence_rows
-            ],
-        )
-        return {"stable_character_states": [item.model_dump() for item in persisted], "request_metadata_rows": request_metadata_rows}
+                for row in batch
+            ]
+            for item in self.store.upsert_stable_character_states(states=batch_states):
+                persisted_by_id[item.character_id] = item
+        ordered = [persisted_by_id[row["character_id"]] for row in evidence_rows if row["character_id"] in persisted_by_id]
+        return {"stable_character_states": [item.model_dump() for item in ordered], "request_metadata_rows": request_metadata_rows}
 
     def _synthesize_stable_states(self, *, batch: list[dict[str, Any]]) -> StableCharacterStatesPayload:
         prompt = _build_stable_state_prompt(batch=batch)
@@ -390,25 +426,6 @@ def build_character_world_modeling_graph(
 ):
     def profiles_node(state: CharacterWorldModelingState) -> dict[str, Any]:
         started_at = time.perf_counter()
-        if _resume_stage_enabled("character_profile_synthesis"):
-            existing_profiles = profile_agent.store.list_character_profiles(series_id=str(state.get("series_id") or ""))
-            if existing_profiles:
-                return {
-                    "character_profiles": [item.model_dump() for item in existing_profiles],
-                    "run_metadata": _append_stage_metadata(
-                        state.get("run_metadata"),
-                        stage_name="character_profile_synthesis",
-                        elapsed_seconds=time.perf_counter() - started_at,
-                        extra={
-                            "profile_count": len(existing_profiles),
-                            "resumed": True,
-                            "reasoning_calls": 0,
-                            "batch_size": CHARACTER_BATCH_SIZE,
-                            "parallelism": 1,
-                            "job_latency_seconds": {"count": 0},
-                        },
-                    ),
-                }
         payload = profile_agent.run(
             series_id=str(state.get("series_id") or ""),
             books=[BookArtifact.model_validate(item) for item in list(state.get("books") or [])],
@@ -436,25 +453,6 @@ def build_character_world_modeling_graph(
 
     def stable_states_node(state: CharacterWorldModelingState) -> dict[str, Any]:
         started_at = time.perf_counter()
-        if _resume_stage_enabled("stable_state_synthesis"):
-            existing_states = stable_state_agent.store.list_stable_character_states(series_id=str(state.get("series_id") or ""))
-            if existing_states:
-                return {
-                    "stable_character_states": [item.model_dump() for item in existing_states],
-                    "run_metadata": _append_stage_metadata(
-                        state.get("run_metadata"),
-                        stage_name="stable_state_synthesis",
-                        elapsed_seconds=time.perf_counter() - started_at,
-                        extra={
-                            "stable_state_count": len(existing_states),
-                            "resumed": True,
-                            "reasoning_calls": 0,
-                            "batch_size": CHARACTER_BATCH_SIZE,
-                            "parallelism": 1,
-                            "job_latency_seconds": {"count": 0},
-                        },
-                    ),
-                }
         payload = stable_state_agent.run(
             series_id=str(state.get("series_id") or ""),
             character_profiles=[CharacterProfileArtifact.model_validate(item) for item in list(state.get("character_profiles") or [])],
@@ -1026,6 +1024,97 @@ def _build_character_profile_prompt(*, batch: list[dict[str, Any]]) -> str:
     )
 
 
+def _compact_character_prompt_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Bound model-facing evidence without changing persisted canon artifacts."""
+    compacted = dict(evidence)
+    compacted["aliases"] = [
+        _bounded_prompt_text(value, max_chars=120)
+        for value in list(evidence.get("aliases") or [])[:MAX_PROMPT_ALIASES]
+    ]
+    for key in ("scene_ids", "important_event_ids", "supporting_event_ids", "supporting_scene_ids"):
+        if key in compacted:
+            compacted[key] = list(compacted.get(key) or [])[:MAX_PROMPT_REFERENCE_IDS]
+    if "chapter_indices" in compacted:
+        values = list(compacted.get("chapter_indices") or [])
+        compacted["chapter_indices"] = values[:8] + values[-8:] if len(values) > 16 else values
+
+    for key in (
+        "overview",
+        "role_or_archetype",
+        "first_seen_summary",
+        "latest_state_summary",
+    ):
+        if key in compacted:
+            compacted[key] = _bounded_prompt_text(compacted.get(key))
+    for key in (
+        "traits",
+        "motivations",
+        "loyalties",
+        "tensions",
+        "notable_relationships",
+    ):
+        if key in compacted:
+            compacted[key] = [
+                _bounded_prompt_text(value, max_chars=180)
+                for value in list(compacted.get(key) or [])[:8]
+            ]
+
+    evidence_limits = {
+        "event_evidence": 5,
+        "contextual_event_evidence": 2,
+        "relationship_evidence": 4,
+        "timeline_evidence": 3,
+        "scene_evidence": 2,
+    }
+    for key, row_limit in evidence_limits.items():
+        rows = []
+        for item in list(compacted.get(key) or [])[:row_limit]:
+            row = dict(item)
+            for text_key in ("title", "summary", "description", "excerpt", "narrative_grounding"):
+                if text_key in row:
+                    row[text_key] = _bounded_prompt_text(row.get(text_key))
+            if "participant_refs" in row:
+                row["participant_refs"] = list(row.get("participant_refs") or [])[:MAX_PROMPT_REFERENCE_IDS]
+            if "scene_ids" in row:
+                row["scene_ids"] = list(row.get("scene_ids") or [])[:MAX_PROMPT_REFERENCE_IDS]
+            rows.append(row)
+        compacted[key] = rows
+    return compacted
+
+
+def _bounded_prompt_text(value: Any, *, max_chars: int = MAX_PROMPT_TEXT_CHARS) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _prompt_batched(
+    values: list[dict[str, Any]],
+    *,
+    max_rows: int,
+    max_chars: int,
+    prompt_builder: Any,
+) -> list[list[dict[str, Any]]]:
+    batches: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    for value in values:
+        candidate = [*current, value]
+        if current and (len(candidate) > max_rows or len(prompt_builder(batch=candidate)) > max_chars):
+            batches.append(current)
+            current = [value]
+        else:
+            current = candidate
+        if len(prompt_builder(batch=current)) > max_chars:
+            raise RuntimeError(
+                f"Character evidence for {value.get('character_id') or '<unknown>'} exceeds "
+                f"the {max_chars}-character prompt budget after compaction"
+            )
+    if current:
+        batches.append(current)
+    return batches
+
+
 def _build_stable_state_prompt(*, batch: list[dict[str, Any]]) -> str:
     return (
         "You extract only durable stable character-state facts from grounded canon evidence.\n"
@@ -1087,6 +1176,24 @@ def _batched(values: list[dict[str, Any]], size: int) -> list[list[dict[str, Any
     if size <= 0:
         return [values]
     return [values[index: index + size] for index in range(0, len(values), size)]
+
+
+def _grounded_character_ids(
+    *, events: list[EventArtifact], relationships: list[RelationshipArtifact]
+) -> set[str]:
+    references = {
+        str(reference or "").strip()
+        for event in events
+        for reference in event.participant_refs
+        if str(reference or "").strip().startswith("char-")
+    }
+    references.update(
+        str(reference or "").strip()
+        for relationship in relationships
+        for reference in (relationship.source_ref, relationship.target_ref)
+        if str(reference or "").strip().startswith("char-")
+    )
+    return references
 
 
 def _split_evidence_batch_for_retry(batch: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

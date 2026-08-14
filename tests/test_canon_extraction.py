@@ -20,12 +20,14 @@ from packages.canon_extraction.pipeline import (
     _entities_for_scene_slice_batch,
     _has_participant_text_support,
     _identity_character_context,
+    _merge_chapter_canon_payloads,
     _normalize_entity_type,
     _normalize_relationship_type,
     _resolve_participant_refs,
     _resolve_name_refs,
     _resolve_single_name_ref,
     _should_keep_relationship_artifact,
+    _should_retry_chapter_canon_error,
     _should_retry_split_extraction_error,
     _split_scene_slices_for_retry,
 )
@@ -1269,3 +1271,30 @@ def test_split_retry_predicate_handles_empty_provider_responses():
     assert _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: parse_failed"))
     assert not _should_retry_split_extraction_error(RuntimeError("Event extraction failed: max_retries_exceeded"))
     assert not _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: auth_failed"))
+
+
+def test_chapter_canon_timeout_is_split_retryable():
+    assert _should_retry_chapter_canon_error(
+        RuntimeError("Chapter canon extraction failed: max_retries_exceeded: Read timed out")
+    )
+    assert not _should_retry_chapter_canon_error(
+        RuntimeError("Provider request budget exceeded")
+    )
+
+
+def test_split_chapter_canon_payloads_merge_without_losing_items():
+    left = canon_pipeline.CanonChapterPayload(
+        events=[canon_pipeline.SceneEventExtraction(
+            scene_id="scene-1", title="One", summary="First", event_type="beat"
+        )]
+    )
+    right = canon_pipeline.CanonChapterPayload(
+        entities=[canon_pipeline.SceneEntityExtraction(
+            canonical_name="Palace", entity_type="location", scene_ids=["scene-2"]
+        )]
+    )
+
+    merged = _merge_chapter_canon_payloads(left, right)
+
+    assert [item.scene_id for item in merged.events] == ["scene-1"]
+    assert [item.canonical_name for item in merged.entities] == ["Palace"]

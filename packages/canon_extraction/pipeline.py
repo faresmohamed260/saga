@@ -867,22 +867,10 @@ class ChapterCanonAgent:
             raise_if_cancelled(self.cancellation_checker)
             runtime = _clone_reasoning_runtime(self.reasoning_runtime)
             started_at = time.perf_counter()
-            prompt = _build_chapter_canon_prompt(
+            validated = self._extract_chapter_canon_with_fallback(
                 book=job["book"], chapter=job["chapter"],
                 scene_slices=list(job["scene_slices"]), identity_bundle=identity_bundle,
-            )
-            payload = runtime.generate_json(
-                prompt, strict=True, max_tokens=CANON_CHAPTER_MAX_TOKENS,
-                response_format=_structured_response_format("canon_chapter", CanonChapterPayload),
-                cancellation_checker=self.cancellation_checker,
-            )
-            if payload.get("error"):
-                detail = payload.get("last_error") or payload.get("error")
-                raise RuntimeError(
-                    f"Chapter canon extraction failed: {payload.get('error')}: {detail}"
-                )
-            validated = CanonChapterPayload.model_validate(
-                _validate_extraction_payload(CanonChapterPayload, payload, "Chapter canon extraction")
+                reasoning_runtime=runtime,
             )
             result = {
                 "job_index": int(job["job_index"]), "job_id": str(job["job_id"]),
@@ -906,6 +894,50 @@ class ChapterCanonAgent:
             series_id=series_id, scenes=scenes, identity_bundle=identity_bundle,
             jobs=completed, planned_job_count=len(jobs), resumed_job_count=len(resumed),
         )
+
+    def _extract_chapter_canon_with_fallback(
+        self, *, book: BookArtifact, chapter: ChapterArtifact,
+        scene_slices: list[dict[str, Any]], identity_bundle: CanonicalIdentityBundle,
+        reasoning_runtime: ReasoningRuntimeClient,
+    ) -> CanonChapterPayload:
+        raise_if_cancelled(self.cancellation_checker)
+        prompt = _build_chapter_canon_prompt(
+            book=book, chapter=chapter, scene_slices=scene_slices,
+            identity_bundle=identity_bundle,
+        )
+        payload = reasoning_runtime.generate_json(
+            prompt, strict=True, max_tokens=CANON_CHAPTER_MAX_TOKENS,
+            response_format=_structured_response_format("canon_chapter", CanonChapterPayload),
+            cancellation_checker=self.cancellation_checker,
+        )
+        try:
+            if payload.get("error"):
+                detail = payload.get("last_error") or payload.get("error")
+                raise RuntimeError(
+                    f"Chapter canon extraction failed: {payload.get('error')}: {detail}"
+                )
+            return CanonChapterPayload.model_validate(
+                _validate_extraction_payload(
+                    CanonChapterPayload, payload, "Chapter canon extraction"
+                )
+            )
+        except RuntimeError as exc:
+            if not _should_retry_chapter_canon_error(exc):
+                raise
+            try:
+                left_slices, right_slices = _split_scene_slices_for_retry(scene_slices)
+            except RuntimeError:
+                raise exc
+            return _merge_chapter_canon_payloads(
+                self._extract_chapter_canon_with_fallback(
+                    book=book, chapter=chapter, scene_slices=left_slices,
+                    identity_bundle=identity_bundle, reasoning_runtime=reasoning_runtime,
+                ),
+                self._extract_chapter_canon_with_fallback(
+                    book=book, chapter=chapter, scene_slices=right_slices,
+                    identity_bundle=identity_bundle, reasoning_runtime=reasoning_runtime,
+                ),
+            )
 
     def _materialize(
         self, *, series_id: str, scenes: list[SceneArtifact], identity_bundle: CanonicalIdentityBundle,
@@ -1662,6 +1694,23 @@ def _should_retry_split_extraction_error(exc: RuntimeError) -> bool:
     return any(
         label in message
         for label in ("parse_failed", "empty_response", "payload_validation_failed")
+    )
+
+
+def _should_retry_chapter_canon_error(exc: RuntimeError) -> bool:
+    message = str(exc).casefold()
+    return _should_retry_split_extraction_error(exc) or any(
+        label in message for label in ("read timed out", "read timeout", "deadline exceeded")
+    )
+
+
+def _merge_chapter_canon_payloads(
+    *payloads: CanonChapterPayload,
+) -> CanonChapterPayload:
+    return CanonChapterPayload(
+        events=[item for payload in payloads for item in payload.events],
+        entities=[item for payload in payloads for item in payload.entities],
+        relationships=[item for payload in payloads for item in payload.relationships],
     )
 
 
