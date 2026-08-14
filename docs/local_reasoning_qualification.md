@@ -137,6 +137,20 @@ The tracked release policy is `benchmarks/reasoning/local_production_routes_v1.j
 
 The source-safe reviewed extraction gold artifact is `benchmarks/reasoning/local_extraction_gold_v1.json`. It covers events, non-character entities, and relationships for all three books without storing passage text. It binds to a canonical corpus fingerprint rather than JSON formatting. Re-evaluating Mistral's task-suite 1.2 discovery outputs against reviewed gold rejected all nine extraction cases. Event F1 ranged from 0.0 to 0.4, entity F1 from 0.0 to 0.13, and relationship F1 from 0.0 to 0.57. Earlier evidence-only passes were therefore false positives and are not eligible for routing.
 
+The tracked current-suite incumbent report is `benchmarks/reasoning/local_incumbent_scorecard_v1.json`. It aggregates quality metrics, TTFT, throughput, wall time, RAM/VRAM, context windows, failure modes, and checkpoint coverage instead of discarding them after route selection. Reviewed-gold extraction evidence supersedes older evidence-only trials without deleting their checkpoints. Mistral's task-suite 1.2 full-scope results are:
+
+| Family | Accepted | Trials | Median wall | Median quality signal |
+| --- | ---: | ---: | ---: | --- |
+| Canon events | 0 | 3 | 20.12 s | gold F1 0.17 |
+| Canon entities | 0 | 3 | 20.91 s | gold F1 0.12 |
+| Canon relationships | 0 | 3 | 23.26 s | gold F1 0.57 |
+| Character/world modeling | 0 | 3 | 24.52 s | evidence precision 0.75 |
+| Generation planning | 6 | 9 | 9.71 s | family reliability 0.67 |
+| Narrative generation | 0 | 3 | 3.74 s | hallucination rate 1.00 |
+| Continuity/grounding | 3 | 9 | 2.52 s | family reliability 0.33 |
+| Structured JSON | 9 | 9 | 1.11 s | exact match 1.00 |
+| Tool use | 9 | 9 | 1.22 s | valid tool call 1.00 |
+
 Qwen3 14B acquisition first reached an integrity stop. The pre-existing Ollama sparse partial remained corrupt after bounded hole repair and was never registered or loaded. A separate official Q4_K_M artifact was then acquired resumably from ModelScope. Its exact 9,001,752,960-byte size and authoritative SHA-256 `500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0` were verified before LM Studio registration.
 
 Qwen3 14B passed the workstation resource gate at 70% GPU offload and 4K context, peaking near 8.03 GiB VRAM and 88.85 GiB host RAM. It failed all three real-book discovery cases: entity extraction and generation planning exceeded the 60-second request SLO, while native tool use returned an invalid payload after 21.46 seconds. A deadline regression run proved streamed inference now stops at 30.17 seconds and unloads automatically. Qwen3 14B is eliminated; Qwen3 30B-A3B is a no-go because the smaller candidate failed the discovery gate, so a larger download and slower hybrid placement are not justified.

@@ -118,6 +118,15 @@ def test_scorecard_requires_reviewed_gold_for_extraction_routes():
 
     assert reviewed_scorecard["routes"]["canon_entities"]["status"] == "qualified"
 
+    combined_scorecard = build_scorecard(
+        [*trials, *reviewed_trials],
+        minimum_sources=0,
+        require_gold_for_families={"canon_entities"},
+    )
+    assert combined_scorecard["routes"]["canon_entities"]["status"] == "qualified"
+    assert combined_scorecard["results"][0]["trials"] == 3
+    assert combined_scorecard["superseded_trial_count"] == 3
+
 
 def test_scorecard_never_merges_same_model_across_engines():
     trials = [
@@ -157,3 +166,32 @@ def test_scorecard_excludes_trials_outside_artifact_allowlist():
     assert scorecard["excluded_trial_count"] == 3
     assert scorecard["routes"] == {}
     assert scorecard["policy"]["artifact_allowlist_enforced"] is True
+
+
+def test_scorecard_preserves_quality_performance_and_failure_evidence():
+    accepted = _trial("model", "continuity_grounding", 1, True, 2.0)
+    accepted.run_variant = "tasks-1.2.0-full-ollama-ctx4096"
+    accepted.evaluation.metrics = {
+        "classification_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+    }
+    accepted.request_metadata["provider_metrics"] = {
+        "ttft_seconds": 0.5,
+        "tokens_per_second": 20.0,
+    }
+    rejected = _trial("model", "continuity_grounding", 2, False, 3.0)
+    rejected.run_variant = "tasks-1.2.0-full-ollama-ctx4096"
+    rejected.evaluation.metrics = {
+        "classification_accuracy": 0.5,
+        "hallucination_rate": 0.5,
+    }
+
+    row = build_scorecard(
+        [accepted, rejected], minimum_trials=2, minimum_sources=0,
+    )["results"][0]
+
+    assert row["quality_metrics"]["hallucination_rate"]["median"] == 0.25
+    assert row["quality_metrics"]["contradiction_error_rate"]["median"] == 0.25
+    assert row["provider_metrics"]["ttft_seconds"]["median"] == 0.5
+    assert row["failure_modes"] == {"rejected": 1}
+    assert row["context_windows_tested"] == [4096]

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from typing import Any, Iterable
 
 from packages.reasoning_runtime import QualificationTrial
@@ -30,6 +31,19 @@ def build_scorecard(
             excluded_trial_count += 1
             continue
         grouped[(trial.task_id.split(":", 1)[0], trial.provider, trial.model)].append(trial)
+
+    superseded_trial_count = 0
+    for (family, provider, model), items in list(grouped.items()):
+        if family not in gold_required:
+            continue
+        reviewed = [
+            item for item in items
+            if item.evaluation.metrics.get("gold_available") is True
+            and item.evaluation.metrics.get("gold_reviewed") is True
+        ]
+        if reviewed:
+            superseded_trial_count += len(items) - len(reviewed)
+            grouped[(family, provider, model)] = reviewed
 
     rows: list[dict[str, Any]] = []
     for (family, provider, model), items in sorted(grouped.items()):
@@ -60,6 +74,32 @@ def build_scorecard(
             and item.evaluation.metrics.get("gold_reviewed") is True
             for item in items
         )
+        quality_metrics = _summarize_metrics(
+            [item.evaluation.metrics for item in items],
+        )
+        if family == "continuity_grounding" and "classification_accuracy" in quality_metrics:
+            accuracy = quality_metrics["classification_accuracy"]
+            quality_metrics["contradiction_error_rate"] = {
+                "samples": accuracy["samples"],
+                "median": round(1.0 - accuracy["median"], 6),
+                "minimum": round(1.0 - accuracy["maximum"], 6),
+                "maximum": round(1.0 - accuracy["minimum"], 6),
+            }
+        provider_metrics = _summarize_metrics([
+            item.request_metadata.get("provider_metrics")
+            for item in items
+            if isinstance(item.request_metadata.get("provider_metrics"), dict)
+        ])
+        failure_modes = Counter(
+            item.error_type or item.status
+            for item in items
+            if item.status != "accepted"
+        )
+        context_windows = sorted({
+            int(match.group(1))
+            for item in items
+            if (match := re.search(r"(?:^|-)ctx(\d+)(?:-|$)", item.run_variant))
+        })
         rows.append({
             "task_family": family,
             "provider": provider,
@@ -78,6 +118,11 @@ def build_scorecard(
             "peak_host_ram_bytes": peak_host_ram_bytes,
             "resource_limits_met": resource_limits_met,
             "gold_evidence_complete": gold_evidence_complete,
+            "quality_metrics": quality_metrics,
+            "provider_metrics": provider_metrics,
+            "failure_modes": dict(sorted(failure_modes.items())),
+            "context_windows_tested": context_windows,
+            "checkpoint_evidence_complete": len(items) > 0,
             "qualified": (
                 len(items) >= minimum_trials
                 and len({
@@ -122,6 +167,26 @@ def build_scorecard(
             "artifact_allowlist_enforced": allowed_provider_models is not None,
         },
         "excluded_trial_count": excluded_trial_count,
+        "superseded_trial_count": superseded_trial_count,
         "routes": routes,
         "results": rows,
+    }
+
+
+def _summarize_metrics(metrics: Iterable[dict[str, Any]]) -> dict[str, dict[str, float | int]]:
+    values: dict[str, list[float]] = defaultdict(list)
+    for payload in metrics:
+        for key, value in payload.items():
+            if isinstance(value, bool):
+                values[str(key)].append(float(value))
+            elif isinstance(value, (int, float)):
+                values[str(key)].append(float(value))
+    return {
+        key: {
+            "samples": len(samples),
+            "median": round(statistics.median(samples), 6),
+            "minimum": round(min(samples), 6),
+            "maximum": round(max(samples), 6),
+        }
+        for key, samples in sorted(values.items())
     }
