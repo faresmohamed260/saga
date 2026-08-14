@@ -5,16 +5,30 @@ from packages.reasoning_runtime import QualificationTask
 def test_gold_entity_metrics_measure_precision_recall_and_f1():
     metrics = evaluate_gold_payload(
         family="canon_entities",
-        payload={"entities": [{"name": "Silver Key"}, {"name": "Invented Tower"}]},
+        payload={"entities": [
+            {"name": "Silver Key", "entity_type": "artifact"},
+            {"name": "Invented Tower", "entity_type": "location"},
+        ]},
         annotation={"items": [
-            {"aliases": ["silver key", "the silver key"]},
-            {"aliases": ["gate"]},
+            {"aliases": ["silver key", "the silver key"], "entity_type": "artifact"},
+            {"aliases": ["gate"], "entity_type": "location"},
         ]},
         source_text="Mara carried the silver key through the gate.",
     )
     assert metrics["gold_precision"] == 0.5
     assert metrics["gold_recall"] == 0.5
     assert metrics["gold_f1"] == 0.5
+
+
+def test_gold_entity_metrics_reject_wrong_entity_type():
+    metrics = evaluate_gold_payload(
+        family="canon_entities",
+        payload={"entities": [{"name": "Silver Key", "entity_type": "location"}]},
+        annotation={"items": [{"aliases": ["silver key"], "entity_type": "artifact"}]},
+        source_text="Mara carried the silver key.",
+    )
+    assert metrics["gold_precision"] == 0.0
+    assert metrics["gold_recall"] == 0.0
 
 
 def test_gold_event_metrics_match_local_source_offsets_without_stored_quotes():
@@ -51,7 +65,7 @@ def test_gold_evaluator_fails_closed_when_annotation_is_missing():
 def test_gold_evaluator_fails_closed_when_annotation_is_not_reviewed():
     evaluator = build_gold_evaluator({"annotations": [{
         "family": "canon_entities", "case_id": "case",
-        "items": [{"aliases": ["silver key"]}], "review_status": "pending",
+        "items": [{"aliases": ["silver key"], "entity_type": "artifact"}], "review_status": "pending",
     }]})
     task = QualificationTask(
         task_id="canon_entities:case", operation="json", prompt="extract",
@@ -62,7 +76,7 @@ def test_gold_evaluator_fails_closed_when_annotation_is_not_reviewed():
     )
 
     result = evaluator(task, {"payload": {"entities": [{
-        "name": "silver key", "evidence_quote": "A silver key.",
+        "name": "silver key", "entity_type": "artifact", "evidence_quote": "A silver key.",
     }]}})
 
     assert result.accepted is False
@@ -73,7 +87,7 @@ def test_gold_evaluator_fails_closed_when_annotation_is_not_reviewed():
 def test_gold_evaluator_accepts_reviewed_annotation_that_meets_thresholds():
     evaluator = build_gold_evaluator({"annotations": [{
         "family": "canon_entities", "case_id": "case",
-        "items": [{"aliases": ["silver key"]}], "review_status": "reviewed",
+        "items": [{"aliases": ["silver key"], "entity_type": "artifact"}], "review_status": "reviewed",
     }]})
     task = QualificationTask(
         task_id="canon_entities:case", operation="json", prompt="extract",
@@ -84,7 +98,7 @@ def test_gold_evaluator_accepts_reviewed_annotation_that_meets_thresholds():
     )
 
     result = evaluator(task, {"payload": {"entities": [{
-        "name": "silver key", "evidence_quote": "A silver key.",
+        "name": "silver key", "entity_type": "artifact", "evidence_quote": "A silver key.",
     }]}})
 
     assert result.accepted is True

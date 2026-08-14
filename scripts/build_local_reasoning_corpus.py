@@ -75,6 +75,27 @@ def build_corpus(manifest_path: Path) -> dict[str, Any]:
     }
 
 
+def corpus_fingerprint(corpus: dict[str, Any]) -> str:
+    """Identify sampled content independently of JSON formatting."""
+
+    identity = {
+        "suite_id": str(corpus.get("suite_id") or ""),
+        "corpus_version": str(corpus.get("corpus_version") or ""),
+        "manifest_sha256": str(corpus.get("manifest_sha256") or ""),
+        "cases": [{
+            "case_id": str(case.get("case_id") or ""),
+            "source_id": str(case.get("source_id") or ""),
+            "source_sha256": str(case.get("source_sha256") or ""),
+            "chapter_index": int(case.get("chapter_index") or 0),
+            "segment": str(case.get("segment") or ""),
+            "text_sha256": str(case.get("text_sha256") or ""),
+            "char_count": int(case.get("char_count") or 0),
+        } for case in list(corpus.get("cases") or [])],
+    }
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def select_segment(value: str, *, segment: str, max_chars: int) -> str:
     text = unicodedata.normalize("NFKC", str(value or "")).replace("\r\n", "\n").replace("\r", "\n").strip()
     if len(text) <= max_chars:

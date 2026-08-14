@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from typing import Any
 
 from packages.reasoning_runtime import QualificationEvaluation, QualificationTask
 
-from .task_suite import evaluate_task
+from .task_suite import evaluate_task, normalize_text
 
 
 EXTRACTION_FAMILIES = {"canon_events", "canon_entities", "canon_relationships"}
@@ -98,7 +96,7 @@ def _match_predictions(
 ) -> tuple[set[int], set[int]]:
     matched_predictions: set[int] = set()
     matched_gold: set[int] = set()
-    normalized_source = _normalize(source_text)
+    normalized_source = normalize_text(source_text)
     for prediction_index, prediction in enumerate(predictions):
         for gold_index, gold_item in enumerate(gold_items):
             if gold_index in matched_gold:
@@ -115,14 +113,18 @@ def _matches(
     normalized_source: str,
 ) -> bool:
     if family == "canon_entities":
-        return _normalize(str(prediction.get("name") or "")) in _aliases(gold_item)
+        return (
+            normalize_text(str(prediction.get("name") or "")) in _aliases(gold_item)
+            and normalize_text(str(prediction.get("entity_type") or ""))
+            == normalize_text(str(gold_item.get("entity_type") or ""))
+        )
     if family == "canon_relationships":
         return (
-            _normalize(str(prediction.get("source") or "")) in _aliases(gold_item, "source_aliases")
-            and _normalize(str(prediction.get("target") or "")) in _aliases(gold_item, "target_aliases")
-            and _normalize(str(prediction.get("relationship_type") or "")) in _aliases(gold_item, "type_aliases")
+            normalize_text(str(prediction.get("source") or "")) in _aliases(gold_item, "source_aliases")
+            and normalize_text(str(prediction.get("target") or "")) in _aliases(gold_item, "target_aliases")
+            and normalize_text(str(prediction.get("relationship_type") or "")) in _aliases(gold_item, "type_aliases")
         )
-    quote = _normalize(str(prediction.get("evidence_quote") or ""))
+    quote = normalize_text(str(prediction.get("evidence_quote") or ""))
     start = normalized_source.find(quote) if quote else -1
     if start < 0:
         return False
@@ -134,18 +136,9 @@ def _matches(
 
 
 def _aliases(item: dict[str, Any], key: str = "aliases") -> set[str]:
-    return {_normalize(str(value)) for value in list(item.get(key) or []) if str(value).strip()}
+    return {normalize_text(str(value)) for value in list(item.get(key) or []) if str(value).strip()}
 
 
 def _span_overlap(left: tuple[int, int], right: tuple[int, int]) -> float:
     overlap = max(0, min(left[1], right[1]) - max(left[0], right[0]))
     return overlap / max(1, min(left[1] - left[0], right[1] - right[0]))
-
-
-def _normalize(value: str) -> str:
-    punctuation = str.maketrans({
-        "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
-        "\u2013": "-", "\u2014": "-", "\u00a0": " ",
-    })
-    canonical = unicodedata.normalize("NFKC", str(value or "")).translate(punctuation)
-    return re.sub(r"\s+", " ", canonical).strip().casefold()

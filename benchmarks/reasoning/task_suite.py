@@ -20,7 +20,7 @@ TASK_FAMILIES = (
     "structured_json",
     "tool_use",
 )
-TASK_SUITE_VERSION = "1.1.0"
+TASK_SUITE_VERSION = "1.2.0"
 
 
 def build_tasks(corpus: dict[str, Any], *, scope: str = "full") -> list[QualificationTask]:
@@ -120,7 +120,11 @@ def _canon_entities(case: dict[str, Any]) -> QualificationTask:
     return _evidence_task(case, family="canon_entities", result_key="entities", minimum=3, item_properties={
         "name": {"type": "string"}, "entity_type": {"type": "string", "enum": ["location", "object", "creature", "organization", "artifact", "concept"]},
         "description": {"type": "string"},
-    }, instruction="Extract grounded non-character entities only.")
+    }, instruction=(
+        "Extract distinct named or narratively consequential non-character entities only. "
+        "Exclude food, clothing, furniture, flora, and generic scene props unless the passage "
+        "makes them plot-significant."
+    ))
 
 
 def _canon_relationships(case: dict[str, Any]) -> QualificationTask:
@@ -230,12 +234,12 @@ def _evidence_precision(rows: list[Any], source_text: str) -> float:
     nonempty = [quote for quote in quotes if quote]
     if not nonempty:
         return 0.0
-    normalized_source = _normalize(source_text)
-    supported = sum(_normalize(quote) in normalized_source for quote in nonempty)
+    normalized_source = normalize_text(source_text)
+    supported = sum(normalize_text(quote) in normalized_source for quote in nonempty)
     return supported / len(nonempty)
 
 
-def _normalize(value: str) -> str:
+def normalize_text(value: str) -> str:
     punctuation = str.maketrans({
         "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
         "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',

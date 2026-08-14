@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, build_tasks, evaluate_task
+from scripts.build_local_reasoning_corpus import corpus_fingerprint
 from scripts.qualify_local_reasoning import (
     _assess_host_resources,
     _assert_resource_limits,
@@ -117,7 +117,7 @@ def test_gold_corpus_validation_requires_exact_versioned_artifact(tmp_path):
     corpus = {"corpus_version": "1"}
     matching_gold = {
         "corpus_version": "1",
-        "corpus_sha256": hashlib.sha256(corpus_path.read_bytes()).hexdigest(),
+        "corpus_fingerprint": corpus_fingerprint(corpus),
     }
 
     _validate_gold_corpus(corpus_path=corpus_path, corpus=corpus, gold=matching_gold)
@@ -126,7 +126,7 @@ def test_gold_corpus_validation_requires_exact_versioned_artifact(tmp_path):
         _validate_gold_corpus(
             corpus_path=corpus_path,
             corpus=corpus,
-            gold={**matching_gold, "corpus_sha256": "stale"},
+            gold={**matching_gold, "corpus_fingerprint": "stale"},
         )
 
 

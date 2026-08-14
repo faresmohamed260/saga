@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "task_suite_version": "1.1.0",
+  "task_suite_version": "1.2.0",
   "corpus_version": "1.0.0",
   "decision": "partial_ready",
   "policy": {
@@ -29,7 +29,7 @@
       "trials": 9,
       "sources": 3,
       "acceptance_rate": 1.0,
-      "median_warm_wall_seconds": 0.697472,
+      "median_warm_wall_seconds": 1.109036,
       "warm_wall_slo_seconds": 2.0
     },
     "tool_use": {
@@ -39,7 +39,7 @@
       "trials": 9,
       "sources": 3,
       "acceptance_rate": 1.0,
-      "median_warm_wall_seconds": 0.898965,
+      "median_warm_wall_seconds": 1.223623,
       "warm_wall_slo_seconds": 2.0
     },
     "canon_entities": {"status": "unqualified", "model": null},

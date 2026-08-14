@@ -22,8 +22,8 @@ Model selection is per task. A model that is strong at extraction is not assumed
 - Ollama: 0.32.5.
 - Ollama model storage: `B:\.ollama\models` on a 2 TB SATA SSD.
 - Existing Ollama blobs: 131.89 GiB.
-- Free space on `B:` at inventory time: approximately 108 GiB.
-- System NVMe `C:` free space: approximately 3 GiB; it must not receive model weights.
+- Free space on `B:` at latest inventory: approximately 70 GiB.
+- System NVMe `C:` free space at latest inventory: approximately 70 GiB; model storage remains on `B:`.
 
 Model storage is already off the system NVMe. The verified GPT-OSS artifact is stored on `B:`; Qwen3 14B and Qwen3 30B-A3B are not required downloads and remain deferred research candidates.
 
@@ -133,6 +133,10 @@ The official GPT-OSS 20B MXFP4 three-task funnel completed through LM Studio at 
 
 ## Production routing decision
 
-The tracked release policy is `benchmarks/reasoning/local_production_routes_v1.json`. Overall local reasoning status is **partial ready**: structured JSON and native tool use are production-qualified through `ollama_local` with `mistral:7b-instruct`; all semantic families fail closed and have no fallback. The reasoning runtime's `QualifiedReasoningRouter` consumes this scorecard shape, rejects cloud providers, reuses one client per provider/model, and applies one inference slot, queue capacity eight, a 30-second queue deadline, one provider attempt, 4K context, and a 90-second request deadline.
+The tracked release policy is `benchmarks/reasoning/local_production_routes_v1.json`. Overall local reasoning status is **partial ready**: structured JSON and native tool use are production-qualified through `ollama_local` with `mistral:7b-instruct`; all semantic families fail closed and have no fallback. Under task suite 1.2.0, both routes passed 9/9 repeated trials across three real books, with median warm wall times of 1.11 and 1.22 seconds respectively. The reasoning runtime's `QualifiedReasoningRouter` consumes this scorecard shape, rejects cloud providers, reuses one client per provider/model, and applies one inference slot, queue capacity eight, a 30-second queue deadline, one provider attempt, 4K context, and a 90-second request deadline.
+
+The source-safe reviewed extraction gold artifact is `benchmarks/reasoning/local_extraction_gold_v1.json`. It covers events, non-character entities, and relationships for all three books without storing passage text. It binds to a canonical corpus fingerprint rather than JSON formatting. Re-evaluating Mistral's task-suite 1.2 discovery outputs against reviewed gold rejected all nine extraction cases. Event F1 ranged from 0.0 to 0.4, entity F1 from 0.0 to 0.13, and relationship F1 from 0.0 to 0.57. Earlier evidence-only passes were therefore false positives and are not eligible for routing.
+
+Qwen3 14B acquisition remains resumable with approximately 3.78 GiB physically present in Ollama's sparse partial. A bounded CLI pull made no progress. Direct blob transfer measured about 3.1 MB/s, while eight-way transfer did not improve throughput and temporarily degraded SATA filesystem responsiveness; it was terminated and its duplicate artifact removed. The partial is retained, but acquisition cannot run as an opaque blocking step.
 
 A live real-book request resolved through the router and returned the exact expected Caraval metadata in 9.10 seconds including cold model activation, with queue outcome `acquired`. Local evaluation accepted the output with exact match. The model was unloaded after verification and no cloud provider, account rotation, or fallback was used.

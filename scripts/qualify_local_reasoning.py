@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from benchmarks.reasoning.task_suite import TASK_FAMILIES, TASK_SUITE_VERSION, build_tasks, evaluate_task
 from benchmarks.reasoning.gold_evaluation import build_gold_evaluator
+from scripts.build_local_reasoning_corpus import corpus_fingerprint
 from packages.reasoning_runtime import (
     JsonQualificationCheckpointStore,
     ReasoningProfile,
@@ -161,8 +162,7 @@ def _arguments() -> argparse.Namespace:
 def _validate_gold_corpus(*, corpus_path: Path, corpus: dict[str, Any], gold: dict[str, Any]) -> None:
     if str(gold.get("corpus_version") or "") != str(corpus.get("corpus_version") or ""):
         raise ValueError("Gold annotations do not match the corpus version.")
-    corpus_sha256 = hashlib.sha256(corpus_path.read_bytes()).hexdigest()
-    if str(gold.get("corpus_sha256") or "") != corpus_sha256:
+    if str(gold.get("corpus_fingerprint") or "") != corpus_fingerprint(corpus):
         raise ValueError("Gold annotations do not match the exact corpus artifact.")
 
 

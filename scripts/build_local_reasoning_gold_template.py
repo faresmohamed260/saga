@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -13,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from benchmarks.reasoning.task_suite import build_tasks
+from scripts.build_local_reasoning_corpus import corpus_fingerprint
 
 
 def main() -> int:
@@ -31,13 +31,19 @@ def main() -> int:
         }
     ]
     payload = {
-        "version": "1.0.0",
+        "version": "1.1.0",
         "corpus_version": corpus["corpus_version"],
-        "corpus_sha256": hashlib.sha256(corpus_bytes).hexdigest(),
+        "corpus_fingerprint": corpus_fingerprint(corpus),
         "annotation_policy": {
-            "canon_events": "normalized source spans",
-            "canon_entities": "canonical aliases",
-            "canon_relationships": "source, target, and type aliases",
+            "canon_events": "Distinct consequential events anchored by normalized source spans.",
+            "canon_entities": (
+                "Named or narratively consequential non-character entities with canonical aliases "
+                "and one task-schema entity_type; exclude generic props unless plot-significant."
+            ),
+            "canon_relationships": (
+                "Explicit or strongly evidenced participant/entity relationships represented by "
+                "source, target, and type aliases."
+            ),
             "minimum_annotators": 1,
             "review_required": True,
         },

@@ -29,3 +29,5 @@ def test_gold_template_is_source_safe_and_covers_three_families(tmp_path: Path):
     assert {item["family"] for item in payload["annotations"]} == {
         "canon_events", "canon_entities", "canon_relationships",
     }
+    assert payload["version"] == "1.1.0"
+    assert "generic props" in payload["annotation_policy"]["canon_entities"]
