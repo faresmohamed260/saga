@@ -16,7 +16,7 @@ This audit treats the persistent qualification objective as authoritative. `Prov
 | Qwen2.5 14B evaluation | Proven by early elimination | Three bounded current-suite entity deadline failures under safe hybrid placement; earlier cross-family baseline checkpoints remain preserved |
 | GPT-OSS 20B evaluation | Proven | Official hash-verified artifact; three repeated current-suite entity, planning, and tool trials |
 | Qwen3 14B evaluation | Proven | Official hash-verified artifact; repeated current-suite entity, planning, and tool trials |
-| Qwen3 30B-A3B evaluation | Pending | Official identity and fit are verified; durable acquisition is 1,986,863,385 / 18,556,685,824 bytes (10.71%), but inference evidence is absent |
+| Qwen3 30B-A3B evaluation | Pending | Official identity and fit are verified; durable acquisition is 4,848,931,321 / 18,556,685,824 bytes (26.13%), but inference evidence is absent |
 | Schema, evidence, hallucination, contradiction, completeness, reliability, TTFT, throughput, wall, RAM/VRAM, and context evidence | Proven for evaluated routes | Aggregated `quality_metrics`, `provider_metrics`, resource peaks, failure modes, and context variants in tracked scorecards |
 | Failure recovery | Proven | Exact checkpoint planning skips model loading; real Qwen3 14B resume returned in 7.76 seconds at baseline VRAM |
 | Per-task routing, SLOs, and single-machine queue policy | Proven | `local_production_routes_v1.json`, `routing.py`, and `queueing.py` |
