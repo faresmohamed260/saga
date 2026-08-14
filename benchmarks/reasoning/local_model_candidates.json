@@ -104,7 +104,7 @@
         {
           "engine": "lm_studio",
           "provider": "lm_studio_local",
-          "engine_model": "openai/gpt-oss-20b",
+          "engine_model": "gpt-oss-20b",
           "source": "https://lmstudio.ai/models/openai/gpt-oss-20b",
           "artifact_gib": 11.28,
           "gpu_fraction": 0.5,

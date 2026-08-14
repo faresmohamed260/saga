@@ -29,6 +29,11 @@ from .queueing import (
     ReasoningQueuePolicy,
     ReasoningQueueTimeoutError,
 )
+from .routing import (
+    LocalReasoningDeploymentPolicy,
+    QualifiedReasoningRouter,
+    UnqualifiedReasoningRouteError,
+)
 
 __all__ = [
     "GeneralComputeAccount",
@@ -47,6 +52,9 @@ __all__ = [
     "ReasoningOverloadedError",
     "ReasoningQueuePolicy",
     "ReasoningQueueTimeoutError",
+    "LocalReasoningDeploymentPolicy",
+    "QualifiedReasoningRouter",
+    "UnqualifiedReasoningRouteError",
     "apply_persistence_provider_configs",
     "create_reasoning_client",
     "import_general_compute_accounts_from_file",

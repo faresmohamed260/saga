@@ -29,7 +29,7 @@ def test_candidate_decisions_match_resource_fit_policy():
     assert gpt_oss["qualification_eligible"] is True
 
     allowed = qualification_artifacts(manifest)
-    assert ("lm_studio_local", "openai/gpt-oss-20b") in allowed
+    assert ("lm_studio_local", "gpt-oss-20b") in allowed
     assert (
         "lm_studio_local",
         "openai-gpt-oss-20b-abliterated-uncensored-neo-imatrix",
