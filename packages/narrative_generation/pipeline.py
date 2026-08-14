@@ -24,7 +24,7 @@ from packages.narrative_generation.contracts import (
     RevisionRecordArtifact,
     SceneProseArtifact,
 )
-from packages.narrative_generation.quality import evaluate_chapter_continuity
+from packages.narrative_generation.quality import evaluate_chapter_continuity, narrative_prose_quality_issues
 from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.persistence_runtime import PersistenceRuntimeClient
 from packages.reasoning_runtime import ReasoningRuntimeClient
@@ -137,11 +137,45 @@ class NarrativeGenerationAgent:
             context=context,
             prior_scenes=prior_scenes,
         )
-        response = self.reasoning_runtime.generate_json(prompt, strict=True, max_tokens=1400)
+        response = self.reasoning_runtime.generate_json(
+            prompt,
+            strict=True,
+            max_tokens=1400,
+            response_format=_scene_response_format(),
+        )
         metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
         if isinstance(response, dict) and not response.get("error"):
             try:
-                return SceneProsePayload.model_validate(response), metadata
+                payload = SceneProsePayload.model_validate(response)
+                issues = narrative_prose_quality_issues(payload.prose, minimum_words=MIN_SCENE_WORDS)
+                if not issues:
+                    return payload, metadata
+                retry_response = self.reasoning_runtime.generate_json(
+                    _build_scene_quality_retry_prompt(prompt=prompt, draft=payload, issues=issues),
+                    strict=True,
+                    max_tokens=1400,
+                    response_format=_scene_response_format(),
+                )
+                retry_metadata = dict(self.reasoning_runtime.last_request_metadata() or {})
+                retry_metadata["quality_retry_used"] = True
+                retry_metadata["initial_quality_issues"] = issues
+                retry_metadata["initial_request_metadata"] = metadata
+                if isinstance(retry_response, dict) and not retry_response.get("error"):
+                    retry_payload = SceneProsePayload.model_validate(retry_response)
+                    retry_issues = narrative_prose_quality_issues(
+                        retry_payload.prose, minimum_words=MIN_SCENE_WORDS
+                    )
+                    if not retry_issues:
+                        return retry_payload, retry_metadata
+                    payload = retry_payload
+                    issues = retry_issues
+                metadata = retry_metadata
+                metadata["provider_status"] = metadata.get("status")
+                metadata["status"] = "error"
+                metadata["error_code"] = "scene_prose_quality_failed"
+                metadata["quality_issues"] = issues
+                metadata["deterministic_fallback"] = True
+                return payload, metadata
             except Exception as exc:
                 metadata["status"] = "error"
                 metadata["error_code"] = f"scene_payload_validation_failed:{type(exc).__name__}"
@@ -379,8 +413,35 @@ def _build_scene_prompt(
         "A role introduced by the premise or scene plan that is not explicitly identified in a grounded character "
         "profile is a distinct new story participant, not one of the canon characters. Never assign that role to a "
         "canon character by implication. Preserve role identity and character identity exactly across PRIOR_GENERATED_SCENES. "
-        f"Target {target_words_per_scene} words, maximum {MAX_SCENE_WORDS}. Return exactly JSON: "
+        "Write immersive narrative action, sensory detail, interiority, and dialogue where appropriate. Never print internal "
+        "character/event/entity IDs. Never mention evidence, references, a blueprint, a planned beat, or continuity checks. "
+        "Do not invent prior occupations, titles, relationships, secrets, possessions, or history. Avoid claims such as former, "
+        "once was, had always, or for years unless the supplied canon evidence directly establishes them. "
+        f"Write at least {MIN_SCENE_WORDS} words; target {target_words_per_scene} words and maximum {MAX_SCENE_WORDS}. Return exactly JSON: "
         f"{json.dumps(schema)}\n\nEvidence:\n{json.dumps(evidence, ensure_ascii=False)}"
+    )
+
+
+def _scene_response_format() -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "narrative_scene",
+            "schema": SceneProsePayload.model_json_schema(),
+            "strict": True,
+        },
+    }
+
+
+def _build_scene_quality_retry_prompt(
+    *, prompt: str, draft: SceneProsePayload, issues: list[str]
+) -> str:
+    return (
+        f"{prompt}\n\n"
+        "The prior draft failed the mandatory prose quality gate. Rewrite it once as an immersive scene, not an "
+        "explanation or summary. Preserve grounded facts and the intended action. Return a complete replacement JSON object. "
+        f"QUALITY_ISSUES: {json.dumps(issues, ensure_ascii=False)}\n"
+        f"PRIOR_DRAFT: {json.dumps(draft.model_dump(), ensure_ascii=False)}"
     )
 
 
@@ -452,10 +513,9 @@ def _fallback_scene_payload(*, blueprint: GenerationBlueprintArtifact, scene: Sc
 
 
 def _repair_scene_prose(prose: str, *, scene: ScenePlanItem, blueprint: GenerationBlueprintArtifact) -> str:
+    del scene, blueprint
     cleaned = _clean_text(prose)
-    if len(cleaned.split()) >= MIN_SCENE_WORDS:
-        return cleaned
-    return _fallback_scene_payload(blueprint=blueprint, scene=scene).prose
+    return cleaned
 
 
 def _assemble_chapters(

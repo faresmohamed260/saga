@@ -84,7 +84,7 @@ def main() -> int:
             series_id=series_id,
             project_id=f"qualification-project-{args.release_id}",
             source_paths=[str(source)],
-            premise="During the first winter after the war, a court archivist discovers that a disputed Solstice oath could reopen an old alliance or destroy the fragile peace.",
+            premise="During the first winter after the war, Evangeline discovers that a disputed Solstice oath could reopen an old alliance or destroy the fragile peace.",
             target_audience="adult fantasy readers",
             tone="intimate, wintry, politically tense, and hopeful",
             desired_chapter_count=1,

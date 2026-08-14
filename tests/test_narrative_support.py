@@ -16,6 +16,7 @@ from packages.narrative_generation import (
 )
 from packages.narrative_generation.store import NarrativeGenerationStore
 from packages.narrative_generation.support_pipeline import _bounded_support_response
+from packages.narrative_generation.support_service import load_narrative_support_service_config_from_env
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.retrieval_runtime import RetrievalProfile, RetrievalRuntimeConfig, create_retrieval_client
 
@@ -74,6 +75,15 @@ class FailingSupportReasoningRuntime(StubSupportReasoningRuntime):
         self._last = {"provider": "test-live", "resolved_model": "support-model", "status": "error"}
         return {"error": "provider_failed"}
 
+
+def test_narrative_support_local_model_override_is_configurable(monkeypatch):
+    monkeypatch.setenv("SAGA_NARRATIVE_SUPPORT_REASONING_MODE", "ollama_local")
+    monkeypatch.setenv("SAGA_NARRATIVE_SUPPORT_REASONING_MODEL", "mistral:7b-instruct")
+
+    config = load_narrative_support_service_config_from_env()
+
+    assert config.reasoning_mode == "ollama_local"
+    assert config.reasoning_model == "mistral:7b-instruct"
 
 class RetryInnovationReasoningRuntime(StubSupportReasoningRuntime):
     def generate_json(self, prompt: str, **kwargs):

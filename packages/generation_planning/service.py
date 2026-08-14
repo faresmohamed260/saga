@@ -27,6 +27,7 @@ class GenerationPlanningServiceConfig:
     supabase_service_role_key: str = ""
     reasoning_profile_name: str = "generation-planning"
     reasoning_mode: str = "gpt_oss"
+    reasoning_model: str = ""
     reasoning_timeout_seconds: int = 120
     reasoning_max_retries: int = 3
 
@@ -65,6 +66,7 @@ class GenerationPlanningService:
         reasoning_profile = ReasoningProfile(
             name=config.reasoning_profile_name,
             mode=config.reasoning_mode,
+            model_override=config.reasoning_model,
             timeout_seconds=config.reasoning_timeout_seconds,
             max_retries=config.reasoning_max_retries,
         )
@@ -177,6 +179,7 @@ def load_generation_planning_service_config_from_env() -> GenerationPlanningServ
         supabase_service_role_key=str(os.getenv("SAGA_SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip(),
         reasoning_profile_name=str(os.getenv("SAGA_GENERATION_PLANNING_REASONING_PROFILE") or "generation-planning").strip(),
         reasoning_mode=str(os.getenv("SAGA_GENERATION_PLANNING_REASONING_MODE") or "gpt_oss").strip() or "gpt_oss",
+        reasoning_model=str(os.getenv("SAGA_GENERATION_PLANNING_REASONING_MODEL") or "").strip(),
         reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_GENERATION_PLANNING_REASONING_TIMEOUT_SECONDS") or "120")),
         reasoning_max_retries=max(1, int(os.getenv("SAGA_GENERATION_PLANNING_REASONING_MAX_RETRIES") or "3")),
     )

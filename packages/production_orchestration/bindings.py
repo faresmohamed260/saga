@@ -132,10 +132,28 @@ class ActiveStageInspector:
                 and item.tone == request.tone
                 and item.desired_chapter_count == request.desired_chapter_count
             }
-            blueprints = [item for item in blueprints if item.intent_id in matching_intent_ids]
+            blueprints = [
+                item
+                for item in blueprints
+                if item.intent_id in matching_intent_ids
+                and _blueprint_matches_requested_structure(
+                    item, desired_chapter_count=request.desired_chapter_count
+                )
+            ]
         if not blueprints:
             return None
         blueprint = blueprints[0]
+        if not _blueprint_matches_requested_structure(
+            blueprint, desired_chapter_count=request.desired_chapter_count
+        ):
+            return StageOutcomeArtifact(
+                stage="generation_planning",
+                status="rejected",
+                accepted=False,
+                output_context={"blueprint_id": blueprint.blueprint_id},
+                metrics={"chapter_count": len(blueprint.chapter_outline), "scene_count": len(blueprint.scene_plan)},
+                reasons=["Generation blueprint does not match the requested chapter/scene structure."],
+            )
         if not has_live_planning_provider_proof(blueprint):
             return StageOutcomeArtifact(
                 stage="generation_planning",
@@ -466,6 +484,26 @@ class PersistenceDeliverableSink(DeliverableSink):
         )
         digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
         return _stored_ref(stored, role="deliverable_manifest", source_stage="artifact_packaging", sha256=digest)
+
+
+def _blueprint_matches_requested_structure(blueprint: Any, *, desired_chapter_count: int) -> bool:
+    chapter_count = max(1, int(desired_chapter_count or 1))
+    expected_chapters = list(range(1, chapter_count + 1))
+    actual_chapters = [int(item.chapter_index) for item in list(blueprint.chapter_outline or [])]
+    expected_scenes = {
+        (chapter_index, scene_index)
+        for chapter_index in expected_chapters
+        for scene_index in (1, 2)
+    }
+    actual_scenes = [
+        (int(item.chapter_index), int(item.scene_index))
+        for item in list(blueprint.scene_plan or [])
+    ]
+    return (
+        actual_chapters == expected_chapters
+        and len(actual_scenes) == len(expected_scenes)
+        and set(actual_scenes) == expected_scenes
+    )
 
 
 def _accepted(stage: StageName, context: dict[str, Any], metrics: dict[str, Any]) -> StageOutcomeArtifact:

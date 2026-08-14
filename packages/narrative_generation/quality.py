@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,22 @@ class NarrativeGenerationQualityMetrics(BaseModel):
     live_provider_success_rate: float = 1.0
     pass_quality_gate: bool = True
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+def narrative_prose_quality_issues(prose: str, *, minimum_words: int = 80) -> list[str]:
+    text = str(prose or "").strip()
+    lowered = text.lower()
+    issues: list[str] = []
+    if len(text.split()) < minimum_words:
+        issues.append("scene prose is too sparse")
+    if re.search(r"\b(?:char|event|entity|timeline)-[a-z0-9-]+\b", lowered):
+        issues.append("scene prose exposes internal artifact references")
+    if any(
+        phrase in lowered
+        for phrase in ("continuity check", "canon reference", "planned beat", "provided evidence", "blueprint")
+    ):
+        issues.append("scene prose contains generation metacommentary")
+    return issues
 
 
 def evaluate_chapter_continuity(
@@ -78,11 +95,16 @@ def evaluate_narrative_generation(result: NarrativeGenerationResult, *, blueprin
     invalid_entities = sorted(entity_refs - refs["entity_refs"])
     checks = list(result.story.continuity_checks or [])
     substantive_chapters = [chapter for chapter in result.story.chapters if len(chapter.prose.split()) >= 80]
+    prose_issues = {
+        scene.source_scene_id: narrative_prose_quality_issues(scene.prose)
+        for scene in result.scene_prose
+    }
     live_provider_successes = [
         scene
         for scene in result.scene_prose
         if (scene.metadata or {}).get("reasoning_status") == "ok"
         and not dict((scene.metadata or {}).get("request_metadata") or {}).get("deterministic_fallback")
+        and not prose_issues.get(scene.source_scene_id)
     ]
     metrics = NarrativeGenerationQualityMetrics(
         chapter_completeness_rate=_ratio(len(expected_chapters & actual_chapters), len(expected_chapters)),
@@ -105,6 +127,7 @@ def evaluate_narrative_generation(result: NarrativeGenerationResult, *, blueprin
                 for scene in result.scene_prose
                 if dict((scene.metadata or {}).get("request_metadata") or {}).get("deterministic_fallback")
             ],
+            "prose_issues": {key: value for key, value in prose_issues.items() if value},
         },
     )
     metrics.pass_quality_gate = (

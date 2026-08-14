@@ -71,6 +71,19 @@ def evaluate_generation_blueprint(
     ]
     visual_scenes = [item for item in scenes if item.visual_requirements]
     audio_scenes = [item for item in scenes if item.audio_requirements]
+    expected_chapter_indices = list(range(1, chapter_count + 1))
+    actual_chapter_indices = [item.chapter_index for item in blueprint.chapter_outline]
+    expected_scene_keys = {
+        (chapter_index, scene_index)
+        for chapter_index in expected_chapter_indices
+        for scene_index in (1, 2)
+    }
+    actual_scene_keys = [(item.chapter_index, item.scene_index) for item in scenes]
+    structure_valid = (
+        actual_chapter_indices == expected_chapter_indices
+        and len(actual_scene_keys) == len(expected_scene_keys)
+        and set(actual_scene_keys) == expected_scene_keys
+    )
 
     metrics = GenerationPlanningQualityMetrics(
         canon_reference_validity_rate=_valid_rate(canon_refs, invalid_canon),
@@ -86,6 +99,10 @@ def evaluate_generation_blueprint(
             "invalid_entity_refs": invalid_entities[:100],
             "chapter_outline_count": len(blueprint.chapter_outline),
             "scene_plan_count": len(scenes),
+            "expected_chapter_indices": expected_chapter_indices,
+            "actual_chapter_indices": actual_chapter_indices,
+            "duplicate_scene_keys": len(actual_scene_keys) != len(set(actual_scene_keys)),
+            "structure_valid": structure_valid,
         },
     )
     metrics.pass_quality_gate = (
@@ -96,6 +113,7 @@ def evaluate_generation_blueprint(
         and metrics.scene_plan_completeness_rate >= 0.95
         and metrics.visual_requirement_rate >= 0.95
         and metrics.audio_requirement_rate >= 0.95
+        and structure_valid
     )
     return metrics
 
