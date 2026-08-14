@@ -137,8 +137,20 @@ The tracked release policy is `benchmarks/reasoning/local_production_routes_v1.j
 
 The source-safe reviewed extraction gold artifact is `benchmarks/reasoning/local_extraction_gold_v1.json`. It covers events, non-character entities, and relationships for all three books without storing passage text. It binds to a canonical corpus fingerprint rather than JSON formatting. Re-evaluating Mistral's task-suite 1.2 discovery outputs against reviewed gold rejected all nine extraction cases. Event F1 ranged from 0.0 to 0.4, entity F1 from 0.0 to 0.13, and relationship F1 from 0.0 to 0.57. Earlier evidence-only passes were therefore false positives and are not eligible for routing.
 
-Qwen3 14B acquisition reached an integrity stop. The pre-existing Ollama sparse partial contained approximately 3.78 GiB of physical data. All 16 sparse holes were recovered through independent digest-addressed byte ranges with exact length and per-range source/target hash checks. A full-file SHA-256 still failed (`bb5cc47b8b28aaf1f6fc3388a6610dfc157bdd36e1b1cceaa9436bf9d36ba691` versus expected `a8cc1361f3145dc01f6d77c6c82c9116b9ffe3c97b34716fe20418455876c40e`), proving corruption also exists in previously allocated data. The artifact was not renamed, registered, or loaded.
+Qwen3 14B acquisition first reached an integrity stop. The pre-existing Ollama sparse partial remained corrupt after bounded hole repair and was never registered or loaded. A separate official Q4_K_M artifact was then acquired resumably from ModelScope. Its exact 9,001,752,960-byte size and authoritative SHA-256 `500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0` were verified before LM Studio registration.
 
-Selective repair is stopped because locating distributed corruption would require redownloading most of the file without stronger chunk metadata. Direct Ollama blob transfer measured approximately 3.1 MB/s. Official Hugging Face, hf-mirror, and ModelScope ranged probes served matching official GGUF bytes, but alternate hosts measured only 1.3-2.4 MB/s and parallelism did not increase aggregate throughput. A clean 9 GB Qwen3 14B acquisition therefore requires roughly 50 minutes on the current network; Qwen3 30B-A3B requires materially longer and also needs hybrid-placement preflight. Both candidates remain required by the research objective but are blocked at the clean-artifact gate, not treated as inference failures.
+Qwen3 14B passed the workstation resource gate at 70% GPU offload and 4K context, peaking near 8.03 GiB VRAM and 88.85 GiB host RAM. It failed all three real-book discovery cases: entity extraction and generation planning exceeded the 60-second request SLO, while native tool use returned an invalid payload after 21.46 seconds. A deadline regression run proved streamed inference now stops at 30.17 seconds and unloads automatically. Qwen3 14B is eliminated; Qwen3 30B-A3B is a no-go because the smaller candidate failed the discovery gate, so a larger download and slower hybrid placement are not justified.
+
+## Execution-process correction
+
+The original qualification goal combined runtime implementation, storage work, corpus design, six candidates, two engines, all task families, production routing, and SLO policy. That scope encouraged serial prerequisite work and made model acquisition appear to be progress. Execution is now governed by these gates:
+
+1. Preserve the current qualified route and state partial readiness explicitly.
+2. Admit a challenger only after artifact integrity and workstation resource checks.
+3. Run no more than three one-trial real-book discovery cases.
+4. Stop on deadline, contract failure, zero grounding, or failure to improve the incumbent.
+5. Acquire a larger related model only when the smaller candidate passes discovery.
+
+The local streaming transports previously used `requests` socket-inactivity timeouts, which do not bound total generation while tokens continue arriving. Both LM Studio and Ollama now enforce total wall-clock deadlines and close overdue streams. Qualification emits stage progress, includes the deadline in checkpoint identity, and unloads models in `finally` so normal failures do not retain GPU resources.
 
 A live real-book request resolved through the router and returned the exact expected Caraval metadata in 9.10 seconds including cold model activation, with queue outcome `acquired`. Local evaluation accepted the output with exact match. The model was unloaded after verification and no cloud provider, account rotation, or fallback was used.

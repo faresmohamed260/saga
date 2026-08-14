@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "host": {
     "gpu": "NVIDIA RTX 3060",
     "vram_gib": 12.0,
@@ -71,13 +71,13 @@
         {
           "engine": "lm_studio",
           "provider": "lm_studio_local",
-          "engine_model": "qwen/qwen3-14b",
-          "source": "https://lmstudio.ai/models/qwen3-2504",
+          "engine_model": "qwen3-14b",
+          "source": "https://www.modelscope.cn/models/Qwen/Qwen3-14B-GGUF",
           "artifact_gib": 8.4,
           "gpu_fraction": 0.75,
           "engine_status": "supported",
-          "decision": "qualify_controlled_hybrid",
-          "execution_status": "blocked_clean_artifact_required"
+          "decision": "exclude",
+          "execution_status": "eliminated_latency_and_contract_failure"
         }
       ]
     },
@@ -94,8 +94,8 @@
           "artifact_gib": 17.4,
           "gpu_fraction": 0.4,
           "engine_status": "supported",
-          "decision": "qualify_controlled_hybrid",
-          "execution_status": "blocked_clean_artifact_and_hybrid_preflight_required"
+          "decision": "defer",
+          "execution_status": "no_go_qwen14_failed_discovery_gate"
         }
       ]
     },

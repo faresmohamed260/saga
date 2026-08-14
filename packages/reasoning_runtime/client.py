@@ -59,6 +59,17 @@ class _BufferedOllamaResponse:
         return None
 
 
+def _enforce_stream_deadline(
+    response: Any, *, started: float, timeout_seconds: int,
+) -> None:
+    if time.perf_counter() - started <= timeout_seconds:
+        return
+    response.close()
+    raise requests.Timeout(
+        f"Reasoning request exceeded {timeout_seconds} seconds."
+    )
+
+
 class ReasoningRuntimeClient:
     MODE_OLLAMA_LOCAL = "ollama_local"
     MODE_LM_STUDIO_LOCAL = "lm_studio_local"
@@ -690,6 +701,9 @@ class ReasoningRuntimeClient:
         usage: dict[str, Any] = {}
         first_token_seconds: float | None = None
         for line in response.iter_lines():
+            _enforce_stream_deadline(
+                response, started=started, timeout_seconds=self.timeout,
+            )
             if not line:
                 continue
             decoded = line.decode("utf-8") if isinstance(line, bytes) else str(line)
@@ -706,6 +720,9 @@ class ReasoningRuntimeClient:
             if content and first_token_seconds is None:
                 first_token_seconds = time.perf_counter() - started
             chunks.append(content)
+        _enforce_stream_deadline(
+            response, started=started, timeout_seconds=self.timeout,
+        )
         completed = time.perf_counter() - started
         return _BufferedOllamaResponse({
             "choices": [{"message": {"content": "".join(chunks)}}],
@@ -1200,6 +1217,9 @@ class ReasoningRuntimeClient:
         final_payload: dict[str, Any] = {}
         first_token_seconds: float | None = None
         for line in response.iter_lines():
+            _enforce_stream_deadline(
+                response, started=started, timeout_seconds=self.timeout,
+            )
             if not line:
                 continue
             event = json.loads(line.decode("utf-8") if isinstance(line, bytes) else str(line))
@@ -1208,6 +1228,9 @@ class ReasoningRuntimeClient:
                 first_token_seconds = time.perf_counter() - started
             chunks.append(chunk)
             final_payload.update(event)
+        _enforce_stream_deadline(
+            response, started=started, timeout_seconds=self.timeout,
+        )
         final_payload["response"] = "".join(chunks)
         final_payload["_ttft_seconds"] = first_token_seconds
         return _BufferedOllamaResponse(final_payload)

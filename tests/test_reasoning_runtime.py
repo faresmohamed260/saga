@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime.client import ReasoningRuntimeClient
-from packages.reasoning_runtime.client import _mistral_usage, _wav_duration_seconds
+from packages.reasoning_runtime.client import (
+    _enforce_stream_deadline,
+    _mistral_usage,
+    _wav_duration_seconds,
+)
 from packages.reasoning_runtime.factory import create_reasoning_client
 from packages.reasoning_runtime.models import (
     GeneralComputeAccount,
@@ -227,6 +231,21 @@ def test_lm_studio_local_streaming_captures_ttft(monkeypatch):
     metrics = client.last_request_metadata()["provider_metrics"]
     assert metrics["ttft_seconds"] >= 0
     assert metrics["output_tokens"] == 2
+
+
+def test_local_stream_deadline_closes_the_provider_response(monkeypatch):
+    response = SimpleNamespace(closed=False)
+    response.close = lambda: setattr(response, "closed", True)
+    monkeypatch.setattr(
+        "packages.reasoning_runtime.client.time.perf_counter", lambda: 61.0,
+    )
+
+    with pytest.raises(requests.Timeout, match="exceeded 60 seconds"):
+        _enforce_stream_deadline(
+            response, started=0.0, timeout_seconds=60,
+        )
+
+    assert response.closed is True
 
 
 def test_ollama_local_tool_use_calls_native_chat_endpoint(monkeypatch):

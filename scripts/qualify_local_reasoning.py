@@ -212,6 +212,7 @@ def main() -> int:
         )
     else:
         evicted_models = _unload_other_lm_studio_models(requested_model=args.model)
+    _print_progress("model_load_started", engine=args.engine, model=args.model)
     load_monitor = LocalResourceMonitor()
     load_monitor.start()
     try:
@@ -241,6 +242,10 @@ def main() -> int:
     load_evidence["engine"] = args.engine
     load_evidence["engine_version"] = engine_version
     _save_load_evidence(checkpoint_root, args.model, args.context_tokens, load_evidence)
+    _print_progress(
+        "model_load_completed", engine=args.engine, model=args.model,
+        wall_seconds=load_evidence["wall_seconds"],
+    )
     try:
         _assert_resource_limits(
             load_resource_metrics,
@@ -302,13 +307,24 @@ def main() -> int:
         max_peak_vram_bytes=int(args.max_vram_gib * 1024 ** 3),
         max_peak_host_ram_bytes=int(args.max_host_ram_gib * 1024 ** 3),
     )
-    trials = runner.run_model(
-        suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
-        client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluator,
-        run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-{engine_version}"
-                     f"-ctx{args.context_tokens}"
-                     f"-{allocation_variant}{gold_variant}"),
+    _print_progress(
+        "trials_started", model=args.model, tasks=len(tasks),
+        repetitions=args.repetitions, request_deadline_seconds=args.timeout_seconds,
     )
+    try:
+        trials = runner.run_model(
+            suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
+            client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluator,
+            run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-{engine_version}"
+                     f"-ctx{args.context_tokens}"
+                     f"-deadline{args.timeout_seconds}"
+                     f"-{allocation_variant}{gold_variant}"),
+        )
+    finally:
+        if args.engine == "ollama":
+            _unload_model(model=args.model, generate_url=config.ollama_local_url)
+        else:
+            _unload_lm_studio_model(args.model)
     wall_times = [trial.wall_seconds for trial in trials]
     summary = {
         "model": args.model,
@@ -325,6 +341,10 @@ def main() -> int:
     }
     print(json.dumps(summary, indent=2))
     return 2 if summary["failed"] else 0
+
+
+def _print_progress(stage: str, **details: Any) -> None:
+    print(json.dumps({"stage": stage, **details}), flush=True)
 
 
 def _prepare_local_model(
