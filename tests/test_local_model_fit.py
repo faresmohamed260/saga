@@ -29,7 +29,7 @@ def test_candidate_decisions_match_resource_fit_policy():
     assert gpt_oss["controlled_hybrid_fit"] is True
     assert gpt_oss["qualification_eligible"] is True
     assert qwen_14b["qualification_eligible"] is True
-    assert qwen_14b["execution_status"] == "deferred_hybrid_latency_risk"
+    assert qwen_14b["execution_status"] == "blocked_clean_artifact_required"
 
     allowed = qualification_artifacts(manifest)
     assert ("lm_studio_local", "gpt-oss-20b") in allowed

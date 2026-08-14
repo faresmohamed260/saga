@@ -77,7 +77,7 @@
           "gpu_fraction": 0.75,
           "engine_status": "supported",
           "decision": "qualify_controlled_hybrid",
-          "execution_status": "deferred_hybrid_latency_risk"
+          "execution_status": "blocked_clean_artifact_required"
         }
       ]
     },
@@ -95,7 +95,7 @@
           "gpu_fraction": 0.4,
           "engine_status": "supported",
           "decision": "qualify_controlled_hybrid",
-          "execution_status": "deferred_hybrid_latency_risk"
+          "execution_status": "blocked_clean_artifact_and_hybrid_preflight_required"
         }
       ]
     },
