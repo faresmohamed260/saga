@@ -162,7 +162,7 @@ The tracked repeated challenger report is `benchmarks/reasoning/local_challenger
 - Official GPT-OSS 20B rejected reviewed-gold entities 3/3 and planning 3/3. Tool use passed 3/3 at a 5.30-second median, materially slower than Mistral's 1.22-second production route.
 - Qwen3 14B failed all three entity and planning trials at the 30-second deadline and rejected tool use 3/3 at an 11.88-second median.
 
-Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Four HTTP ranges achieved only 3.24 MB/s aggregate. Hugging Face Xet reset interrupted data to zero, and Aria2 entered a no-network CPU loop; both paths were stopped. A plain official-source `curl -C -` window is durable and resumable: the first bounded window persisted 983,567,990 bytes (5.30%) at 3.28 MB/s. No downloader or model remains active, and the partial is not represented as inference evidence.
+Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Four HTTP ranges achieved only 3.24 MB/s aggregate. Hugging Face Xet reset interrupted data to zero, and Aria2 entered a no-network CPU loop; both paths were stopped. Plain official-source `curl -C -` windows are durable and resumable. Two bounded windows persisted 1,986,863,385 bytes (10.71%) at approximately 3.3 MB/s without restart loss. No downloader or model remains active, and the partial is not represented as inference evidence.
 
 ## Execution-process correction
 
