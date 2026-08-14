@@ -130,7 +130,7 @@ class ReasoningQualificationRunner:
         resolved_evaluator = evaluator or required_keys_evaluator
         for task in tasks:
             for repetition in range(1, max(1, int(repetitions)) + 1):
-                trial_id = _trial_id(
+                trial_id = qualification_trial_id(
                     suite_id, corpus_version, provider, model, run_variant,
                     task.model_dump(mode="json"), repetition,
                 )
@@ -244,6 +244,6 @@ def required_keys_evaluator(task: QualificationTask, output: dict[str, Any]) -> 
     )
 
 
-def _trial_id(*parts: Any) -> str:
+def qualification_trial_id(*parts: Any) -> str:
     encoded = json.dumps(parts, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return f"reasoning-trial-{hashlib.sha256(encoded).hexdigest()[:24]}"

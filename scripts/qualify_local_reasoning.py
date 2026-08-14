@@ -33,6 +33,7 @@ from packages.reasoning_runtime import (
     ReasoningQualificationRunner,
     ReasoningRuntimeConfig,
     create_reasoning_client,
+    qualification_trial_id,
 )
 
 
@@ -200,8 +201,44 @@ def main() -> int:
         raise SystemExit("No qualification tasks matched the requested filters.")
 
     checkpoint_root = Path(args.checkpoints).resolve()
+    checkpoint_store = JsonQualificationCheckpointStore(checkpoint_root)
     config = ReasoningRuntimeConfig()
     engine_version = _local_engine_version(engine=args.engine, config=config)
+    if args.engine == "ollama":
+        provider = "ollama_local"
+        allocation_variant = (
+            f"gpu{args.gpu_layers}-threads{args.threads}-stream1"
+            f"-thinking{args.ollama_thinking}"
+        )
+    else:
+        provider = "lm_studio_local"
+        allocation_variant = (
+            f"gpu{args.lm_studio_gpu_offload}-parallel1-stream1-lifecycle2"
+            f"-reasoning{args.lm_studio_reasoning_effort}"
+        )
+    run_variant = (
+        f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-{engine_version}"
+        f"-ctx{args.context_tokens}-deadline{args.timeout_seconds}"
+        f"-{allocation_variant}{gold_variant}"
+    )
+    cached_trials = _load_completed_trials(
+        store=checkpoint_store, tasks=tasks, repetitions=args.repetitions,
+        suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
+        provider=provider, model=args.model, run_variant=run_variant,
+    )
+    if cached_trials is not None:
+        _print_progress(
+            "checkpoint_resume_complete", model=args.model,
+            completed_trials=len(cached_trials),
+        )
+        summary = _build_summary(
+            model=args.model, engine=args.engine, scope=args.scope,
+            selected_tasks=len(tasks), trials=cached_trials,
+            checkpoint_root=checkpoint_root, model_load_wall_seconds=0.0,
+            resumed_from_checkpoints=True,
+        )
+        print(json.dumps(summary, indent=2))
+        return 2 if summary["failed"] else 0
     host_admission = _assess_host_resources(
         cpu_warning_percent=args.cpu_warning_percent,
         min_available_ram_bytes=int(args.min_available_ram_gib * 1024 ** 3),
@@ -273,10 +310,6 @@ def main() -> int:
             ollama_stream_metrics=True,
             ollama_thinking=ollama_thinking,
         )
-        allocation_variant = (
-            f"gpu{args.gpu_layers}-threads{args.threads}-stream1"
-            f"-thinking{args.ollama_thinking}"
-        )
     else:
         profile = ReasoningProfile(
             name="qualification-local", mode="lm_studio_local",
@@ -289,10 +322,6 @@ def main() -> int:
                 else args.lm_studio_reasoning_effort
             ),
         )
-        allocation_variant = (
-            f"gpu{args.lm_studio_gpu_offload}-parallel1-stream1-lifecycle2"
-            f"-reasoning{args.lm_studio_reasoning_effort}"
-        )
     config.profiles[profile.name] = profile
     client = create_reasoning_client(
         profile_name=profile.name,
@@ -300,7 +329,7 @@ def main() -> int:
         config=config,
     )
     runner = ReasoningQualificationRunner(
-        checkpoint_store=JsonQualificationCheckpointStore(checkpoint_root),
+        checkpoint_store=checkpoint_store,
         max_request_seconds=args.timeout_seconds,
         min_trials_before_elimination=(len(tasks) * args.repetitions + 1) if args.scope == "screening" else 3,
         resource_monitor_factory=LocalResourceMonitor,
@@ -315,36 +344,66 @@ def main() -> int:
         trials = runner.run_model(
             suite_id=str(corpus["suite_id"]), corpus_version=str(corpus["corpus_version"]),
             client=client, tasks=tasks, repetitions=args.repetitions, evaluator=evaluator,
-            run_variant=(f"tasks-{TASK_SUITE_VERSION}-{args.scope}-{args.engine}-{engine_version}"
-                     f"-ctx{args.context_tokens}"
-                     f"-deadline{args.timeout_seconds}"
-                     f"-{allocation_variant}{gold_variant}"),
+            run_variant=run_variant,
         )
     finally:
         if args.engine == "ollama":
             _unload_model(model=args.model, generate_url=config.ollama_local_url)
         else:
             _unload_lm_studio_model(args.model)
-    wall_times = [trial.wall_seconds for trial in trials]
-    summary = {
-        "model": args.model,
-        "engine": args.engine,
-        "scope": args.scope,
-        "selected_tasks": len(tasks),
-        "completed_trials": len(trials),
-        "accepted": sum(trial.status == "accepted" for trial in trials),
-        "rejected": sum(trial.status == "rejected" for trial in trials),
-        "failed": sum(trial.status == "failed" for trial in trials),
-        "median_wall_seconds": round(statistics.median(wall_times), 3) if wall_times else None,
-        "checkpoint_root": str(checkpoint_root),
-        "model_load_wall_seconds": load_evidence["wall_seconds"],
-    }
+    summary = _build_summary(
+        model=args.model, engine=args.engine, scope=args.scope,
+        selected_tasks=len(tasks), trials=trials,
+        checkpoint_root=checkpoint_root,
+        model_load_wall_seconds=load_evidence["wall_seconds"],
+        resumed_from_checkpoints=False,
+    )
     print(json.dumps(summary, indent=2))
     return 2 if summary["failed"] else 0
 
 
 def _print_progress(stage: str, **details: Any) -> None:
     print(json.dumps({"stage": stage, **details}), flush=True)
+
+
+def _load_completed_trials(
+    *, store: JsonQualificationCheckpointStore, tasks: list[Any], repetitions: int,
+    suite_id: str, corpus_version: str, provider: str, model: str,
+    run_variant: str,
+) -> list[Any] | None:
+    trials = []
+    for task in tasks:
+        for repetition in range(1, repetitions + 1):
+            trial = store.load(qualification_trial_id(
+                suite_id, corpus_version, provider, model, run_variant,
+                task.model_dump(mode="json"), repetition,
+            ))
+            if trial is None:
+                return None
+            trials.append(trial)
+    return trials
+
+
+def _build_summary(
+    *, model: str, engine: str, scope: str, selected_tasks: int,
+    trials: list[Any], checkpoint_root: Path, model_load_wall_seconds: float,
+    resumed_from_checkpoints: bool,
+) -> dict[str, Any]:
+    wall_times = [trial.wall_seconds for trial in trials]
+    return {
+        "model": model,
+        "engine": engine,
+        "scope": scope,
+        "selected_tasks": selected_tasks,
+        "completed_trials": len(trials),
+        "accepted": sum(trial.status == "accepted" for trial in trials),
+        "rejected": sum(trial.status == "rejected" for trial in trials),
+        "failed": sum(trial.status == "failed" for trial in trials),
+        "median_wall_seconds": round(statistics.median(wall_times), 3) if wall_times else None,
+        "checkpoint_root": str(checkpoint_root),
+        "model_load_wall_seconds": model_load_wall_seconds,
+        "resumed_from_checkpoints": resumed_from_checkpoints,
+    }
 
 
 def _prepare_local_model(

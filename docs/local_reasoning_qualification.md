@@ -162,7 +162,7 @@ The tracked repeated challenger report is `benchmarks/reasoning/local_challenger
 - Official GPT-OSS 20B rejected reviewed-gold entities 3/3 and planning 3/3. Tool use passed 3/3 at a 5.30-second median, materially slower than Mistral's 1.22-second production route.
 - Qwen3 14B failed all three entity and planning trials at the 30-second deadline and rejected tool use 3/3 at an 11.88-second median.
 
-Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Plain official endpoints measured about 1.3 MB/s. A single bounded Hugging Face Xet attempt produced an 836,536,766-byte resumable partial before the five-minute deadline, approximately 2.8 MB/s effective; no unbounded downloader remains active.
+Qwen3 30B-A3B remains the one named candidate without inference evidence. The official Q4_K_M artifact is 18,556,685,824 bytes with SHA-256 `0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5`. Plain official endpoints measured about 1.3 MB/s, while four HTTP ranges achieved only 3.24 MB/s aggregate. Hugging Face Xet buffered 836 MB but reset its incomplete file to zero on restart, so it is not crash-resumable here. Aria2 created no file or network connection and entered a CPU loop; it was terminated. No downloader or model remains active. Acquisition is pending a durable transfer window or a faster artifact source, not represented as completed inference evidence.
 
 ## Execution-process correction
 
@@ -175,5 +175,7 @@ The original qualification goal combined runtime implementation, storage work, c
 5. Acquire a larger related model only when the smaller candidate passes discovery.
 
 The local streaming transports previously used `requests` socket-inactivity timeouts, which do not bound total generation while tokens continue arriving. Both LM Studio and Ollama now enforce total wall-clock deadlines and close overdue streams. Qualification emits stage progress, includes the deadline in checkpoint identity, and unloads models in `finally` so normal failures do not retain GPU resources.
+
+Qualification recovery now resolves the exact trial plan before loading a model. Repeating the completed Qwen3 14B tool-use command returned all three checkpoints in 7.76 seconds, reported zero model-load time, and kept VRAM at desktop baseline. Fully checkpointed retries therefore perform no inference and allocate no GPU model state.
 
 A live real-book request resolved through the router and returned the exact expected Caraval metadata in 9.10 seconds including cold model activation, with queue outcome `acquired`. Local evaluation accepted the output with exact match. The model was unloaded after verification and no cloud provider, account rotation, or fallback was used.

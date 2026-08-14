@@ -22,6 +22,7 @@ from .qualification import (
     QualificationTask,
     QualificationTrial,
     ReasoningQualificationRunner,
+    qualification_trial_id,
 )
 from .queueing import (
     QueuedReasoningClient,
@@ -48,6 +49,7 @@ __all__ = [
     "QualificationTask",
     "QualificationTrial",
     "ReasoningQualificationRunner",
+    "qualification_trial_id",
     "QueuedReasoningClient",
     "ReasoningOverloadedError",
     "ReasoningQueuePolicy",

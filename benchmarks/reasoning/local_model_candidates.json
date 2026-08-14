@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
+  "version": "2.3.0",
   "host": {
     "gpu": "NVIDIA RTX 3060",
     "vram_gib": 12.0,
@@ -95,7 +95,7 @@
           "gpu_fraction": 0.4,
           "engine_status": "supported",
           "decision": "qualify_controlled_hybrid",
-          "execution_status": "acquisition_partial_836536766_of_18556685824"
+          "execution_status": "artifact_verified_acquisition_pending_throughput_limited"
         }
       ]
     },

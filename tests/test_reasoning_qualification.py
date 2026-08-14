@@ -6,7 +6,9 @@ from packages.reasoning_runtime import (
     JsonQualificationCheckpointStore,
     QualificationTask,
     ReasoningQualificationRunner,
+    qualification_trial_id,
 )
+from scripts.qualify_local_reasoning import _load_completed_trials
 
 
 class FakeReasoningClient:
@@ -61,6 +63,31 @@ def test_qualification_checkpoints_each_trial_and_resumes_without_inference(tmp_
     assert all(item.status == "accepted" for item in first)
     assert first_client.calls == 3
     assert second_client.calls == 0
+
+
+def test_qualification_plan_can_resolve_complete_checkpoints_before_model_load(tmp_path: Path):
+    store = JsonQualificationCheckpointStore(tmp_path / "trials")
+    task = _task()
+    trials = ReasoningQualificationRunner(checkpoint_store=store).run_model(
+        suite_id="suite", corpus_version="v1", client=FakeReasoningClient(),
+        tasks=[task], repetitions=1, run_variant="profile-a",
+    )
+
+    expected_id = qualification_trial_id(
+        "suite", "v1", "local-engine", "local-model", "profile-a",
+        task.model_dump(mode="json"), 1,
+    )
+    assert trials[0].trial_id == expected_id
+    assert _load_completed_trials(
+        store=store, tasks=[task], repetitions=1, suite_id="suite",
+        corpus_version="v1", provider="local-engine", model="local-model",
+        run_variant="profile-a",
+    ) == trials
+    assert _load_completed_trials(
+        store=store, tasks=[task], repetitions=2, suite_id="suite",
+        corpus_version="v1", provider="local-engine", model="local-model",
+        run_variant="profile-a",
+    ) is None
 
 
 def test_qualification_eliminates_a_model_after_repeated_contract_failures(tmp_path: Path):
