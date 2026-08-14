@@ -53,6 +53,7 @@ def evaluate_candidate_fit(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "engine_supported": engine_supported,
                 "qualification_eligible": eligible,
                 "decision": decision,
+                "execution_status": str(artifact.get("execution_status", "scheduled")),
                 "decision_consistent": eligible == decision.startswith("qualify"),
             })
     return results

@@ -19,6 +19,7 @@ def test_candidate_decisions_match_resource_fit_policy():
         if item["model_id"] == "qwen3.5-9b" and item["engine"] == "lm_studio"
     )
     gpt_oss = next(item for item in results if item["model_id"] == "gpt-oss-20b")
+    qwen_14b = next(item for item in results if item["model_id"] == "qwen3-14b")
 
     assert qwen_ollama["full_gpu_fit"] is True
     assert qwen_ollama["qualification_eligible"] is True
@@ -27,6 +28,8 @@ def test_candidate_decisions_match_resource_fit_policy():
     assert gpt_oss["full_gpu_fit"] is False
     assert gpt_oss["controlled_hybrid_fit"] is True
     assert gpt_oss["qualification_eligible"] is True
+    assert qwen_14b["qualification_eligible"] is True
+    assert qwen_14b["execution_status"] == "deferred_hybrid_latency_risk"
 
     allowed = qualification_artifacts(manifest)
     assert ("lm_studio_local", "gpt-oss-20b") in allowed

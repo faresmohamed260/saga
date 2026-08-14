@@ -25,7 +25,7 @@ Model selection is per task. A model that is strong at extraction is not assumed
 - Free space on `B:` at inventory time: approximately 108 GiB.
 - System NVMe `C:` free space: approximately 3 GiB; it must not receive model weights.
 
-The planned Qwen3 14B, Qwen3 30B-A3B, and GPT-OSS 20B downloads require approximately 42 GiB and fit on `B:` without moving existing weights. Existing models are not deleted automatically.
+Model storage is already off the system NVMe. The verified GPT-OSS artifact is stored on `B:`; Qwen3 14B and Qwen3 30B-A3B are not required downloads and remain deferred research candidates.
 
 ## Colibri decision
 
@@ -53,9 +53,21 @@ An uncontrolled 32K context probe exhausted the 170-second request deadline whil
 
 The corpus manifest is `benchmarks/reasoning/local_books_v1.json`. It contains source paths, SHA-256 identities, chapter counts, and deterministic sampling instructions only. Source text remains outside the repository.
 
-Every model/task/repetition produces one atomic checkpoint. Completed trials are reused by stable identity, and models can be eliminated only by an explicit minimum-trial acceptance policy. Individual reasoning requests are capped at five minutes.
+Every model/task/repetition produces one atomic checkpoint. Completed trials are reused by stable identity. Individual reasoning requests are capped at 90 seconds for discovery and five minutes only for an explicitly approved full qualification.
 
-The executable qualification entrypoint is `scripts/qualify_local_reasoning.py`. It separates bounded model preload from task inference, pins the qualified model for the requested session, records cold-load evidence, and samples host RAM and GPU VRAM through local NVML. Screening runs one passage per task family and cannot eliminate a model before every family is represented. Full qualification runs every family against all three books and is reserved for models that pass at least one relevant screening route.
+The executable qualification entrypoint is `scripts/qualify_local_reasoning.py`. It separates bounded model preload from task inference, pins the qualified model for the requested session, records cold-load evidence, and samples host RAM and GPU VRAM through local NVML. Discovery tests only the task family a candidate is intended to improve. Full qualification is reserved for a candidate that passes that bounded trial and has a credible workstation resource profile.
+
+## Execution budget
+
+Qualification is a decision funnel, not an exhaustive model survey:
+
+1. Preserve a working route until a challenger proves a measurable improvement on the same task.
+2. Give a new candidate one preflight and one representative real-book trial, each with an explicit deadline.
+3. Stop immediately on resource-policy failure, schema failure, zero grounding, or no improvement over the incumbent.
+4. Run repeated three-book qualification only for a candidate that passes discovery.
+5. Never let an optional engine comparison or model download block a production-readiness decision.
+
+The current production decision is already publishable as **partial ready**. Missing semantic routes are product capability gaps, not a reason to keep the validated structured-output and tool-use routes in perpetual qualification.
 
 ## Qualification findings
 
@@ -63,18 +75,17 @@ The initial qwen2.5 14B load failures were caused by context allocation, not inf
 
 Native tool use passed on real corpus metadata in 1.84 seconds. Canon-event extraction is fast and stable but currently below the strict grounding gate: three of three trials were rejected, with the first versioned evaluator run producing five items at 0.80 verbatim evidence precision. Typographic quote normalization is evaluator-owned and versioned; paraphrased evidence remains a model error.
 
-Official Ollama candidate tags and default artifact sizes verified for this host are `qwen3:14b` (9.3 GB), `qwen3:30b-a3b-instruct-2507-q4_K_M` (19 GB), and `gpt-oss:20b` (14 GB). Downloads remain staged one model at a time.
+Official candidate artifacts were preflighted for this host. Qwen3 14B and Qwen3 30B-A3B require hybrid CPU/GPU placement and are deferred because the already-tested 14B hybrid baseline became either over-budget or slower than one token/second. GPT-OSS 20B was acquired, hash-verified, tested, and eliminated below.
 
 ## Baseline decision
 
-The installed-model screening matrix completed for Mistral 7B Instruct, Llama 3.1 8B, and Qwen2.5 14B across all nine task families. Full three-book qualification currently establishes only these provisional routes:
+The installed-model screening matrix completed for Mistral 7B Instruct, Llama 3.1 8B, and Qwen2.5 14B across all nine task families. Full three-book qualification establishes these production routes:
 
-- Qwen2.5 14B: relationship extraction, 9/9 accepted, 10.71-second median warm task time.
 - Mistral 7B Instruct: exact structured JSON, 9/9 accepted, 0.70-second median; native tool use, 9/9 accepted, 0.90-second median.
 
 Llama 3.1 8B planning passed its screening passage but failed 3/3 on the first full-book case and was eliminated. No installed model currently qualifies for events, entities, character/world modeling, planning, continuity, or narrative generation. Extraction completeness is only a minimum-item proxy because the corpus does not yet have human-labeled gold sets; true precision/recall remains a production-readiness blocker. Gold-backed qualification is bound to the exact corpus artifact and fails closed for missing, empty, pending, or stale annotations.
 
-Candidate acquisition is externally constrained. The Ollama registry delivered approximately 0.25 MB/s on a bounded range test; direct Hugging Face delivered approximately 0.45 MB/s. Hugging Face Xet transferred no data and returned HTTP 416 from its CAS reconstruction endpoint. Partial downloads remain resumable. Qwen3.5 9B is installed and verified through Ollama. The official `openai/gpt-oss-20b` artifact is being acquired through LM Studio's managed download API, whose job endpoint exposes byte progress, transfer rate, and completion estimate without blocking qualification tooling.
+Candidate acquisition was externally constrained: the Ollama registry delivered approximately 0.25 MB/s on a bounded range test, direct Hugging Face approximately 0.45 MB/s, and Hugging Face Xet returned HTTP 416. This is why future downloads require a go/no-go preflight and may not be used as background progress. Qwen3.5 9B is installed and verified through Ollama; the official GPT-OSS artifact was recovered and verified as documented below.
 
 ## Workstation resource policy
 
@@ -110,7 +121,7 @@ The first equal-task shootout produced:
 
 All three stayed below 6.4 GiB total VRAM during inference and were unloaded immediately afterward. The Qwen failures were genuine grounding errors: it merged dialogue separated by narration and inserted ellipses into purported verbatim quotations. Llama is eliminated because its entity evidence precision was zero. Qwen2.5 14B is also eliminated for this workstation: prior checkpoints show inconsistent schema/grounding, failed planning, and approximately 10.17 GiB VRAM in its responsive configuration; safer partial placement fell below one token/second.
 
-Mistral's repeated planning promotion attempt accepted 6/9 trials. It passed all repetitions for *A Court of Thorns and Roses* and *The Cruel Prince*, but failed all three *Caraval* trials by paraphrasing every required verbatim quote. Qwen3.5 then accepted the same *Caraval* case 3/3 with a 17.09-second median, but its earlier ACOTAR planning result failed. Neither model qualifies as a family-wide planning route, and no model-chain workaround is introduced. The official GPT-OSS 20B LM Studio artifact is the next and final discovery candidate before selecting the repeated-qualification shortlist.
+Mistral's repeated planning promotion attempt accepted 6/9 trials. It passed all repetitions for *A Court of Thorns and Roses* and *The Cruel Prince*, but failed all three *Caraval* trials by paraphrasing every required verbatim quote. Qwen3.5 then accepted the same *Caraval* case 3/3 with a 17.09-second median, but its earlier ACOTAR planning result failed. Neither model qualifies as a family-wide planning route, and no model-chain workaround is introduced.
 
 Qwen3.5's remaining one-trial screen rejected events, relationships, character/world modeling, and continuity. Narrative generation passed its screening passage but failed three deterministic repetitions of the first full-book case with zero grounding precision; early elimination prevented unnecessary requests against the other books. Qwen therefore has no promoted semantic production route. The current evidence-backed routes remain Mistral structured JSON and native tool use only.
 

@@ -58,7 +58,8 @@
           "artifact_gib": 4.6,
           "gpu_fraction": 1.0,
           "engine_status": "supported",
-          "decision": "qualify_if_primary_fails"
+          "decision": "qualify_if_primary_fails",
+          "execution_status": "deferred_optional_research"
         }
       ]
     },
@@ -75,7 +76,8 @@
           "artifact_gib": 8.4,
           "gpu_fraction": 0.75,
           "engine_status": "supported",
-          "decision": "qualify_controlled_hybrid"
+          "decision": "qualify_controlled_hybrid",
+          "execution_status": "deferred_hybrid_latency_risk"
         }
       ]
     },
@@ -92,7 +94,8 @@
           "artifact_gib": 17.4,
           "gpu_fraction": 0.4,
           "engine_status": "supported",
-          "decision": "qualify_controlled_hybrid"
+          "decision": "qualify_controlled_hybrid",
+          "execution_status": "deferred_hybrid_latency_risk"
         }
       ]
     },
