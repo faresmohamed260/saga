@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "task_suite_version": "1.2.0",
   "corpus_version": "1.0.0",
-  "decision": "partial_ready",
+  "decision": "not_ready",
   "policy": {
     "allow_unqualified_fallback": false,
     "local_providers_only": true,

@@ -25,4 +25,4 @@ This audit treats the persistent qualification objective as authoritative. `Prov
 
 ## Current decision
 
-Local reasoning is **partial ready**. Structured JSON and native tool use are qualified through Mistral 7B. All semantic families fail closed. Every named candidate has now received bounded evidence or valid early elimination; further model research is optional product improvement, not a release-readiness prerequisite.
+The local reasoning infrastructure is validated, but the Saga product is **not ready**. Structured JSON and native tool use are qualified through Mistral 7B, while every semantic capability required for book analysis and generation fails closed. Establishing accepted semantic routes is a release blocker, not optional model research.

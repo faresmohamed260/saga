@@ -20,7 +20,7 @@ def test_tracked_local_production_routes_are_fail_closed_and_resolvable():
         config=ReasoningRuntimeConfig(),
     )
 
-    assert payload["decision"] == "partial_ready"
+    assert payload["decision"] == "not_ready"
     assert payload["task_suite_version"] == TASK_SUITE_VERSION
     assert payload["policy"]["allow_unqualified_fallback"] is False
     assert router.qualified_families() == ("structured_json", "tool_use")

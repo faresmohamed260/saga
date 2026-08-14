@@ -67,7 +67,7 @@ Qualification is a decision funnel, not an exhaustive model survey:
 4. Run repeated three-book qualification only for a candidate that passes discovery.
 5. Never let an optional engine comparison or model download block a production-readiness decision.
 
-The current production decision is already publishable as **partial ready**. Missing semantic routes are product capability gaps, not a reason to keep the validated structured-output and tool-use routes in perpetual qualification.
+The current infrastructure evidence is publishable, but the product decision is **not ready**. Missing semantic routes block book analysis and generation. The validated structured-output and tool-use routes remain reusable building blocks, not evidence of an operational product.
 
 ## Qualification findings
 
@@ -133,7 +133,7 @@ The official GPT-OSS 20B MXFP4 three-task funnel completed through LM Studio at 
 
 ## Production routing decision
 
-The tracked release policy is `benchmarks/reasoning/local_production_routes_v1.json`. Overall local reasoning status is **partial ready**: structured JSON and native tool use are production-qualified through `ollama_local` with `mistral:7b-instruct`; all semantic families fail closed and have no fallback. Under task suite 1.2.0, both routes passed 9/9 repeated trials across three real books, with median warm wall times of 1.11 and 1.22 seconds respectively. The reasoning runtime's `QualifiedReasoningRouter` consumes this scorecard shape, rejects cloud providers, reuses one client per provider/model, and applies one inference slot, queue capacity eight, a 30-second queue deadline, one provider attempt, 4K context, and a 90-second request deadline.
+The tracked release policy is `benchmarks/reasoning/local_production_routes_v1.json`. Overall product status is **not ready**: structured JSON and native tool use are production-qualified through `ollama_local` with `mistral:7b-instruct`, but all semantic families fail closed and have no fallback. Under task suite 1.2.0, both helper routes passed 9/9 repeated trials across three real books, with median warm wall times of 1.11 and 1.22 seconds respectively. The reasoning runtime's `QualifiedReasoningRouter` consumes this scorecard shape, rejects cloud providers, reuses one client per provider/model, and applies one inference slot, queue capacity eight, a 30-second queue deadline, one provider attempt, 4K context, and a 90-second request deadline.
 
 The source-safe reviewed extraction gold artifact is `benchmarks/reasoning/local_extraction_gold_v1.json`. It covers events, non-character entities, and relationships for all three books without storing passage text. It binds to a canonical corpus fingerprint rather than JSON formatting. Re-evaluating Mistral's task-suite 1.2 discovery outputs against reviewed gold rejected all nine extraction cases. Event F1 ranged from 0.0 to 0.4, entity F1 from 0.0 to 0.13, and relationship F1 from 0.0 to 0.57. Earlier evidence-only passes were therefore false positives and are not eligible for routing.
 
