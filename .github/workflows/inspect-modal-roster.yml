@@ -8,11 +8,14 @@ on:
       - "integrations/comfyui/inspection_app.py"
       - "integrations/comfyui/inspection_client.py"
       - "scripts/inspect_modal_roster.py"
+      - "scripts/render_modal_inspection_summary.py"
+      - ".github/modal-inspection-trigger.txt"
       - ".github/workflows/inspect-modal-roster.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   inspect:
@@ -23,6 +26,7 @@ jobs:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       SAGA_MODAL_INSPECTION_OUTPUT: modal-roster-inspection.json
+      SAGA_MODAL_INSPECTION_SUMMARY: modal-roster-inspection-summary.md
 
     steps:
       - name: Checkout repository
@@ -39,11 +43,50 @@ jobs:
       - name: Inspect live Modal roster
         run: python scripts/inspect_modal_roster.py
 
+      - name: Render concise inspection summary
+        run: python scripts/render_modal_inspection_summary.py
+
+      - name: Publish latest inspection summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const title = '[Modal Inspection] Latest ComfyUI roster report';
+            const body = fs.readFileSync(process.env.SAGA_MODAL_INSPECTION_SUMMARY, 'utf8').slice(0, 64000);
+            const { owner, repo } = context.repo;
+            const result = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 100 });
+            const existing = result.data.find(issue => !issue.pull_request && issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({ owner, repo, issue_number: existing.number, body });
+              core.info(`Updated issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({ owner, repo, title, body });
+              core.info(`Created issue #${created.data.number}`);
+            }
+
+      - name: Publish failure marker
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Modal Inspection] Latest ComfyUI roster report';
+            const body = `# Modal inspection failed\n\nWorkflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nCheck the Actions run for the failing step. No Modal credentials are included in this issue.`;
+            const { owner, repo } = context.repo;
+            const result = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 100 });
+            const existing = result.data.find(issue => !issue.pull_request && issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({ owner, repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body });
+            }
+
       - name: Upload inspection report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: modal-roster-inspection
-          path: modal-roster-inspection.json
+          path: |
+            modal-roster-inspection.json
+            modal-roster-inspection-summary.md
           if-no-files-found: warn
           retention-days: 7
