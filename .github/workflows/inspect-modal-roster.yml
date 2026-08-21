@@ -7,6 +7,7 @@ on:
     paths:
       - "integrations/comfyui/inspection_app.py"
       - "integrations/comfyui/inspection_client.py"
+      - "integrations/comfyui/workspace_client.py"
       - "scripts/inspect_modal_roster.py"
       - "scripts/render_modal_inspection_summary.py"
       - ".github/modal-inspection-trigger.txt"
@@ -16,6 +17,10 @@ on:
 permissions:
   contents: read
   issues: write
+
+concurrency:
+  group: inspect-modal-roster-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   inspect:
