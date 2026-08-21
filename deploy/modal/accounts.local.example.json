@@ -1,0 +1,13 @@
+[
+  {
+    "label": "modal-01",
+    "token_id": "ak-example",
+    "token_secret": "as-example"
+  },
+  {
+    "label": "modal-02",
+    "token_id": "ak-example-2",
+    "token_secret": "as-example-2",
+    "app_name_override": ""
+  }
+]
