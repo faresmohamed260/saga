@@ -2,25 +2,22 @@ from __future__ import annotations
 
 import json
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 INPUT_PATH = Path(os.environ.get("SAGA_MODAL_INSPECTION_OUTPUT") or "modal-roster-inspection.json")
 OUTPUT_PATH = Path(os.environ.get("SAGA_MODAL_INSPECTION_SUMMARY") or "modal-roster-inspection-summary.md")
 
-MODEL_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf"}
+MODEL_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf", ".onnx"}
 
 
 def _model_entries(account: dict[str, Any]) -> list[dict[str, Any]]:
-    directories = account.get("directories") or {}
-    roots = directories.get("roots") or {}
-    comfy_models = roots.get("comfy_models") or {}
-    entries = comfy_models.get("entries") or []
+    volume = account.get("volume") or {}
+    entries = volume.get("entries") or []
     rows: list[dict[str, Any]] = []
     for item in entries:
         if not isinstance(item, dict):
-            continue
-        if item.get("kind") not in {"file", "symlink"}:
             continue
         name = str(item.get("name") or "")
         if Path(name).suffix.lower() not in MODEL_EXTENSIONS:
@@ -45,50 +42,63 @@ def _format_size(value: Any) -> str:
 
 def main() -> int:
     report = json.loads(INPUT_PATH.read_text(encoding="utf-8"))
+    accounts = [row for row in (report.get("accounts") or []) if isinstance(row, dict)]
     lines = ["# Latest Modal ComfyUI roster inspection", ""]
     lines.append(f"Accounts inspected: **{report.get('account_count', 0)}**")
     lines.append("")
 
-    for account in report.get("accounts") or []:
+    inventory: dict[str, dict[str, Any]] = {}
+    accounts_by_model: dict[str, set[str]] = defaultdict(set)
+    for account in accounts:
+        label = str(account.get("label") or "unknown")
+        for model in _model_entries(account):
+            name = str(model.get("name") or "unknown")
+            key = name.lower()
+            inventory.setdefault(key, {"name": name, "max_size": 0, "paths": set()})
+            inventory[key]["max_size"] = max(int(inventory[key]["max_size"]), int(model.get("size_bytes") or 0))
+            inventory[key]["paths"].add(str(model.get("path") or ""))
+            accounts_by_model[key].add(label)
+
+    lines.append("## Aggregated model inventory")
+    lines.append("")
+    if inventory:
+        lines.append("| Model file | Accounts | Max reported size |")
+        lines.append("|---|---:|---:|")
+        for key in sorted(inventory, key=lambda item: inventory[item]["name"].lower()):
+            item = inventory[key]
+            lines.append(
+                f"| `{item['name']}` | {len(accounts_by_model[key])} | {_format_size(item['max_size'])} |"
+            )
+    else:
+        lines.append("_No model-weight files were found in the persistent Modal cache volumes._")
+    lines.append("")
+
+    for account in accounts:
         label = str(account.get("label") or "unknown")
         app_name = str(account.get("app_name") or "")
+        models = _model_entries(account)
         lines.append(f"## {label}")
         if app_name:
             lines.append(f"App: `{app_name}`")
-        lines.append("")
-
-        models = _model_entries(account)
+        volume = account.get("volume") or {}
+        if volume.get("volume_name"):
+            lines.append(f"Volume: `{volume.get('volume_name')}`")
         lines.append(f"Model files found: **{len(models)}**")
-        lines.append("")
         if models:
-            lines.append("| Path | Type | Size |")
-            lines.append("|---|---|---:|")
-            for model in models:
-                path = str(model.get("path") or "").replace("|", "\\|")
-                kind = str(model.get("kind") or "")
-                size = _format_size(model.get("size_bytes"))
-                lines.append(f"| `{path}` | {kind} | {size} |")
-        else:
-            lines.append("_No model-weight files were returned by the live directory inspection._")
+            names = sorted({str(item.get("name") or "unknown") for item in models}, key=str.lower)
+            lines.append("Models: " + ", ".join(f"`{name}`" for name in names[:40]))
+            if len(names) > 40:
+                lines.append(f"...and {len(names) - 40} more unique model filenames.")
         lines.append("")
 
         errors = account.get("errors") or []
         if errors:
             lines.append("### Errors")
-            for error in errors:
-                lines.append(f"- `{str(error)[:1000]}`")
+            for error in errors[:8]:
+                lines.append(f"- `{str(error)[:700]}`")
+            if len(errors) > 8:
+                lines.append(f"- ...and {len(errors) - 8} more errors")
             lines.append("")
-
-        directories = account.get("directories") or {}
-        roots = directories.get("roots") or {}
-        for root_name in ("comfy_models", "cache_weights", "cache_workflows", "comfy_custom_nodes"):
-            root = roots.get(root_name) or {}
-            if root:
-                lines.append(
-                    f"- `{root_name}`: {root.get('entry_count', 0)} entries"
-                    f"{' (truncated)' if root.get('truncated') else ''}"
-                )
-        lines.append("")
 
     OUTPUT_PATH.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
     print(OUTPUT_PATH.read_text(encoding="utf-8"))
