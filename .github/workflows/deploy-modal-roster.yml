@@ -8,6 +8,7 @@ on:
     paths:
       - "integrations/comfyui/**"
       - "scripts/deploy_modal_roster.py"
+      - ".github/modal-deploy-trigger.txt"
       - ".github/workflows/deploy-modal-roster.yml"
   workflow_dispatch:
     inputs:
