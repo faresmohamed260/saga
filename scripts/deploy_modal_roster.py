@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODAL_APP_FILE = PROJECT_ROOT / "integrations" / "comfyui" / "modal_app.py"
+MODAL_APP_FILE = PROJECT_ROOT / "integrations" / "comfyui" / "inspection_app.py"
 WORKFLOWS = {
     "character_sheet": PROJECT_ROOT / "integrations" / "comfyui" / "workflows" / "character_sheet_workflow.json",
     "entity_generation": PROJECT_ROOT / "integrations" / "comfyui" / "workflows" / "entity_generation_workflow.json",
@@ -160,9 +160,11 @@ import json
 import modal
 worker = modal.Cls.from_name({app_name!r}, "ComfyWorker")
 health = modal.Function.from_name({app_name!r}, "health")
+inspection = modal.Function.from_name({app_name!r}, "inspect_runtime_directories")
 print(json.dumps({{
     "api_url": worker().api.get_web_url(),
     "health_url": health.get_web_url(),
+    "inspection_function": bool(inspection),
 }}, ensure_ascii=False))
 '''
     return _python_remote(script, env=env, timeout=300)
