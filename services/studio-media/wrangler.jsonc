@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "saga-studio-media",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-21",
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "saga-studio-media"
+    }
+  ]
+}
