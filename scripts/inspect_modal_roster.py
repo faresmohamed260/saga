@@ -7,6 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from integrations.comfyui.inspection_client import invoke_directory_inspection
 from integrations.comfyui.token_pool import ModalToken
 from integrations.comfyui.workspace_client import app_list, invoke_workflow_catalog, lookup_urls
 
@@ -77,6 +78,7 @@ def inspect_token(token: ModalToken) -> dict[str, Any]:
         "urls": None,
         "health": None,
         "workflow_catalog": None,
+        "directories": None,
         "errors": [],
     }
 
@@ -104,6 +106,11 @@ def inspect_token(token: ModalToken) -> dict[str, Any]:
         entry["workflow_catalog"] = invoke_workflow_catalog(token, app_name, timeout=300)
     except Exception as exc:  # noqa: BLE001
         entry["errors"].append(f"workflow_catalog: {exc}")
+
+    try:
+        entry["directories"] = invoke_directory_inspection(token, app_name, timeout=600)
+    except Exception as exc:  # noqa: BLE001
+        entry["errors"].append(f"directory_inspection: {exc}")
 
     return entry
 
