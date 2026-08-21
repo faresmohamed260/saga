@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from integrations.comfyui.inspection_client import invoke_directory_inspection
 from integrations.comfyui.token_pool import ModalToken
 from integrations.comfyui.workspace_client import app_list, invoke_workflow_catalog, lookup_urls
 
 DEFAULT_APP_NAME = str(os.environ.get("MODAL_COMFYUI_APP_NAME") or "saga-image-runtime").strip()
+DEFAULT_VOLUME_NAME = str(os.environ.get("MODAL_COMFYUI_CACHE_VOLUME") or "graduation-comfyui-cache").strip()
 OUTPUT_PATH = Path(os.environ.get("SAGA_MODAL_INSPECTION_OUTPUT") or "modal-roster-inspection.json")
 MAX_WORKERS = max(1, min(int(os.environ.get("SAGA_MODAL_INSPECTION_WORKERS") or "8"), 16))
 
@@ -84,6 +86,73 @@ def _contains_target_app(rows: list[dict[str, Any]], app_name: str) -> bool:
     return False
 
 
+def _token_env(token: ModalToken) -> dict[str, str]:
+    env = os.environ.copy()
+    env["MODAL_TOKEN_ID"] = token.token_id
+    env["MODAL_TOKEN_SECRET"] = token.token_secret
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def _parse_last_json_line(output: str) -> Any:
+    for line in reversed((output or "").splitlines()):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    raise RuntimeError("Modal subprocess returned no JSON payload")
+
+
+def _inspect_cache_volume(token: ModalToken, *, timeout: int = 240) -> dict[str, Any]:
+    # Read the persistent cache directly through Modal's Volume API. This avoids
+    # launching a GPU container or requiring a newly deployed inspection function.
+    script = f'''
+import json
+from pathlib import Path
+import modal
+
+MODEL_EXTENSIONS = {{".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf", ".onnx"}}
+volume = modal.Volume.from_name({DEFAULT_VOLUME_NAME!r})
+entries = volume.listdir("/", recursive=True)
+rows = []
+for entry in entries:
+    path = str(getattr(entry, "path", "") or "")
+    suffix = Path(path).suffix.lower()
+    keep = suffix in MODEL_EXTENSIONS or path.endswith("weights/prefetch_manifest.json") or (path.startswith("workflows/") and suffix == ".json")
+    if not keep:
+        continue
+    entry_type = getattr(getattr(entry, "type", None), "name", str(getattr(entry, "type", "")))
+    rows.append({{
+        "path": path,
+        "name": Path(path).name,
+        "kind": str(entry_type).lower(),
+        "size_bytes": int(getattr(entry, "size", 0) or 0),
+        "modified_at": int(getattr(entry, "mtime", 0) or 0),
+    }})
+rows.sort(key=lambda item: item["path"].lower())
+print(json.dumps({{"volume_name": {DEFAULT_VOLUME_NAME!r}, "entries": rows}}, ensure_ascii=False))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=_token_env(token),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "Modal volume inspection failed").strip())
+    payload = _parse_last_json_line(result.stdout or "")
+    if not isinstance(payload, dict):
+        raise RuntimeError("Modal volume inspection returned an unexpected payload")
+    return payload
+
+
 def inspect_token(token: ModalToken) -> dict[str, Any]:
     app_name = token.app_name_override or DEFAULT_APP_NAME
     entry: dict[str, Any] = {
@@ -93,9 +162,16 @@ def inspect_token(token: ModalToken) -> dict[str, Any]:
         "urls": None,
         "health": None,
         "workflow_catalog": None,
-        "directories": None,
+        "volume": None,
         "errors": [],
     }
+
+    # Volume inspection is the authoritative source for persistent model/cache
+    # contents and is metadata-only/read-only.
+    try:
+        entry["volume"] = _inspect_cache_volume(token)
+    except Exception as exc:  # noqa: BLE001
+        entry["errors"].append(f"volume_inspection: {exc}")
 
     try:
         raw_apps = app_list(token, timeout=60)
@@ -104,8 +180,6 @@ def inspect_token(token: ModalToken) -> dict[str, Any]:
         entry["errors"].append(f"app_list: {exc}")
         return entry
 
-    # Do not spend endpoint lookup time on accounts that clearly do not host the
-    # target ComfyUI app. This keeps 47-account roster inspection bounded.
     if not _contains_target_app(raw_apps, app_name):
         entry["errors"].append("app_not_deployed: target ComfyUI app was not found in this Modal account")
         return entry
@@ -130,11 +204,6 @@ def inspect_token(token: ModalToken) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         entry["errors"].append(f"workflow_catalog: {exc}")
 
-    try:
-        entry["directories"] = invoke_directory_inspection(token, app_name, timeout=300)
-    except Exception as exc:  # noqa: BLE001
-        entry["errors"].append(f"directory_inspection: {exc}")
-
     return entry
 
 
@@ -157,7 +226,7 @@ def main() -> int:
                     "urls": None,
                     "health": None,
                     "workflow_catalog": None,
-                    "directories": None,
+                    "volume": None,
                     "errors": [f"inspection: {exc}"],
                 }
 
