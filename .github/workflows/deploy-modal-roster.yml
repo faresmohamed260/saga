@@ -43,9 +43,9 @@ jobs:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      SAGA_MODAL_SYNC_WORKFLOWS: ${{ github.event_name == 'workflow_dispatch' && inputs.sync_workflows || 'true' }}
-      SAGA_MODAL_PREFETCH_MODELS: ${{ github.event_name == 'workflow_dispatch' && inputs.prefetch_models || 'true' }}
-      SAGA_MODAL_FORCE_PREFETCH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_prefetch || 'true' }}
+      SAGA_MODAL_SYNC_WORKFLOWS: "true"
+      SAGA_MODAL_PREFETCH_MODELS: "true"
+      SAGA_MODAL_FORCE_PREFETCH: "true"
 
     steps:
       - name: Checkout repository
@@ -59,6 +59,14 @@ jobs:
 
       - name: Install Modal client
         run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Apply manual deployment flags
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          echo "SAGA_MODAL_SYNC_WORKFLOWS=${{ inputs.sync_workflows }}" >> "$GITHUB_ENV"
+          echo "SAGA_MODAL_PREFETCH_MODELS=${{ inputs.prefetch_models }}" >> "$GITHUB_ENV"
+          echo "SAGA_MODAL_FORCE_PREFETCH=${{ inputs.force_prefetch }}" >> "$GITHUB_ENV"
 
       - name: Validate Modal roster credentials
         shell: bash
