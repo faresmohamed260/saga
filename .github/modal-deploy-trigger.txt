@@ -1,0 +1,2 @@
+Modal ComfyUI roster deployment trigger.
+Update this file to force a deployment after rotating or adding GitHub Actions credentials.
