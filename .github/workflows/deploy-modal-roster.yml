@@ -1,0 +1,72 @@
+name: Deploy Modal ComfyUI Roster
+
+on:
+  push:
+    branches:
+      - main
+      - studio-foundation
+    paths:
+      - "integrations/comfyui/**"
+      - "scripts/deploy_modal_roster.py"
+      - ".github/workflows/deploy-modal-roster.yml"
+  workflow_dispatch:
+    inputs:
+      sync_workflows:
+        description: Sync bundled ComfyUI workflows into each Modal workspace volume
+        required: true
+        default: true
+        type: boolean
+      prefetch_models:
+        description: Prefetch/cache all models declared by the Modal runtime
+        required: true
+        default: true
+        type: boolean
+      force_prefetch:
+        description: Refresh the model manifest even when a cache manifest already exists
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-modal-roster-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      SAGA_MODAL_SYNC_WORKFLOWS: ${{ github.event_name == 'workflow_dispatch' && inputs.sync_workflows || 'true' }}
+      SAGA_MODAL_PREFETCH_MODELS: ${{ github.event_name == 'workflow_dispatch' && inputs.prefetch_models || 'true' }}
+      SAGA_MODAL_FORCE_PREFETCH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_prefetch || 'true' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Modal client
+        run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Validate Modal roster credentials
+        shell: bash
+        run: |
+          if [ -z "$SAGA_MODAL_TOKENS_JSON" ] && { [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; }; then
+            echo "::error::No Modal credentials configured. Add SAGA_MODAL_TOKENS_JSON as a repository Actions secret (preferred), or MODAL_TOKEN_ID and MODAL_TOKEN_SECRET."
+            exit 1
+          fi
+
+      - name: Deploy, sync workflows, and prefetch models
+        run: python scripts/deploy_modal_roster.py
