@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - studio-foundation
     paths:
       - "integrations/comfyui/**"
       - "scripts/deploy_modal_roster.py"
