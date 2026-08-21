@@ -8,7 +8,6 @@ on:
       - "integrations/comfyui/inspection_app.py"
       - "integrations/comfyui/inspection_client.py"
       - "scripts/inspect_modal_roster.py"
-      - "scripts/modal_roster_compat.py"
       - "scripts/render_modal_inspection_summary.py"
       - ".github/modal-inspection-trigger.txt"
       - ".github/workflows/inspect-modal-roster.yml"
@@ -45,7 +44,7 @@ jobs:
           python -m pip install -e . "modal==1.4.2"
 
       - name: Inspect live Modal roster
-        run: python scripts/modal_roster_compat.py scripts/inspect_modal_roster.py
+        run: python scripts/inspect_modal_roster.py
 
       - name: Render concise inspection summary
         run: python scripts/render_modal_inspection_summary.py
