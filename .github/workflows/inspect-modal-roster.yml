@@ -38,8 +38,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Modal client
-        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Install SAGA runtime and Modal client
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . "modal==1.4.2"
 
       - name: Inspect live Modal roster
         run: python scripts/inspect_modal_roster.py
