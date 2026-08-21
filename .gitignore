@@ -41,6 +41,7 @@ modal_comfyui/logs/
 modal_comfyui/*.log
 modal_comfyui/*.lock
 modal_comfyui/__pycache__/
+deploy/modal/accounts.local.json
 
 # Local Neo4j deployment state
 deploy/neo4j/.env
