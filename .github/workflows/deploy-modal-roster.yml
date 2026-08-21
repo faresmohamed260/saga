@@ -8,7 +8,6 @@ on:
     paths:
       - "integrations/comfyui/**"
       - "scripts/deploy_modal_roster.py"
-      - "scripts/modal_roster_compat.py"
       - ".github/workflows/deploy-modal-roster.yml"
   workflow_dispatch:
     inputs:
@@ -78,4 +77,4 @@ jobs:
           fi
 
       - name: Deploy, sync workflows, and prefetch models
-        run: python scripts/modal_roster_compat.py scripts/deploy_modal_roster.py
+        run: python scripts/deploy_modal_roster.py
