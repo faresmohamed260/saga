@@ -5,6 +5,8 @@ on:
     branches:
       - studio-foundation
     paths:
+      - "integrations/comfyui/inspection_app.py"
+      - "integrations/comfyui/inspection_client.py"
       - "scripts/inspect_modal_roster.py"
       - ".github/workflows/inspect-modal-roster.yml"
   workflow_dispatch:
