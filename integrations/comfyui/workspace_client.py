@@ -2,7 +2,9 @@
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,8 +24,28 @@ except ImportError:  # pragma: no cover
 MODULE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = MODULE_DIR.parents[1]
 MODAL_APP_FILE = MODULE_DIR / "modal_app.py"
-MODAL_EXE = PROJECT_ROOT / "venv" / "Scripts" / "modal.exe"
-PYTHON_EXE = PROJECT_ROOT / "venv" / "Scripts" / "python.exe"
+
+
+def _resolve_modal_executable() -> str:
+    # Prefer the active environment/runner PATH, then fall back to the old
+    # Windows-local venv path for backwards compatibility.
+    discovered = shutil.which("modal")
+    if discovered:
+        return discovered
+    windows_venv = PROJECT_ROOT / "venv" / "Scripts" / "modal.exe"
+    return str(windows_venv)
+
+
+def _resolve_python_executable() -> str:
+    # sys.executable is portable across GitHub Actions/Linux and local Windows.
+    if sys.executable:
+        return sys.executable
+    windows_venv = PROJECT_ROOT / "venv" / "Scripts" / "python.exe"
+    return str(windows_venv)
+
+
+MODAL_EXE = _resolve_modal_executable()
+PYTHON_EXE = _resolve_python_executable()
 
 
 @dataclass(frozen=True)
@@ -70,20 +92,20 @@ def _run(args: list[str], *, token: ModalToken, timeout: int = 300, hf_token: st
 
 
 def health_check(token: ModalToken) -> tuple[bool, str]:
-    result = _run([str(MODAL_EXE), "app", "list", "--json"], token=token, timeout=120)
+    result = _run([MODAL_EXE, "app", "list", "--json"], token=token, timeout=120)
     lines = (result.stderr or result.stdout).strip().splitlines()
     return result.returncode == 0, (lines[-1] if lines else "ok")
 
 
 def app_list(token: ModalToken, *, timeout: int = 120) -> list[dict[str, Any]]:
-    result = _run([str(MODAL_EXE), "app", "list", "--json"], token=token, timeout=timeout)
+    result = _run([MODAL_EXE, "app", "list", "--json"], token=token, timeout=timeout)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "modal app list failed")
     return json.loads(result.stdout or "[]")
 
 
 def month_cost_usd(token: ModalToken) -> float:
-    result = _run([str(MODAL_EXE), "billing", "report", "--for", "this month", "--json"], token=token, timeout=180)
+    result = _run([MODAL_EXE, "billing", "report", "--for", "this month", "--json"], token=token, timeout=180)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "modal billing report failed")
     rows = json.loads(result.stdout or "[]")
@@ -109,7 +131,7 @@ health = modal.Function.from_name({app_name!r}, "health")
 health_url = health.get_web_url()
 print(json.dumps({{"ui_url": api_url, "api_url": api_url, "health_url": health_url}}))
 """
-    result = _run([str(PYTHON_EXE), "-c", script], token=token, timeout=120, hf_token=hf_token)
+    result = _run([PYTHON_EXE, "-c", script], token=token, timeout=120, hf_token=hf_token)
     if result.returncode != 0:
         record_modal_timing(
             "modal_endpoint_lookup",
@@ -144,14 +166,14 @@ print(json.dumps({{"ui_url": api_url, "api_url": api_url, "health_url": health_u
 
 
 def deploy_app(token: ModalToken, *, hf_token: str = "") -> str:
-    result = _run([str(MODAL_EXE), "deploy", str(MODAL_APP_FILE)], token=token, timeout=1800, hf_token=hf_token)
+    result = _run([MODAL_EXE, "deploy", str(MODAL_APP_FILE)], token=token, timeout=1800, hf_token=hf_token)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "modal deploy failed")
     return result.stdout + result.stderr
 
 
 def stop_app(token: ModalToken, app_name: str, *, hf_token: str = "") -> str:
-    result = _run([str(MODAL_EXE), "app", "stop", "-y", str(app_name)], token=token, timeout=300, hf_token=hf_token)
+    result = _run([MODAL_EXE, "app", "stop", "-y", str(app_name)], token=token, timeout=300, hf_token=hf_token)
     if result.returncode != 0:
         message = result.stderr or result.stdout or f"modal app stop failed for '{app_name}'"
         if "already stopped" not in str(message).lower():
@@ -167,7 +189,7 @@ import modal
 fn = modal.Function.from_name({app_name!r}, "prefetch_models")
 print(json.dumps(fn.remote(force={bool(force)}), ensure_ascii=False))
 """
-    result = _run([str(PYTHON_EXE), "-c", script], token=token, timeout=timeout, hf_token=hf_token)
+    result = _run([PYTHON_EXE, "-c", script], token=token, timeout=timeout, hf_token=hf_token)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "modal prefetch failed")
     try:
@@ -183,7 +205,7 @@ import modal
 fn = modal.Function.from_name({app_name!r}, "workflow_catalog")
 print(json.dumps(fn.remote(), ensure_ascii=False))
 """
-    result = _run([str(PYTHON_EXE), "-c", script], token=token, timeout=timeout, hf_token=hf_token)
+    result = _run([PYTHON_EXE, "-c", script], token=token, timeout=timeout, hf_token=hf_token)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "modal workflow_catalog failed")
     try:
@@ -208,7 +230,7 @@ fn = modal.Function.from_name({app_name!r}, "sync_workflows")
 payload = json.loads({payload!r})
 print(json.dumps(fn.remote(payload), ensure_ascii=False))
 """
-    result = _run([str(PYTHON_EXE), "-c", script], token=token, timeout=timeout, hf_token=hf_token)
+    result = _run([PYTHON_EXE, "-c", script], token=token, timeout=timeout, hf_token=hf_token)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "modal sync_workflows failed")
     try:
