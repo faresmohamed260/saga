@@ -88,20 +88,21 @@ Completed:
 - Bootstrap RLS policies allow anonymous reads and narrowly scoped completed image-edit inserts while Studio uses the public Supabase key through its server API. This is a temporary hobby/demo bootstrap and should be replaced by authenticated/server-privileged access before production use.
 - `/api/history` implemented with newest-first results, a bounded `limit`, and optional `kind` / exact-model filters.
 - `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
-- The production path has been verified with a real generation: R2 upload/read succeeds and Supabase receives the completed generation row.
-- Prompt and seed metadata are forwarded from the FLUX.2 client to `/api/media`.
-- UTF-8 model names are URL-encoded in browser headers and decoded server-side before Supabase insertion, preventing the previous replacement-character corruption while keeping R2 object metadata ASCII-safe for signature compatibility.
-- Supabase now has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
-- Image persistence now creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
-- `/api/media` can securely serve both `generations/...` originals and `thumbnails/...` previews.
+- Prompt, seed, UTF-8 model metadata, original dimensions, thumbnail creation, thumbnail dimensions, original reads, and thumbnail reads were verified end-to-end with the automated media smoke test.
+- Supabase has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
+- Image persistence creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
+- `/api/media` serves both `generations/...` originals and `thumbnails/...` previews.
 - `/api/history` returns the thumbnail fields needed by the gallery.
+- The Studio History view now fetches `/api/history`, renders thumbnail-backed persisted cards, refreshes on demand, survives page refresh/reopen, and falls back to the original URL for legacy rows without thumbnails.
+- Opening a History card loads the full original in an on-demand viewer instead of using the original for the grid.
+- Newly generated persisted images immediately use their thumbnail URL in the Create gallery when available and trigger a History refresh after persistence.
 
 Remaining for Phase 1:
 
-- Verify thumbnail creation with the next production generation.
-- Load `/api/history` into the frontend and replace demo-only History behavior with persisted thumbnail-backed cards, falling back to the original only for legacy rows without thumbnails.
-- Add gallery filters and pagination/load-more behavior.
-- Add delete/favorite/collection actions after the persistent read path is stable.
+- Add gallery filters for media kind and model.
+- Add pagination/load-more behavior instead of the current bounded 48-item History request.
+- Persist favorites and collections in Supabase rather than local React state.
+- Add delete/download/reuse/edit actions with final UX and authorization rules.
 
 ## Immediate milestone
 
@@ -109,8 +110,8 @@ Complete the Supabase-backed history path for the existing FLUX.2 Klein image-ed
 
 1. R2 original upload succeeds. **Done.**
 2. Studio writes the generation metadata record. **Done.**
-3. Prompt, seed, and model metadata are stored correctly. **Implemented; verify with the next production generation.**
-4. Image thumbnail is generated, stored in R2, and linked from Supabase. **Implemented; production verification next.**
-5. `/api/history` returns persisted records newest first with thumbnail metadata. **Done.**
-6. History UI renders thumbnail-backed assets after refresh/reopen and only loads originals on demand. **Next.**
+3. Prompt, seed, model, dimensions, thumbnail storage, and both media reads pass automated verification. **Done.**
+4. `/api/history` returns persisted records newest first with thumbnail metadata. **Done.**
+5. History UI renders thumbnail-backed assets after refresh/reopen and only loads originals on demand. **Implemented; preview/production UI verification next.**
+6. Add filters and pagination/load-more.
 7. Then migrate generation execution to the shared job lifecycle before adding video.
