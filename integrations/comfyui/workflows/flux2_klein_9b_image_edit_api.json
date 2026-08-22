@@ -1,0 +1,97 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {"image": "saga_flux2_input.png"},
+    "_meta": {"title": "Source image"}
+  },
+  "2": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {"upscale_method": "lanczos", "megapixels": 1.0, "image": ["1", 0]},
+    "_meta": {"title": "Normalize source image"}
+  },
+  "3": {
+    "class_type": "GetImageSize",
+    "inputs": {"image": ["2", 0]},
+    "_meta": {"title": "Source dimensions"}
+  },
+  "4": {
+    "class_type": "VAEEncode",
+    "inputs": {"pixels": ["2", 0], "vae": ["7", 0]},
+    "_meta": {"title": "Reference latent"}
+  },
+  "5": {
+    "class_type": "UNETLoader",
+    "inputs": {"unet_name": "darkBeast_dbkleinv2BFS.safetensors", "weight_dtype": "default"},
+    "_meta": {"title": "DarkBeast FLUX.2 Klein 9B"}
+  },
+  "6": {
+    "class_type": "CLIPLoader",
+    "inputs": {"clip_name": "qwen_3_8b_fp8mixed.safetensors", "type": "flux2", "device": "default"},
+    "_meta": {"title": "Qwen3 8B text encoder"}
+  },
+  "7": {
+    "class_type": "VAELoader",
+    "inputs": {"vae_name": "full_encoder_small_decoder.safetensors"},
+    "_meta": {"title": "FLUX.2 VAE"}
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"text": "Describe the requested edit", "clip": ["6", 0]},
+    "_meta": {"title": "Edit instruction"}
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"text": "", "clip": ["6", 0]},
+    "_meta": {"title": "Negative conditioning"}
+  },
+  "10": {
+    "class_type": "ReferenceLatent",
+    "inputs": {"conditioning": ["8", 0], "latent": ["4", 0]},
+    "_meta": {"title": "Positive reference conditioning"}
+  },
+  "11": {
+    "class_type": "ReferenceLatent",
+    "inputs": {"conditioning": ["9", 0], "latent": ["4", 0]},
+    "_meta": {"title": "Negative reference conditioning"}
+  },
+  "12": {
+    "class_type": "CFGGuider",
+    "inputs": {"model": ["5", 0], "positive": ["10", 0], "negative": ["11", 0], "cfg": 5.0},
+    "_meta": {"title": "CFG guider"}
+  },
+  "13": {
+    "class_type": "RandomNoise",
+    "inputs": {"noise_seed": 42},
+    "_meta": {"title": "Seed"}
+  },
+  "14": {
+    "class_type": "KSamplerSelect",
+    "inputs": {"sampler_name": "euler"},
+    "_meta": {"title": "Sampler"}
+  },
+  "15": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {"steps": 20, "width": ["3", 0], "height": ["3", 1]},
+    "_meta": {"title": "FLUX.2 scheduler"}
+  },
+  "16": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {"width": ["3", 0], "height": ["3", 1], "batch_size": 1},
+    "_meta": {"title": "Output latent"}
+  },
+  "17": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {"noise": ["13", 0], "guider": ["12", 0], "sampler": ["14", 0], "sigmas": ["15", 0], "latent_image": ["16", 0]},
+    "_meta": {"title": "Sampler"}
+  },
+  "18": {
+    "class_type": "VAEDecode",
+    "inputs": {"samples": ["17", 0], "vae": ["7", 0]},
+    "_meta": {"title": "Decode"}
+  },
+  "19": {
+    "class_type": "SaveImage",
+    "inputs": {"filename_prefix": "SAGA/flux2-klein-9b-edit", "images": ["18", 0]},
+    "_meta": {"title": "Save output"}
+  }
+}
