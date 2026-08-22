@@ -31,16 +31,10 @@ function safeMetadata(value, maxLength) {
 function decodeHeader(value) {
   const raw = String(value || '');
   if (!raw) return '';
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
+  try { return decodeURIComponent(raw); } catch { return raw; }
 }
 
-function safeText(value, maxLength) {
-  return String(value || '').trim().slice(0, maxLength);
-}
+function safeText(value, maxLength) { return String(value || '').trim().slice(0, maxLength); }
 
 function parseSeed(value) {
   if (value == null || value === '') return null;
@@ -69,49 +63,26 @@ function generationKeys(contentType) {
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
   const id = randomUUID();
   const ext = contentType === 'image/webp' ? 'webp' : contentType === 'image/jpeg' ? 'jpg' : 'png';
-  return {
-    original: `generations/${year}/${month}/${id}.${ext}`,
-    thumbnail: `thumbnails/${year}/${month}/${id}.webp`,
-  };
+  return { original: `generations/${year}/${month}/${id}.${ext}`, thumbnail: `thumbnails/${year}/${month}/${id}.webp` };
 }
 
 async function createThumbnail(body) {
   const source = sharp(body, { failOn: 'warning' }).rotate();
   const metadata = await source.metadata();
-  const { data, info } = await source
-    .clone()
-    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 78, effort: 4 })
-    .toBuffer({ resolveWithObject: true });
-
-  return {
-    data,
-    originalWidth: metadata.width || null,
-    originalHeight: metadata.height || null,
-    width: info.width || null,
-    height: info.height || null,
-  };
+  const { data, info } = await source.clone().resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true }).webp({ quality: 78, effort: 4 }).toBuffer({ resolveWithObject: true });
+  return { data, originalWidth: metadata.width || null, originalHeight: metadata.height || null, width: info.width || null, height: info.height || null };
 }
 
 export default async function handler(req, res) {
   const client = getClient();
-  if (!client) {
-    res.status(503).json({ error: 'R2 storage is not configured' });
-    return;
-  }
+  if (!client) return res.status(503).json({ error: 'R2 storage is not configured' });
 
   if (req.method === 'POST') {
     try {
       const contentType = String(req.headers['content-type'] || 'image/png').split(';')[0].trim();
-      if (!contentType.startsWith('image/')) {
-        res.status(415).json({ error: 'Only image uploads are supported' });
-        return;
-      }
+      if (!contentType.startsWith('image/')) return res.status(415).json({ error: 'Only image uploads are supported' });
       const body = await readBody(req);
-      if (!body.length) {
-        res.status(400).json({ error: 'Empty upload' });
-        return;
-      }
+      if (!body.length) return res.status(400).json({ error: 'Empty upload' });
 
       const keys = generationKeys(contentType);
       const model = safeText(decodeHeader(req.headers['x-saga-model']) || 'flux2-klein-9b', 240);
@@ -128,11 +99,7 @@ export default async function handler(req, res) {
         ContentLength: body.length,
         ContentType: contentType,
         CacheControl: 'private, max-age=31536000, immutable',
-        Metadata: {
-          source: 'saga-studio',
-          model: safeMetadata(model, 120),
-          resolution: safeMetadata(resolution, 32),
-        },
+        Metadata: { source: 'saga-studio', model: safeMetadata(model, 120), resolution: safeMetadata(resolution, 32) },
       }));
 
       let thumbnail = null;
@@ -146,10 +113,7 @@ export default async function handler(req, res) {
           ContentLength: thumbnail.data.length,
           ContentType: 'image/webp',
           CacheControl: 'private, max-age=31536000, immutable',
-          Metadata: {
-            source: 'saga-studio-thumbnail',
-            original: safeMetadata(keys.original, 240),
-          },
+          Metadata: { source: 'saga-studio-thumbnail', original: safeMetadata(keys.original, 240) },
         }));
         thumbnailUrl = `/api/media?key=${encodeURIComponent(keys.thumbnail)}`;
       } catch (thumbnailError) {
@@ -159,24 +123,12 @@ export default async function handler(req, res) {
       let generation = null;
       try {
         generation = await insertGeneration({
-          status: 'completed',
-          kind: 'image',
-          mode: 'edit',
-          model,
-          prompt,
-          negative_prompt: negativePrompt,
-          r2_key: keys.original,
-          media_url: mediaUrl,
-          thumbnail_r2_key: thumbnailUrl ? keys.thumbnail : null,
-          thumbnail_url: thumbnailUrl,
-          mime_type: contentType,
-          resolution,
-          width: thumbnail?.originalWidth || null,
-          height: thumbnail?.originalHeight || null,
-          thumbnail_width: thumbnail?.width || null,
-          thumbnail_height: thumbnail?.height || null,
-          seed,
-          workflow_id: 'flux2-klein-image-edit',
+          status: 'completed', kind: 'image', mode: 'edit', model, prompt, negative_prompt: negativePrompt,
+          r2_key: keys.original, media_url: mediaUrl, thumbnail_r2_key: thumbnailUrl ? keys.thumbnail : null,
+          thumbnail_url: thumbnailUrl, mime_type: contentType, resolution,
+          width: thumbnail?.originalWidth || null, height: thumbnail?.originalHeight || null,
+          thumbnail_width: thumbnail?.width || null, thumbnail_height: thumbnail?.height || null,
+          seed, workflow_id: 'flux2-klein-image-edit',
           metadata: { source: 'saga-studio', storage: 'cloudflare-r2', thumbnailFormat: thumbnailUrl ? 'webp' : null },
           completed_at: new Date().toISOString(),
         });
@@ -184,44 +136,36 @@ export default async function handler(req, res) {
         console.error('Generation history insert failed', historyError);
       }
 
-      res.status(201).json({
-        key: keys.original,
-        url: mediaUrl,
-        thumbnailKey: thumbnailUrl ? keys.thumbnail : null,
-        thumbnailUrl,
-        persisted: true,
-        generationId: generation?.id || null,
-        historyPersisted: Boolean(generation?.id),
-      });
+      return res.status(201).json({ key: keys.original, url: mediaUrl, thumbnailKey: thumbnailUrl ? keys.thumbnail : null, thumbnailUrl, persisted: true, generationId: generation?.id || null, historyPersisted: Boolean(generation?.id) });
     } catch (error) {
       console.error('R2 upload failed', error);
-      res.status(error?.statusCode || error?.$metadata?.httpStatusCode || 500).json({ error: error?.message || 'R2 upload failed' });
+      return res.status(error?.statusCode || error?.$metadata?.httpStatusCode || 500).json({ error: error?.message || 'R2 upload failed' });
     }
-    return;
   }
 
   if (req.method === 'GET') {
     const key = typeof req.query?.key === 'string' ? req.query.key : '';
     const allowed = key.startsWith('generations/') || key.startsWith('thumbnails/');
-    if (!key || !allowed) {
-      res.status(400).json({ error: 'Invalid media key' });
-      return;
-    }
+    if (!key || !allowed) return res.status(400).json({ error: 'Invalid media key' });
     try {
       const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       res.setHeader('Content-Type', object.ContentType || 'application/octet-stream');
       res.setHeader('Cache-Control', 'private, max-age=86400');
+      if (req.query?.download === '1') {
+        const filename = key.split('/').pop() || 'saga-media';
+        res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/["\\]/g, '_')}"`);
+      }
       if (object.ContentLength != null) res.setHeader('Content-Length', String(object.ContentLength));
       for await (const chunk of object.Body) res.write(chunk);
       res.end();
     } catch (error) {
       console.error('R2 read failed', error);
       const status = error?.$metadata?.httpStatusCode === 404 || error?.name === 'NoSuchKey' ? 404 : 500;
-      res.status(status).json({ error: status === 404 ? 'Media not found' : 'R2 read failed' });
+      return res.status(status).json({ error: status === 404 ? 'Media not found' : 'R2 read failed' });
     }
     return;
   }
 
   res.setHeader('Allow', 'GET, POST');
-  res.status(405).json({ error: 'Method not allowed' });
+  return res.status(405).json({ error: 'Method not allowed' });
 }
