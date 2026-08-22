@@ -4,7 +4,7 @@ import './create-controls-interactions.css';
 import { setEditSizingPreference } from './generation-client.js';
 import {
   Image as ImageIcon, Video, Crop, Grid2X2, Plus, X, SlidersHorizontal, Sparkles,
-  Palette, ChevronDown, RotateCcw, Dice5, Check, AtSign, ArrowUp, Mic
+  ChevronDown, RotateCcw, Dice5, Check, AtSign, ArrowUp
 } from 'lucide-react';
 
 export const ASPECT_PRESETS = [
@@ -29,14 +29,6 @@ export const IMAGE_RESOLUTIONS = [
   { value: 2048, label: 'Max', detail: '2048 px' },
 ];
 
-const STYLE_PRESETS = [
-  ['Photoreal', 'photorealistic, natural lighting, realistic materials and skin texture'],
-  ['Cinematic', 'cinematic lighting, filmic contrast, deliberate composition'],
-  ['Editorial', 'editorial photography, refined styling, clean commercial composition'],
-  ['Illustration', 'polished digital illustration, expressive detail, cohesive color design'],
-  ['Anime', 'high quality anime illustration, clean linework, expressive lighting'],
-];
-
 const AUTO_VALUE = '__auto__';
 
 function round64(value) {
@@ -53,33 +45,6 @@ export function dimensionsForPreset(aspect, longEdge) {
 function parseAutoDimensions(detail) {
   const match = String(detail || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
   return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
-}
-
-function MorphGrid({ options, value, onChange, className = '', renderOption }) {
-  const refs = useRef([]);
-  const [hovered, setHovered] = useState(null);
-  const activeIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const targetIndex = hovered == null ? activeIndex : hovered;
-  const target = refs.current[targetIndex];
-  const style = target ? {
-    width: target.offsetWidth,
-    height: target.offsetHeight,
-    transform: `translate3d(${target.offsetLeft}px, ${target.offsetTop}px, 0)`,
-    opacity: 1,
-  } : { opacity: 0 };
-
-  return <div className={`morph-grid ${className}`} onMouseLeave={() => setHovered(null)}>
-    <span className="morph-indicator" style={style}/>
-    {options.map((option, index) => <button
-      ref={(node) => { refs.current[index] = node; }}
-      type="button"
-      key={option.value}
-      className={option.value === value ? 'selected' : ''}
-      onMouseEnter={() => setHovered(index)}
-      onFocus={() => setHovered(index)}
-      onClick={() => onChange(option.value)}
-    >{renderOption ? renderOption(option) : option.label}</button>)}
-  </div>;
 }
 
 function editorText(root) {
@@ -285,14 +250,14 @@ function ReferencePrompt({ prompt, setPrompt, references, disabled }) {
   </div>;
 }
 
-function ReferenceStrip({ references, onRemove, onAddClick }) {
+function ReferenceStrip({ references, onRemove }) {
+  if (!references.length) return null;
   return <div className="reference-strip">
     {references.map((reference, index) => <div className="reference-tile" key={reference.id}>
       <div className="reference-image" style={{ backgroundImage: `url(${reference.preview})` }}><span>{index + 1}</span></div>
       <div className="reference-meta"><strong>Image {index + 1}</strong><small>{reference.width && reference.height ? `${reference.width}×${reference.height}` : reference.file?.name}</small></div>
       <button type="button" className="reference-remove" title={`Remove Image ${index + 1}`} onClick={() => onRemove(index)}><X size={14}/></button>
     </div>)}
-    <button type="button" className="add-reference-tile" onClick={onAddClick}><Plus size={19}/><span>{references.length ? 'Add image' : 'Add references'}</span></button>
   </div>;
 }
 
@@ -306,66 +271,42 @@ function SelectMenu({ value, onChange, options, label, className = '' }) {
 }
 
 function SettingsPanel({
-  open, onClose, mode, aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
-  advanced, setAdvanced, seed, setSeed, steps, setSteps, cfg, setCfg, workflowId, setWorkflowId,
-  modelId, setModelId, autoEditInfo, editAuto, setEditAuto,
+  open, onClose, mode, outputs, setOutputs, seed, setSeed, steps, setSteps, cfg, setCfg,
+  workflowId, setWorkflowId, modelId, setModelId,
 }) {
   if (!open) return null;
   const isEdit = mode === 'Edit';
   const modelOptions = isEdit
     ? [{ value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B · DarkBeast V2' }]
     : [{ value: 'saga-image-auto', label: 'SAGA Image · Auto' }];
-  const setManualAspect = (value) => { if (isEdit) setEditAuto(false); setAspect(value); };
-  const setManualResolution = (value) => { if (isEdit) setEditAuto(false); setImageResolution(value); };
 
-  return <div className="composer-settings-popover">
-    <div className="settings-header"><h2>Generation settings</h2><button className="square-button" onClick={onClose}><X size={17}/></button></div>
+  return <div className="composer-settings-popover advanced-settings-only">
+    <div className="settings-header"><h2>Advanced settings</h2><button className="square-button" onClick={onClose}><X size={17}/></button></div>
 
     <label className="field-label">Model</label>
     <SelectMenu label="Model" value={modelId} onChange={setModelId} options={modelOptions}/>
 
-    {isEdit && <>
-      <label className="field-label">Sizing mode</label>
-      <div className="edit-sizing-toggle" role="group" aria-label="Edit sizing mode">
-        <button type="button" className={editAuto ? 'selected' : ''} onClick={() => setEditAuto(true)}><Sparkles size={14}/> Auto</button>
-        <button type="button" className={!editAuto ? 'selected' : ''} onClick={() => setEditAuto(false)}>Manual</button>
-      </div>
+    {!isEdit && <>
+      <label className="field-label">Outputs</label>
+      <SelectMenu label="Outputs" value={String(outputs)} onChange={(value) => setOutputs(Number(value))} options={[1, 2, 4].map((value) => ({ value: String(value), label: `${value} output${value === 1 ? '' : 's'}` }))}/>
     </>}
 
-    <label className="field-label">Aspect Ratio</label>
-    {isEdit && editAuto
-      ? <div className="auto-setting-card"><span className="auto-setting-icon">A</span><div><strong>Automatic</strong><small>{autoEditInfo?.ratioLabel || 'Uses the primary reference image as the output canvas'}</small></div><Check size={17}/></div>
-      : <MorphGrid className="aspect-morph-grid" options={ASPECT_PRESETS} value={aspect} onChange={setManualAspect} renderOption={(option) => <><span className="ratio-preview" style={{ aspectRatio: String(option.ratio) }}/><strong>{option.value}</strong><small>{option.label}</small></>}/>}
-
-    <label className="field-label">Resolution</label>
-    {isEdit && editAuto
-      ? <div className="auto-setting-card"><span className="auto-setting-icon">↗</span><div><strong>Automatic output size</strong><small>{autoEditInfo?.detail || 'Add a primary reference to calculate output size'}</small></div><Check size={17}/></div>
-      : <MorphGrid className="resolution-morph-grid" options={IMAGE_RESOLUTIONS} value={imageResolution} onChange={setManualResolution} renderOption={(option) => <><strong>{option.label}</strong><small>{option.detail}</small></>}/>}
-
-    <label className="field-label">Outputs</label>
-    {isEdit
-      ? <div className="auto-setting-card compact"><span className="auto-setting-icon">1</span><div><strong>Single output</strong><small>Klein Edit returns one persisted result per job</small></div></div>
-      : <MorphGrid className="output-morph-grid" options={[1,2,4].map((value) => ({ value, label: String(value) }))} value={outputs} onChange={setOutputs}/>}
-
     <div className="settings-divider"/>
-    <button className="advanced-toggle" onClick={() => setAdvanced(!advanced)}><span>Advanced</span><ChevronDown className={advanced ? 'rotated' : ''} size={17}/></button>
-    {advanced && <div className="advanced-fields">
+    <div className="advanced-fields advanced-fields-always">
       <div className="inline-field"><label>Seed</label><div className="input-box"><input inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9-]/g, ''))}/><button type="button" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={17}/></button></div></div>
       <div className="inline-field"><label>Steps</label><SelectMenu label="Steps" value={String(steps)} onChange={(value) => setSteps(Number(value))} options={(isEdit ? [4,6,8,12] : [20,30,40,50]).map((value) => ({ value: String(value), label: String(value) }))}/></div>
       <div className="inline-field"><label>CFG</label><SelectMenu label="CFG" value={String(cfg)} onChange={(value) => setCfg(Number(value))} options={(isEdit ? [1,1.5,2,3] : [3.5,5,7,9]).map((value) => ({ value: String(value), label: Number(value).toFixed(1) }))}/></div>
       <div className="inline-field"><label>Workflow</label><SelectMenu label="Workflow" value={workflowId} onChange={setWorkflowId} options={isEdit ? [{ value: 'flux2-klein-image-edit', label: 'Klein Multi-Reference Edit' }] : [{ value: 'default-image', label: 'Default Image' }]}/></div>
-    </div>}
+    </div>
+
     <button className="reset-button" onClick={() => {
-      setAspect('1:1');
-      setImageResolution(1024);
       setOutputs(isEdit ? 1 : 4);
       setSeed('42');
       setSteps(isEdit ? 4 : 30);
       setCfg(isEdit ? 1 : 7);
       setWorkflowId(isEdit ? 'flux2-klein-image-edit' : 'default-image');
       setModelId(isEdit ? 'flux2-klein-9b' : 'saga-image-auto');
-      if (isEdit) setEditAuto(true);
-    }}><RotateCcw size={18}/> Reset to Defaults</button>
+    }}><RotateCcw size={18}/> Reset advanced settings</button>
   </div>;
 }
 
@@ -410,47 +351,6 @@ function useAnchoredPickerPosition(open, anchorRef, desiredWidth, desiredHeight)
   return position;
 }
 
-function useAnchoredMenuPosition(open, anchorRef, desiredWidth = 330, desiredMaxHeight = 430) {
-  const [position, setPosition] = useState(null);
-
-  useEffect(() => {
-    if (!open) {
-      setPosition(null);
-      return undefined;
-    }
-
-    const updatePosition = () => {
-      const anchor = anchorRef?.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const edge = 12;
-      const gap = 9;
-      const width = Math.min(desiredWidth, viewportWidth - edge * 2);
-      const maxHeight = Math.min(desiredMaxHeight, viewportHeight - edge * 2);
-      const left = Math.max(edge, Math.min(rect.left, viewportWidth - width - edge));
-      const spaceAbove = rect.top - edge - gap;
-      const spaceBelow = viewportHeight - rect.bottom - edge - gap;
-      if (spaceAbove > spaceBelow && spaceAbove > 180) {
-        setPosition({ position: 'fixed', left, width, maxHeight: Math.min(maxHeight, spaceAbove), bottom: viewportHeight - rect.top + gap, top: 'auto' });
-      } else {
-        setPosition({ position: 'fixed', left, width, maxHeight: Math.min(maxHeight, spaceBelow), top: rect.bottom + gap, bottom: 'auto' });
-      }
-    };
-
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-    };
-  }, [open, anchorRef, desiredWidth, desiredMaxHeight]);
-
-  return position;
-}
-
 function pickerKeyDown(event, index, options, refs, choose, close, anchorRef) {
   const last = options.length - 1;
   let nextIndex = null;
@@ -485,8 +385,7 @@ function AspectPicker({ aspect, setAspect, open, setOpen, anchorRef, autoEnabled
   const selectedValue = autoEnabled ? AUTO_VALUE : aspect;
   const activeIndex = Math.max(0, options.findIndex((item) => item.value === selectedValue));
   const hoverIndex = hovered == null ? activeIndex : hovered;
-  const active = options[activeIndex] || options[0];
-  const display = options[hoverIndex] || active;
+  const display = options[hoverIndex] || options[activeIndex] || options[0];
   const target = itemRefs.current[hoverIndex];
   const indicatorStyle = target ? {
     width: target.offsetWidth,
@@ -561,8 +460,7 @@ function ResolutionPicker({ imageResolution, setImageResolution, aspect, open, s
   const selectedValue = autoEnabled ? AUTO_VALUE : Number(imageResolution);
   const activeIndex = Math.max(0, options.findIndex((item) => item.value === selectedValue));
   const hoverIndex = hovered == null ? activeIndex : hovered;
-  const active = options[activeIndex] || options[0];
-  const display = options[hoverIndex] || active;
+  const display = options[hoverIndex] || options[activeIndex] || options[0];
   const target = itemRefs.current[hoverIndex];
   const indicatorStyle = target ? {
     width: target.offsetWidth,
@@ -628,33 +526,25 @@ export default function CreateWorkspace({
   mode, setMode, prompt, setPrompt, references, onAddReferences, onRemoveReference,
   error, jobStatus, busy, onGenerate, items, renderCard,
   aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
-  advanced, setAdvanced, seed, setSeed, steps, setSteps, cfg, setCfg,
+  seed, setSeed, steps, setSteps, cfg, setCfg,
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
 }) {
   const isEdit = mode === 'Edit';
   const referenceInputRef = useRef(null);
-  const plusWrapRef = useRef(null);
   const aspectWrapRef = useRef(null);
   const resolutionWrapRef = useRef(null);
-  const plusButtonRef = useRef(null);
   const aspectButtonRef = useRef(null);
   const resolutionButtonRef = useRef(null);
-  const speechRef = useRef(null);
   const autoInfoBaselineRef = useRef(null);
-  const [plusOpen, setPlusOpen] = useState(false);
   const [aspectOpen, setAspectOpen] = useState(false);
   const [resolutionOpen, setResolutionOpen] = useState(false);
   const [editAuto, setEditAuto] = useState(true);
-  const [listening, setListening] = useState(false);
 
-  const speechSupported = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const qualitySelected = Number(imageResolution) >= 1024;
   const imageDimensions = dimensionsForPreset(aspect, imageResolution);
   const imageResolutionOption = IMAGE_RESOLUTIONS.find((option) => option.value === Number(imageResolution)) || IMAGE_RESOLUTIONS[2];
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const autoInfoForPicker = editAuto ? autoEditInfo : (autoInfoBaselineRef.current || autoEditInfo);
   const autoDimensions = parseAutoDimensions(autoInfoForPicker?.detail);
-  const plusPosition = useAnchoredMenuPosition(plusOpen, plusButtonRef, 330, 430);
 
   useEffect(() => {
     if (autoEditInfo) autoInfoBaselineRef.current = { ...autoEditInfo };
@@ -690,93 +580,35 @@ export default function CreateWorkspace({
   }, [mode]);
 
   useEffect(() => {
-    setPlusOpen(false);
     setAspectOpen(false);
     setResolutionOpen(false);
-  }, [mode]);
+    setSettingsOpen(false);
+  }, [mode, setSettingsOpen]);
 
   useEffect(() => {
-    if (!plusOpen && !aspectOpen && !resolutionOpen) return undefined;
+    if (!aspectOpen && !resolutionOpen) return undefined;
     const onPointerDown = (event) => {
-      if (plusOpen && !plusWrapRef.current?.contains(event.target)) setPlusOpen(false);
       if (aspectOpen && !aspectWrapRef.current?.contains(event.target)) setAspectOpen(false);
       if (resolutionOpen && !resolutionWrapRef.current?.contains(event.target)) setResolutionOpen(false);
     };
-    const onKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
-      if (plusOpen) {
-        setPlusOpen(false);
-        requestAnimationFrame(() => plusButtonRef.current?.focus());
-      }
-    };
     document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [plusOpen, aspectOpen, resolutionOpen]);
-
-  useEffect(() => () => speechRef.current?.stop?.(), []);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [aspectOpen, resolutionOpen]);
 
   const addReferenceFiles = (files) => {
     if (!files.length) return;
     setAspectOpen(false);
     setResolutionOpen(false);
+    setSettingsOpen(false);
     if (mode !== 'Edit') setMode('Edit');
     onAddReferences(files);
-    setPlusOpen(false);
-  };
-
-  const applyStyle = (text) => {
-    const suffix = `Style: ${text}.`;
-    setPrompt((current) => current.trim() ? `${current.trim()}\n${suffix}` : suffix);
-    setPlusOpen(false);
   };
 
   const selectMode = (nextMode) => {
     setMode(nextMode);
-    setPlusOpen(false);
     setAspectOpen(false);
     setResolutionOpen(false);
-  };
-
-  const setManualResolution = (value) => {
-    if (isEdit) setEditAuto(false);
-    setImageResolution(value);
-  };
-
-  const setManualAspect = (value) => {
-    if (isEdit) setEditAuto(false);
-    setAspect(value);
-  };
-
-  const toggleVoice = () => {
-    if (!speechSupported) return;
-    if (listening) {
-      speechRef.current?.stop?.();
-      return;
-    }
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new Recognition();
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.lang = navigator.language || 'en-US';
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results).map((result) => result[0]?.transcript || '').join(' ').trim();
-      if (transcript) setPrompt((current) => current.trim() ? `${current.trim()} ${transcript}` : transcript);
-    };
-    recognition.onend = () => {
-      setListening(false);
-      speechRef.current = null;
-    };
-    recognition.onerror = () => {
-      setListening(false);
-      speechRef.current = null;
-    };
-    speechRef.current = recognition;
-    setListening(true);
-    recognition.start();
+    setSettingsOpen(false);
   };
 
   const modeLabel = mode === 'Video' ? 'Video' : isEdit ? 'Edit' : mode === 'More' ? 'More' : 'Image';
@@ -805,7 +637,7 @@ export default function CreateWorkspace({
     </div>
 
     <section className={`composer-panel composer-panel-v4 ${references.length ? 'has-references' : ''}`}>
-      {isEdit && <ReferenceStrip references={references} onRemove={onRemoveReference} onAddClick={() => referenceInputRef.current?.click()}/>} 
+      {isEdit && <ReferenceStrip references={references} onRemove={onRemoveReference}/>} 
 
       {!isEdit && <div className="grok-context-line">
         {mode === 'Image'
@@ -821,21 +653,16 @@ export default function CreateWorkspace({
 
       <div className="grok-toolbar">
         <div className="grok-toolbar-left">
-          <div className="grok-plus-wrap" ref={plusWrapRef}>
-            <button ref={plusButtonRef} type="button" className={`grok-circle-button ${plusOpen ? 'active' : ''}`} title="Add or adjust" aria-haspopup="menu" aria-expanded={plusOpen} onClick={() => { setPlusOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); setSettingsOpen(false); }}><Plus size={23}/></button>
-            {plusOpen && <div className="grok-plus-popover grok-plus-popover-fixed" style={plusPosition || { visibility: 'hidden' }} role="menu">
-              <button type="button" role="menuitem" onClick={() => referenceInputRef.current?.click()}><Plus size={17}/><span><strong>Add reference</strong><small>Switches to Edit automatically</small></span></button>
-              <button type="button" role="menuitem" onClick={() => { setSettingsOpen(true); setPlusOpen(false); }}><SlidersHorizontal size={17}/><span><strong>Generation settings</strong><small>Model, outputs, seed, steps and CFG</small></span></button>
-              <div className="grok-popover-divider"/>
-              <div className="grok-popover-label"><Palette size={15}/> Style</div>
-              {STYLE_PRESETS.map(([name, text]) => <button type="button" role="menuitem" key={name} onClick={() => applyStyle(text)}><Sparkles size={16}/><span><strong>{name}</strong><small>{text}</small></span></button>)}
-            </div>}
-          </div>
+          <button
+            type="button"
+            className="grok-circle-button"
+            title="Upload reference images"
+            aria-label="Upload reference images"
+            onClick={() => referenceInputRef.current?.click()}
+          ><Plus size={23}/></button>
 
           {sizingControlsVisible && <>
             {isEdit && <button type="button" className={`grok-text-choice grok-auto-choice ${editAuto ? 'selected' : ''}`} onClick={() => setEditAuto(true)}><Sparkles size={14}/> Auto</button>}
-            <button type="button" className={`grok-text-choice ${(!isEdit || !editAuto) && !qualitySelected ? 'selected' : ''}`} onClick={() => setManualResolution(768)}>Speed</button>
-            <button type="button" className={`grok-text-choice ${(!isEdit || !editAuto) && qualitySelected ? 'selected' : ''}`} onClick={() => setManualResolution(1024)}>Quality</button>
 
             <div className="grok-resolution-wrap" ref={resolutionWrapRef}>
               <button
@@ -849,11 +676,10 @@ export default function CreateWorkspace({
                     event.preventDefault();
                     setResolutionOpen(true);
                     setAspectOpen(false);
-                    setPlusOpen(false);
                     setSettingsOpen(false);
                   }
                 }}
-                onClick={() => { setResolutionOpen((value) => !value); setAspectOpen(false); setPlusOpen(false); setSettingsOpen(false); }}
+                onClick={() => { setResolutionOpen((value) => !value); setAspectOpen(false); setSettingsOpen(false); }}
               >
                 <span className={`grok-resolution-icon ${isEdit && editAuto ? 'auto' : ''}`}>{isEdit && editAuto ? 'A' : String(imageResolution).slice(0, 2)}</span>
                 <span>{isEdit && editAuto ? 'Auto' : imageResolutionOption.label}</span>
@@ -885,11 +711,10 @@ export default function CreateWorkspace({
                     event.preventDefault();
                     setAspectOpen(true);
                     setResolutionOpen(false);
-                    setPlusOpen(false);
                     setSettingsOpen(false);
                   }
                 }}
-                onClick={() => { setAspectOpen((value) => !value); setResolutionOpen(false); setPlusOpen(false); setSettingsOpen(false); }}
+                onClick={() => { setAspectOpen((value) => !value); setResolutionOpen(false); setSettingsOpen(false); }}
               >
                 <span className="grok-ratio-icon" style={{ aspectRatio: String(isEdit && editAuto ? primaryRatio : (ASPECT_PRESETS.find((item) => item.value === aspect) || ASPECT_PRESETS[0]).ratio) }}/>
                 <span>{isEdit && editAuto ? 'Auto' : aspect}</span>
@@ -908,22 +733,14 @@ export default function CreateWorkspace({
             </div>
           </>}
 
-          {isEdit && <span className="grok-edit-note">{references.length ? `${references.length} reference${references.length === 1 ? '' : 's'} · ${editAuto ? 'Auto canvas' : `${aspect} manual`}` : 'Add a reference'}</span>}
+          {isEdit && references.length > 0 && <span className="grok-edit-note">{references.length} reference{references.length === 1 ? '' : 's'} · {editAuto ? 'Auto canvas' : `${aspect} manual`}</span>}
           {mode === 'Video' && <span className="grok-edit-note">Video workflow</span>}
           {mode === 'More' && <span className="grok-edit-note">Additional tools</span>}
         </div>
 
         <div className="grok-toolbar-right">
           <span className="grok-prompt-count">{prompt.length} / 2000</span>
-          <button type="button" className={`grok-icon-button grok-settings-button ${settingsOpen ? 'selected' : ''}`} title="Generation settings" onClick={() => { setSettingsOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); setPlusOpen(false); }}><SlidersHorizontal size={19}/></button>
-          <button
-            type="button"
-            className={`grok-mic-button ${listening ? 'listening' : ''}`}
-            title={speechSupported ? (listening ? 'Stop voice input' : 'Voice input') : 'Voice input is not supported in this browser'}
-            aria-label={speechSupported ? (listening ? 'Stop voice input' : 'Voice input') : 'Voice input unavailable'}
-            onClick={toggleVoice}
-            disabled={!speechSupported}
-          ><Mic size={20}/></button>
+          <button type="button" className={`grok-icon-button grok-settings-button ${settingsOpen ? 'selected' : ''}`} title="Advanced settings" aria-label="Advanced settings" onClick={() => { setSettingsOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); }}><SlidersHorizontal size={19}/></button>
           <button
             type="button"
             className={`grok-submit ${busy ? 'busy' : ''}`}
@@ -937,11 +754,9 @@ export default function CreateWorkspace({
 
       <SettingsPanel
         open={settingsOpen} onClose={() => setSettingsOpen(false)} mode={mode}
-        aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
-        outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
+        outputs={outputs} setOutputs={setOutputs}
         seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
         workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
-        autoEditInfo={autoInfoForPicker} editAuto={editAuto} setEditAuto={setEditAuto}
       />
     </section>
 
