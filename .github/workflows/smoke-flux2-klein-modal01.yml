@@ -60,20 +60,26 @@ jobs:
               handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
           PY
 
-      - name: Patch diagnostic HTTP error handling and redeploy
+      - name: Patch diagnostic HTTP error handling
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path("integrations/comfyui/flux2_klein_app.py")
           text = path.read_text(encoding="utf-8")
-          text = text.replace("import urllib.parse\nimport urllib.request\n", "import urllib.error\nimport urllib.parse\nimport urllib.request\n")
+          if "import urllib.error" not in text:
+              text = text.replace("import urllib.parse\nimport urllib.request\n", "import urllib.error\nimport urllib.parse\nimport urllib.request\n")
           old = '''def _request_json(url: str, data: bytes | None = None) -> Any:\n    request = urllib.request.Request(url, data=data)\n    with urllib.request.urlopen(request, timeout=120) as response:\n        return json.loads(response.read().decode("utf-8"))\n'''
           new = '''def _request_json(url: str, data: bytes | None = None) -> Any:\n    request = urllib.request.Request(url, data=data)\n    try:\n        with urllib.request.urlopen(request, timeout=120) as response:\n            return json.loads(response.read().decode("utf-8"))\n    except urllib.error.HTTPError as exc:\n        body = exc.read().decode("utf-8", errors="replace")\n        raise RuntimeError(f"HTTP {exc.code} from {url}: {body or exc.reason}") from None\n'''
-          if old not in text:
-              raise SystemExit("request helper pattern not found")
-          path.write_text(text.replace(old, new), encoding="utf-8")
+          if old in text:
+              text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8")
           PY
+
+      - name: Stop old app and deploy fresh runtime
+        shell: bash
+        run: |
+          modal app stop -y saga-flux2-klein-9b || true
           modal deploy integrations/comfyui/flux2_klein_app.py
 
       - name: Run real image-edit smoke test
