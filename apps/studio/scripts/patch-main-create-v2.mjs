@@ -46,3 +46,11 @@ let css = await readFile(cssPath, 'utf8');
 const shellRule = `@media(min-width:901px){\n  .app-shell{grid-template-columns:248px minmax(0,1fr)!important;}\n}\n`;
 if (!css.includes('grid-template-columns:248px minmax(0,1fr)!important')) css = `${shellRule}\n${css}`;
 await writeFile(cssPath, css);
+
+const qaPath = 'scripts/capture-ui-preview.mjs';
+let qa = await readFile(qaPath, 'utf8');
+const focusCheckOld = `  const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));\n  if (focusedRole !== 'menuitemradio') throw new Error(\`Resolution picker did not focus selected option: \${focusedRole}\`);`;
+const focusCheckNew = `  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });\n  const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));\n  if (focusedRole !== 'menuitemradio') throw new Error(\`Resolution picker did not focus selected option: \${focusedRole}\`);`;
+if (qa.includes(focusCheckOld)) qa = qa.replace(focusCheckOld, focusCheckNew);
+else if (!qa.includes("waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio'")) throw new Error('Picker QA focus wait target not found');
+await writeFile(qaPath, qa);
