@@ -1,0 +1,74 @@
+name: Studio Job Lifecycle Smoke
+
+on:
+  push:
+    branches:
+      - studio/job-lifecycle-smoke
+    paths:
+      - .github/workflows/studio-job-lifecycle-smoke.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise queued running completed lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROD="https://studio.faresuniform.uk"
+          job_id=""
+
+          cleanup() {
+            if [ -n "$job_id" ]; then
+              curl -sS -X PATCH "$PROD/api/jobs" \
+                -H 'Content-Type: application/json' \
+                --data "{\"id\":\"$job_id\",\"status\":\"completed\"}" >/dev/null || true
+              curl -sS -X DELETE "$PROD/api/generations?id=$job_id" >/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          create_body=/tmp/job-create.json
+          status=$(curl -sS -o "$create_body" -w '%{http_code}' \
+            -X POST "$PROD/api/jobs" \
+            -H 'Content-Type: application/json' \
+            --data '{"kind":"image","mode":"edit","model":"Lifecycle Smoke","prompt":"Disposable lifecycle smoke test","negativePrompt":"","resolution":"32 px","seed":424242,"workflowId":"smoke-job-v1","provider":"modal"}')
+          echo "create_status=$status body=$(cat "$create_body")"
+          test "$status" = "201"
+          job_id=$(jq -r '.job.id // empty' "$create_body")
+          test -n "$job_id"
+          test "$(jq -r '.job.status' "$create_body")" = "queued"
+
+          queued=$(curl -sS "$PROD/api/jobs?id=$job_id")
+          test "$(printf '%s' "$queued" | jq -r '.job.status')" = "queued"
+          test "$(printf '%s' "$queued" | jq -r '.job.provider')" = "modal"
+
+          running_body=/tmp/job-running.json
+          running_status=$(curl -sS -o "$running_body" -w '%{http_code}' \
+            -X PATCH "$PROD/api/jobs" \
+            -H 'Content-Type: application/json' \
+            --data "{\"id\":\"$job_id\",\"status\":\"running\"}")
+          echo "running_status=$running_status body=$(cat "$running_body")"
+          test "$running_status" = "200"
+          test "$(jq -r '.job.status' "$running_body")" = "running"
+          test "$(jq -r '.job.started_at // empty' "$running_body")" != ""
+
+          complete_body=/tmp/job-complete.json
+          complete_status=$(curl -sS -o "$complete_body" -w '%{http_code}' \
+            -X PATCH "$PROD/api/jobs" \
+            -H 'Content-Type: application/json' \
+            --data "{\"id\":\"$job_id\",\"status\":\"completed\"}")
+          echo "complete_status=$complete_status body=$(cat "$complete_body")"
+          test "$complete_status" = "200"
+          test "$(jq -r '.job.status' "$complete_body")" = "completed"
+          test "$(jq -r '.job.completed_at // empty' "$complete_body")" != ""
+
+          delete_status=$(curl -sS -o /tmp/job-delete.json -w '%{http_code}' -X DELETE "$PROD/api/generations?id=$job_id")
+          echo "delete_status=$delete_status body=$(cat /tmp/job-delete.json)"
+          test "$delete_status" = "200"
+
+          missing_status=$(curl -sS -o /tmp/job-missing.json -w '%{http_code}' "$PROD/api/jobs?id=$job_id")
+          test "$missing_status" = "404"
+
+          job_id=""
+          echo "Production job lifecycle smoke passed"
