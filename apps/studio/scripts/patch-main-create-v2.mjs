@@ -26,5 +26,10 @@ const persistNeedle = `      workflowId,\n      modelId,\n      editAuto,`;
 const persistReplacement = `      workflowId: isEdit ? 'default-image' : workflowId,\n      modelId: isEdit ? 'saga-image-auto' : modelId,\n      editAuto,`;
 if (create.includes(persistNeedle)) create = create.replace(persistNeedle, persistReplacement);
 else if (!create.includes("workflowId: isEdit ? 'default-image' : workflowId")) throw new Error('Persistence target not found');
-
 await writeFile(createPath, create);
+
+const cssPath = 'src/create-workspace-v2.css';
+let css = await readFile(cssPath, 'utf8');
+const shellRule = `@media(min-width:901px){\n  .app-shell{grid-template-columns:248px minmax(0,1fr)!important;}\n}\n`;
+if (!css.includes('grid-template-columns:248px minmax(0,1fr)!important')) css = `${shellRule}\n${css}`;
+await writeFile(cssPath, css);
