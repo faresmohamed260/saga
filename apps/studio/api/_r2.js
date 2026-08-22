@@ -1,8 +1,7 @@
-import { GetObjectCommand, PutBucketCorsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export const r2Bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
-let corsReady = false;
 
 export function getR2Client() {
   const accountId = String(process.env.R2_ACCOUNT_ID || '').trim();
@@ -22,23 +21,6 @@ export function isSourceKey(key) {
   return /^sources\/\d{4}\/\d{2}\/[0-9a-f-]{36}\.(png|jpg|jpeg|webp)$/i.test(String(key || ''));
 }
 
-export async function ensureUploadCors(client) {
-  if (corsReady) return;
-  await client.send(new PutBucketCorsCommand({
-    Bucket: r2Bucket,
-    CORSConfiguration: {
-      CORSRules: [{
-        AllowedHeaders: ['*'],
-        AllowedMethods: ['PUT', 'HEAD'],
-        AllowedOrigins: ['*'],
-        ExposeHeaders: ['ETag'],
-        MaxAgeSeconds: 3600,
-      }],
-    },
-  }));
-  corsReady = true;
-}
-
 export async function createSourceUploadUrl({ key, contentType, expiresIn = 300 }) {
   const client = getR2Client();
   if (!client) {
@@ -46,13 +28,10 @@ export async function createSourceUploadUrl({ key, contentType, expiresIn = 300 
     error.statusCode = 503;
     throw error;
   }
-  await ensureUploadCors(client);
   const command = new PutObjectCommand({
     Bucket: r2Bucket,
     Key: key,
     ContentType: contentType,
-    CacheControl: 'private, max-age=86400',
-    Metadata: { source: 'saga-studio-input' },
   });
   return getSignedUrl(client, command, { expiresIn });
 }
