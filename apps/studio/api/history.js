@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     const model = typeof req.query?.model === 'string' ? req.query.model : '';
 
     const params = new URLSearchParams();
-    params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,thumbnail_r2_key,thumbnail_url,mime_type,resolution,width,height,thumbnail_width,thumbnail_height,duration_ms,seed,workflow_id,error_message,metadata,created_at,completed_at');
+    params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,thumbnail_r2_key,thumbnail_url,mime_type,resolution,width,height,thumbnail_width,thumbnail_height,duration_ms,seed,workflow_id,error_message,metadata,is_favorite,created_at,completed_at');
     params.set('order', 'created_at.desc,id.desc');
     params.set('limit', String(limit + 1));
     params.set('offset', String(offset));
