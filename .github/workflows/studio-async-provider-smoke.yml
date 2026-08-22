@@ -1,0 +1,124 @@
+name: Studio Async Provider Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/studio-async-provider-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PREVIEW_ORIGIN: https://studio-696h2jxqm-faresmohamed260-6733s-projects.vercel.app
+      PREVIEW_SHARE: rteY8GpRvY4dgGNIHEUR8B7q9S7apddf
+    steps:
+      - name: Verify async provider lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import struct, zlib
+          w = h = 256
+          raw = bytearray()
+          for y in range(h):
+              raw.append(0)
+              for x in range(w):
+                  raw.extend((x % 256, y % 256, (x + y) % 256))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n'
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+          png += chunk(b'IDAT', zlib.compress(bytes(raw), 9))
+          png += chunk(b'IEND', b'')
+          open('/tmp/input.png', 'wb').write(png)
+          PY
+
+          curl -fsSL -c /tmp/vercel-cookies.txt \
+            "$PREVIEW_ORIGIN/?_vercel_share=$PREVIEW_SHARE" \
+            -o /tmp/preview-index.html
+
+          submit_status=$(curl -sS -b /tmp/vercel-cookies.txt \
+            -o /tmp/submit.json -w '%{http_code}' \
+            -X POST "$PREVIEW_ORIGIN/api/generate" \
+            -H 'Content-Type: image/png' \
+            -H 'X-Saga-Workflow: flux2-klein-image-edit' \
+            -H 'X-Saga-Prompt: Preserve%20the%20simple%20gradient%20composition.' \
+            -H 'X-Saga-Negative-Prompt:' \
+            -H 'X-Saga-Resolution: 0.25%20MP' \
+            -H 'X-Saga-Source-Filename: smoke.png' \
+            -H 'X-Saga-Seed: 42' \
+            -H 'X-Saga-Steps: 4' \
+            -H 'X-Saga-Cfg: 1.0' \
+            -H 'X-Saga-Megapixels: 0.25' \
+            --data-binary @/tmp/input.png)
+
+          echo "submit_status=$submit_status"
+          cat /tmp/submit.json
+          test "$submit_status" = "202"
+          job_id=$(jq -r '.job.id // empty' /tmp/submit.json)
+          provider_job_id=$(jq -r '.job.provider_job_id // empty' /tmp/submit.json)
+          test -n "$job_id"
+          test -n "$provider_job_id"
+          echo "job_id=$job_id"
+          echo "provider_job_id_present=yes"
+
+          cleanup() {
+            curl -sS -b /tmp/vercel-cookies.txt -X DELETE \
+              "$PREVIEW_ORIGIN/api/generations?id=$job_id" >/dev/null || true
+          }
+          trap cleanup EXIT
+
+          completed=0
+          for attempt in $(seq 1 80); do
+            poll_status=$(curl -sS -b /tmp/vercel-cookies.txt \
+              -o /tmp/result.bin -D /tmp/result.headers -w '%{http_code}' \
+              "$PREVIEW_ORIGIN/api/generate/result?jobId=$job_id")
+            echo "poll_attempt=$attempt status=$poll_status"
+            if [ "$poll_status" = "200" ]; then
+              grep -qi '^content-type: image/' /tmp/result.headers
+              grep -qi '^x-saga-job-id:' /tmp/result.headers
+              grep -qi '^x-saga-workflow: flux2-klein-image-edit' /tmp/result.headers
+              grep -qi '^x-saga-provider: modal-flux2-klein' /tmp/result.headers
+              test -s /tmp/result.bin
+              completed=1
+              break
+            fi
+            if [ "$poll_status" != "202" ]; then
+              cat /tmp/result.bin || true
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$completed" = "1"
+
+          persist_status=$(curl -sS -b /tmp/vercel-cookies.txt \
+            -o /tmp/persist.json -w '%{http_code}' \
+            -X POST "$PREVIEW_ORIGIN/api/media" \
+            -H 'Content-Type: image/png' \
+            -H 'X-Saga-Model: FLUX.2%20Klein%209B%20%C2%B7%20DarkBeast%20V2%20BFS' \
+            -H 'X-Saga-Resolution: 0.25%20MP' \
+            -H 'X-Saga-Prompt: Preserve%20the%20simple%20gradient%20composition.' \
+            -H 'X-Saga-Negative-Prompt:' \
+            -H 'X-Saga-Seed: 42' \
+            -H "X-Saga-Job-Id: $job_id" \
+            --data-binary @/tmp/result.bin)
+          echo "persist_status=$persist_status"
+          cat /tmp/persist.json
+          test "$persist_status" = "201"
+          jq -e --arg id "$job_id" '.historyPersisted == true and .generationId == $id and (.url | length > 0) and (.thumbnailUrl | length > 0)' /tmp/persist.json >/dev/null
+
+          final_status=$(curl -sS -b /tmp/vercel-cookies.txt \
+            -o /tmp/final.json -w '%{http_code}' \
+            "$PREVIEW_ORIGIN/api/generate/result?jobId=$job_id")
+          echo "final_status=$final_status"
+          cat /tmp/final.json
+          test "$final_status" = "200"
+          jq -e '.status == "completed" and .persisted == true and (.mediaUrl | length > 0) and (.thumbnailUrl | length > 0)' /tmp/final.json >/dev/null
+
+          echo 'Async provider smoke passed'
