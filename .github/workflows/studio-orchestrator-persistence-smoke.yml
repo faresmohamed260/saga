@@ -1,0 +1,101 @@
+name: Studio Orchestrator Persistence Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/studio-orchestrator-persistence-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PREVIEW_ORIGIN: https://studio-ufgmx34bf-faresmohamed260-6733s-projects.vercel.app
+      PREVIEW_SHARE: qxW6imXqvVeuYdAgrOiFIGCs96AcadCN
+    steps:
+      - name: Verify orchestrator persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import struct, zlib
+          w = h = 256
+          raw = bytearray()
+          for y in range(h):
+              raw.append(0)
+              for x in range(w):
+                  raw.extend((x % 256, y % 256, (x + y) % 256))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n'
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+          png += chunk(b'IDAT', zlib.compress(bytes(raw), 9))
+          png += chunk(b'IEND', b'')
+          open('/tmp/input.png', 'wb').write(png)
+          PY
+
+          curl -fsSL -c /tmp/cookies.txt "$PREVIEW_ORIGIN/?_vercel_share=$PREVIEW_SHARE" -o /tmp/index.html
+
+          submit_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/submit.json -w '%{http_code}' \
+            -X POST "$PREVIEW_ORIGIN/api/generate" \
+            -H 'Content-Type: image/png' \
+            -H 'X-Saga-Workflow: flux2-klein-image-edit' \
+            -H 'X-Saga-Prompt: Preserve%20the%20simple%20gradient%20composition.' \
+            -H 'X-Saga-Negative-Prompt:' \
+            -H 'X-Saga-Resolution: 0.25%20MP' \
+            -H 'X-Saga-Source-Filename: smoke.png' \
+            -H 'X-Saga-Seed: 42' \
+            -H 'X-Saga-Steps: 4' \
+            -H 'X-Saga-Cfg: 1.0' \
+            -H 'X-Saga-Megapixels: 0.25' \
+            --data-binary @/tmp/input.png)
+          echo "submit_status=$submit_status"
+          cat /tmp/submit.json
+          test "$submit_status" = "202"
+          job_id=$(jq -r '.job.id // empty' /tmp/submit.json)
+          test -n "$job_id"
+          echo "job_id=$job_id"
+
+          cleanup() {
+            curl -sS -b /tmp/cookies.txt -X DELETE "$PREVIEW_ORIGIN/api/generations?id=$job_id" >/dev/null || true
+          }
+          trap cleanup EXIT
+
+          completed=0
+          for attempt in $(seq 1 90); do
+            poll_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/result.json -w '%{http_code}' \
+              "$PREVIEW_ORIGIN/api/generate/result?jobId=$job_id")
+            echo "poll_attempt=$attempt status=$poll_status"
+            if [ "$poll_status" = "202" ]; then
+              sleep 10
+              continue
+            fi
+            cat /tmp/result.json
+            test "$poll_status" = "200"
+            jq -e --arg id "$job_id" '.status == "completed" and .persisted == true and .generationId == $id and (.mediaUrl | length > 0) and (.thumbnailUrl | length > 0)' /tmp/result.json >/dev/null
+            completed=1
+            break
+          done
+          test "$completed" = "1"
+
+          media_url=$(jq -r '.mediaUrl' /tmp/result.json)
+          thumb_url=$(jq -r '.thumbnailUrl' /tmp/result.json)
+          media_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/media.bin -D /tmp/media.headers -w '%{http_code}' "$PREVIEW_ORIGIN$media_url")
+          thumb_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/thumb.bin -D /tmp/thumb.headers -w '%{http_code}' "$PREVIEW_ORIGIN$thumb_url")
+          test "$media_status" = "200"
+          test "$thumb_status" = "200"
+          grep -qi '^content-type: image/' /tmp/media.headers
+          grep -qi '^content-type: image/webp' /tmp/thumb.headers
+          test -s /tmp/media.bin
+          test -s /tmp/thumb.bin
+
+          second_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/second.json -w '%{http_code}' "$PREVIEW_ORIGIN/api/generate/result?jobId=$job_id")
+          test "$second_status" = "200"
+          jq -e --arg id "$job_id" '.status == "completed" and .persisted == true and .generationId == $id' /tmp/second.json >/dev/null
+
+          echo 'Orchestrator persistence smoke passed'
