@@ -499,7 +499,7 @@ function App() {
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
         <div className="brand-row"><div className="brand-mark">S</div><div className="brand-text">SAGA <span>Studio</span></div><button className="mobile-close" onClick={() => setMobileNav(false)}><ChevronLeft size={19}/></button></div>
-        <nav className="nav-group primary-nav">{navPrimary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label} onClick={() => { setSection(label); setMobileNav(false); }} />)}</nav>
+        <nav className="nav-group primary-nav">{navPrimary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label && (label !== 'Create' || mode !== 'More')} onClick={() => { setSection(label); if (label === 'Create' && mode === 'More') setMode('Image'); setMobileNav(false); }} />)}<NavItem icon={Sparkles} label="More" active={section === 'Create' && mode === 'More'} onClick={() => { setSection('Create'); setMode('More'); setError(''); setMobileNav(false); }} /></nav>
         <div className="nav-divider" />
         <nav className="nav-group">{navSecondary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label} onClick={() => { setSection(label); setMobileNav(false); }} />)}</nav>
         <div className="nav-divider" /><NavItem icon={Settings} label="Settings" active={section === 'Settings'} onClick={() => setSection('Settings')} />
@@ -541,7 +541,7 @@ function App() {
           {renderLibraryHeader('Studio', 'Settings', 'Generation settings live beside the composer so they stay contextual to the selected workflow.', <button className="secondary-button" onClick={() => { setSection('Create'); setSettingsOpen(true); }}><SlidersHorizontal size={18}/> Open generation settings</button>)}
           <div className="history-state">Use the settings panel to control model, aspect ratio, resolution, seed, steps, CFG, and workflow.</div>
         </section> : <CreateWorkspace
-          mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else { setSteps(30); setCfg(7); setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
+          mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else if (nextMode === 'Video') { setWorkflowId('video-planned'); setModelId('saga-video-auto'); } else if (nextMode === 'Image') { setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
           prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
           error={error} jobStatus={jobStatus} busy={busy} onGenerate={generate} items={visibleItems} renderCard={renderCard}
           aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
