@@ -35,6 +35,11 @@ for (const label of ['Aspect ratio', 'Resolution', 'Video resolution']) {
   else if (!create.includes(newCall)) throw new Error(`${label} focus prop target not found`);
 }
 
+const editSetterOld = `          setEditAuto={setEditAuto}`;
+const editSetterNew = `          setEditAuto={isEdit ? setEditAuto : () => {}}`;
+if (create.includes(editSetterOld)) create = create.split(editSetterOld).join(editSetterNew);
+else if (!create.includes(editSetterNew)) throw new Error('Edit Auto picker setter target not found');
+
 const persistNeedle = `      workflowId,\n      modelId,\n      editAuto,`;
 const persistReplacement = `      workflowId: isEdit ? 'default-image' : workflowId,\n      modelId: isEdit ? 'saga-image-auto' : modelId,\n      editAuto,`;
 if (create.includes(persistNeedle)) create = create.replace(persistNeedle, persistReplacement);
