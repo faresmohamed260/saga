@@ -3,11 +3,11 @@ import {
   getGenerationJob,
   setProviderJobId,
   transitionGenerationJob,
-} from './_generation-jobs.js';
-import { cancelWorkflow, submitWorkflow } from './_providers.js';
-import { readSourceObject, isSourceKey } from './_r2.js';
-import { supabaseRequest } from './_supabase.js';
-import { getWorkflow } from './_workflows.js';
+} from '../api/_generation-jobs.js';
+import { cancelWorkflow, submitWorkflow } from '../api/_providers.js';
+import { readSourceObject, isSourceKey } from '../api/_r2.js';
+import { supabaseRequest } from '../api/_supabase.js';
+import { getWorkflow } from '../api/_workflows.js';
 
 function safeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
