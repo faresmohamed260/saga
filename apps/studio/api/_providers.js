@@ -16,11 +16,13 @@ function getModalGatewayUrl() {
 
 function buildFluxForm(workflow, input) {
   const form = new FormData();
-  form.append(
-    'image_file',
-    new Blob([input.sourceBytes], { type: input.sourceContentType || 'image/png' }),
-    input.sourceFilename || 'input.png',
-  );
+  input.sources.forEach((source, index) => {
+    form.append(
+      'image_files',
+      new Blob([source.bytes], { type: source.contentType || 'image/png' }),
+      source.filename || `input-${index + 1}.png`,
+    );
+  });
   form.append('prompt', input.prompt);
   form.append('negative_prompt', input.negativePrompt || workflow.defaults.negativePrompt);
   form.append('seed', String(input.seed));
@@ -30,6 +32,42 @@ function buildFluxForm(workflow, input) {
   return form;
 }
 
+function normalizeSources(workflow, rawInput) {
+  const rawSources = Array.isArray(rawInput.sources) && rawInput.sources.length
+    ? rawInput.sources
+    : [{
+        bytes: rawInput.sourceBytes,
+        contentType: rawInput.sourceContentType,
+        filename: rawInput.sourceFilename,
+      }];
+
+  const sources = rawSources.map((source, index) => {
+    const bytes = Buffer.isBuffer(source?.bytes) ? source.bytes : Buffer.from(source?.bytes || []);
+    if (bytes.length > workflow.limits.maxSourceBytes) {
+      const error = new Error(`Reference Image ${index + 1} exceeds ${workflow.limits.maxSourceBytes} byte workflow limit`);
+      error.statusCode = 413;
+      throw error;
+    }
+    return {
+      bytes,
+      contentType: String(source?.contentType || 'image/png'),
+      filename: String(source?.filename || `input-${index + 1}.png`).slice(0, 240),
+    };
+  }).filter((source) => source.bytes.length);
+
+  if (workflow.requiresSourceImage && !sources.length) {
+    const error = new Error('At least one reference image is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!workflow.supportsMultipleReferences && sources.length > 1) {
+    const error = new Error('This workflow accepts only one reference image');
+    error.statusCode = 400;
+    throw error;
+  }
+  return sources;
+}
+
 function normalizeInput(workflow, rawInput) {
   if (!workflow) {
     const error = new Error('Unknown workflow');
@@ -37,21 +75,7 @@ function normalizeInput(workflow, rawInput) {
     throw error;
   }
 
-  const sourceBytes = Buffer.isBuffer(rawInput.sourceBytes)
-    ? rawInput.sourceBytes
-    : Buffer.from(rawInput.sourceBytes || []);
-
-  if (workflow.requiresSourceImage && !sourceBytes.length) {
-    const error = new Error('Source image is required');
-    error.statusCode = 400;
-    throw error;
-  }
-  if (sourceBytes.length > workflow.limits.maxSourceBytes) {
-    const error = new Error(`Source image exceeds ${workflow.limits.maxSourceBytes} byte workflow limit`);
-    error.statusCode = 413;
-    throw error;
-  }
-
+  const sources = normalizeSources(workflow, rawInput);
   const prompt = String(rawInput.prompt || '').trim();
   if (!prompt) {
     const error = new Error('Prompt is required');
@@ -60,10 +84,8 @@ function normalizeInput(workflow, rawInput) {
   }
 
   return {
-    sourceBytes,
-    sourceContentType: String(rawInput.sourceContentType || 'image/png'),
-    sourceFilename: String(rawInput.sourceFilename || 'input.png').slice(0, 240),
-    prompt: prompt.slice(0, 2000),
+    sources,
+    prompt: prompt.slice(0, 2400),
     negativePrompt: String(rawInput.negativePrompt || workflow.defaults.negativePrompt).slice(0, 2000),
     seed: Number.isSafeInteger(Number(rawInput.seed)) ? Number(rawInput.seed) : workflow.defaults.seed,
     steps: clamp(Math.round(safeNumber(rawInput.steps, workflow.defaults.steps)), 1, 50),
