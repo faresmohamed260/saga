@@ -81,12 +81,13 @@ Completed:
 - RLS enabled.
 - Bootstrap RLS policies allow anonymous reads and narrowly scoped completed image-edit inserts while Studio uses the public Supabase key through its server API. This is a temporary hobby/demo bootstrap and should be replaced by authenticated/server-privileged access before production use.
 - `/api/history` implemented with newest-first results, a bounded `limit`, and optional `kind` / exact-model filters.
-- `/api/media` now records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
-- Preview `/api/history` verified live on Vercel and currently returns `200` with an empty history, which is expected before the first history-enabled upload.
+- `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
+- The production path has been verified with a real generation: R2 upload/read succeeds and Supabase receives the completed generation row.
+- Prompt and seed metadata are now forwarded from the FLUX.2 client to `/api/media`.
+- UTF-8 model names are URL-encoded in browser headers and decoded server-side before Supabase insertion, preventing the previous replacement-character corruption while keeping R2 object metadata ASCII-safe for signature compatibility.
 
 Remaining for Phase 1:
 
-- Pass prompt and seed metadata from the current FLUX.2 client upload request into `/api/media`.
 - Load `/api/history` into the frontend and replace demo-only History behavior with persisted R2-backed cards.
 - Add gallery filters and pagination/load-more behavior.
 - Add delete/favorite/collection actions after the persistent read path is stable.
@@ -96,7 +97,8 @@ Remaining for Phase 1:
 Complete the Supabase-backed history path for the existing FLUX.2 Klein image-edit workflow:
 
 1. R2 upload succeeds. **Done.**
-2. Studio writes the generation metadata record. **Implemented; live-generation verification pending merge to production.**
-3. `/api/history` returns persisted records newest first. **Implemented and preview-tested.**
-4. History UI renders R2-backed assets after refresh/reopen. **Next.**
-5. Then migrate generation execution to the shared job lifecycle before adding video.
+2. Studio writes the generation metadata record. **Done.**
+3. Prompt, seed, and model metadata are stored correctly. **Fixed; verify with the next production generation.**
+4. `/api/history` returns persisted records newest first. **Done.**
+5. History UI renders R2-backed assets after refresh/reopen. **Next.**
+6. Then migrate generation execution to the shared job lifecycle before adding video.
