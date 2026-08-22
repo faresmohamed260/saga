@@ -85,15 +85,19 @@ try {
   await desktop.locator('.grok-auto-choice').waitFor({ state: 'visible' });
   await shot(desktop, '05-create-edit-auto.png');
 
+  const editAspectMenu = desktop.locator('.grok-aspect-popover');
   await desktop.locator('.grok-aspect-button').click();
-  await desktop.locator('.grok-aspect-popover').waitFor({ state: 'visible' });
+  await editAspectMenu.waitFor({ state: 'visible' });
   await shot(desktop, '06-create-edit-auto-aspect.png');
-  await desktop.keyboard.press('Escape');
+  await desktop.mouse.click(1320, 900);
+  await assertHidden(editAspectMenu, 'Edit aspect picker');
 
+  const editResolutionMenu = desktop.locator('.grok-resolution-popover');
   await desktop.locator('.grok-resolution-button').click();
-  await desktop.locator('.grok-resolution-popover').waitFor({ state: 'visible' });
+  await editResolutionMenu.waitFor({ state: 'visible' });
   await shot(desktop, '07-create-edit-auto-resolution.png');
-  await desktop.keyboard.press('Escape');
+  await desktop.mouse.click(1320, 900);
+  await assertHidden(editResolutionMenu, 'Edit resolution picker');
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
