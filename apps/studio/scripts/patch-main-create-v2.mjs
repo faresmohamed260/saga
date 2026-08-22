@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-// Final one-shot remote patch used by the PR visual iteration workflow.
+// Idempotent remote patch used by the PR visual iteration workflow.
 const mainPath = 'src/main.jsx';
 let main = await readFile(mainPath, 'utf8');
 
@@ -17,10 +17,23 @@ await writeFile(mainPath, main);
 
 const createPath = 'src/create-controls.jsx';
 let create = await readFile(createPath, 'utf8');
-const morphNeedle = `  const targetIndex = hoverIndex == null ? activeIndex : hoverIndex;\n  const rowHeight = 42;\n\n  const keyDown = (event, index) => {`;
-const morphReplacement = `  const targetIndex = hoverIndex == null ? activeIndex : hoverIndex;\n  const rowHeight = 42;\n\n  useEffect(() => {\n    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);\n  }, [activeIndex, options.length]);\n\n  const keyDown = (event, index) => {`;
-if (create.includes(morphNeedle)) create = create.replace(morphNeedle, morphReplacement);
-else if (!create.includes('refs.current[activeIndex]?.focus()')) throw new Error('MorphList focus target not found');
+
+const signatureOld = `function MorphList({ options, value, onChoose, render, ariaLabel }) {`;
+const signatureNew = `function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = false }) {`;
+if (create.includes(signatureOld)) create = create.replace(signatureOld, signatureNew);
+else if (!create.includes(signatureNew)) throw new Error('MorphList signature target not found');
+
+const effectOld = `  useEffect(() => {\n    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);\n  }, [activeIndex, options.length]);`;
+const effectNew = `  useEffect(() => {\n    if (!focusWhen) return undefined;\n    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);\n  }, [focusWhen, activeIndex, options.length]);`;
+if (create.includes(effectOld)) create = create.replace(effectOld, effectNew);
+else if (!create.includes('if (!focusWhen) return undefined;')) throw new Error('MorphList focus effect target not found');
+
+for (const label of ['Aspect ratio', 'Resolution', 'Video resolution']) {
+  const oldCall = `<MorphList\n        ariaLabel="${label}"`;
+  const newCall = `<MorphList\n        focusWhen={open}\n        ariaLabel="${label}"`;
+  if (create.includes(oldCall)) create = create.replace(oldCall, newCall);
+  else if (!create.includes(newCall)) throw new Error(`${label} focus prop target not found`);
+}
 
 const persistNeedle = `      workflowId,\n      modelId,\n      editAuto,`;
 const persistReplacement = `      workflowId: isEdit ? 'default-image' : workflowId,\n      modelId: isEdit ? 'saga-image-auto' : modelId,\n      editAuto,`;
