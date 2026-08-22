@@ -20,6 +20,12 @@ function parseNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function stringArray(value, maxLength = 300) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || '').trim().slice(0, maxLength)).filter(Boolean)
+    : [];
+}
+
 async function readBody(req, limit) {
   const chunks = [];
   let total = 0;
@@ -54,8 +60,7 @@ export default async function handler(req, res) {
 
     const prompt = jsonMode ? String(body.prompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-prompt']).trim().slice(0, 2000);
     const negativePrompt = jsonMode ? String(body.negativePrompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-negative-prompt']).trim().slice(0, 2000);
-    const resolution = jsonMode ? String(body.resolution || '').trim().slice(0, 64) : decodeHeader(req.headers['x-saga-resolution']).trim().slice(0, 64);
-    const sourceFilename = (jsonMode ? String(body.sourceFilename || '') : decodeHeader(req.headers['x-saga-source-filename'])).trim().slice(0, 240) || 'input.png';
+    const resolution = jsonMode ? String(body.resolution || '').trim().slice(0, 96) : decodeHeader(req.headers['x-saga-resolution']).trim().slice(0, 96);
     const seed = Number.parseInt(String(jsonMode ? body.seed ?? workflow.defaults.seed : req.headers['x-saga-seed'] || workflow.defaults.seed), 10);
     const steps = parseNumber(jsonMode ? body.steps : req.headers['x-saga-steps'], workflow.defaults.steps);
     const cfg = parseNumber(jsonMode ? body.cfg : req.headers['x-saga-cfg'], workflow.defaults.cfg);
@@ -63,27 +68,54 @@ export default async function handler(req, res) {
 
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
-    let sourceBytes = Buffer.alloc(0);
-    let sourceContentType = requestContentType;
-    let sourceKey = '';
+    let sources = [];
+    let sourceKeys = [];
+    let sourceFilenames = [];
+    let sourceContentTypes = [];
 
     if (jsonMode) {
-      sourceKey = String(body.sourceKey || '').trim();
-      if (workflow.requiresSourceImage && !isSourceKey(sourceKey)) return res.status(400).json({ error: 'Valid sourceKey is required' });
-      if (sourceKey) {
-        const source = await readSourceObject(sourceKey, workflow.limits.maxSourceBytes);
-        sourceBytes = source.bytes;
-        sourceContentType = source.contentType;
+      sourceKeys = stringArray(body.sourceKeys);
+      if (!sourceKeys.length && body.sourceKey) sourceKeys = [String(body.sourceKey || '').trim()];
+      if (workflow.requiresSourceImage && (!sourceKeys.length || sourceKeys.some((key) => !isSourceKey(key)))) {
+        return res.status(400).json({ error: 'At least one valid source reference is required' });
+      }
+      if (!workflow.supportsMultipleReferences && sourceKeys.length > 1) return res.status(400).json({ error: 'This workflow accepts only one source image' });
+
+      sourceFilenames = stringArray(body.sourceFilenames, 240);
+      if (!sourceFilenames.length && body.sourceFilename) sourceFilenames = [String(body.sourceFilename || '').trim().slice(0, 240)];
+      sourceContentTypes = stringArray(body.sourceContentTypes, 120);
+
+      for (let index = 0; index < sourceKeys.length; index += 1) {
+        const source = await readSourceObject(sourceKeys[index], workflow.limits.maxSourceBytes);
+        if (!String(source.contentType || '').startsWith('image/')) return res.status(415).json({ error: `Reference Image ${index + 1} is not an image` });
+        sources.push({
+          bytes: source.bytes,
+          contentType: source.contentType,
+          filename: sourceFilenames[index] || `input-${index + 1}.png`,
+          key: sourceKeys[index],
+        });
       }
     } else {
       if (workflow.requiresSourceImage && !requestContentType.startsWith('image/')) {
         return res.status(415).json({ error: 'This workflow requires an image source' });
       }
-      sourceBytes = await readBody(req, workflow.limits.maxSourceBytes);
+      const sourceBytes = await readBody(req, workflow.limits.maxSourceBytes);
+      if (sourceBytes.length) {
+        sources = [{
+          bytes: sourceBytes,
+          contentType: requestContentType,
+          filename: decodeHeader(req.headers['x-saga-source-filename']).trim().slice(0, 240) || 'input.png',
+          key: '',
+        }];
+      }
     }
 
-    if (workflow.requiresSourceImage && !sourceBytes.length) return res.status(400).json({ error: 'Source image is empty' });
-    if (workflow.requiresSourceImage && !sourceContentType.startsWith('image/')) return res.status(415).json({ error: 'Source object is not an image' });
+    if (workflow.requiresSourceImage && !sources.length) return res.status(400).json({ error: 'Source image is empty' });
+
+    const primary = sources[0] || { bytes: Buffer.alloc(0), contentType: requestContentType, filename: 'input.png', key: '' };
+    const normalizedPrompt = sources.length > 1
+      ? `Reference images are numbered in upload order from Image 1 through Image ${sources.length}. Image 1 is the primary canvas that determines output shape.\n\n${prompt}`
+      : prompt;
 
     job = await createGenerationJob({
       kind: workflow.kind,
@@ -96,20 +128,27 @@ export default async function handler(req, res) {
       workflowId: workflow.id,
       provider: workflow.provider,
       metadata: {
-        inputTransport: sourceKey ? 'r2' : 'inline',
-        sourceR2Key: sourceKey || null,
-        sourceContentType: sourceContentType || null,
-        sourceFilename,
+        inputTransport: sourceKeys.length ? 'r2' : 'inline',
+        sourceR2Key: sourceKeys[0] || null,
+        sourceR2Keys: sourceKeys,
+        sourceContentType: primary.contentType || null,
+        sourceContentTypes: sources.map((source) => source.contentType || null),
+        sourceFilename: primary.filename,
+        sourceFilenames: sources.map((source) => source.filename),
+        referenceCount: sources.length,
+        primaryReferenceIndex: sources.length ? 0 : null,
+        automaticOutputSize: Boolean(workflow.automaticOutputSize),
         execution: { steps, cfg, megapixels },
       },
     });
     await transitionGenerationJob(job.id, 'running');
 
     const submitted = await submitWorkflow(workflow, {
-      sourceBytes,
-      sourceContentType,
-      sourceFilename,
-      prompt,
+      sources,
+      sourceBytes: primary.bytes,
+      sourceContentType: primary.contentType,
+      sourceFilename: primary.filename,
+      prompt: normalizedPrompt,
       negativePrompt,
       seed,
       steps,
@@ -123,7 +162,8 @@ export default async function handler(req, res) {
       status: 'running',
       workflow: workflow.id,
       provider: workflow.provider,
-      inputTransport: sourceKey ? 'r2' : 'inline',
+      inputTransport: sourceKeys.length ? 'r2' : 'inline',
+      referenceCount: sources.length,
     });
   } catch (error) {
     if (job?.id) {
