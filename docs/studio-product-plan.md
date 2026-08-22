@@ -41,18 +41,20 @@ This becomes the common contract for fast image jobs and long-running video jobs
 
 Current Phase 2 implementation:
 
-- `/api/jobs` creates queued jobs and validates lifecycle transitions.
+- `/api/jobs` creates queued jobs, validates lifecycle transitions, fetches one job, and lists lifecycle jobs by status.
 - FLUX.2 Klein image edits create the job before calling Modal, move it to `running`, and attach the persisted output to the same generation UUID on completion.
 - Failed requests move the existing job to `failed` and keep prompt/model/seed/workflow/error metadata for inspection.
-- `/api/media` can finalize an existing job instead of inserting a second generation row.
+- `/api/media` finalizes an existing job instead of inserting a second generation row when a valid job UUID is supplied. A terminal or stale job cannot silently create a duplicate completed generation.
 - `/api/history` intentionally returns completed generations only so queued/running/failed jobs do not appear as broken library cards.
 - Supabase generation rows include `started_at` and `provider` fields in addition to `created_at` / `completed_at`.
+- The production lifecycle smoke test verified `queued -> running -> completed`, timestamps, job reads, deletion, and cleanup without leaving disposable rows behind.
+- Studio has a URL-backed Jobs page with Active / Queued / Running / Failed / Completed / Recent filters. The page polls every three seconds while open and shows prompt, model, provider, seed, resolution, timestamps, and failure details.
 
 Next within Phase 2:
 
-- Add a dedicated Jobs/Queue surface that polls active jobs and shows queued/running/failed state independently from completed History.
-- Add retry/cancel semantics after the execution adapter supports them safely.
-- Move provider execution behind a common server-side workflow adapter so image and video jobs share the same contract.
+- Move provider execution behind a common server-side workflow adapter so image and video jobs share one execution contract.
+- Add safe retry/cancel semantics once provider execution can be controlled server-side.
+- Add recovery rules for jobs stranded in `queued` or `running` by browser/network interruption.
 
 ### Phase 3 — Model and workflow registry
 
@@ -139,6 +141,7 @@ The persistent library shell is complete and generation execution is moving onto
 5. Media-kind/model filters and Load more pagination. **Done.**
 6. Persist Favorites and Collections. **Done.**
 7. Download/reuse/edit/delete actions pass production verification. **Done.**
-8. Shared `queued -> running -> completed | failed` job contract. **Implemented for FLUX.2 image editing; production verification next.**
-9. Add active Jobs/Queue UI and shared provider execution adapter. **Next.**
-10. Add the first video workflow on top of the shared job contract.
+8. Shared `queued -> running -> completed | failed` job contract. **Done and production-smoke-tested for FLUX.2 image editing.**
+9. Active Jobs/Queue UI with lifecycle polling and filters. **Implemented.**
+10. Move execution behind the shared server-side provider/workflow adapter. **Next.**
+11. Add the first video workflow on top of the shared job contract.

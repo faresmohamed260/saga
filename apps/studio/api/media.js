@@ -145,13 +145,13 @@ export default async function handler(req, res) {
 
       let generation = null;
       try {
-        generation = await completeGenerationJob(jobId, completedRecord);
-        if (!generation) generation = await insertGeneration(completedRecord);
+        if (isUuid(jobId)) generation = await completeGenerationJob(jobId, completedRecord);
+        else generation = await insertGeneration(completedRecord);
       } catch (historyError) {
         console.error('Generation history persistence failed', historyError);
       }
 
-      return res.status(201).json({ key: keys.original, url: mediaUrl, thumbnailKey: thumbnailUrl ? keys.thumbnail : null, thumbnailUrl, persisted: true, generationId: generation?.id || null, historyPersisted: Boolean(generation?.id), jobId: generation?.id || (isUuid(jobId) ? jobId : null) });
+      return res.status(201).json({ key: keys.original, url: mediaUrl, thumbnailKey: thumbnailUrl ? keys.thumbnail : null, thumbnailUrl, persisted: true, generationId: generation?.id || null, historyPersisted: Boolean(generation?.id), jobId: isUuid(jobId) ? jobId : generation?.id || null });
     } catch (error) {
       console.error('R2 upload failed', error);
       return res.status(error?.statusCode || error?.$metadata?.httpStatusCode || 500).json({ error: error?.message || 'R2 upload failed' });

@@ -10,7 +10,7 @@ import './styles.css';
 
 const FLUX2_API_URL = (import.meta.env.VITE_FLUX2_KLEIN_API_URL || 'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run').replace(/\/$/, '');
 const HISTORY_PAGE_SIZE = 24;
-const SECTION_HASHES = { Create: 'create', History: 'history', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
+const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', History: 'history', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section]));
 
 function sectionFromLocation() {
@@ -26,7 +26,7 @@ const samples = [
   { id: 4, title: 'Future city', url: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=1200&q=85' },
 ];
 
-const navPrimary = [[WandSparkles, 'Create'], [History, 'History'], [Heart, 'Favorites'], [Folder, 'Collections']];
+const navPrimary = [[WandSparkles, 'Create'], [LoaderCircle, 'Jobs'], [History, 'History'], [Heart, 'Favorites'], [Folder, 'Collections']];
 const navSecondary = [[Box, 'Models'], [Workflow, 'Workflows']];
 const editQualityOptions = [
   { value: '0.25', label: 'Draft', detail: '0.25 MP' },
@@ -36,6 +36,11 @@ const editQualityOptions = [
 
 function encodeHeader(value) { return encodeURIComponent(String(value ?? '')); }
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
+function formatJobTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+}
 
 async function createGenerationJob(payload) {
   const response = await fetch('/api/jobs', {
@@ -125,6 +130,10 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [jobStatus, setJobStatus] = useState('');
+  const [jobs, setJobs] = useState([]);
+  const [jobsFilter, setJobsFilter] = useState('active');
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsError, setJobsError] = useState('');
   const [seed, setSeed] = useState('42');
   const [editMegapixels, setEditMegapixels] = useState('1.0');
   const [favorites, setFavorites] = useState(new Set());
@@ -163,6 +172,28 @@ function App() {
     window.addEventListener('hashchange', syncSectionFromHash);
     return () => window.removeEventListener('hashchange', syncSectionFromHash);
   }, []);
+
+  const loadJobs = async ({ silent = false, filter = jobsFilter } = {}) => {
+    if (!silent) setJobsLoading(true);
+    setJobsError('');
+    try {
+      const response = await fetch(`/api/jobs?status=${encodeURIComponent(filter)}&limit=50`, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`Jobs request failed (${response.status})`);
+      const payload = await response.json();
+      setJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
+    } catch (err) {
+      setJobsError(err instanceof Error ? err.message : 'Unable to load generation jobs.');
+    } finally {
+      if (!silent) setJobsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (section !== 'Jobs') return undefined;
+    loadJobs({ filter: jobsFilter });
+    const timer = window.setInterval(() => loadJobs({ silent: true, filter: jobsFilter }), 3000);
+    return () => window.clearInterval(timer);
+  }, [section, jobsFilter]);
 
   const loadHistory = async ({ append = false, kind = historyKind, model = historyModel } = {}) => {
     if (append && historyPage.nextOffset == null) return;
@@ -464,7 +495,7 @@ function App() {
         <button title="Edit this" onClick={() => editThis(item)}><Pencil size={18}/></button>
         <button title="Download original" onClick={() => downloadItem(item)}><Download size={18}/></button>
         <button title="Open full media" onClick={() => openMedia(item)}><ArrowUpRight size={19}/></button>
-        <button title={inCollection ? 'Remove from collection' : 'Add to collection'} onClick={() => inCollection ? removeFromCollection(item) : addToCollection(item)}>{inCollection ? <Folder size={18}/> : <Folder size={18}/>}</button>
+        <button title={inCollection ? 'Remove from collection' : 'Add to collection'} onClick={() => inCollection ? removeFromCollection(item) : addToCollection(item)}><Folder size={18}/></button>
         <button title="Delete permanently" onClick={() => deleteGeneration(item)}><Trash2 size={18}/></button>
       </div>
     </article>
@@ -487,7 +518,12 @@ function App() {
       <main className="workspace">
         <div className="mobile-topbar"><button className="icon-button" onClick={() => setMobileNav(true)}><Menu size={20}/></button><div className="mobile-brand">SAGA Studio</div><button className="icon-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={20}/></button></div>
 
-        {section === 'History' ? <section className="history-view">
+        {section === 'Jobs' ? <section className="history-view">
+          {renderLibraryHeader('Execution', 'Jobs & queue', 'Live generation lifecycle. This page polls while open; completed media stays in History.', <button className="secondary-button" onClick={() => loadJobs({ filter: jobsFilter })} disabled={jobsLoading}>{jobsLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>)}
+          <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Job status filter">{[['active','Active'],['queued','Queued'],['running','Running'],['failed','Failed'],['completed','Completed'],['all','Recent']].map(([value,label]) => <button key={value} className={jobsFilter === value ? 'selected' : ''} onClick={() => setJobsFilter(value)}>{label}</button>)}</div></div>
+          {jobsError && <div className="history-state error">{jobsError}</div>}
+          {jobsLoading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <div style={{display:'grid',gap:12}}>{jobs.map((job) => <article key={job.id} style={{border:'1px solid rgba(255,255,255,.08)',borderRadius:14,background:'rgba(255,255,255,.025)',padding:'16px 18px',display:'grid',gap:10}}><div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}><div style={{display:'flex',gap:10,alignItems:'center',minWidth:0}}><span style={{textTransform:'uppercase',fontSize:11,fontWeight:700,letterSpacing:'.08em',padding:'5px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.14)',opacity:job.status === 'failed' ? 1 : .8}}>{job.status}</span><strong style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{job.prompt || 'Untitled job'}</strong></div><span style={{fontSize:12,color:'#7f8999'}}>{formatJobTime(job.created_at)}</span></div><div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:'#8f98a8'}}><span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span><span>{job.provider || 'provider n/a'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}</div><div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:'#687284'}}><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span></div>{job.error_message && <div style={{padding:'10px 12px',borderRadius:9,background:'rgba(120,20,35,.14)',border:'1px solid rgba(255,100,120,.25)',color:'#ffb4c0',fontSize:12}}>{job.error_message}</div>}</article>)}</div>}
+        </section> : section === 'History' ? <section className="history-view">
           {renderLibraryHeader('Library', 'Generation history', 'Thumbnail-first previews. Originals load only when you open an item.', <button className="secondary-button" onClick={() => loadHistory({ append: false })} disabled={historyLoading}>{historyLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>)}
           <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Media type filter">{[['all','All'],['image','Images'],['video','Videos']].map(([value,label]) => <button key={value} className={historyKind === value ? 'selected' : ''} onClick={() => setHistoryKind(value)}>{label}</button>)}</div><label className="history-model-filter"><span>Model</span><select value={historyModel} onChange={(event) => setHistoryModel(event.target.value)}><option value="all">All models</option>{historyModels.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label></div>
           {historyError && <div className="history-state error">{historyError}</div>}
