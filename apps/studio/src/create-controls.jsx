@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image as ImageIcon, Video, Crop, Grid2X2, Plus, X, SlidersHorizontal, Sparkles,
-  Palette, ImagePlus, ChevronDown, RotateCcw, Dice5, Check, AtSign
+  Palette, ChevronDown, RotateCcw, Dice5, Check, AtSign, ArrowUp
 } from 'lucide-react';
 
 export const ASPECT_PRESETS = [
@@ -72,54 +72,210 @@ function MorphGrid({ options, value, onChange, className = '', renderOption }) {
   </div>;
 }
 
+function editorText(root) {
+  if (!root) return '';
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    if (node.classList?.contains('mention-token')) return node.dataset.mention || node.textContent || '';
+    if (node.tagName === 'BR') return '\n';
+    const value = Array.from(node.childNodes).map(walk).join('');
+    return node.tagName === 'DIV' ? `${value}\n` : value;
+  };
+  return Array.from(root.childNodes).map(walk).join('').replace(/\n+$/, '');
+}
+
+function createMentionNode(reference, index) {
+  const token = document.createElement('span');
+  token.className = 'mention-token';
+  token.contentEditable = 'false';
+  token.dataset.mention = `@Image ${index + 1}`;
+  token.dataset.referenceIndex = String(index);
+
+  const thumb = document.createElement('span');
+  thumb.className = 'mention-token-thumb';
+  thumb.style.backgroundImage = `url("${String(reference?.preview || '').replace(/"/g, '\\"')}")`;
+
+  const label = document.createElement('span');
+  label.className = 'mention-token-label';
+  label.textContent = `Image ${index + 1}`;
+
+  token.append(thumb, label);
+  return token;
+}
+
+function renderPromptInto(root, prompt, references) {
+  if (!root) return;
+  root.replaceChildren();
+  const regex = /@Image\s+(\d+)/gi;
+  let cursor = 0;
+  let match;
+  while ((match = regex.exec(prompt)) !== null) {
+    if (match.index > cursor) root.append(document.createTextNode(prompt.slice(cursor, match.index)));
+    const index = Number(match[1]) - 1;
+    if (references[index]) root.append(createMentionNode(references[index], index));
+    else root.append(document.createTextNode(match[0]));
+    cursor = regex.lastIndex;
+  }
+  if (cursor < prompt.length) root.append(document.createTextNode(prompt.slice(cursor)));
+}
+
 function ReferencePrompt({ prompt, setPrompt, references, disabled }) {
-  const textareaRef = useRef(null);
+  const editorRef = useRef(null);
+  const wrapRef = useRef(null);
   const [picker, setPicker] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  const updatePicker = (value, caret) => {
-    const before = value.slice(0, caret);
-    const match = before.match(/@([^@\n]*)$/);
-    if (!match || !references.length) return setPicker(null);
-    setPicker({ start: caret - match[0].length, end: caret, query: match[1].trim().toLowerCase() });
-  };
+  const matches = useMemo(() => {
+    const query = picker?.query || '';
+    return references.map((reference, index) => ({ reference, index })).filter(({ reference, index }) => {
+      if (!query) return true;
+      return `image${index + 1} image ${index + 1} ${reference.file?.name || ''}`.toLowerCase().includes(query);
+    });
+  }, [references, picker?.query]);
 
-  const onChange = (event) => {
-    setPrompt(event.target.value);
-    updatePicker(event.target.value, event.target.selectionStart || 0);
-  };
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    if (editorText(editor) !== prompt) renderPromptInto(editor, prompt, references);
+  }, [prompt, references]);
 
-  const insertReference = (index) => {
-    if (!picker) return;
-    const mention = `@Image ${index + 1}`;
-    const next = `${prompt.slice(0, picker.start)}${mention}${prompt.slice(picker.end)}`;
-    setPrompt(next);
-    setPicker(null);
-    requestAnimationFrame(() => {
-      const position = picker.start + mention.length;
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(position, position);
+  useEffect(() => {
+    if (activeIndex >= matches.length) setActiveIndex(0);
+  }, [matches.length, activeIndex]);
+
+  const updatePickerFromSelection = () => {
+    const editor = editorRef.current;
+    const wrap = wrapRef.current;
+    const selection = window.getSelection();
+    if (!editor || !wrap || !selection?.rangeCount || !selection.isCollapsed || !editor.contains(selection.anchorNode)) {
+      setPicker(null);
+      return;
+    }
+
+    const rangeToCaret = document.createRange();
+    rangeToCaret.selectNodeContents(editor);
+    rangeToCaret.setEnd(selection.anchorNode, selection.anchorOffset);
+    const before = rangeToCaret.toString();
+    const match = before.match(/@([^\s@\n]*)$/);
+    if (!match || !references.length) {
+      setPicker(null);
+      return;
+    }
+
+    const caretRange = selection.getRangeAt(0).cloneRange();
+    caretRange.collapse(true);
+    let rect = caretRange.getBoundingClientRect();
+    if (!rect.width && !rect.height) rect = editor.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    setActiveIndex(0);
+    setPicker({
+      query: match[1].toLowerCase(),
+      tokenLength: match[0].length,
+      left: Math.max(8, Math.min(rect.left - wrapRect.left, wrapRect.width - 300)),
+      top: Math.max(8, rect.top - wrapRect.top),
     });
   };
 
-  const matches = useMemo(() => references.map((reference, index) => ({ reference, index })).filter(({ reference, index }) => {
-    if (!picker?.query) return true;
-    return `image ${index + 1} ${reference.file?.name || ''}`.toLowerCase().includes(picker.query);
-  }), [references, picker]);
+  const syncPrompt = () => {
+    const value = editorText(editorRef.current).slice(0, 2000);
+    setPrompt(value);
+    requestAnimationFrame(updatePickerFromSelection);
+  };
 
-  return <div className="prompt-editor-wrap">
-    <textarea
-      ref={textareaRef}
-      value={prompt}
-      onChange={onChange}
-      onClick={(event) => updatePicker(event.currentTarget.value, event.currentTarget.selectionStart || 0)}
-      onKeyUp={(event) => updatePicker(event.currentTarget.value, event.currentTarget.selectionStart || 0)}
-      placeholder={references.length ? 'Describe the edit. Type @ to reference an image…' : 'Add one or more reference images, then describe the edit…'}
-      maxLength={2000}
-      disabled={disabled}
+  const insertReference = (referenceIndex) => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !picker || !selection?.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    const node = range.startContainer;
+    const offset = range.startOffset;
+    if (node.nodeType !== Node.TEXT_NODE) return;
+
+    const text = node.textContent || '';
+    const start = Math.max(0, offset - picker.tokenLength);
+    const before = text.slice(0, start);
+    const after = text.slice(offset);
+    const parent = node.parentNode;
+    const reference = references[referenceIndex];
+
+    const beforeNode = document.createTextNode(before);
+    const mentionNode = createMentionNode(reference, referenceIndex);
+    const spacer = document.createTextNode('\u00a0');
+    const afterNode = document.createTextNode(after);
+    parent.insertBefore(beforeNode, node);
+    parent.insertBefore(mentionNode, node);
+    parent.insertBefore(spacer, node);
+    parent.insertBefore(afterNode, node);
+    parent.removeChild(node);
+
+    const nextRange = document.createRange();
+    nextRange.setStart(spacer, spacer.textContent.length);
+    nextRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(nextRange);
+
+    setPicker(null);
+    setPrompt(editorText(editor).slice(0, 2000));
+    editor.focus();
+  };
+
+  const onKeyDown = (event) => {
+    if (picker && matches.length) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveIndex((current) => (current + 1) % matches.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveIndex((current) => (current - 1 + matches.length) % matches.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        insertReference(matches[activeIndex]?.index ?? matches[0].index);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPicker(null);
+        return;
+      }
+    }
+  };
+
+  return <div className="prompt-editor-wrap rich-prompt-wrap" ref={wrapRef}>
+    <div
+      ref={editorRef}
+      className="rich-prompt-editor"
+      contentEditable={!disabled}
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      data-placeholder={references.length ? 'Describe the edit. Type @ to reference an image…' : 'Add one or more reference images, then describe the edit…'}
+      onInput={syncPrompt}
+      onClick={updatePickerFromSelection}
+      onKeyUp={(event) => {
+        if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) updatePickerFromSelection();
+      }}
+      onKeyDown={onKeyDown}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData.getData('text/plain').slice(0, Math.max(0, 2000 - editorText(editorRef.current).length));
+        document.execCommand('insertText', false, text);
+      }}
     />
-    {picker && matches.length > 0 && <div className="mention-picker">
-      <div className="mention-picker-title"><AtSign size={14}/> References</div>
-      {matches.map(({ reference, index }) => <button type="button" key={reference.id} onMouseDown={(event) => { event.preventDefault(); insertReference(index); }}>
+    {picker && matches.length > 0 && <div className="mention-picker" style={{ left: picker.left, top: picker.top }}>
+      <div className="mention-picker-title"><AtSign size={14}/> References <span>↑↓ select · Enter insert</span></div>
+      {matches.map(({ reference, index }, matchIndex) => <button
+        type="button"
+        key={reference.id}
+        className={matchIndex === activeIndex ? 'active' : ''}
+        onMouseEnter={() => setActiveIndex(matchIndex)}
+        onMouseDown={(event) => { event.preventDefault(); insertReference(index); }}
+      >
         <span className="mention-thumb" style={{ backgroundImage: `url(${reference.preview})` }}/>
         <span><strong>Image {index + 1}</strong><small>{reference.file?.name || 'Reference image'}</small></span>
       </button>)}
@@ -127,8 +283,7 @@ function ReferencePrompt({ prompt, setPrompt, references, disabled }) {
   </div>;
 }
 
-function ReferenceStrip({ references, onAdd, onRemove }) {
-  const inputRef = useRef(null);
+function ReferenceStrip({ references, onAdd, onRemove, inputRef }) {
   return <>
     <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(event) => {
       const files = Array.from(event.target.files || []);
@@ -143,12 +298,11 @@ function ReferenceStrip({ references, onAdd, onRemove }) {
       </div>)}
       <button type="button" className="add-reference-tile" onClick={() => inputRef.current?.click()}><Plus size={20}/><span>{references.length ? 'Add image' : 'Add references'}</span></button>
     </div>
-    <button type="button" className="secondary-button add-reference-button" onClick={() => inputRef.current?.click()}><ImagePlus size={18}/> {references.length ? 'Add references' : 'Reference images'}</button>
   </>;
 }
 
-function SelectMenu({ value, onChange, options, label }) {
-  return <label className="compact-native-select" aria-label={label}>
+function SelectMenu({ value, onChange, options, label, className = '' }) {
+  return <label className={`compact-native-select ${className}`} aria-label={label}>
     <select value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
     </select>
@@ -161,27 +315,26 @@ function SettingsPanel({
   advanced, setAdvanced, seed, setSeed, steps, setSteps, cfg, setCfg, workflowId, setWorkflowId,
   modelId, setModelId, autoEditInfo,
 }) {
+  if (!open) return null;
   const isEdit = mode === 'Edit';
   const modelOptions = isEdit
     ? [{ value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B · DarkBeast V2' }]
     : [{ value: 'saga-image-auto', label: 'SAGA Image · Auto' }];
-  const aspectOptions = ASPECT_PRESETS;
-  const resolutionOptions = IMAGE_RESOLUTIONS;
 
-  return <aside className={`settings-panel ${open ? 'open' : ''}`}>
-    <div className="settings-header"><h2>Settings</h2><button className="square-button" onClick={onClose}><SlidersHorizontal size={18}/></button></div>
+  return <div className="composer-settings-popover">
+    <div className="settings-header"><h2>Generation settings</h2><button className="square-button" onClick={onClose}><X size={17}/></button></div>
 
     <label className="field-label">Model</label>
     <SelectMenu label="Model" value={modelId} onChange={setModelId} options={modelOptions}/>
 
     <label className="field-label">Aspect Ratio</label>
-    {isEdit ? <div className="auto-setting-card"><span className="auto-setting-icon">A</span><div><strong>Automatic</strong><small>{autoEditInfo?.ratioLabel || 'Uses the primary reference image'}</small></div><Check size={17}/></div> : <MorphGrid className="aspect-morph-grid" options={aspectOptions} value={aspect} onChange={setAspect} renderOption={(option) => <><span className="ratio-preview" style={{ aspectRatio: String(option.ratio) }}/><strong>{option.value}</strong><small>{option.label}</small></>}/>} 
+    {isEdit ? <div className="auto-setting-card"><span className="auto-setting-icon">A</span><div><strong>Automatic</strong><small>{autoEditInfo?.ratioLabel || 'Uses the primary reference image'}</small></div><Check size={17}/></div> : <MorphGrid className="aspect-morph-grid" options={ASPECT_PRESETS} value={aspect} onChange={setAspect} renderOption={(option) => <><span className="ratio-preview" style={{ aspectRatio: String(option.ratio) }}/><strong>{option.value}</strong><small>{option.label}</small></>}/>}
 
     <label className="field-label">Resolution</label>
-    {isEdit ? <div className="auto-setting-card"><span className="auto-setting-icon">↗</span><div><strong>Automatic output size</strong><small>{autoEditInfo?.detail || 'Add a primary reference to calculate output size'}</small></div><Check size={17}/></div> : <MorphGrid className="resolution-morph-grid" options={resolutionOptions} value={imageResolution} onChange={setImageResolution} renderOption={(option) => <><strong>{option.label}</strong><small>{option.detail}</small></>}/>} 
+    {isEdit ? <div className="auto-setting-card"><span className="auto-setting-icon">↗</span><div><strong>Automatic output size</strong><small>{autoEditInfo?.detail || 'Add a primary reference to calculate output size'}</small></div><Check size={17}/></div> : <MorphGrid className="resolution-morph-grid" options={IMAGE_RESOLUTIONS} value={imageResolution} onChange={setImageResolution} renderOption={(option) => <><strong>{option.label}</strong><small>{option.detail}</small></>}/>}
 
     <label className="field-label">Outputs</label>
-    {isEdit ? <div className="auto-setting-card compact"><span className="auto-setting-icon">1</span><div><strong>Single output</strong><small>Klein Edit currently returns one persisted result per job</small></div></div> : <MorphGrid className="output-morph-grid" options={[1,2,4].map((value) => ({ value, label: String(value) }))} value={outputs} onChange={setOutputs}/>} 
+    {isEdit ? <div className="auto-setting-card compact"><span className="auto-setting-icon">1</span><div><strong>Single output</strong><small>Klein Edit currently returns one persisted result per job</small></div></div> : <MorphGrid className="output-morph-grid" options={[1,2,4].map((value) => ({ value, label: String(value) }))} value={outputs} onChange={setOutputs}/>}
 
     <div className="settings-divider"/>
     <button className="advanced-toggle" onClick={() => setAdvanced(!advanced)}><span>Advanced</span><ChevronDown className={advanced ? 'rotated' : ''} size={17}/></button>
@@ -194,7 +347,7 @@ function SettingsPanel({
     <button className="reset-button" onClick={() => {
       setAspect('1:1'); setImageResolution(1024); setOutputs(4); setSeed('42'); setSteps(isEdit ? 4 : 30); setCfg(isEdit ? 1 : 7); setWorkflowId(isEdit ? 'flux2-klein-image-edit' : 'default-image'); setModelId(isEdit ? 'flux2-klein-9b' : 'saga-image-auto');
     }}><RotateCcw size={18}/> Reset to Defaults</button>
-  </aside>;
+  </div>;
 }
 
 export default function CreateWorkspace({
@@ -205,9 +358,10 @@ export default function CreateWorkspace({
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
 }) {
   const isEdit = mode === 'Edit';
+  const referenceInputRef = useRef(null);
   const [styleOpen, setStyleOpen] = useState(false);
   const imageDimensions = dimensionsForPreset(aspect, imageResolution);
-  const unsupported = mode !== 'Edit';
+  const imageResolutionOption = IMAGE_RESOLUTIONS.find((option) => option.value === Number(imageResolution)) || IMAGE_RESOLUTIONS[2];
 
   useEffect(() => {
     if (mode === 'Edit') {
@@ -229,34 +383,63 @@ export default function CreateWorkspace({
   return <>
     <div className="mode-tabs">{[[ImageIcon, 'Image'], [Video, 'Video'], [Crop, 'Edit'], [Grid2X2, 'More']].map(([Icon, label]) => <button className={`mode-tab ${mode === label ? 'selected' : ''}`} key={label} onClick={() => setMode(label)}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>)}</div>
 
-    <section className={`composer-panel composer-panel-v2 ${references.length ? 'has-references' : ''}`}>
-      {isEdit && <ReferenceStrip references={references} onAdd={onAddReferences} onRemove={onRemoveReference}/>} 
-      {!isEdit && <div className="composer-mode-hint">{mode === 'Image' ? `Original image · ${imageDimensions.width}×${imageDimensions.height} · ${aspect}` : mode === 'Video' ? 'Video generation is the next workflow milestone.' : 'Additional tools will appear here as workflows are added.'}</div>}
-      {isEdit ? <ReferencePrompt prompt={prompt} setPrompt={setPrompt} references={references} disabled={busy}/> : <div className="prompt-editor-wrap"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === 'Video' ? 'Describe the motion, scene, and camera movement…' : 'Describe what you want to create…'} maxLength={2000} disabled={busy}/></div>}
-      <div className="composer-footer"><span>{isEdit && references.length ? `${references.length} reference${references.length === 1 ? '' : 's'} · type @ to mention · ` : ''}{prompt.length} / 2000</span><Sparkles size={18}/></div>
+    <section className={`composer-panel composer-panel-v3 ${references.length ? 'has-references' : ''}`}>
+      {isEdit && <ReferenceStrip references={references} onAdd={onAddReferences} onRemove={onRemoveReference} inputRef={referenceInputRef}/>} 
+      {!isEdit && <div className="composer-mode-hint">{mode === 'Image' ? `Original image · ${imageDimensions.width}×${imageDimensions.height}` : mode === 'Video' ? 'Video generation is the next workflow milestone.' : 'Additional tools will appear here as workflows are added.'}</div>}
+
+      {isEdit
+        ? <ReferencePrompt prompt={prompt} setPrompt={setPrompt} references={references} disabled={busy}/>
+        : <div className="prompt-editor-wrap"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={mode === 'Video' ? 'Describe the motion, scene, and camera movement…' : 'Describe what you want to create…'} maxLength={2000} disabled={busy}/></div>}
+
+      <div className="composer-inline-toolbar">
+        <div className="composer-inline-left">
+          {isEdit && <button type="button" className="composer-icon-pill" title="Add reference images" onClick={() => referenceInputRef.current?.click()}><Plus size={20}/></button>}
+          <div className="style-menu-wrap">
+            <button type="button" className="composer-pill" onClick={() => setStyleOpen((value) => !value)}><Palette size={16}/> Style</button>
+            {styleOpen && <div className="style-popover">{STYLE_PRESETS.map(([name, text]) => <button type="button" key={name} onClick={() => applyStyle(name, text)}><strong>{name}</strong><small>{text}</small></button>)}</div>}
+          </div>
+
+          <span className="composer-pill static">{isEdit ? <Crop size={16}/> : <ImageIcon size={16}/>} {isEdit ? 'Edit' : mode}</span>
+
+          {isEdit
+            ? <>
+                <span className="composer-pill static compact-model"><Sparkles size={15}/> Klein 9B</span>
+                <span className="composer-pill static">Auto · {autoEditInfo?.ratioLabel || 'size from Image 1'}</span>
+              </>
+            : <>
+                <SelectMenu className="composer-select-pill" label="Resolution" value={String(imageResolution)} onChange={(value) => setImageResolution(Number(value))} options={IMAGE_RESOLUTIONS.map((option) => ({ value: String(option.value), label: option.label }))}/>
+                <SelectMenu className="composer-select-pill" label="Aspect ratio" value={aspect} onChange={setAspect} options={ASPECT_PRESETS.map((option) => ({ value: option.value, label: option.value }))}/>
+                <span className="composer-pill static">{imageResolutionOption.label}</span>
+              </>}
+        </div>
+
+        <div className="composer-inline-right">
+          <span className="prompt-count">{prompt.length} / 2000</span>
+          <button type="button" className="composer-icon-pill" title="Generation settings" onClick={() => setSettingsOpen((value) => !value)}><SlidersHorizontal size={18}/></button>
+          <button
+            type="button"
+            className={`composer-submit ${busy ? 'busy' : ''}`}
+            title={isEdit ? 'Edit image' : 'Generate'}
+            aria-label={isEdit ? 'Edit image' : 'Generate'}
+            onClick={onGenerate}
+            disabled={busy || (isEdit && references.length === 0)}
+          ><ArrowUp size={21}/></button>
+        </div>
+      </div>
+
+      <SettingsPanel
+        open={settingsOpen} onClose={() => setSettingsOpen(false)} mode={mode}
+        aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
+        outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
+        seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
+        workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
+        autoEditInfo={autoEditInfo}
+      />
     </section>
 
     {error && <div className="composer-error">{error}</div>}
     {isEdit && <div className="backend-status">{jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · FLUX.2 Klein 9B · automatic output size · {references.length || 0} reference{references.length === 1 ? '' : 's'}</div>}
 
-    <div className="action-row">
-      <div className="attach-actions">
-        {isEdit && <button className="secondary-button" onClick={() => document.querySelector('.reference-strip + .add-reference-button')?.click()}><ImagePlus size={18}/> Add references</button>}
-        <div className="style-menu-wrap"><button className="secondary-button" onClick={() => setStyleOpen((value) => !value)}><Palette size={18}/> Style</button>{styleOpen && <div className="style-popover">{STYLE_PRESETS.map(([name, text]) => <button type="button" key={name} onClick={() => applyStyle(name, text)}><strong>{name}</strong><small>{text}</small></button>)}</div>}</div>
-      </div>
-      <div className="generate-actions"><button className="square-button" onClick={() => setSettingsOpen(true)} title="Generation settings"><SlidersHorizontal size={19}/></button><button className={`generate-button ${busy ? 'busy' : ''}`} onClick={onGenerate} disabled={busy || (isEdit && references.length === 0)}><Sparkles size={18}/>{busy ? (isEdit ? (jobStatus === 'uploading' ? 'Uploading…' : jobStatus === 'queued' ? 'Queued…' : 'Editing…') : 'Working…') : isEdit ? 'Edit image' : unsupported ? 'Generate' : 'Generate'}</button></div>
-    </div>
-
-    <section className="gallery-grid">{items.map((item) => renderCard(item, false))}</section>
-
-    <SettingsPanel
-      open={settingsOpen} onClose={() => setSettingsOpen(false)} mode={mode}
-      aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
-      outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
-      seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
-      workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
-      autoEditInfo={autoEditInfo}
-    />
-    {settingsOpen && <div className="panel-scrim" onClick={() => setSettingsOpen(false)}/>} 
+    <section className="gallery-grid composer-gallery">{items.map((item) => renderCard(item, false))}</section>
   </>;
 }
