@@ -1,6 +1,6 @@
 name: Apply PR113 Create Evolution
 
-# Temporary idempotent helper for the remote PR visual-iteration loop; cleanup is pending final approval.
+# Temporary idempotent helper for the remote PR visual-iteration loop; final checklist validation is in progress.
 on:
   pull_request:
     branches: [main]
