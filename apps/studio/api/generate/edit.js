@@ -1,8 +1,13 @@
 import { Readable } from 'node:stream';
-import { executeWorkflow } from '../_providers.js';
+import {
+  getGenerationJob,
+  isUuid,
+  setProviderJobId,
+} from '../_generation-jobs.js';
+import { submitWorkflow } from '../_providers.js';
 import { getWorkflow } from '../_workflows.js';
 
-export const config = { maxDuration: 300 };
+export const config = { maxDuration: 60 };
 
 const WORKFLOW_ID = 'flux2-klein-image-edit';
 
@@ -12,7 +17,6 @@ async function parseMultipart(req) {
     if (Array.isArray(value)) value.forEach((entry) => headers.append(name, entry));
     else if (value != null) headers.set(name, String(value));
   }
-
   const request = new Request('http://saga.local/api/generate/edit', {
     method: 'POST',
     headers,
@@ -40,16 +44,18 @@ export default async function handler(req, res) {
     const steps = Number(form.get('steps') || workflow.defaults.steps);
     const cfg = Number(form.get('cfg') || workflow.defaults.cfg);
     const megapixels = Number(form.get('megapixels') || workflow.defaults.megapixels);
+    const jobId = String(form.get('job_id') || '').trim();
 
-    if (!imageFile || typeof imageFile.arrayBuffer !== 'function') {
-      return res.status(400).json({ error: 'image_file is required' });
-    }
-    if (!String(imageFile.type || '').startsWith('image/')) {
-      return res.status(415).json({ error: 'image_file must be an image' });
-    }
+    if (!imageFile || typeof imageFile.arrayBuffer !== 'function') return res.status(400).json({ error: 'image_file is required' });
+    if (!String(imageFile.type || '').startsWith('image/')) return res.status(415).json({ error: 'image_file must be an image' });
+    if (!isUuid(jobId)) return res.status(400).json({ error: 'A valid job_id is required' });
+
+    const job = await getGenerationJob(jobId);
+    if (!job || job.status !== 'running') return res.status(409).json({ error: 'Generation job is not running' });
+    if (job.workflow_id && job.workflow_id !== workflow.id) return res.status(409).json({ error: 'Generation job workflow mismatch' });
 
     const sourceBytes = Buffer.from(await imageFile.arrayBuffer());
-    const result = await executeWorkflow(workflow, {
+    const submitted = await submitWorkflow(workflow, {
       sourceBytes,
       sourceContentType: imageFile.type || 'image/png',
       sourceFilename: imageFile.name || 'input.png',
@@ -60,14 +66,16 @@ export default async function handler(req, res) {
       cfg,
       megapixels,
     });
+    const updatedJob = await setProviderJobId(jobId, submitted.providerJobId);
 
-    res.setHeader('Content-Type', result.contentType || workflow.outputMimeType);
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-Saga-Workflow', workflow.id);
-    res.setHeader('X-Saga-Provider', workflow.provider);
-    return res.status(200).send(result.bytes);
+    return res.status(202).json({
+      jobId: updatedJob.id,
+      status: 'running',
+      workflow: workflow.id,
+      provider: workflow.provider,
+    });
   } catch (error) {
-    console.error('Server-side image edit adapter failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Image edit failed' });
+    console.error('Server-side image edit submit failed', error);
+    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Image edit submit failed' });
   }
 }

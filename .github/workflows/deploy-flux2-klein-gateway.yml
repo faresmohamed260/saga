@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - studio/flux2-resolution-r2
+      - studio/async-provider-jobs
     paths:
       - "integrations/comfyui/flux2_klein_gateway.py"
       - ".github/workflows/deploy-flux2-klein-gateway.yml"

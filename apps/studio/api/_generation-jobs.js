@@ -69,6 +69,32 @@ export async function createGenerationJob(input) {
   return Array.isArray(rows) ? rows[0] : rows;
 }
 
+export async function setProviderJobId(id, providerJobId) {
+  if (!isUuid(id)) {
+    const error = new Error('Invalid job id');
+    error.statusCode = 400;
+    throw error;
+  }
+  const value = safeText(providerJobId, 240);
+  if (!value) {
+    const error = new Error('Provider job id is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(id)}&status=in.(queued,running)&select=*`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ provider_job_id: value }),
+  });
+  const job = Array.isArray(rows) ? rows[0] : rows;
+  if (!job) {
+    const error = new Error('Active job not found');
+    error.statusCode = 409;
+    throw error;
+  }
+  return job;
+}
+
 export async function transitionGenerationJob(id, nextStatus, { errorMessage = '' } = {}) {
   if (!isUuid(id)) {
     const error = new Error('Invalid job id');
@@ -114,7 +140,7 @@ export async function transitionGenerationJob(id, nextStatus, { errorMessage = '
 
 export async function listGenerationJobs({ status = 'all', limit = 30 } = {}) {
   const params = new URLSearchParams();
-  params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,resolution,seed,workflow_id,provider,error_message,metadata,created_at,started_at,completed_at,r2_key,media_url,thumbnail_url');
+  params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,resolution,seed,workflow_id,provider,provider_job_id,error_message,metadata,created_at,started_at,completed_at,r2_key,media_url,thumbnail_url');
   params.set('order', 'created_at.desc,id.desc');
   params.set('limit', String(Math.min(Math.max(Number(limit) || 30, 1), 100)));
   params.set('metadata', 'cs.{"lifecycle":"job-v1"}');
