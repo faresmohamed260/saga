@@ -1,0 +1,31 @@
+name: PR113 Picker Card Polish
+on:
+  push:
+    branches: [studio/controls-cleanup-picker-fix]
+    paths:
+      - apps/studio/scripts/patch-pr113-picker-card-polish.mjs
+      - .github/workflows/pr113-picker-card-polish.yml
+permissions:
+  contents: write
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/controls-cleanup-picker-fix
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Apply picker and output polish
+        working-directory: apps/studio
+        run: node scripts/patch-pr113-picker-card-polish.mjs
+      - name: Commit source and QA changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/scripts/capture-ui-preview.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "Polish picker morphing and output cards"
+          git push origin HEAD:studio/controls-cleanup-picker-fix
