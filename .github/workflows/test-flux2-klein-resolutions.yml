@@ -1,0 +1,71 @@
+name: Test FLUX.2 Klein A10 resolutions
+
+on:
+  push:
+    branches:
+      - studio/flux2-resolution-r2
+    paths:
+      - ".github/flux2-resolution-test-trigger.txt"
+      - ".github/workflows/test-flux2-klein-resolutions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Create source image
+        run: |
+          python - <<'PY'
+          import struct, zlib
+          w=h=512
+          rows=[]
+          for y in range(h):
+              row=bytearray()
+              for x in range(w):
+                  row.extend(((x//2)%256,(y//2)%256,128))
+              rows.append(b'\x00'+bytes(row))
+          raw=b''.join(rows)
+          def chunk(t,d):
+              return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
+          png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
+          open('source.png','wb').write(png)
+          PY
+
+      - name: Run sequential resolution tests
+        env:
+          API_URL: https://faresmohamed260--saga-flux2-klein-9b-web.modal.run/edit
+        run: |
+          set -euo pipefail
+          printf "megapixels,http_status,seconds,bytes\n" > resolution-results.csv
+          for mp in 0.25 0.5 1.0; do
+            start=$(date +%s)
+            status=$(curl --fail-with-body -sS -o "out-${mp}.png" -w "%{http_code}" \
+              -F image_file=@source.png \
+              -F prompt='Turn this simple gradient into a clean cinematic abstract glass sculpture while preserving the overall composition.' \
+              -F negative_prompt='' \
+              -F seed=12345 \
+              -F steps=4 \
+              -F cfg=1.0 \
+              -F megapixels="$mp" \
+              "$API_URL")
+            end=$(date +%s)
+            bytes=$(wc -c < "out-${mp}.png")
+            seconds=$((end-start))
+            echo "$mp,$status,$seconds,$bytes" | tee -a resolution-results.csv
+            test "$status" = "200"
+            test "$bytes" -gt 1000
+          done
+          cat resolution-results.csv
+
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flux2-klein-resolution-smoke
+          path: |
+            resolution-results.csv
+            out-*.png
