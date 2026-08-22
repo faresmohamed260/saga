@@ -1,4 +1,5 @@
 name: PR113 Picker Card Polish
+# one-shot remote source patch; remove after it runs
 on:
   push:
     branches: [studio/controls-cleanup-picker-fix]
