@@ -1,5 +1,5 @@
 const SUPABASE_URL = (process.env.SUPABASE_URL || 'https://rashyleshocuvpgcooxy.supabase.co').replace(/\/$/, '');
-const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Erz_UUs49DgHHDkFoXfztA_m6CbHTqw';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Erz_UUs49DgHHDkFoXfztA_m6CbHTqw';
 
 export async function supabaseRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});

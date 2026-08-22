@@ -29,7 +29,7 @@ Gallery surfaces must prefer thumbnails/posters and avoid loading full-resolutio
 - Replace demo-only History behavior with persisted generation history.
 - Add image/video/model filters.
 - Persist favorites and collections.
-- Add delete, download, reuse, edit and animate actions.
+- Add delete, download, reuse and edit actions.
 
 ### Phase 2 — Generation jobs
 
@@ -70,6 +70,7 @@ Support multiple ordered references with semantic roles such as identity, body/a
 - Video cards/player.
 - Long-running job polling/status.
 - Connect the first image-to-video workflow, then text-to-video.
+- Add Animate this once an image-to-video workflow is registered.
 
 ## Current storage contract
 
@@ -89,12 +90,13 @@ Completed:
 - Newest-first, status, media-kind, favorite, and collection membership indexes created.
 - RLS enabled.
 - Bootstrap RLS policies support the current single-user hobby/demo server API. This must be replaced by authenticated/server-privileged access before broader release.
+- Server Supabase requests prefer a service-role/secret key when configured, with the publishable key remaining as the temporary bootstrap fallback.
 - `/api/history` supports newest-first results, bounded page size, `offset` pagination, optional media-kind / exact-model filters, model facets, and favorite state.
 - `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
 - Prompt, seed, UTF-8 model metadata, original dimensions, thumbnail creation, thumbnail dimensions, original reads, and thumbnail reads were verified end-to-end with the automated media smoke test.
 - Supabase has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
 - Image persistence creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
-- `/api/media` serves both `generations/...` originals and `thumbnails/...` previews.
+- `/api/media` serves both `generations/...` originals and `thumbnails/...` previews, and supports attachment download responses for originals.
 - The Studio History view fetches `/api/history`, renders thumbnail-backed persisted cards, refreshes on demand, survives page refresh/reopen, and falls back to the original URL for legacy image rows without thumbnails.
 - Opening a History card loads the full original in an on-demand viewer instead of using the original for the grid.
 - History has All / Images / Videos filters, a model selector, 24-item pages, and Load more pagination.
@@ -102,11 +104,14 @@ Completed:
 - Active navigation is URL-backed, so refresh/reopen keeps the current Studio section.
 - Persistent Favorites are stored on `studio_generations.is_favorite`, exposed through `/api/favorites`, and rendered by the Favorites sidebar page.
 - Persistent Collections use `studio_collections` + `studio_collection_items`, with create/rename/delete, add/remove membership, collection covers, counts, and collection detail views.
+- Media cards now support Download original, Reuse settings, Edit this, Add/remove collection membership, and permanent Delete.
+- Edit this fetches the original image on demand and loads it into the existing FLUX.2 Klein edit composer as the new source image.
+- Permanent generation deletion removes the original and thumbnail from R2, then removes the generation row; favorite and collection references cascade with the database row.
 
 Remaining for Phase 1:
 
-- Add final delete/download/reuse/edit actions and authorization rules.
-- Replace bootstrap anonymous RLS with authenticated/server-privileged access before broader release.
+- Replace bootstrap anonymous access with authenticated/server-privileged authorization before broader release.
+- Do a final production smoke verification of the destructive delete path using disposable media only.
 
 ## Immediate milestone
 
@@ -117,6 +122,6 @@ Complete the persistent library shell before moving generation execution onto th
 3. Prompt, seed, model, dimensions, thumbnail storage, and both media reads pass automated verification. **Done.**
 4. History is persistent and thumbnail-first. **Done.**
 5. Media-kind/model filters and Load more pagination. **Done.**
-6. Persist Favorites and Collections. **Implemented; preview/production verification next.**
-7. Finish delete/download/reuse/edit actions.
+6. Persist Favorites and Collections. **Done.**
+7. Finish download/reuse/edit/delete actions. **Implemented; production verification next.**
 8. Migrate generation execution to the shared job lifecycle before adding video workflows.
