@@ -1,8 +1,12 @@
-import { createGenerationJob, transitionGenerationJob } from './_generation-jobs.js';
-import { executeWorkflow } from './_providers.js';
+import {
+  createGenerationJob,
+  setProviderJobId,
+  transitionGenerationJob,
+} from './_generation-jobs.js';
+import { submitWorkflow } from './_providers.js';
 import { getWorkflow, listWorkflows } from './_workflows.js';
 
-export const config = { maxDuration: 300 };
+export const config = { maxDuration: 60 };
 
 function decodeHeader(value) {
   const raw = String(value || '');
@@ -31,9 +35,7 @@ async function readBody(req, limit) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') {
-    return res.status(200).json({ workflows: listWorkflows() });
-  }
+  if (req.method === 'GET') return res.status(200).json({ workflows: listWorkflows() });
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
@@ -78,10 +80,9 @@ export default async function handler(req, res) {
       workflowId: workflow.id,
       provider: workflow.provider,
     });
-
     await transitionGenerationJob(job.id, 'running');
 
-    const result = await executeWorkflow(workflow, {
+    const submitted = await submitWorkflow(workflow, {
       sourceBytes,
       sourceContentType: contentType,
       sourceFilename,
@@ -92,26 +93,23 @@ export default async function handler(req, res) {
       cfg,
       megapixels,
     });
+    const updatedJob = await setProviderJobId(job.id, submitted.providerJobId);
 
-    res.setHeader('Content-Type', result.contentType || workflow.outputMimeType);
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-Saga-Job-Id', job.id);
-    res.setHeader('X-Saga-Workflow', workflow.id);
-    res.setHeader('X-Saga-Model', encodeURIComponent(workflow.model));
-    res.setHeader('X-Saga-Provider', workflow.provider);
-    res.setHeader('X-Saga-Resolution', encodeURIComponent(resolution));
-    return res.status(200).send(result.bytes);
+    return res.status(202).json({
+      job: updatedJob,
+      status: 'running',
+      workflow: workflow.id,
+      provider: workflow.provider,
+    });
   } catch (error) {
     if (job?.id) {
       try {
-        await transitionGenerationJob(job.id, 'failed', {
-          errorMessage: error?.message || 'Generation failed',
-        });
+        await transitionGenerationJob(job.id, 'failed', { errorMessage: error?.message || 'Generation submit failed' });
       } catch (transitionError) {
         console.error('Could not mark generation job failed', transitionError);
       }
     }
-    console.error('Generation orchestration failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation failed' });
+    console.error('Generation orchestration submit failed', error);
+    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation submit failed' });
   }
 }

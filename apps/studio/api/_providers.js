@@ -7,13 +7,14 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-async function executeModalFlux2Klein(workflow, input) {
-  const baseUrl = String(
+function getModalGatewayUrl() {
+  return String(
     process.env.FLUX2_KLEIN_GATEWAY_URL ||
-    process.env.VITE_FLUX2_KLEIN_API_URL ||
     'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run',
   ).replace(/\/$/, '');
+}
 
+function buildFluxForm(workflow, input) {
   const form = new FormData();
   form.append(
     'image_file',
@@ -26,52 +27,10 @@ async function executeModalFlux2Klein(workflow, input) {
   form.append('steps', String(input.steps));
   form.append('cfg', String(input.cfg));
   form.append('megapixels', String(input.megapixels));
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 280_000);
-  try {
-    const response = await fetch(`${baseUrl}/edit`, {
-      method: 'POST',
-      body: form,
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      let detail = '';
-      try {
-        const body = await response.json();
-        detail = body?.detail ? `: ${body.detail}` : '';
-      } catch {}
-      const error = new Error(`FLUX.2 provider failed (${response.status})${detail}`);
-      error.statusCode = response.status >= 500 ? 502 : response.status;
-      throw error;
-    }
-
-    const contentType = String(response.headers.get('content-type') || workflow.outputMimeType).split(';')[0].trim();
-    if (!contentType.startsWith('image/')) {
-      const error = new Error('Generation provider returned a non-image response');
-      error.statusCode = 502;
-      throw error;
-    }
-
-    return {
-      bytes: Buffer.from(await response.arrayBuffer()),
-      contentType,
-      provider: workflow.provider,
-    };
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      const timeoutError = new Error('Generation provider timed out');
-      timeoutError.statusCode = 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return form;
 }
 
-export async function executeWorkflow(workflow, rawInput) {
+function normalizeInput(workflow, rawInput) {
   if (!workflow) {
     const error = new Error('Unknown workflow');
     error.statusCode = 404;
@@ -100,7 +59,7 @@ export async function executeWorkflow(workflow, rawInput) {
     throw error;
   }
 
-  const normalized = {
+  return {
     sourceBytes,
     sourceContentType: String(rawInput.sourceContentType || 'image/png'),
     sourceFilename: String(rawInput.sourceFilename || 'input.png').slice(0, 240),
@@ -115,11 +74,82 @@ export async function executeWorkflow(workflow, rawInput) {
       workflow.limits.maxMegapixels,
     ),
   };
+}
 
-  if (workflow.provider === 'modal-flux2-klein') {
-    return executeModalFlux2Klein(workflow, normalized);
+async function submitModalFlux2Klein(workflow, input) {
+  const response = await fetch(`${getModalGatewayUrl()}/jobs/edit`, {
+    method: 'POST',
+    body: buildFluxForm(workflow, input),
+  });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json();
+      detail = body?.detail ? `: ${body.detail}` : '';
+    } catch {}
+    const error = new Error(`FLUX.2 provider submit failed (${response.status})${detail}`);
+    error.statusCode = response.status >= 500 ? 502 : response.status;
+    throw error;
   }
+  const payload = await response.json();
+  if (!payload?.call_id) {
+    const error = new Error('FLUX.2 provider did not return a call id');
+    error.statusCode = 502;
+    throw error;
+  }
+  return { providerJobId: payload.call_id, provider: workflow.provider, status: payload.status || 'queued' };
+}
 
+async function pollModalFlux2Klein(workflow, providerJobId) {
+  const response = await fetch(`${getModalGatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
+    method: 'GET',
+    headers: { Accept: 'image/*, application/json' },
+  });
+  if (response.status === 202) return { status: 'running', provider: workflow.provider };
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json();
+      detail = body?.detail ? `: ${body.detail}` : '';
+    } catch {}
+    const error = new Error(`FLUX.2 provider poll failed (${response.status})${detail}`);
+    error.statusCode = response.status >= 500 ? 502 : response.status;
+    throw error;
+  }
+  const contentType = String(response.headers.get('content-type') || workflow.outputMimeType).split(';')[0].trim();
+  if (!contentType.startsWith('image/')) {
+    const error = new Error('Generation provider returned a non-image response');
+    error.statusCode = 502;
+    throw error;
+  }
+  return {
+    status: 'completed',
+    bytes: Buffer.from(await response.arrayBuffer()),
+    contentType,
+    provider: workflow.provider,
+  };
+}
+
+export async function submitWorkflow(workflow, rawInput) {
+  const normalized = normalizeInput(workflow, rawInput);
+  if (workflow.provider === 'modal-flux2-klein') return submitModalFlux2Klein(workflow, normalized);
+  const error = new Error(`Unsupported provider: ${workflow.provider}`);
+  error.statusCode = 501;
+  throw error;
+}
+
+export async function pollWorkflow(workflow, providerJobId) {
+  if (!workflow) {
+    const error = new Error('Unknown workflow');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!providerJobId) {
+    const error = new Error('Provider job id is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (workflow.provider === 'modal-flux2-klein') return pollModalFlux2Klein(workflow, providerJobId);
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
