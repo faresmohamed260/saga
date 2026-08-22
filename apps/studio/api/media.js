@@ -12,12 +12,18 @@ function getClient() {
     region: 'auto',
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId, secretAccessKey },
-    // R2 does not support every AWS S3 streaming/checksum signing variant.
-    // Restrict checksum negotiation to operations that require it so larger
-    // binary PutObject requests are signed as ordinary fixed-length payloads.
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
   });
+}
+
+function safeMetadata(value, maxLength) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
 }
 
 async function readBody(req, limit = 6 * 1024 * 1024) {
@@ -72,8 +78,8 @@ export default async function handler(req, res) {
         CacheControl: 'private, max-age=31536000, immutable',
         Metadata: {
           source: 'saga-studio',
-          model: String(req.headers['x-saga-model'] || 'flux2-klein-9b').slice(0, 120),
-          resolution: String(req.headers['x-saga-resolution'] || '').slice(0, 32),
+          model: safeMetadata(req.headers['x-saga-model'] || 'flux2-klein-9b', 120),
+          resolution: safeMetadata(req.headers['x-saga-resolution'] || '', 32),
         },
       }));
       res.status(201).json({
