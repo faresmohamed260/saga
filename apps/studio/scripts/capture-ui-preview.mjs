@@ -6,170 +6,200 @@ const baseUrl = process.env.UI_PREVIEW_URL || 'http://127.0.0.1:4173/#/create';
 const outputDir = path.resolve(process.env.UI_PREVIEW_DIR || 'visual-preview');
 await mkdir(outputDir, { recursive: true });
 
-const diagnostics = {
-  baseUrl,
-  generatedAt: new Date().toISOString(),
-  screenshots: [],
-  consoleErrors: [],
-  pageErrors: [],
-};
-
-const referencePng = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  'base64',
-);
+const diagnostics = { baseUrl, generatedAt: new Date().toISOString(), screenshots: [], consoleErrors: [], pageErrors: [] };
+const referencePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 function recordDiagnostics(page, label) {
-  page.on('console', (message) => {
-    if (message.type() === 'error') diagnostics.consoleErrors.push({ label, text: message.text() });
-  });
-  page.on('pageerror', (error) => {
-    diagnostics.pageErrors.push({ label, text: error?.stack || error?.message || String(error) });
-  });
+  page.on('console', (message) => { if (message.type() === 'error') diagnostics.consoleErrors.push({ label, text: message.text() }); });
+  page.on('pageerror', (error) => diagnostics.pageErrors.push({ label, text: error?.stack || error?.message || String(error) }));
 }
 
 async function waitForStudio(page) {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-  await page.locator('.composer-panel-v4').waitFor({ state: 'visible', timeout: 20_000 });
-  await page.waitForTimeout(500);
+  await page.locator('.saga-composer').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.waitForTimeout(300);
 }
 
 async function shot(page, filename) {
-  const filePath = path.join(outputDir, filename);
-  await page.screenshot({ path: filePath, fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: path.join(outputDir, filename), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push(filename);
 }
 
-async function assertHidden(locator, label) {
-  await locator.waitFor({ state: 'hidden', timeout: 3_000 }).catch(() => {
-    throw new Error(`${label} did not collapse`);
-  });
+async function expectHidden(locator, label) {
+  await locator.waitFor({ state: 'hidden', timeout: 2500 }).catch(() => { throw new Error(`${label} did not close`); });
 }
 
-async function assertCount(locator, expected, label) {
-  const count = await locator.count();
-  if (count !== expected) throw new Error(`${label}: expected ${expected}, got ${count}`);
+async function expectText(locator, expected, label) {
+  const text = (await locator.innerText()).trim();
+  if (!text.includes(expected)) throw new Error(`${label}: expected ${expected}, got ${text}`);
 }
 
 const browser = await chromium.launch({ headless: true });
-
 try {
-  const desktop = await browser.newPage({
-    viewport: { width: 1440, height: 1050 },
-    deviceScaleFactor: 1,
-    colorScheme: 'dark',
-  });
+  const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(desktop, 'desktop');
   await waitForStudio(desktop);
 
-  await assertCount(desktop.locator('.grok-mic-button'), 0, 'Mic control');
-  await assertCount(desktop.getByRole('button', { name: 'Speed', exact: true }), 0, 'Speed shortcut');
-  await assertCount(desktop.getByRole('button', { name: 'Quality', exact: true }), 0, 'Quality shortcut');
-  await shot(desktop, '01-create-image-clean.png');
+  // Core composition: no old mode navbar, centered composer, More moved to sidebar.
+  if (await desktop.locator('.create-mode-tabs,.mode-tabs').count()) throw new Error('Old Create mode navbar is still rendered');
+  await desktop.getByRole('button', { name: 'More', exact: true }).waitFor({ state: 'visible' });
+  const composerBox = await desktop.locator('.saga-composer').boundingBox();
+  const workspaceBox = await desktop.locator('main.workspace').boundingBox();
+  if (!composerBox || !workspaceBox) throw new Error('Could not measure centered composer');
+  const composerCenter = composerBox.x + composerBox.width / 2;
+  const workspaceCenter = workspaceBox.x + workspaceBox.width / 2;
+  if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
+  await shot(desktop, '01-create-image-centered.png');
 
+  // Image picker keyboard + outside dismissal.
+  const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
+  await resolutionTrigger.click();
+  const resolutionPicker = desktop.locator('.saga-resolution-picker');
+  await resolutionPicker.waitFor({ state: 'visible' });
+  const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));
+  if (focusedRole !== 'menuitemradio') throw new Error(`Resolution picker did not focus selected option: ${focusedRole}`);
+  await desktop.keyboard.press('ArrowDown');
+  await desktop.keyboard.press('Escape');
+  await expectHidden(resolutionPicker, 'Resolution picker');
+
+  const aspectTrigger = desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') });
+  await aspectTrigger.click();
+  const aspectPicker = desktop.locator('.saga-aspect-picker');
+  await aspectPicker.waitFor({ state: 'visible' });
+  await shot(desktop, '02-image-aspect-picker.png');
+  await desktop.locator('.saga-stage-heading').click();
+  await expectHidden(aspectPicker, 'Aspect picker');
+
+  // Set image resolution/aspect for persistence verification.
+  await resolutionTrigger.click();
+  await resolutionPicker.getByRole('menuitemradio', { name: /High.*1536 px/i }).click();
+  await aspectTrigger.click();
+  await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
+
+  // Advanced settings: custom dropdowns, continuous sampling values, viewport-safe panel.
   const settingsButton = desktop.getByRole('button', { name: 'Advanced settings', exact: true });
   await settingsButton.click();
-  const settings = desktop.locator('.composer-settings-popover');
-  await settings.waitFor({ state: 'visible' });
-  await settings.getByText('Seed', { exact: true }).waitFor({ state: 'visible' });
-  await settings.getByText('Steps', { exact: true }).waitFor({ state: 'visible' });
-  await settings.getByText('CFG', { exact: true }).waitFor({ state: 'visible' });
-  await assertCount(settings.getByText('Aspect Ratio', { exact: true }), 0, 'Redundant aspect setting');
-  await assertCount(settings.getByText('Resolution', { exact: true }), 0, 'Redundant resolution setting');
-  await shot(desktop, '02-create-advanced-settings.png');
-  await settingsButton.click();
-  await assertHidden(settings, 'Advanced settings');
-
-  const aspectButton = desktop.locator('.grok-aspect-button');
-  await aspectButton.focus();
-  await aspectButton.press('ArrowDown');
-  const aspectMenu = desktop.locator('.grok-aspect-popover');
-  await aspectMenu.waitFor({ state: 'visible' });
-  const aspectSelected = aspectMenu.locator('[role="menuitemradio"][aria-checked="true"]');
-  const aspectIndicator = aspectMenu.locator('.grok-aspect-morph-indicator');
-  const aspectSelectedBox = await aspectSelected.boundingBox();
-  const aspectIndicatorBox = await aspectIndicator.boundingBox();
-  if (!aspectSelectedBox || !aspectIndicatorBox || Math.abs(aspectSelectedBox.x - aspectIndicatorBox.x) > 3 || Math.abs((aspectSelectedBox.x + aspectSelectedBox.width) - (aspectIndicatorBox.x + aspectIndicatorBox.width)) > 3) {
-    throw new Error('Aspect picker default selection indicator does not span the full row');
-  }
-  await shot(desktop, '03-create-aspect-default-selection.png');
-  await aspectMenu.locator('[role="menuitemradio"]').first().press('ArrowDown');
-  await desktop.keyboard.press('Escape');
-  await assertHidden(aspectMenu, 'Aspect picker');
-
-  const resolutionButton = desktop.locator('.grok-resolution-button');
-  await resolutionButton.focus();
-  await resolutionButton.press('Enter');
-  const resolutionMenu = desktop.locator('.grok-resolution-popover');
-  await resolutionMenu.waitFor({ state: 'visible' });
-  const resolutionSelected = resolutionMenu.locator('[role="menuitemradio"][aria-checked="true"]');
-  const resolutionIndicator = resolutionMenu.locator('.grok-resolution-morph-indicator');
-  const resolutionSelectedBox = await resolutionSelected.boundingBox();
-  const resolutionIndicatorBox = await resolutionIndicator.boundingBox();
-  if (!resolutionSelectedBox || !resolutionIndicatorBox || Math.abs(resolutionSelectedBox.x - resolutionIndicatorBox.x) > 3 || Math.abs((resolutionSelectedBox.x + resolutionSelectedBox.width) - (resolutionIndicatorBox.x + resolutionIndicatorBox.width)) > 3) {
-    throw new Error('Resolution picker default selection indicator does not span the full row');
-  }
-  await shot(desktop, '04-create-resolution-default-selection.png');
-  await resolutionMenu.getByRole('menuitemradio', { name: /HD.*1024 px/i }).click();
-  const resolutionBadgeText = (await desktop.locator('.grok-resolution-icon').first().innerText()).trim();
-  if (resolutionBadgeText !== '1024') throw new Error(`Resolution toolbar badge expected 1024, got ${resolutionBadgeText}`);
-  await shot(desktop, '05-create-hd-toolbar.png');
-
-  const advancedSettingsButton = desktop.getByRole('button', { name: 'Advanced settings' });
-  await advancedSettingsButton.click();
-  const settingsPanel = desktop.locator('.advanced-settings-shell');
-  await settingsPanel.waitFor({ state: 'visible' });
-  const settingsBox = await settingsPanel.boundingBox();
+  const advanced = desktop.locator('.saga-advanced-panel');
+  await advanced.waitFor({ state: 'visible' });
+  if (await advanced.locator('select').count()) throw new Error('Native select found inside advanced settings');
+  const panelBox = await advanced.boundingBox();
   const viewport = desktop.viewportSize();
-  if (!settingsBox || !viewport || settingsBox.x < 8 || settingsBox.y < 8 || settingsBox.x + settingsBox.width > viewport.width - 8 || settingsBox.y + settingsBox.height > viewport.height - 8) {
-    throw new Error(`Advanced settings panel is out of bounds: ${JSON.stringify(settingsBox)}`);
-  }
-  if (await settingsPanel.locator('select[aria-label="Steps"]').count()) throw new Error('Steps is still a preset select');
-  if (await settingsPanel.locator('select[aria-label="CFG"]').count()) throw new Error('CFG is still a preset select');
-  const stepsRange = settingsPanel.locator('input[type="range"][aria-label="Steps"]');
-  const cfgRange = settingsPanel.locator('input[type="range"][aria-label="CFG"]');
-  await stepsRange.fill('17');
-  await cfgRange.fill('2.7');
-  if (await stepsRange.inputValue() !== '17') throw new Error('Steps range did not accept a continuous value');
-  if (await cfgRange.inputValue() !== '2.7') throw new Error('CFG range did not accept a continuous value');
-  await shot(desktop, '06-create-advanced-settings-redesign.png');
-  await desktop.mouse.click(1320, 900);
-  await assertHidden(settingsPanel, 'Advanced settings');
+  if (!panelBox || !viewport || panelBox.x < 8 || panelBox.y < 8 || panelBox.x + panelBox.width > viewport.width - 8 || panelBox.y + panelBox.height > viewport.height - 8) throw new Error(`Advanced panel out of viewport: ${JSON.stringify(panelBox)}`);
+  await advanced.locator('input[aria-label="Steps value"]').fill('17');
+  await advanced.locator('input[aria-label="CFG value"]').fill('2.7');
+  await advanced.locator('input[aria-label="Seed"]').fill('12345');
+  const outputSelect = advanced.locator('.saga-advanced-top .saga-fancy-select').nth(1);
+  await outputSelect.locator(':scope > button').click();
+  await outputSelect.getByRole('option', { name: '2 outputs' }).click();
+  await outputSelect.locator(':scope > button').click();
+  await shot(desktop, '03-advanced-custom-dropdown.png');
+  await outputSelect.locator(':scope > button').click();
+  await settingsButton.click();
+  await expectHidden(advanced, 'Advanced settings');
 
-  await desktop.getByRole('button', { name: 'Edit', exact: true }).click();
-  await desktop.locator('.grok-auto-choice').waitFor({ state: 'visible' });
-  await assertCount(desktop.locator('.add-reference-tile'), 0, 'Redundant Add references tile');
-  await shot(desktop, '07-create-edit-empty.png');
+  // Video mode and all requested controls.
+  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
+  await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
+  const videoControls = desktop.locator('.saga-toolbar-left .saga-control-pill');
+  const videoResolutionTrigger = videoControls.nth(0);
+  const durationTrigger = videoControls.nth(1);
+  await videoResolutionTrigger.click();
+  const videoResolutionPicker = desktop.locator('.saga-picker').filter({ has: desktop.getByRole('menu', { name: 'Video resolution' }) });
+  await videoResolutionPicker.waitFor({ state: 'visible' });
+  for (const label of ['480p', '720p', '1080p', '2K', '4K']) await videoResolutionPicker.getByRole('menuitemradio', { name: new RegExp(label, 'i') }).waitFor({ state: 'visible' });
+  await videoResolutionPicker.getByRole('menuitemradio', { name: /4K/i }).click();
 
-  const uploadButton = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  await durationTrigger.click();
+  const durationPicker = desktop.locator('.saga-duration-picker');
+  await durationPicker.waitFor({ state: 'visible' });
+  const durationRange = durationPicker.locator('input[aria-label="Video duration"]');
+  if (await durationRange.getAttribute('min') !== '5' || await durationRange.getAttribute('max') !== '30') throw new Error('Video duration is not constrained to 5–30 seconds');
+  await durationRange.fill('23');
+  await desktop.locator('.saga-stage-heading').click();
+  await expectHidden(durationPicker, 'Duration picker');
+
+  const audioToggle = desktop.locator('.saga-audio-toggle');
+  if (!(await audioToggle.getAttribute('aria-pressed') === 'true')) throw new Error('Video audio should default on');
+  await audioToggle.click();
+  if (!(await audioToggle.getAttribute('aria-pressed') === 'false')) throw new Error('Video audio toggle did not turn off');
+  await shot(desktop, '04-video-controls.png');
+
+  // Reload proves settings persist remotely in the rendered application.
+  await desktop.reload({ waitUntil: 'domcontentloaded' });
+  await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
+  await desktop.waitForTimeout(250);
+  const selectedMode = desktop.locator('.saga-media-toggle button[aria-pressed="true"]');
+  await expectText(selectedMode, 'Video', 'Persisted media mode');
+  await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(0), '4K', 'Persisted video resolution');
+  await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(1), '23s', 'Persisted video duration');
+  await expectText(desktop.locator('.saga-audio-toggle'), 'Muted', 'Persisted audio state');
+
+  // Switch back to Image and verify image + advanced values also persisted.
+  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
+  await expectText(desktop.locator('.saga-resolution-trigger'), 'High', 'Persisted image resolution');
+  if ((await desktop.locator('.saga-resolution-badge').innerText()).trim() !== '1536') throw new Error('Persisted resolution badge is truncated');
+  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
+  await settingsButton.click();
+  await advanced.waitFor({ state: 'visible' });
+  if (await advanced.locator('input[aria-label="Steps value"]').inputValue() !== '17') throw new Error('Steps did not persist');
+  if (await advanced.locator('input[aria-label="CFG value"]').inputValue() !== '2.7') throw new Error('CFG did not persist');
+  if (await advanced.locator('input[aria-label="Seed"]').inputValue() !== '12345') throw new Error('Seed did not persist');
+  await settingsButton.click();
+
+  // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.
+  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
   const chooserPromise = desktop.waitForEvent('filechooser');
-  await uploadButton.click();
+  await upload.click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
-  await desktop.locator('.reference-tile').waitFor({ state: 'visible', timeout: 5_000 });
-  await assertCount(desktop.locator('.grok-plus-popover'), 0, 'Plus popover');
-  await assertCount(desktop.locator('.add-reference-tile'), 0, 'Add references tile after upload');
-  await shot(desktop, '08-create-edit-reference-uploaded.png');
+  const refChip = desktop.locator('.saga-reference-chip').first();
+  await refChip.waitFor({ state: 'visible', timeout: 5000 });
+  const richPrompt = desktop.locator('.saga-rich-prompt');
+  await richPrompt.click();
+  await richPrompt.pressSequentially('Put ');
+  await refChip.locator('.saga-reference-main').click();
+  await richPrompt.pressSequentially(' behind the subject');
+  const mention = richPrompt.locator('.mention-token');
+  if (await mention.count() !== 1) throw new Error('Reference click did not insert an inline prompt tag');
+  const promptText = (await richPrompt.innerText()).replace(/\s+/g, ' ').trim();
+  if (!/Put\s+Image 1\s+behind the subject/i.test(promptText)) throw new Error(`Reference tag was not inserted at the caret: ${promptText}`);
+  const autoToggle = desktop.locator('.saga-auto-toggle');
+  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not start enabled');
+  await autoToggle.click();
+  if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');
+  await autoToggle.click();
+  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');
+  await shot(desktop, '05-edit-inline-reference-and-auto.png');
 
-  await desktop.locator('.grok-resolution-button').click();
-  const editResolutionMenu = desktop.locator('.grok-resolution-popover');
-  await editResolutionMenu.waitFor({ state: 'visible' });
-  await shot(desktop, '10-create-edit-auto-resolution.png');
-  await desktop.mouse.click(1320, 900);
-  await assertHidden(editResolutionMenu, 'Edit resolution picker');
+  // More is a sidebar destination, and Create returns to the compact image composer.
+  await desktop.getByRole('button', { name: 'More', exact: true }).click();
+  await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });
+  await shot(desktop, '06-more-sidebar.png');
+  await desktop.getByRole('button', { name: 'Create', exact: true }).click();
+  await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
 
-  const mobile = await browser.newPage({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 1,
-    colorScheme: 'dark',
-  });
+  // Output wall has variable card sizes and hover-only actions.
+  const slots = desktop.locator('.saga-output-slot');
+  if (await slots.count() < 2) throw new Error('Output wall did not render sample outputs');
+  const firstBox = await slots.nth(0).boundingBox();
+  const secondBox = await slots.nth(1).boundingBox();
+  if (!firstBox || !secondBox || (Math.abs(firstBox.width - secondBox.width) < 4 && Math.abs(firstBox.height - secondBox.height) < 4)) throw new Error('Output wall cards are not using varied sizes');
+  const firstCard = slots.nth(0).locator('.media-card');
+  const cardActions = firstCard.locator('.card-actions');
+  const beforeOpacity = await cardActions.evaluate((el) => getComputedStyle(el).opacity);
+  if (Number(beforeOpacity) > 0.05) throw new Error(`Output actions should be hidden before hover, opacity=${beforeOpacity}`);
+  await firstCard.hover();
+  await desktop.waitForTimeout(220);
+  const afterOpacity = await cardActions.evaluate((el) => getComputedStyle(el).opacity);
+  if (Number(afterOpacity) < 0.9) throw new Error(`Output actions did not appear on hover, opacity=${afterOpacity}`);
+  await shot(desktop, '07-output-wall-hover.png');
+
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(mobile, 'mobile');
   await waitForStudio(mobile);
-  await shot(mobile, '11-create-mobile.png');
+  await shot(mobile, '08-mobile-create.png');
 
-  if (diagnostics.pageErrors.length) {
-    throw new Error(`Page errors detected: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
-  }
+  if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
 } finally {
   await writeFile(path.join(outputDir, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
   await browser.close();
