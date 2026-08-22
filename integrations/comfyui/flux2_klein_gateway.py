@@ -21,7 +21,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA FLUX.2 Klein Gateway", version="0.2.0")
+    api = FastAPI(title="SAGA FLUX.2 Klein Gateway", version="0.3.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -34,7 +34,7 @@ def web():
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -69,6 +69,7 @@ def web():
             "runtime_app": RUNTIME_APP_NAME,
             "runtime_class": RUNTIME_CLASS_NAME,
             "async_jobs": True,
+            "cancel_jobs": True,
         }
 
     @api.post("/jobs/edit")
@@ -103,6 +104,18 @@ def web():
             print({"event": "flux2_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"FLUX.2 runtime failed: {type(exc).__name__}: {exc}") from exc
         return Response(content=result, media_type="image/png")
+
+    @api.delete("/jobs/{call_id}")
+    async def cancel_edit(call_id: str):
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+            call.cancel(terminate_containers=False)
+            return {"status": "cancelled", "call_id": call_id}
+        except modal.exception.OutputExpiredError as exc:
+            raise HTTPException(status_code=410, detail="FLUX.2 job result expired") from exc
+        except Exception as exc:  # noqa: BLE001
+            print({"event": "flux2_gateway_cancel_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
+            raise HTTPException(status_code=502, detail=f"FLUX.2 runtime cancel failed: {type(exc).__name__}: {exc}") from exc
 
     @api.post("/edit")
     async def edit(
