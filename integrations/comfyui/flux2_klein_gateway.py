@@ -21,7 +21,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA FLUX.2 Klein Gateway", version="0.3.0")
+    api = FastAPI(title="SAGA FLUX.2 Klein Gateway", version="0.4.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -38,21 +38,21 @@ def web():
         allow_headers=["*"],
     )
 
-    def _validate_image(image_file, image_bytes, prompt):
+    def _validate_image(image_file, image_bytes, prompt, index=0):
+        label = f"Image {index + 1}"
         if not image_file.content_type or not image_file.content_type.startswith("image/"):
-            raise HTTPException(status_code=415, detail="image_file must be an image")
+            raise HTTPException(status_code=415, detail=f"{label} must be an image")
         if not image_bytes:
-            raise HTTPException(status_code=400, detail="image_file is empty")
+            raise HTTPException(status_code=400, detail=f"{label} is empty")
         if len(image_bytes) > 25 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="image_file must be 25 MB or smaller")
+            raise HTTPException(status_code=413, detail=f"{label} must be 25 MB or smaller")
         if not prompt.strip():
             raise HTTPException(status_code=400, detail="prompt is required")
 
-    def _worker_call(image_bytes, image_file, prompt, negative_prompt, seed, steps, cfg, megapixels):
+    def _worker_call(images, prompt, negative_prompt, seed, steps, cfg, megapixels):
         worker_cls = modal.Cls.from_name(RUNTIME_APP_NAME, RUNTIME_CLASS_NAME)
         return worker_cls().edit.spawn(
-            image_bytes=image_bytes,
-            filename=image_file.filename or "input.png",
+            images=images,
             prompt=prompt.strip(),
             negative_prompt=negative_prompt,
             seed=int(seed),
@@ -70,11 +70,12 @@ def web():
             "runtime_class": RUNTIME_CLASS_NAME,
             "async_jobs": True,
             "cancel_jobs": True,
+            "multiple_references": True,
         }
 
     @api.post("/jobs/edit")
     async def submit_edit(
-        image_file: UploadFile = File(...),
+        image_files: list[UploadFile] = File(...),
         prompt: str = Form(...),
         negative_prompt: str = Form(""),
         seed: int = Form(42),
@@ -82,11 +83,22 @@ def web():
         cfg: float = Form(1.0),
         megapixels: float = Form(0.5),
     ):
-        image_bytes = await image_file.read()
-        _validate_image(image_file, image_bytes, prompt)
+        if not image_files:
+            raise HTTPException(status_code=400, detail="at least one reference image is required")
+        images = []
+        for index, image_file in enumerate(image_files):
+            image_bytes = await image_file.read()
+            _validate_image(image_file, image_bytes, prompt, index)
+            images.append(
+                {
+                    "bytes": image_bytes,
+                    "filename": image_file.filename or f"input-{index + 1}.png",
+                    "content_type": image_file.content_type or "image/png",
+                }
+            )
         try:
-            call = _worker_call(image_bytes, image_file, prompt, negative_prompt, seed, steps, cfg, megapixels)
-            return {"status": "queued", "call_id": call.object_id}
+            call = _worker_call(images, prompt, negative_prompt, seed, steps, cfg, megapixels)
+            return {"status": "queued", "call_id": call.object_id, "reference_count": len(images)}
         except Exception as exc:  # noqa: BLE001
             print({"event": "flux2_gateway_spawn_failed", "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"FLUX.2 runtime submit failed: {type(exc).__name__}: {exc}") from exc
@@ -130,7 +142,15 @@ def web():
         image_bytes = await image_file.read()
         _validate_image(image_file, image_bytes, prompt)
         try:
-            call = _worker_call(image_bytes, image_file, prompt, negative_prompt, seed, steps, cfg, megapixels)
+            call = _worker_call(
+                [{"bytes": image_bytes, "filename": image_file.filename or "input.png", "content_type": image_file.content_type or "image/png"}],
+                prompt,
+                negative_prompt,
+                seed,
+                steps,
+                cfg,
+                megapixels,
+            )
             result = call.get()
         except Exception as exc:  # noqa: BLE001
             print({"event": "flux2_gateway_edit_failed", "error": repr(exc)}, flush=True)
