@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-// One-shot remote patch used by the PR visual iteration workflow.
+// Final one-shot remote patch used by the PR visual iteration workflow.
 const mainPath = 'src/main.jsx';
 let main = await readFile(mainPath, 'utf8');
 
