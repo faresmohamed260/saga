@@ -1,11 +1,6 @@
 name: Studio Media Actions Smoke
 
 on:
-  push:
-    branches:
-      - studio/media-actions-smoke
-    paths:
-      - .github/workflows/studio-media-actions-smoke.yml
   pull_request:
     branches:
       - main
@@ -21,18 +16,36 @@ jobs:
         run: |
           set -euo pipefail
           PROD="https://studio.faresuniform.uk"
-          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6K1sAAAAASUVORK5CYII=' | base64 -d > /tmp/saga-smoke.png
+          generation_id=""
 
-          upload_headers=/tmp/upload-headers.txt
+          cleanup() {
+            if [ -n "$generation_id" ]; then
+              echo "cleanup generation=$generation_id"
+              curl -sS -X DELETE "$PROD/api/generations?id=$generation_id" || true
+            fi
+          }
+          trap cleanup EXIT
+
+          python3 - <<'PY'
+          import struct, zlib
+          w = h = 32
+          raw = b''.join(b'\x00' + bytes([40, 90, 180, 255]) * w for _ in range(h))
+          def chunk(name, data):
+              return struct.pack('>I', len(data)) + name + data + struct.pack('>I', zlib.crc32(name + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+          open('/tmp/saga-smoke.png', 'wb').write(png)
+          PY
+
           upload_body=/tmp/upload.json
-          status=$(curl -sS -D "$upload_headers" -o "$upload_body" -w '%{http_code}' \
+          status=$(curl -sS -o "$upload_body" -w '%{http_code}' \
             -X POST "$PROD/api/media" \
             -H 'Content-Type: image/png' \
             -H 'X-Saga-Model: Smoke%20Test%20%C2%B7%20Media%20Actions' \
-            -H 'X-Saga-Resolution: 1%20px' \
+            -H 'X-Saga-Resolution: 32%20px' \
             -H 'X-Saga-Prompt: Disposable%20media%20actions%20smoke%20test' \
             -H 'X-Saga-Seed: 123456789' \
             --data-binary @/tmp/saga-smoke.png)
+          echo "upload_status=$status body=$(cat "$upload_body")"
           test "$status" = "201"
 
           generation_id=$(jq -r '.generationId // empty' "$upload_body")
@@ -44,25 +57,32 @@ jobs:
 
           original_before=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$original_path")
           thumb_before=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$thumbnail_path")
+          echo "before original=$original_before thumbnail=$thumb_before"
           test "$original_before" = "200"
           test "$thumb_before" = "200"
 
           download_headers=/tmp/download-headers.txt
           download_status=$(curl -sS -D "$download_headers" -o /tmp/downloaded.png -w '%{http_code}' "$PROD$original_path&download=1")
+          echo "download_status=$download_status"
           test "$download_status" = "200"
           grep -qi '^content-disposition: attachment;' "$download_headers"
 
           delete_body=/tmp/delete.json
           delete_status=$(curl -sS -o "$delete_body" -w '%{http_code}' -X DELETE "$PROD/api/generations?id=$generation_id")
+          echo "delete_status=$delete_status body=$(cat "$delete_body")"
           test "$delete_status" = "200"
           test "$(jq -r '.deleted' "$delete_body")" = "true"
 
           original_after=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$original_path")
           thumb_after=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$thumbnail_path")
+          echo "after original=$original_after thumbnail=$thumb_after"
           test "$original_after" = "404"
           test "$thumb_after" = "404"
 
           history=$(curl -sS "$PROD/api/history?limit=100&offset=0")
-          test "$(printf '%s' "$history" | jq --arg id "$generation_id" '[.items[] | select(.id == $id)] | length')" = "0"
+          remaining=$(printf '%s' "$history" | jq --arg id "$generation_id" '[.items[] | select(.id == $id)] | length')
+          echo "history_remaining=$remaining"
+          test "$remaining" = "0"
 
-          echo "Production media action smoke passed for disposable generation $generation_id"
+          generation_id=""
+          echo "Production media action smoke passed"
