@@ -13,6 +13,10 @@ function safeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
 }
 
+function safeTextArray(value, maxLength) {
+  return Array.isArray(value) ? value.map((item) => safeText(item, maxLength)).filter(Boolean) : [];
+}
+
 async function markCancelled(job) {
   const metadata = {
     ...(job.metadata && typeof job.metadata === 'object' ? job.metadata : {}),
@@ -80,26 +84,33 @@ export async function retryGenerationJob(id) {
   }
 
   const metadata = job.metadata && typeof job.metadata === 'object' ? job.metadata : {};
-  const sourceKey = safeText(metadata.sourceR2Key, 300);
-  if (workflow.requiresSourceImage && !isSourceKey(sourceKey)) {
-    const error = new Error('This job cannot be retried because its source input is unavailable');
+  let sourceKeys = safeTextArray(metadata.sourceR2Keys, 300);
+  const legacySourceKey = safeText(metadata.sourceR2Key, 300);
+  if (!sourceKeys.length && legacySourceKey) sourceKeys = [legacySourceKey];
+  if (workflow.requiresSourceImage && (!sourceKeys.length || sourceKeys.some((key) => !isSourceKey(key)))) {
+    const error = new Error('This job cannot be retried because one or more source inputs are unavailable');
     error.statusCode = 409;
     throw error;
   }
 
-  let sourceBytes = Buffer.alloc(0);
-  let sourceContentType = safeText(metadata.sourceContentType, 120) || 'application/octet-stream';
-  if (sourceKey) {
-    const source = await readSourceObject(sourceKey, workflow.limits.maxSourceBytes);
-    sourceBytes = source.bytes;
-    sourceContentType = source.contentType;
+  const sourceFilenames = safeTextArray(metadata.sourceFilenames, 240);
+  const sourceContentTypes = safeTextArray(metadata.sourceContentTypes, 120);
+  const sources = [];
+  for (let index = 0; index < sourceKeys.length; index += 1) {
+    const source = await readSourceObject(sourceKeys[index], workflow.limits.maxSourceBytes);
+    sources.push({
+      bytes: source.bytes,
+      contentType: source.contentType,
+      filename: sourceFilenames[index] || (index === 0 ? safeText(metadata.sourceFilename, 240) : '') || `input-${index + 1}.png`,
+      key: sourceKeys[index],
+    });
   }
 
   const execution = metadata.execution && typeof metadata.execution === 'object' ? metadata.execution : {};
   const steps = Number.isFinite(Number(execution.steps)) ? Number(execution.steps) : workflow.defaults.steps;
   const cfg = Number.isFinite(Number(execution.cfg)) ? Number(execution.cfg) : workflow.defaults.cfg;
   const megapixels = Number.isFinite(Number(execution.megapixels)) ? Number(execution.megapixels) : workflow.defaults.megapixels;
-  const sourceFilename = safeText(metadata.sourceFilename, 240) || 'input.png';
+  const primary = sources[0] || { bytes: Buffer.alloc(0), contentType: safeText(metadata.sourceContentType, 120) || 'application/octet-stream', filename: safeText(metadata.sourceFilename, 240) || 'input.png' };
 
   let retry = await createGenerationJob({
     kind: workflow.kind,
@@ -112,10 +123,16 @@ export async function retryGenerationJob(id) {
     workflowId: workflow.id,
     provider: workflow.provider,
     metadata: {
-      inputTransport: sourceKey ? 'r2' : metadata.inputTransport || 'inline',
-      sourceR2Key: sourceKey || null,
-      sourceContentType,
-      sourceFilename,
+      inputTransport: sourceKeys.length ? 'r2' : metadata.inputTransport || 'inline',
+      sourceR2Key: sourceKeys[0] || null,
+      sourceR2Keys: sourceKeys,
+      sourceContentType: primary.contentType,
+      sourceContentTypes: sources.map((source) => source.contentType),
+      sourceFilename: primary.filename,
+      sourceFilenames: sources.map((source) => source.filename),
+      referenceCount: sources.length,
+      primaryReferenceIndex: sources.length ? 0 : null,
+      automaticOutputSize: Boolean(workflow.automaticOutputSize),
       execution: { steps, cfg, megapixels },
       retryOf: job.id,
     },
@@ -123,11 +140,15 @@ export async function retryGenerationJob(id) {
 
   try {
     retry = await transitionGenerationJob(retry.id, 'running');
+    const retryPrompt = sources.length > 1
+      ? `Reference images are numbered in upload order from Image 1 through Image ${sources.length}. Image 1 is the primary canvas that determines output shape.\n\n${job.prompt}`
+      : job.prompt;
     const submitted = await submitWorkflow(workflow, {
-      sourceBytes,
-      sourceContentType,
-      sourceFilename,
-      prompt: job.prompt,
+      sources,
+      sourceBytes: primary.bytes,
+      sourceContentType: primary.contentType,
+      sourceFilename: primary.filename,
+      prompt: retryPrompt,
       negativePrompt: job.negative_prompt,
       seed: job.seed,
       steps,

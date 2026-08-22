@@ -21,9 +21,12 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
-function sourceKeyFromMetadata(metadata) {
-  const key = metadata && typeof metadata === 'object' ? String(metadata.sourceR2Key || '') : '';
-  return key.startsWith('sources/') ? key : '';
+function sourceKeysFromMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const keys = [];
+  if (Array.isArray(metadata.sourceR2Keys)) keys.push(...metadata.sourceR2Keys);
+  if (metadata.sourceR2Key) keys.push(metadata.sourceR2Key);
+  return [...new Set(keys.map((key) => String(key || '').trim()).filter((key) => key.startsWith('sources/')))];
 }
 
 export default async function handler(req, res) {
@@ -43,7 +46,7 @@ export default async function handler(req, res) {
     const generation = Array.isArray(rows) ? rows[0] : null;
     if (!generation) return res.status(404).json({ error: 'Generation not found' });
 
-    const keys = [generation.r2_key, generation.thumbnail_r2_key, sourceKeyFromMetadata(generation.metadata)].filter(Boolean);
+    const keys = [generation.r2_key, generation.thumbnail_r2_key, ...sourceKeysFromMetadata(generation.metadata)].filter(Boolean);
     const failures = [];
     for (const key of [...new Set(keys)]) {
       try {

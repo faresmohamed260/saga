@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  WandSparkles, History, Heart, Folder, Box, Workflow, Settings, Image as ImageIcon,
-  Video, Crop, Grid2X2, Plus, X, SlidersHorizontal, Sparkles, RefreshCcw, Pencil,
-  ArrowUpRight, MoreHorizontal, ChevronDown, RotateCcw, Dice5, Palette, ImagePlus,
-  Menu, ChevronLeft, Maximize2, LoaderCircle, Trash2, Download
+  WandSparkles, History, Heart, Folder, Box, Workflow, Settings,
+  Plus, X, SlidersHorizontal, Sparkles, RefreshCcw, Pencil,
+  ArrowUpRight, ChevronDown, RotateCcw, Menu, ChevronLeft,
+  Maximize2, LoaderCircle, Trash2, Download, Video
 } from 'lucide-react';
 import { runImageEdit } from './generation-client.js';
+import CreateWorkspace from './create-controls.jsx';
 import './styles.css';
+import './create-controls.css';
 
 const HISTORY_PAGE_SIZE = 24;
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', History: 'history', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
@@ -28,11 +30,6 @@ const samples = [
 
 const navPrimary = [[WandSparkles, 'Create'], [LoaderCircle, 'Jobs'], [History, 'History'], [Heart, 'Favorites'], [Folder, 'Collections']];
 const navSecondary = [[Box, 'Models'], [Workflow, 'Workflows']];
-const editQualityOptions = [
-  { value: '0.25', label: 'Draft', detail: '0.25 MP' },
-  { value: '0.5', label: 'Balanced', detail: '0.5 MP' },
-  { value: '1.0', label: 'Quality', detail: '1.0 MP' },
-];
 
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
 function formatJobTime(value) {
@@ -63,6 +60,34 @@ function toHistoryItem(row) {
   };
 }
 
+function imageDimensions(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 }); URL.revokeObjectURL(url); };
+    image.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url); };
+    image.src = url;
+  });
+}
+
+function autoReferenceSizing(reference) {
+  const width = Number(reference?.width) || 0;
+  const height = Number(reference?.height) || 0;
+  if (!width || !height) return { megapixels: 1, detail: 'Auto from primary reference', ratioLabel: 'Uses Image 1 as the output canvas' };
+  const nativeMp = (width * height) / 1_000_000;
+  const megapixels = Math.max(0.25, Math.min(4, Math.round(nativeMp * 100) / 100));
+  const scale = Math.sqrt((megapixels * 1_000_000) / (width * height));
+  const targetWidth = Math.max(64, Math.round((width * scale) / 16) * 16);
+  const targetHeight = Math.max(64, Math.round((height * scale) / 16) * 16);
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const divisor = gcd(width, height) || 1;
+  return {
+    megapixels,
+    detail: `≈ ${targetWidth} × ${targetHeight} · ${megapixels.toFixed(2)} MP`,
+    ratioLabel: `${Math.round(width / divisor)}:${Math.round(height / divisor)} from Image 1`,
+  };
+}
+
 function NavItem({ icon: Icon, label, active, onClick }) {
   return <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>;
 }
@@ -72,6 +97,7 @@ function App() {
   const [mode, setMode] = useState('Image');
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
+  const [imageResolution, setImageResolution] = useState(1024);
   const [outputs, setOutputs] = useState(4);
   const [advanced, setAdvanced] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
@@ -84,7 +110,11 @@ function App() {
   const [jobsError, setJobsError] = useState('');
   const [jobActionBusy, setJobActionBusy] = useState('');
   const [seed, setSeed] = useState('42');
-  const [editMegapixels, setEditMegapixels] = useState('1.0');
+  const [steps, setSteps] = useState(30);
+  const [cfg, setCfg] = useState(7);
+  const [workflowId, setWorkflowId] = useState('default-image');
+  const [modelId, setModelId] = useState('saga-image-auto');
+  const [references, setReferences] = useState([]);
   const [favorites, setFavorites] = useState(new Set());
   const [favoriteItems, setFavoriteItems] = useState([]);
   const [items, setItems] = useState(samples);
@@ -102,21 +132,18 @@ function App() {
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [collectionItems, setCollectionItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
-  const [sourceFile, setSourceFile] = useState(null);
-  const [sourcePreview, setSourcePreview] = useState('');
   const [error, setError] = useState('');
-  const fileInputRef = useRef(null);
 
-  const visibleItems = useMemo(() => items.slice(0, outputs), [items, outputs]);
+  const visibleItems = useMemo(() => items.slice(0, mode === 'Edit' ? 4 : outputs), [items, outputs, mode]);
   const isEdit = mode === 'Edit';
-  const activeEditQuality = editQualityOptions.find((option) => option.value === editMegapixels) || editQualityOptions[2];
+  const autoEditInfo = useMemo(() => autoReferenceSizing(references[0]), [references]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const expectedHash = `#/${SECTION_HASHES[section] || 'create'}`;
     if (window.location.hash !== expectedHash) window.history.replaceState(null, '', expectedHash);
   }, [section]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const syncSectionFromHash = () => setSection(sectionFromLocation());
     window.addEventListener('hashchange', syncSectionFromHash);
     return () => window.removeEventListener('hashchange', syncSectionFromHash);
@@ -159,7 +186,7 @@ function App() {
     }
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (section !== 'Jobs') return undefined;
     loadJobs({ filter: jobsFilter });
     const timer = window.setInterval(() => loadJobs({ silent: true, filter: jobsFilter }), 3000);
@@ -234,46 +261,48 @@ function App() {
     finally { setLibraryLoading(false); }
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (section === 'History') loadHistory({ append: false, kind: historyKind, model: historyModel });
     if (section === 'Favorites') loadFavorites();
     if (section === 'Collections') { setSelectedCollection(null); setCollectionItems([]); loadCollections(); }
   }, [section, historyKind, historyModel]);
 
-  const chooseSource = () => fileInputRef.current?.click();
-  const onSourceChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return setError('Please choose an image file.');
-    if (file.size > 25 * 1024 * 1024) return setError('Reference image must be 25 MB or smaller.');
-    if (sourcePreview) URL.revokeObjectURL(sourcePreview);
-    setSourceFile(file); setSourcePreview(URL.createObjectURL(file)); setError(''); setMode('Edit');
+  const addReferences = async (files) => {
+    const valid = [];
+    for (const file of files) {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError('References must be PNG, JPEG, or WebP images.'); continue; }
+      if (file.size > 25 * 1024 * 1024) { setError(`${file.name} is larger than 25 MB.`); continue; }
+      const dimensions = await imageDimensions(file);
+      valid.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file, preview: URL.createObjectURL(file), ...dimensions });
+    }
+    if (valid.length) { setReferences((current) => [...current, ...valid]); setMode('Edit'); setError(''); }
   };
-  const clearSource = () => {
-    if (sourcePreview) URL.revokeObjectURL(sourcePreview);
-    setSourcePreview(''); setSourceFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+
+  const removeReference = (index) => {
+    setReferences((current) => {
+      const target = current[index];
+      if (target?.preview) URL.revokeObjectURL(target.preview);
+      return current.filter((_, itemIndex) => itemIndex !== index);
+    });
   };
 
   const runFluxEdit = async () => {
-    if (!sourceFile) throw new Error('Add a source image before running an edit.');
+    if (!references.length) throw new Error('Add at least one reference image before running an edit.');
     if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
     const effectiveSeed = Number(seed) || 42;
     const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
     setJobStatus('queued');
 
     const { job, result } = await runImageEdit({
-      sourceFile,
+      sourceFiles: references.map((reference) => reference.file),
       prompt: prompt.trim(),
       negativePrompt: '',
-      resolution: activeEditQuality.detail,
+      resolution: autoEditInfo.detail,
       seed: effectiveSeed,
-      steps: 4,
-      cfg: 1.0,
-      megapixels: Number(editMegapixels),
-    }, {
-      onStatus: setJobStatus,
-    });
+      steps,
+      cfg,
+      megapixels: autoEditInfo.megapixels,
+    }, { onStatus: setJobStatus });
 
     setJobStatus('completed');
     const item = {
@@ -284,7 +313,7 @@ function App() {
       thumbnailUrl: result.thumbnailUrl || null,
       generated: true,
       model,
-      resolution: activeEditQuality.detail,
+      resolution: autoEditInfo.detail,
       seed: effectiveSeed,
       kind: 'image',
       mode: 'edit',
@@ -299,7 +328,9 @@ function App() {
     setBusy(true); setError(''); setJobStatus('');
     try {
       if (isEdit) await runFluxEdit();
-      else { await new Promise((resolve) => window.setTimeout(resolve, 700)); setItems((prev) => [prev[1], prev[3], prev[0], prev[2]]); }
+      else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
+      else if (mode === 'Video') throw new Error('Video generation is the next workflow milestone and is not connected yet.');
+      else throw new Error('Choose Image, Video, or Edit to generate media.');
     } catch (err) {
       setJobStatus('failed');
       setError(err instanceof Error ? err.message : 'Generation failed.');
@@ -375,9 +406,9 @@ function App() {
   const reuseSettings = (item) => {
     setPrompt(item.title || '');
     if (item.seed != null) setSeed(String(item.seed));
-    const quality = editQualityOptions.find((option) => option.detail === item.resolution);
-    if (quality) setEditMegapixels(quality.value);
-    setMode(item.kind === 'video' ? 'Video' : item.mode === 'edit' ? 'Edit' : 'Image');
+    if (item.kind === 'video') setMode('Video');
+    else if (item.mode === 'edit') { setMode('Edit'); setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); }
+    else setMode('Image');
     setSection('Create');
     setError('');
   };
@@ -391,15 +422,14 @@ function App() {
       if (!response.ok) throw new Error(`Media request failed (${response.status})`);
       const blob = await response.blob();
       if (!blob.type.startsWith('image/')) throw new Error('Selected media is not an image.');
-      if (sourcePreview) URL.revokeObjectURL(sourcePreview);
       const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
       const file = new File([blob], `saga-edit-${item.id}.${extension}`, { type: blob.type || 'image/png' });
-      setSourceFile(file);
-      setSourcePreview(URL.createObjectURL(blob));
+      const dimensions = await imageDimensions(file);
+      references.forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
+      setReferences([{ id: `history-${item.id}-${Date.now()}`, file, preview: URL.createObjectURL(blob), ...dimensions }]);
       setPrompt('');
       if (item.seed != null) setSeed(String(item.seed));
-      const quality = editQualityOptions.find((option) => option.detail === item.resolution);
-      if (quality) setEditMegapixels(quality.value);
+      setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b');
       setMode('Edit');
       setSection('Create');
       setError('');
@@ -422,7 +452,7 @@ function App() {
 
   const deleteGeneration = async (item) => {
     if (!item.persisted || !isUuid(item.id)) return window.alert('Only persisted generations can be deleted.');
-    if (!window.confirm('Permanently delete this generation? This removes the original, thumbnail, favorites, and collection memberships.')) return;
+    if (!window.confirm('Permanently delete this generation? This removes the original, thumbnail, favorites, collection memberships, and retained source references.')) return;
     try {
       const response = await fetch(`/api/generations?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
       if (!response.ok) {
@@ -451,7 +481,7 @@ function App() {
         <div className="media-hover"><button aria-label="Open full media"><Maximize2 size={18}/></button></div>
       </div>
       {history && <div className="history-copy"><div className="history-prompt">{item.title}</div><div className="history-meta"><span>{item.model || 'Unknown model'}</span>{item.seed != null && <span>Seed {item.seed}</span>}</div></div>}
-      <div className="card-actions" style={{gridTemplateColumns:'repeat(7,1fr)'}}>
+      <div className="card-actions" style={{ gridTemplateColumns: 'repeat(7,1fr)' }}>
         <button title="Favorite" className={favorites.has(item.id) ? 'favorite active' : 'favorite'} onClick={() => toggleFavorite(item)}><Heart size={19} fill={favorites.has(item.id) ? 'currentColor' : 'none'}/></button>
         <button title="Reuse settings" onClick={() => reuseSettings(item)}><RefreshCcw size={18}/></button>
         <button title="Edit this" onClick={() => editThis(item)}><Pencil size={18}/></button>
@@ -467,12 +497,11 @@ function App() {
 
   return (
     <div className="app-shell">
-      <input ref={fileInputRef} type="file" accept="image/*" onChange={onSourceChange} style={{display:'none'}} />
       <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
         <div className="brand-row"><div className="brand-mark">S</div><div className="brand-text">SAGA <span>Studio</span></div><button className="mobile-close" onClick={() => setMobileNav(false)}><ChevronLeft size={19}/></button></div>
-        <nav className="nav-group primary-nav">{navPrimary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label} onClick={() => {setSection(label); setMobileNav(false);}} />)}</nav>
+        <nav className="nav-group primary-nav">{navPrimary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label} onClick={() => { setSection(label); setMobileNav(false); }} />)}</nav>
         <div className="nav-divider" />
-        <nav className="nav-group">{navSecondary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label} onClick={() => {setSection(label); setMobileNav(false);}} />)}</nav>
+        <nav className="nav-group">{navSecondary.map(([Icon, label]) => <NavItem key={label} icon={Icon} label={label} active={section === label} onClick={() => { setSection(label); setMobileNav(false); }} />)}</nav>
         <div className="nav-divider" /><NavItem icon={Settings} label="Settings" active={section === 'Settings'} onClick={() => setSection('Settings')} />
         <div className="profile-card"><div className="avatar-orb"/><div className="profile-copy"><div className="profile-name">Saga Creator <span className="pro-badge">Studio</span></div><div className="profile-email">FLUX.2 online</div></div><ChevronDown size={16}/></div>
       </aside>
@@ -482,16 +511,16 @@ function App() {
 
         {section === 'Jobs' ? <section className="history-view">
           {renderLibraryHeader('Execution', 'Jobs & queue', 'Live generation lifecycle. This page polls while open; completed media stays in History.', <button className="secondary-button" onClick={() => loadJobs({ filter: jobsFilter })} disabled={jobsLoading}>{jobsLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>)}
-          <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Job status filter">{[['active','Active'],['queued','Queued'],['running','Running'],['failed','Failed'],['completed','Completed'],['all','Recent']].map(([value,label]) => <button key={value} className={jobsFilter === value ? 'selected' : ''} onClick={() => setJobsFilter(value)}>{label}</button>)}</div></div>
+          <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Job status filter">{[['active', 'Active'], ['queued', 'Queued'], ['running', 'Running'], ['failed', 'Failed'], ['completed', 'Completed'], ['all', 'Recent']].map(([value, label]) => <button key={value} className={jobsFilter === value ? 'selected' : ''} onClick={() => setJobsFilter(value)}>{label}</button>)}</div></div>
           {jobsError && <div className="history-state error">{jobsError}</div>}
-          {jobsLoading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <div style={{display:'grid',gap:12}}>{jobs.map((job) => {
+          {jobsLoading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <div style={{ display: 'grid', gap: 12 }}>{jobs.map((job) => {
             const cancelled = Boolean(job.metadata?.cancelled);
             const actionBusy = jobActionBusy === job.id;
-            return <article key={job.id} style={{border:'1px solid rgba(255,255,255,.08)',borderRadius:14,background:'rgba(255,255,255,.025)',padding:'16px 18px',display:'grid',gap:10}}><div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}><div style={{display:'flex',gap:10,alignItems:'center',minWidth:0}}><span style={{textTransform:'uppercase',fontSize:11,fontWeight:700,letterSpacing:'.08em',padding:'5px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.14)',opacity:job.status === 'failed' ? 1 : .8}}>{cancelled ? 'cancelled' : job.status}</span><strong style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{job.prompt || 'Untitled job'}</strong></div><span style={{fontSize:12,color:'#7f8999'}}>{formatJobTime(job.created_at)}</span></div><div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:'#8f98a8'}}><span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span><span>{job.provider || 'provider n/a'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}</div><div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:'#687284'}}><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span></div>{job.error_message && <div style={{padding:'10px 12px',borderRadius:9,background:'rgba(120,20,35,.14)',border:'1px solid rgba(255,100,120,.25)',color:'#ffb4c0',fontSize:12}}>{job.error_message}</div>}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>{['queued','running'].includes(job.status) && <button className="secondary-button" disabled={actionBusy} onClick={() => runJobAction(job, 'cancel')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <X size={16}/>} Cancel</button>}{job.status === 'failed' && <button className="secondary-button" disabled={actionBusy} onClick={() => runJobAction(job, 'retry')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <RotateCcw size={16}/>} Retry</button>}</div></article>;
+            return <article key={job.id} style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, background: 'rgba(255,255,255,.025)', padding: '16px 18px', display: 'grid', gap: 10 }}><div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}><div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}><span style={{ textTransform: 'uppercase', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', padding: '5px 8px', borderRadius: 999, border: '1px solid rgba(255,255,255,.14)', opacity: job.status === 'failed' ? 1 : .8 }}>{cancelled ? 'cancelled' : job.status}</span><strong style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.prompt || 'Untitled job'}</strong></div><span style={{ fontSize: 12, color: '#7f8999' }}>{formatJobTime(job.created_at)}</span></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#8f98a8' }}><span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span><span>{job.provider || 'provider n/a'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}</div><div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: '#687284' }}><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span></div>{job.error_message && <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(120,20,35,.14)', border: '1px solid rgba(255,100,120,.25)', color: '#ffb4c0', fontSize: 12 }}>{job.error_message}</div>}<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>{['queued', 'running'].includes(job.status) && <button className="secondary-button" disabled={actionBusy} onClick={() => runJobAction(job, 'cancel')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <X size={16}/>} Cancel</button>}{job.status === 'failed' && <button className="secondary-button" disabled={actionBusy} onClick={() => runJobAction(job, 'retry')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <RotateCcw size={16}/>} Retry</button>}</div></article>;
           })}</div>}
         </section> : section === 'History' ? <section className="history-view">
           {renderLibraryHeader('Library', 'Generation history', 'Thumbnail-first previews. Originals load only when you open an item.', <button className="secondary-button" onClick={() => loadHistory({ append: false })} disabled={historyLoading}>{historyLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>)}
-          <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Media type filter">{[['all','All'],['image','Images'],['video','Videos']].map(([value,label]) => <button key={value} className={historyKind === value ? 'selected' : ''} onClick={() => setHistoryKind(value)}>{label}</button>)}</div><label className="history-model-filter"><span>Model</span><select value={historyModel} onChange={(event) => setHistoryModel(event.target.value)}><option value="all">All models</option>{historyModels.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label></div>
+          <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Media type filter">{[['all', 'All'], ['image', 'Images'], ['video', 'Videos']].map(([value, label]) => <button key={value} className={historyKind === value ? 'selected' : ''} onClick={() => setHistoryKind(value)}>{label}</button>)}</div><label className="history-model-filter"><span>Model</span><select value={historyModel} onChange={(event) => setHistoryModel(event.target.value)}><option value="all">All models</option>{historyModels.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label></div>
           {historyError && <div className="history-state error">{historyError}</div>}
           {historyLoading && historyItems.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading history…</div> : historyItems.length === 0 ? <div className="history-state">No generations match these filters.</div> : <><section className="gallery-grid history-grid">{historyItems.map((item) => renderCard(item, true))}</section>{historyPage.hasMore && <div className="history-load-more"><button className="secondary-button" onClick={() => loadHistory({ append: true })} disabled={historyAppending}>{historyAppending ? <LoaderCircle className="spin" size={18}/> : <Plus size={18}/>} {historyAppending ? 'Loading…' : 'Load more'}</button></div>}</>}
         </section> : section === 'Favorites' ? <section className="history-view">
@@ -501,19 +530,28 @@ function App() {
         </section> : section === 'Collections' ? <section className="history-view">
           {renderLibraryHeader('Library', selectedCollection ? selectedCollection.name : 'Collections', selectedCollection ? `${collectionItems.length} saved item${collectionItems.length === 1 ? '' : 's'}` : 'Organize persisted generations into reusable groups.', selectedCollection ? <button className="secondary-button" onClick={() => { setSelectedCollection(null); setCollectionItems([]); }}><ChevronLeft size={18}/> All collections</button> : <button className="secondary-button" onClick={createCollection}><Plus size={18}/> New collection</button>)}
           {libraryError && <div className="history-state error">{libraryError}</div>}
-          {selectedCollection ? (libraryLoading && collectionItems.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading collection…</div> : collectionItems.length === 0 ? <div className="history-state">This collection is empty. Add items from History or Favorites.</div> : <section className="gallery-grid history-grid">{collectionItems.map((item) => renderCard(item, true, true))}</section>) : (libraryLoading && collections.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading collections…</div> : collections.length === 0 ? <div className="history-state">No collections yet.</div> : <div className="collection-grid">{collections.map((collection) => <article className="collection-card" key={collection.id}><button className="collection-cover" style={collection.coverUrl ? {backgroundImage:`url(${collection.coverUrl})`} : undefined} onClick={() => loadCollectionItems(collection)}>{!collection.coverUrl && <Folder size={34}/>}</button><div className="collection-copy"><button className="collection-title" onClick={() => loadCollectionItems(collection)}>{collection.name}</button><span>{collection.itemCount || 0} items</span></div><div className="collection-actions"><button onClick={() => renameCollection(collection)}><Pencil size={16}/></button><button onClick={() => deleteCollection(collection)}><Trash2 size={16}/></button></div></article>)}</div>)}
-        </section> : <>
-          <div className="mode-tabs">{[[ImageIcon,'Image'],[Video,'Video'],[Crop,'Edit'],[Grid2X2,'More']].map(([Icon,label]) => <button className={`mode-tab ${mode===label?'selected':''}`} key={label} onClick={() => {setMode(label); setError('');}}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>)}</div>
-          <section className="composer-panel"><div className="chip-row">{isEdit ? (sourcePreview ? <div className="ref-chip"><div className="chip-thumb" style={{backgroundImage:`url(${sourcePreview})`}}/><div><strong>Source image</strong><span>{sourceFile?.name}</span></div><button onClick={clearSource} style={{background:'transparent',border:0,color:'inherit',cursor:'pointer'}}><X size={16}/></button></div> : <button className="add-chip" onClick={chooseSource} title="Add source image"><Plus size={22}/></button>) : <><div className="ref-chip"><div className="chip-thumb forest"/><div><strong>Reference</strong><span>forest_mood.png</span></div><X size={16}/></div><div className="ref-chip"><div className="chip-thumb style"/><div><strong>Style</strong><span>Cinematic Teal & Orange</span></div><X size={16}/></div><button className="add-chip"><Plus size={22}/></button></>}</div><textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder={mode==='Video'?'Describe the motion, scene, and camera movement...':isEdit?'Describe what you want FLUX.2 Klein to change...':'Describe what you want to create...'} maxLength={2000}/><div className="composer-footer"><span>{prompt.length} / 2000</span><Sparkles size={18}/></div></section>
-          {error && <div style={{marginTop:12,padding:'12px 14px',border:'1px solid rgba(255,100,120,.35)',borderRadius:10,background:'rgba(120,20,35,.14)',color:'#ffb4c0',fontSize:13}}>{error}</div>}
-          {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>{jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps · {activeEditQuality.detail}</div>}
-          <div className="action-row"><div className="attach-actions"><button className="secondary-button" onClick={chooseSource}><ImagePlus size={18}/>{isEdit ? (sourceFile?'Replace source':'Source image') : 'Reference'}</button><button className="secondary-button"><Palette size={18}/> Style</button></div><div className="generate-actions"><button className="square-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={19}/></button><button className={`generate-button ${busy?'busy':''}`} onClick={generate} disabled={busy}><Sparkles size={18}/>{busy ? (isEdit?(jobStatus === 'queued' ? 'Queued…' : 'Editing…'):'Generating…') : (isEdit?'Edit image':'Generate')}</button></div></div>
-          <section className="gallery-grid">{visibleItems.map((item) => renderCard(item, false))}</section>
-        </>}
+          {selectedCollection ? (libraryLoading && collectionItems.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading collection…</div> : collectionItems.length === 0 ? <div className="history-state">This collection is empty. Add items from History or Favorites.</div> : <section className="gallery-grid history-grid">{collectionItems.map((item) => renderCard(item, true, true))}</section>) : (libraryLoading && collections.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading collections…</div> : collections.length === 0 ? <div className="history-state">No collections yet.</div> : <div className="collection-grid">{collections.map((collection) => <article className="collection-card" key={collection.id}><button className="collection-cover" style={collection.coverUrl ? { backgroundImage: `url(${collection.coverUrl})` } : undefined} onClick={() => loadCollectionItems(collection)}>{!collection.coverUrl && <Folder size={34}/>}</button><div className="collection-copy"><button className="collection-title" onClick={() => loadCollectionItems(collection)}>{collection.name}</button><span>{collection.itemCount || 0} items</span></div><div className="collection-actions"><button onClick={() => renameCollection(collection)}><Pencil size={16}/></button><button onClick={() => deleteCollection(collection)}><Trash2 size={16}/></button></div></article>)}</div>)}
+        </section> : section === 'Models' ? <section className="history-view">
+          {renderLibraryHeader('Studio', 'Models', 'Models exposed to the generation registry. Only live backends are selectable in production.')}
+          <div className="collection-grid"><article className="collection-card" style={{ padding: 18 }}><div className="history-eyebrow">LIVE</div><h3 style={{ margin: '8px 0' }}>FLUX.2 Klein 9B · DarkBeast V2 BFS</h3><p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>Image editing with automatic output sizing and multi-reference conditioning.</p></article><article className="collection-card" style={{ padding: 18 }}><div className="history-eyebrow">PLANNED</div><h3 style={{ margin: '8px 0' }}>SAGA Image</h3><p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>Original image generation UI presets are ready; the production workflow will be connected separately.</p></article></div>
+        </section> : section === 'Workflows' ? <section className="history-view">
+          {renderLibraryHeader('Studio', 'Workflows', 'Registered generation paths and their current capabilities.')}
+          <div className="collection-grid"><article className="collection-card" style={{ padding: 18 }}><div className="history-eyebrow">LIVE</div><h3 style={{ margin: '8px 0' }}>Klein Multi-Reference Edit</h3><p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>Direct R2 inputs → Studio orchestration → Modal / ComfyUI → persisted R2 result and thumbnail.</p></article></div>
+        </section> : section === 'Settings' ? <section className="history-view">
+          {renderLibraryHeader('Studio', 'Settings', 'Generation settings live beside the composer so they stay contextual to the selected workflow.', <button className="secondary-button" onClick={() => { setSection('Create'); setSettingsOpen(true); }}><SlidersHorizontal size={18}/> Open generation settings</button>)}
+          <div className="history-state">Use the settings panel to control model, aspect ratio, resolution, seed, steps, CFG, and workflow.</div>
+        </section> : <CreateWorkspace
+          mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else { setSteps(30); setCfg(7); setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
+          prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
+          error={error} jobStatus={jobStatus} busy={busy} onGenerate={generate} items={visibleItems} renderCard={renderCard}
+          aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
+          outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
+          seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
+          workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
+          settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} autoEditInfo={autoEditInfo}
+        />}
       </main>
 
-      <aside className={`settings-panel ${settingsOpen?'open':''}`}><div className="settings-header"><h2>Settings</h2><button className="square-button" onClick={() => setSettingsOpen(false)}><SlidersHorizontal size={18}/></button></div><label className="field-label">Model</label><button className="select-box"><span><Sparkles size={16}/>{isEdit?'FLUX.2 Klein 9B':'SAGA Image'}</span><span className="auto-pill">{isEdit?'LIVE':'AUTO'}</span><ChevronDown size={16}/></button><label className="field-label">Aspect Ratio</label><div className="aspect-grid">{['1:1','16:9','9:16','4:3'].map((ratio)=><button key={ratio} onClick={()=>setAspect(ratio)} className={aspect===ratio?'selected':''}><span className={`ratio-icon ratio-${ratio.replace(':','-')}`}/>{ratio}</button>)}</div><label className="field-label">Resolution</label>{isEdit ? <div className="output-grid">{editQualityOptions.map((option)=><button key={option.value} onClick={()=>setEditMegapixels(option.value)} className={editMegapixels===option.value?'selected':''} title={option.detail}>{option.label}</button>)}</div> : <button className="select-box"><span>{`1024 × 1024 (${aspect})`}</span><ChevronDown size={16}/></button>}{isEdit && <div style={{marginTop:8,color:'#7f8999',fontSize:11}}>Draft 0.25 MP · Balanced 0.5 MP · Quality 1.0 MP</div>}<label className="field-label">Outputs</label><div className="output-grid">{[1,2,4].map((count)=><button key={count} onClick={()=>setOutputs(count)} className={outputs===count?'selected':''}>{count}</button>)}</div><div className="settings-divider"/><button className="advanced-toggle" onClick={()=>setAdvanced(!advanced)}><span>Advanced</span><ChevronDown className={advanced?'rotated':''} size={17}/></button>{advanced && <div className="advanced-fields"><div className="inline-field"><label>Seed</label><div className="input-box"><input value={seed} onChange={(e)=>setSeed(e.target.value)}/><button onClick={()=>setSeed(String(Math.floor(Math.random()*999999999)))}><Dice5 size={17}/></button></div></div><div className="inline-field"><label>Steps</label><button className="compact-select">{isEdit?'4':'30'} <ChevronDown size={15}/></button></div><div className="inline-field"><label>CFG</label><button className="compact-select">{isEdit?'1.0':'7.0'} <ChevronDown size={15}/></button></div><div className="inline-field"><label>Workflow</label><button className="compact-select">{isEdit?'Klein Edit':'Default'} <ChevronDown size={15}/></button></div></div>}<button className="reset-button" onClick={()=>{setAspect('1:1');setOutputs(4);setSeed('42');setEditMegapixels('1.0');}}><RotateCcw size={18}/> Reset to Defaults</button></aside>
-      {settingsOpen && <div className="panel-scrim" onClick={()=>setSettingsOpen(false)}/>} 
       {selectedMedia && <div className="media-modal" onClick={() => setSelectedMedia(null)}><div className="media-modal-card" onClick={(event) => event.stopPropagation()}><button className="media-modal-close" onClick={() => setSelectedMedia(null)}><X size={20}/></button>{selectedMedia.kind === 'video' ? <video src={selectedMedia.originalUrl} poster={selectedMedia.thumbnailUrl || undefined} controls playsInline /> : <img src={selectedMedia.originalUrl || selectedMedia.url} alt={selectedMedia.title || 'Generated image'} />}<div className="media-modal-copy"><strong>{selectedMedia.title || 'Generated media'}</strong><span>{selectedMedia.model || ''}{selectedMedia.seed != null ? ` · Seed ${selectedMedia.seed}` : ''}</span></div></div></div>}
     </div>
   );

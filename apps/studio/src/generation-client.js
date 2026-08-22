@@ -32,18 +32,41 @@ export async function uploadSourceFile(sourceFile) {
     body: sourceFile,
   });
   if (!uploadResponse.ok) throw new Error(`Direct source upload failed (${uploadResponse.status})`);
-  return { key: ticket.key, contentType: ticket.contentType || sourceFile.type || 'application/octet-stream' };
+  return { key: ticket.key, contentType: ticket.contentType || sourceFile.type || 'application/octet-stream', filename: sourceFile.name || 'input.png' };
 }
 
-export async function submitImageEdit({ sourceFile, sourceKey, prompt, negativePrompt = '', resolution, seed, steps = 4, cfg = 1.0, megapixels = 1.0 }) {
-  const source = sourceKey ? { key: sourceKey, contentType: sourceFile?.type || 'image/png' } : await uploadSourceFile(sourceFile);
+export async function uploadSourceFiles(sourceFiles) {
+  const files = Array.from(sourceFiles || []).filter(Boolean);
+  if (!files.length) throw new Error('At least one reference image is required.');
+  return Promise.all(files.map((file) => uploadSourceFile(file)));
+}
+
+export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sourceKeys, prompt, negativePrompt = '', resolution, seed, steps = 4, cfg = 1.0, megapixels = 1.0 }) {
+  const files = Array.from(sourceFiles?.length ? sourceFiles : sourceFile ? [sourceFile] : []);
+  let uploaded = [];
+
+  if (Array.isArray(sourceKeys) && sourceKeys.length) {
+    uploaded = sourceKeys.map((key, index) => ({
+      key,
+      contentType: files[index]?.type || 'image/png',
+      filename: files[index]?.name || `input-${index + 1}.png`,
+    }));
+  } else if (sourceKey) {
+    uploaded = [{ key: sourceKey, contentType: files[0]?.type || 'image/png', filename: files[0]?.name || 'input.png' }];
+  } else {
+    uploaded = await uploadSourceFiles(files);
+  }
+
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       workflowId: 'flux2-klein-image-edit',
-      sourceKey: source.key,
-      sourceFilename: sourceFile?.name || 'input.png',
+      sourceKeys: uploaded.map((item) => item.key),
+      sourceFilenames: uploaded.map((item) => item.filename),
+      sourceContentTypes: uploaded.map((item) => item.contentType),
+      sourceKey: uploaded[0]?.key,
+      sourceFilename: uploaded[0]?.filename,
       prompt,
       negativePrompt,
       resolution,

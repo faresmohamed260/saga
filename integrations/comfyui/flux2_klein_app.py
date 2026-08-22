@@ -237,6 +237,7 @@ class Flux2KleinWorker:
             "checkpoint": CHECKPOINT_NAME,
             "text_encoder": TEXT_ENCODER_NAME,
             "vae": VAE_NAME,
+            "multiple_references": True,
         }
         _log("flux2_klein_worker_ready", **self._status)
 
@@ -262,7 +263,7 @@ class Flux2KleinWorker:
     def _build_workflow(
         self,
         *,
-        input_name: str,
+        input_names: list[str],
         prompt: str,
         negative_prompt: str,
         seed: int,
@@ -271,8 +272,11 @@ class Flux2KleinWorker:
         filename_prefix: str,
         megapixels: float,
     ) -> dict[str, Any]:
+        if not input_names:
+            raise ValueError("at least one input image is required")
+
         workflow = copy.deepcopy(_load_workflow())
-        workflow["1"]["inputs"]["image"] = input_name
+        workflow["1"]["inputs"]["image"] = input_names[0]
         workflow["2"]["inputs"]["megapixels"] = float(megapixels)
         workflow["8"]["inputs"]["text"] = prompt
         workflow["9"]["inputs"]["text"] = negative_prompt
@@ -280,6 +284,54 @@ class Flux2KleinWorker:
         workflow["13"]["inputs"]["noise_seed"] = int(seed)
         workflow["15"]["inputs"]["steps"] = int(steps)
         workflow["19"]["inputs"]["filename_prefix"] = filename_prefix
+
+        positive_node = "10"
+        negative_node = "11"
+        auxiliary_megapixels = min(float(megapixels), 1.0)
+
+        for reference_index, input_name in enumerate(input_names[1:], start=2):
+            base = 100 + (reference_index - 2) * 5
+            load_node = str(base)
+            scale_node = str(base + 1)
+            encode_node = str(base + 2)
+            positive_reference_node = str(base + 3)
+            negative_reference_node = str(base + 4)
+
+            workflow[load_node] = {
+                "class_type": "LoadImage",
+                "inputs": {"image": input_name},
+                "_meta": {"title": f"Reference Image {reference_index}"},
+            }
+            workflow[scale_node] = {
+                "class_type": "ImageScaleToTotalPixels",
+                "inputs": {
+                    "upscale_method": "lanczos",
+                    "megapixels": auxiliary_megapixels,
+                    "resolution_steps": 1,
+                    "image": [load_node, 0],
+                },
+                "_meta": {"title": f"Normalize Reference {reference_index}"},
+            }
+            workflow[encode_node] = {
+                "class_type": "VAEEncode",
+                "inputs": {"pixels": [scale_node, 0], "vae": ["7", 0]},
+                "_meta": {"title": f"Reference {reference_index} latent"},
+            }
+            workflow[positive_reference_node] = {
+                "class_type": "ReferenceLatent",
+                "inputs": {"conditioning": [positive_node, 0], "latent": [encode_node, 0]},
+                "_meta": {"title": f"Positive reference {reference_index}"},
+            }
+            workflow[negative_reference_node] = {
+                "class_type": "ReferenceLatent",
+                "inputs": {"conditioning": [negative_node, 0], "latent": [encode_node, 0]},
+                "_meta": {"title": f"Negative reference {reference_index}"},
+            }
+            positive_node = positive_reference_node
+            negative_node = negative_reference_node
+
+        workflow["12"]["inputs"]["positive"] = [positive_node, 0]
+        workflow["12"]["inputs"]["negative"] = [negative_node, 0]
         return workflow
 
     def _queue_and_wait(self, workflow: dict[str, Any], prompt_id: str) -> bytes:
@@ -322,7 +374,8 @@ class Flux2KleinWorker:
     def edit(
         self,
         *,
-        image_bytes: bytes,
+        images: list[dict[str, Any]] | None = None,
+        image_bytes: bytes = b"",
         filename: str = "input.png",
         prompt: str,
         negative_prompt: str = "",
@@ -331,15 +384,26 @@ class Flux2KleinWorker:
         cfg: float = 1.0,
         megapixels: float = 1.0,
     ) -> bytes:
-        if not image_bytes:
-            raise ValueError("image_bytes is required")
+        normalized_images = list(images or [])
+        if not normalized_images and image_bytes:
+            normalized_images = [{"bytes": image_bytes, "filename": filename, "content_type": "image/png"}]
+        if not normalized_images:
+            raise ValueError("at least one reference image is required")
         if not str(prompt or "").strip():
             raise ValueError("prompt is required")
-        input_name = self._stage_image_bytes(image_bytes, filename)
+
+        input_names = []
+        for index, image in enumerate(normalized_images):
+            reference_bytes = image.get("bytes") if isinstance(image, dict) else None
+            reference_filename = image.get("filename") if isinstance(image, dict) else None
+            if not reference_bytes:
+                raise ValueError(f"Image {index + 1} is empty")
+            input_names.append(self._stage_image_bytes(reference_bytes, str(reference_filename or f"input-{index + 1}.png")))
+
         prompt_id = str(uuid.uuid4())
         prefix = f"SAGA/flux2-klein-9b/{prompt_id[:12]}"
         workflow = self._build_workflow(
-            input_name=input_name,
+            input_names=input_names,
             prompt=str(prompt).strip(),
             negative_prompt=str(negative_prompt or ""),
             seed=int(seed),
@@ -355,6 +419,7 @@ class Flux2KleinWorker:
             prompt_id=prompt_id,
             elapsed_seconds=round(time.perf_counter() - started, 3),
             byte_length=len(result),
+            reference_count=len(input_names),
             steps=int(steps),
             cfg=float(cfg),
         )
@@ -368,7 +433,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import Response
 
-    api = FastAPI(title="SAGA FLUX.2 Klein 9B", version="0.1.0")
+    api = FastAPI(title="SAGA FLUX.2 Klein 9B", version="0.2.0")
     origins = [
         origin.strip()
         for origin in str(
@@ -397,6 +462,7 @@ def web():
             "checkpoint_cached": _find_cached_file(CHECKPOINT_NAME) is not None,
             "text_encoder_cached": _find_cached_file(TEXT_ENCODER_NAME) is not None,
             "vae_cached": _find_cached_file(VAE_NAME) is not None,
+            "multiple_references": True,
         }
 
     @api.post("/edit")
@@ -420,8 +486,13 @@ def web():
             raise HTTPException(status_code=400, detail="prompt is required")
 
         result = Flux2KleinWorker().edit.remote(
-            image_bytes=image_bytes,
-            filename=image_file.filename or "input.png",
+            images=[
+                {
+                    "bytes": image_bytes,
+                    "filename": image_file.filename or "input.png",
+                    "content_type": image_file.content_type or "image/png",
+                }
+            ],
             prompt=prompt,
             negative_prompt=negative_prompt,
             seed=seed,
