@@ -128,6 +128,10 @@ try {
     if ((await row.locator('.saga-option-label').innerText()).trim() !== label) throw new Error(`Video label mismatch at ${index}`);
     if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Video pixel detail mismatch at ${index}`);
   }
+  const videoList = videoResolutionPicker.locator('.saga-morph-list');
+  const videoScroll = await videoList.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+  if (videoScroll.scrollHeight > videoScroll.clientHeight + 1) throw new Error(`Video resolution picker scrolls: ${JSON.stringify(videoScroll)}`);
+  await shot(desktop, '04-video-resolution-picker.png');
   await videoResolutionPicker.getByRole('menuitemradio', { name: /4K.*3840 px/i }).click();
 
   await durationTrigger.click();
@@ -146,7 +150,7 @@ try {
   if ((await audioToggle.innerText()).trim()) throw new Error('Audio toggle should be icon-only');
   await audioToggle.click();
   if (!(await audioToggle.getAttribute('aria-pressed') === 'false')) throw new Error('Video audio toggle did not turn off');
-  await shot(desktop, '04-video-controls.png');
+  await shot(desktop, '05-video-controls.png');
 
   // Reload proves settings persist remotely in the rendered application.
   await desktop.reload({ waitUntil: 'domcontentloaded' });
@@ -168,6 +172,9 @@ try {
   if (await advanced.locator('input[aria-label="Steps value"]').inputValue() !== '17') throw new Error('Steps did not persist');
   if (await advanced.locator('input[aria-label="CFG value"]').inputValue() !== '2.7') throw new Error('CFG did not persist');
   if (await advanced.locator('input[aria-label="Seed"]').inputValue() !== '12345') throw new Error('Seed did not persist');
+  const persistedOutputSelect = advanced.locator('.saga-advanced-top .saga-fancy-select').nth(1);
+  await persistedOutputSelect.locator(':scope > button').click();
+  await persistedOutputSelect.getByRole('option', { name: '4 outputs' }).click();
   await settingsButton.click();
 
   // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.
@@ -193,23 +200,25 @@ try {
   if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');
   await autoToggle.click();
   if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');
-  await shot(desktop, '05-edit-inline-reference-and-auto.png');
+  await shot(desktop, '06-edit-inline-reference-and-auto.png');
 
   // More is a sidebar destination, and Create returns to the compact image composer.
   await desktop.getByRole('button', { name: 'More', exact: true }).click();
   await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });
-  await shot(desktop, '06-more-sidebar.png');
+  await shot(desktop, '07-more-sidebar.png');
   await desktop.getByRole('button', { name: 'Create', exact: true }).click();
   await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
 
-  // Output wall uses equal-width masonry cards, full-bleed frames and aligned hover-only actions.
+  // Output wall uses equal-width masonry cards, full-bleed frames and one-row aligned hover actions.
   const slots = desktop.locator('.saga-output-slot');
-  if (await slots.count() < 2) throw new Error('Output wall did not render sample outputs');
+  if (await slots.count() < 4) throw new Error(`Output wall should render four review outputs, got ${await slots.count()}`);
   const firstBox = await slots.nth(0).boundingBox();
   const secondBox = await slots.nth(1).boundingBox();
-  if (!firstBox || !secondBox) throw new Error('Could not measure output cards');
-  if (Math.abs(firstBox.width - secondBox.width) > 3) throw new Error(`Output cards are not aligned to equal masonry columns: ${firstBox.width} vs ${secondBox.width}`);
+  const thirdBox = await slots.nth(2).boundingBox();
+  if (!firstBox || !secondBox || !thirdBox) throw new Error('Could not measure output cards');
+  if (Math.abs(firstBox.width - secondBox.width) > 3 || Math.abs(firstBox.width - thirdBox.width) > 3) throw new Error(`Output cards are not aligned to equal masonry columns: ${firstBox.width}, ${secondBox.width}, ${thirdBox.width}`);
   if (Math.abs(firstBox.height - secondBox.height) < 4) throw new Error('Output wall cards are not using varied heights');
+  if (Math.abs(firstBox.x - secondBox.x) < firstBox.width * 0.5 || Math.abs(secondBox.x - thirdBox.x) < secondBox.width * 0.5) throw new Error('First three output cards are not distributed across three columns');
   const firstCard = slots.nth(0).locator('.media-card');
   const firstFrame = firstCard.locator('.media-frame');
   const firstCardBox = await firstCard.boundingBox();
@@ -224,12 +233,20 @@ try {
   if (Number(afterOpacity) < 0.9) throw new Error(`Output actions did not appear on hover, opacity=${afterOpacity}`);
   const actionBox = await cardActions.boundingBox();
   if (!actionBox || actionBox.x < firstCardBox.x + 6 || actionBox.x + actionBox.width > firstCardBox.x + firstCardBox.width - 6) throw new Error(`Output action bar is not aligned to its card: ${JSON.stringify(actionBox)}`);
-  await shot(desktop, '07-output-wall-hover.png');
+  if (actionBox.height > 44) throw new Error(`Output action bar wrapped vertically: height=${actionBox.height}`);
+  const actionButtons = cardActions.locator('button');
+  const buttonYs = [];
+  for (let index = 0; index < await actionButtons.count(); index += 1) {
+    const box = await actionButtons.nth(index).boundingBox();
+    if (box) buttonYs.push(Math.round(box.y));
+  }
+  if (new Set(buttonYs).size > 1) throw new Error(`Output action buttons wrap to multiple rows: ${buttonYs.join(',')}`);
+  await shot(desktop, '08-output-wall-hover.png');
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(mobile, 'mobile');
   await waitForStudio(mobile);
-  await shot(mobile, '08-mobile-create.png');
+  await shot(mobile, '09-mobile-create.png');
 
   if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
 } finally {
