@@ -1,7 +1,7 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
-import { insertGeneration } from './_supabase.js';
+import { insertGeneration, supabaseRequest } from './_supabase.js';
 
 const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
 
@@ -35,6 +35,7 @@ function decodeHeader(value) {
 }
 
 function safeText(value, maxLength) { return String(value || '').trim().slice(0, maxLength); }
+function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
 
 function parseSeed(value) {
   if (value == null || value === '') return null;
@@ -73,6 +74,16 @@ async function createThumbnail(body) {
   return { data, originalWidth: metadata.width || null, originalHeight: metadata.height || null, width: info.width || null, height: info.height || null };
 }
 
+async function completeGenerationJob(jobId, record) {
+  if (!isUuid(jobId)) return null;
+  const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(jobId)}&status=in.(queued,running)&select=*`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(record),
+  });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
 export default async function handler(req, res) {
   const client = getClient();
   if (!client) return res.status(503).json({ error: 'R2 storage is not configured' });
@@ -90,6 +101,7 @@ export default async function handler(req, res) {
       const prompt = safeText(decodeHeader(req.headers['x-saga-prompt']), 2000);
       const negativePrompt = safeText(decodeHeader(req.headers['x-saga-negative-prompt']), 2000);
       const seed = parseSeed(req.headers['x-saga-seed']);
+      const jobId = safeText(req.headers['x-saga-job-id'], 64);
       const mediaUrl = `/api/media?key=${encodeURIComponent(keys.original)}`;
 
       await client.send(new PutObjectCommand({
@@ -120,23 +132,26 @@ export default async function handler(req, res) {
         console.error('Thumbnail generation/upload failed', thumbnailError);
       }
 
+      const completedRecord = {
+        status: 'completed', kind: 'image', mode: 'edit', model, prompt, negative_prompt: negativePrompt,
+        r2_key: keys.original, media_url: mediaUrl, thumbnail_r2_key: thumbnailUrl ? keys.thumbnail : null,
+        thumbnail_url: thumbnailUrl, mime_type: contentType, resolution,
+        width: thumbnail?.originalWidth || null, height: thumbnail?.originalHeight || null,
+        thumbnail_width: thumbnail?.width || null, thumbnail_height: thumbnail?.height || null,
+        seed, workflow_id: 'flux2-klein-image-edit', provider: 'modal', error_message: null,
+        metadata: { source: 'saga-studio', storage: 'cloudflare-r2', thumbnailFormat: thumbnailUrl ? 'webp' : null, lifecycle: 'job-v1' },
+        completed_at: new Date().toISOString(),
+      };
+
       let generation = null;
       try {
-        generation = await insertGeneration({
-          status: 'completed', kind: 'image', mode: 'edit', model, prompt, negative_prompt: negativePrompt,
-          r2_key: keys.original, media_url: mediaUrl, thumbnail_r2_key: thumbnailUrl ? keys.thumbnail : null,
-          thumbnail_url: thumbnailUrl, mime_type: contentType, resolution,
-          width: thumbnail?.originalWidth || null, height: thumbnail?.originalHeight || null,
-          thumbnail_width: thumbnail?.width || null, thumbnail_height: thumbnail?.height || null,
-          seed, workflow_id: 'flux2-klein-image-edit',
-          metadata: { source: 'saga-studio', storage: 'cloudflare-r2', thumbnailFormat: thumbnailUrl ? 'webp' : null },
-          completed_at: new Date().toISOString(),
-        });
+        generation = await completeGenerationJob(jobId, completedRecord);
+        if (!generation) generation = await insertGeneration(completedRecord);
       } catch (historyError) {
-        console.error('Generation history insert failed', historyError);
+        console.error('Generation history persistence failed', historyError);
       }
 
-      return res.status(201).json({ key: keys.original, url: mediaUrl, thumbnailKey: thumbnailUrl ? keys.thumbnail : null, thumbnailUrl, persisted: true, generationId: generation?.id || null, historyPersisted: Boolean(generation?.id) });
+      return res.status(201).json({ key: keys.original, url: mediaUrl, thumbnailKey: thumbnailUrl ? keys.thumbnail : null, thumbnailUrl, persisted: true, generationId: generation?.id || null, historyPersisted: Boolean(generation?.id), jobId: generation?.id || (isUuid(jobId) ? jobId : null) });
     } catch (error) {
       console.error('R2 upload failed', error);
       return res.status(error?.statusCode || error?.$metadata?.httpStatusCode || 500).json({ error: error?.message || 'R2 upload failed' });
