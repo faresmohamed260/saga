@@ -32,10 +32,15 @@ export default async function handler(req, res) {
     if (kind === 'image' || kind === 'video') params.set('kind', `eq.${kind}`);
     if (model) params.set('model', `eq.${model}`);
 
-    const rows = await supabaseRequest(`studio_generations?${params.toString()}`, { method: 'GET' });
+    const [rows, modelRows] = await Promise.all([
+      supabaseRequest(`studio_generations?${params.toString()}`, { method: 'GET' }),
+      supabaseRequest('studio_generations?select=model&model=not.is.null&order=model.asc&limit=500', { method: 'GET' }),
+    ]);
+
     const allRows = Array.isArray(rows) ? rows : [];
     const hasMore = allRows.length > limit;
     const items = hasMore ? allRows.slice(0, limit) : allRows;
+    const models = [...new Set((Array.isArray(modelRows) ? modelRows : []).map((row) => row.model).filter(Boolean))];
 
     return res.status(200).json({
       items,
@@ -45,6 +50,7 @@ export default async function handler(req, res) {
         nextOffset: hasMore ? offset + items.length : null,
         hasMore,
       },
+      facets: { models },
     });
   } catch (error) {
     console.error('History fetch failed', error);
