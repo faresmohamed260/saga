@@ -1,3 +1,116 @@
+let editSizingPreference = { mode: 'auto', aspect: '1:1', resolution: 1024 };
+
+export function setEditSizingPreference(next) {
+  editSizingPreference = {
+    ...editSizingPreference,
+    ...(next || {}),
+    mode: next?.mode === 'manual' ? 'manual' : next?.mode === 'auto' ? 'auto' : editSizingPreference.mode,
+  };
+}
+
+function round64(value) {
+  return Math.max(64, Math.round(Number(value || 0) / 64) * 64);
+}
+
+function parseAspect(value) {
+  const match = String(value || '').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  if (!match) return 1;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width > 0 && height > 0 ? width / height : 1;
+}
+
+function manualDimensions(aspect, longEdge) {
+  const ratio = parseAspect(aspect);
+  const edge = Math.max(512, Math.min(2048, Number(longEdge) || 1024));
+  if (ratio >= 1) return { width: round64(edge), height: round64(edge / ratio) };
+  return { width: round64(edge * ratio), height: round64(edge) };
+}
+
+async function loadImageForCanvas(file) {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file);
+    return {
+      image: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      close: () => bitmap.close?.(),
+    };
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('Could not decode the primary reference for manual aspect sizing.'));
+      image.src = url;
+    });
+    return {
+      image,
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height,
+      close: () => {},
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function cropPrimaryToAspect(file, aspect) {
+  if (!file || typeof document === 'undefined') return file;
+  const targetRatio = parseAspect(aspect);
+  const source = await loadImageForCanvas(file);
+  try {
+    const sourceRatio = source.width / Math.max(1, source.height);
+    if (Math.abs(sourceRatio - targetRatio) / targetRatio < 0.008) return file;
+
+    let sx = 0;
+    let sy = 0;
+    let sw = source.width;
+    let sh = source.height;
+    if (sourceRatio > targetRatio) {
+      sw = source.height * targetRatio;
+      sx = (source.width - sw) / 2;
+    } else {
+      sh = source.width / targetRatio;
+      sy = (source.height - sh) / 2;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(64, Math.round(sw));
+    canvas.height = Math.max(64, Math.round(sh));
+    const context = canvas.getContext('2d', { alpha: true });
+    if (!context) throw new Error('Could not prepare the manual edit canvas.');
+    context.drawImage(source.image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the manual edit canvas.')), 'image/png', 1);
+    });
+    const baseName = String(file.name || 'input').replace(/\.[^.]+$/, '');
+    return new File([blob], `${baseName}-saga-canvas.png`, { type: 'image/png', lastModified: Date.now() });
+  } finally {
+    source.close();
+  }
+}
+
+async function applyEditSizing(input) {
+  if (editSizingPreference.mode !== 'manual') return input;
+
+  const dimensions = manualDimensions(editSizingPreference.aspect, editSizingPreference.resolution);
+  const megapixels = Math.max(0.25, Math.min(4, (dimensions.width * dimensions.height) / 1_000_000));
+  const files = Array.from(input.sourceFiles?.length ? input.sourceFiles : input.sourceFile ? [input.sourceFile] : []);
+  if (files.length) files[0] = await cropPrimaryToAspect(files[0], editSizingPreference.aspect);
+
+  return {
+    ...input,
+    sourceFile: files[0] || input.sourceFile,
+    sourceFiles: files.length ? files : input.sourceFiles,
+    resolution: `${dimensions.width} × ${dimensions.height} · Manual`,
+    megapixels,
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -107,8 +220,10 @@ export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 
 }
 
 export async function runImageEdit(input, options = {}) {
+  if (options.onStatus) options.onStatus(editSizingPreference.mode === 'manual' ? 'preparing' : 'uploading');
+  const effectiveInput = await applyEditSizing(input);
   if (options.onStatus) options.onStatus('uploading');
-  const job = await submitImageEdit(input);
+  const job = await submitImageEdit(effectiveInput);
   if (options.onStatus) options.onStatus('running');
   const result = await waitForGeneration(job.id, options);
   return { job, result };
