@@ -10,6 +10,22 @@ import './styles.css';
 
 const FLUX2_API_URL = (import.meta.env.VITE_FLUX2_KLEIN_API_URL || 'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run').replace(/\/$/, '');
 const HISTORY_PAGE_SIZE = 24;
+const SECTION_HASHES = {
+  Create: 'create',
+  History: 'history',
+  Favorites: 'favorites',
+  Collections: 'collections',
+  Models: 'models',
+  Workflows: 'workflows',
+  Settings: 'settings',
+};
+const HASH_SECTIONS = Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section]));
+
+function sectionFromLocation() {
+  if (typeof window === 'undefined') return 'Create';
+  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+  return HASH_SECTIONS[hash] || 'Create';
+}
 
 const samples = [
   { id: 1, title: 'Forest refuge', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=85' },
@@ -77,7 +93,7 @@ function NavItem({ icon: Icon, label, active, onClick }) {
 }
 
 function App() {
-  const [section, setSection] = useState('Create');
+  const [section, setSection] = useState(sectionFromLocation);
   const [mode, setMode] = useState('Image');
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
@@ -107,6 +123,17 @@ function App() {
   const visibleItems = useMemo(() => items.slice(0, outputs), [items, outputs]);
   const isEdit = mode === 'Edit';
   const activeEditQuality = editQualityOptions.find((option) => option.value === editMegapixels) || editQualityOptions[2];
+
+  useEffect(() => {
+    const expectedHash = `#/${SECTION_HASHES[section] || 'create'}`;
+    if (window.location.hash !== expectedHash) window.history.replaceState(null, '', expectedHash);
+  }, [section]);
+
+  useEffect(() => {
+    const syncSectionFromHash = () => setSection(sectionFromLocation());
+    window.addEventListener('hashchange', syncSectionFromHash);
+    return () => window.removeEventListener('hashchange', syncSectionFromHash);
+  }, []);
 
   const loadHistory = async ({ append = false, kind = historyKind, model = historyModel } = {}) => {
     if (append && historyPage.nextOffset == null) return;
