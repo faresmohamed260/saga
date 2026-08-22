@@ -25,6 +25,7 @@ jobs:
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      MODAL_FLUX2_KLEIN_GPU: A10
       PREFETCH_READY: "false"
 
     steps:
@@ -75,6 +76,8 @@ jobs:
           if not token_id or not token_secret:
               raise SystemExit("modal-01 entry is missing token_id/token_secret")
 
+          print(f"::add-mask::{token_id}")
+          print(f"::add-mask::{token_secret}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
               handle.write(f"MODAL_TOKEN_ID={token_id}\n")
               handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
@@ -110,18 +113,17 @@ jobs:
         run: |
           TITLE="[automation] FLUX.2 Klein modal-01 deploy status"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY=$(cat <<EOF
-          Automated FLUX.2 Klein 9B deployment report.
-
-          - Status: **${JOB_STATUS}**
-          - Branch: `${{ github.ref_name }}`
-          - Commit: `${{ github.sha }}`
-          - Modal app: `saga-flux2-klein-9b`
-          - Target account: `modal-01`
-          - Model prefetch ready: `${PREFETCH_READY}`
-          - Run: ${RUN_URL}
-          EOF
-          )
+          BODY=$(printf '%s\n' \
+            'Automated FLUX.2 Klein 9B deployment report.' \
+            '' \
+            "- Status: **${JOB_STATUS}**" \
+            "- Branch: ${{ github.ref_name }}" \
+            "- Commit: ${{ github.sha }}" \
+            '- Modal app: saga-flux2-klein-9b' \
+            '- Target account: modal-01' \
+            '- GPU: A10' \
+            "- Model prefetch ready: ${PREFETCH_READY}" \
+            "- Run: ${RUN_URL}")
           ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein modal-01 deploy status" in:title' --json number --jq '.[0].number // empty')
           if [ -n "$ISSUE" ]; then
             gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"
