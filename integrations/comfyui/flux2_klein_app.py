@@ -29,7 +29,6 @@ CHECKPOINT_NAME = "darkBeast_dbkleinv2BFS.safetensors"
 CHECKPOINT_URL = "https://civitai.red/api/download/models/2740209?fileId=2626634"
 TEXT_ENCODER_NAME = "qwen_3_8b_fp8mixed.safetensors"
 VAE_NAME = "full_encoder_small_decoder.safetensors"
-
 CHECKPOINT_CACHE = Path(CACHE_DIR) / "studio" / "flux2-klein-9b" / CHECKPOINT_NAME
 WORKFLOW_BUNDLED_PATH = "/root/flux2_klein_9b_image_edit_api.json"
 LOCAL_WORKFLOW_PATH = Path(__file__).parent / "workflows" / "flux2_klein_9b_image_edit_api.json"
@@ -120,7 +119,11 @@ def _ensure_checkpoint(*, force: bool = False) -> Path:
     started = time.perf_counter()
     path = _download_stream(CHECKPOINT_URL, CHECKPOINT_CACHE, bearer_token=token)
     cache_volume.commit()
-    _log("flux2_klein_checkpoint_downloaded", path=str(path), elapsed_seconds=round(time.perf_counter() - started, 3))
+    _log(
+        "flux2_klein_checkpoint_downloaded",
+        path=str(path),
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
     return path
 
 
@@ -210,8 +213,15 @@ class Flux2KleinWorker:
         _link_models(files)
         self._process = subprocess.Popen(
             [
-                "python", "main.py", "--listen", "0.0.0.0", "--port", str(self.port),
-                "--disable-auto-launch", "--preview-method", "none",
+                "python",
+                "main.py",
+                "--listen",
+                "0.0.0.0",
+                "--port",
+                str(self.port),
+                "--disable-auto-launch",
+                "--preview-method",
+                "none",
             ],
             cwd=COMFY_DIR,
             stdout=subprocess.DEVNULL,
@@ -350,27 +360,75 @@ class Flux2KleinWorker:
         )
         return result
 
-    @modal.fastapi_endpoint(method="POST", docs=True)
-    async def edit_api(self):
-        from fastapi import File, Form, UploadFile
-        from fastapi.responses import Response
-        from fastapi import Request
-
-        # Modal/FastAPI resolves multipart data through the request object here so
-        # the endpoint remains compatible with Modal's class endpoint wrapper.
-        from fastapi import Request as FastAPIRequest
-        raise RuntimeError("Use the generated /edit endpoint wrapper; this placeholder is replaced during deployment.")
-
 
 @app.function(image=image, timeout=FUNCTION_TIMEOUT_SECONDS, volumes={CACHE_DIR: cache_volume})
-@modal.fastapi_endpoint(method="GET", docs=True)
-def health():
-    return {
-        "ready": True,
-        "app": APP_NAME,
-        "model": "flux2-klein-9b-darkbeast-v2-bfs",
-        "gpu": GPU_TYPE,
-        "checkpoint_cached": _find_cached_file(CHECKPOINT_NAME) is not None,
-        "text_encoder_cached": _find_cached_file(TEXT_ENCODER_NAME) is not None,
-        "vae_cached": _find_cached_file(VAE_NAME) is not None,
-    }
+@modal.asgi_app()
+def web():
+    from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import Response
+
+    api = FastAPI(title="SAGA FLUX.2 Klein 9B", version="0.1.0")
+    origins = [
+        origin.strip()
+        for origin in str(
+            os.environ.get(
+                "SAGA_STUDIO_ALLOWED_ORIGINS",
+                "https://studio.faresuniform.uk,http://localhost:5173",
+            )
+        ).split(",")
+        if origin.strip()
+    ]
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    @api.get("/health")
+    async def health_route():
+        return {
+            "ready": True,
+            "app": APP_NAME,
+            "model": "flux2-klein-9b-darkbeast-v2-bfs",
+            "gpu": GPU_TYPE,
+            "checkpoint_cached": _find_cached_file(CHECKPOINT_NAME) is not None,
+            "text_encoder_cached": _find_cached_file(TEXT_ENCODER_NAME) is not None,
+            "vae_cached": _find_cached_file(VAE_NAME) is not None,
+        }
+
+    @api.post("/edit")
+    async def edit_route(
+        image_file: UploadFile = File(...),
+        prompt: str = Form(...),
+        negative_prompt: str = Form(""),
+        seed: int = Form(42),
+        steps: int = Form(4),
+        cfg: float = Form(1.0),
+        megapixels: float = Form(1.0),
+    ):
+        if not image_file.content_type or not image_file.content_type.startswith("image/"):
+            raise HTTPException(status_code=415, detail="image_file must be an image")
+        image_bytes = await image_file.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="image_file is empty")
+        if len(image_bytes) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="image_file must be 25 MB or smaller")
+        if not prompt.strip():
+            raise HTTPException(status_code=400, detail="prompt is required")
+
+        result = Flux2KleinWorker().edit.remote(
+            image_bytes=image_bytes,
+            filename=image_file.filename or "input.png",
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=seed,
+            steps=steps,
+            cfg=cfg,
+            megapixels=megapixels,
+        )
+        return Response(content=result, media_type="image/png")
+
+    return api
