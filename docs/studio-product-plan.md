@@ -31,13 +31,28 @@ Gallery surfaces must prefer thumbnails/posters and avoid loading full-resolutio
 - Persist favorites and collections.
 - Add delete, download, reuse and edit actions.
 
-### Phase 2 — Generation jobs (next)
+### Phase 2 — Generation jobs (current)
 
 Represent generation lifecycle explicitly:
 
 `queued -> running -> completed | failed`
 
 This becomes the common contract for fast image jobs and long-running video jobs. Record failures without losing the original prompt/settings.
+
+Current Phase 2 implementation:
+
+- `/api/jobs` creates queued jobs and validates lifecycle transitions.
+- FLUX.2 Klein image edits create the job before calling Modal, move it to `running`, and attach the persisted output to the same generation UUID on completion.
+- Failed requests move the existing job to `failed` and keep prompt/model/seed/workflow/error metadata for inspection.
+- `/api/media` can finalize an existing job instead of inserting a second generation row.
+- `/api/history` intentionally returns completed generations only so queued/running/failed jobs do not appear as broken library cards.
+- Supabase generation rows include `started_at` and `provider` fields in addition to `created_at` / `completed_at`.
+
+Next within Phase 2:
+
+- Add a dedicated Jobs/Queue surface that polls active jobs and shows queued/running/failed state independently from completed History.
+- Add retry/cancel semantics after the execution adapter supports them safely.
+- Move provider execution behind a common server-side workflow adapter so image and video jobs share the same contract.
 
 ### Phase 3 — Model and workflow registry
 
@@ -74,7 +89,7 @@ Support multiple ordered references with semantic roles such as identity, body/a
 
 ## Current storage contract
 
-A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, original R2 key/application media URL, thumbnail R2 key/application URL, original and thumbnail dimensions, MIME type, resolution, duration for video, seed, workflow identifier, favorite state, error information, extensible JSON metadata, and timestamps.
+A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, original R2 key/application media URL, thumbnail R2 key/application URL, original and thumbnail dimensions, MIME type, resolution, duration for video, seed, workflow identifier, provider, favorite state, error information, extensible JSON metadata, and lifecycle timestamps.
 
 Collections are stored separately in `studio_collections`, with generation membership in `studio_collection_items`. Deleting a collection removes membership rows but does not delete the underlying generated media.
 
@@ -92,7 +107,6 @@ Completed:
 - Bootstrap RLS policies support the current single-user hobby/demo server API, including completed-generation deletion. These temporary anonymous policies must be replaced by authenticated/server-privileged access before broader release.
 - Server Supabase requests prefer a service-role/secret key when configured, with the publishable key remaining as the temporary bootstrap fallback.
 - `/api/history` supports newest-first results, bounded page size, `offset` pagination, optional media-kind / exact-model filters, model facets, and favorite state.
-- `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
 - Prompt, seed, UTF-8 model metadata, original dimensions, thumbnail creation, thumbnail dimensions, original reads, and thumbnail reads were verified end-to-end with automated smoke tests.
 - Supabase has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
 - Image persistence creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
@@ -112,11 +126,11 @@ Completed:
 Security work before broader release:
 
 - Replace bootstrap anonymous access with Supabase Auth/JWT ownership and server-privileged authorization.
-- Scope generation, favorites, collections, and destructive actions per user.
+- Scope generation, favorites, collections, jobs, and destructive actions per user.
 
 ## Immediate milestone
 
-The persistent library shell is complete for the current single-user bootstrap:
+The persistent library shell is complete and generation execution is moving onto the shared job lifecycle:
 
 1. R2 original upload succeeds. **Done.**
 2. Studio writes generation metadata. **Done.**
@@ -125,4 +139,6 @@ The persistent library shell is complete for the current single-user bootstrap:
 5. Media-kind/model filters and Load more pagination. **Done.**
 6. Persist Favorites and Collections. **Done.**
 7. Download/reuse/edit/delete actions pass production verification. **Done.**
-8. Migrate generation execution to the shared job lifecycle before adding video workflows. **Next.**
+8. Shared `queued -> running -> completed | failed` job contract. **Implemented for FLUX.2 image editing; production verification next.**
+9. Add active Jobs/Queue UI and shared provider execution adapter. **Next.**
+10. Add the first video workflow on top of the shared job contract.
