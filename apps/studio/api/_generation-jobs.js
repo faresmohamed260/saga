@@ -37,6 +37,7 @@ export async function createGenerationJob(input) {
   const workflowId = safeText(input.workflowId, 160);
   const provider = safeText(input.provider || 'modal', 80);
   const seed = parseSeed(input.seed);
+  const extraMetadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata) ? input.metadata : {};
 
   if (!model) {
     const error = new Error('Model is required');
@@ -63,7 +64,7 @@ export async function createGenerationJob(input) {
       seed,
       workflow_id: workflowId || null,
       provider,
-      metadata: { source: 'saga-studio', lifecycle: 'job-v1' },
+      metadata: { source: 'saga-studio', lifecycle: 'job-v1', ...extraMetadata },
     }),
   });
   return Array.isArray(rows) ? rows[0] : rows;

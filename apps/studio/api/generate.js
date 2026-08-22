@@ -4,6 +4,7 @@ import {
   transitionGenerationJob,
 } from './_generation-jobs.js';
 import { submitWorkflow } from './_providers.js';
+import { readSourceObject, isSourceKey } from './_r2.js';
 import { getWorkflow, listWorkflows } from './_workflows.js';
 
 export const config = { maxDuration: 60 };
@@ -44,30 +45,45 @@ export default async function handler(req, res) {
 
   let job = null;
   try {
-    const workflowId = String(req.headers['x-saga-workflow'] || '').trim();
+    const requestContentType = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+    const jsonMode = requestContentType === 'application/json';
+    const body = jsonMode && typeof req.body === 'object' && req.body ? req.body : {};
+    const workflowId = jsonMode ? String(body.workflowId || '').trim() : String(req.headers['x-saga-workflow'] || '').trim();
     const workflow = getWorkflow(workflowId);
     if (!workflow) return res.status(404).json({ error: 'Unknown generation workflow' });
 
-    const contentType = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim();
-    if (workflow.requiresSourceImage && !contentType.startsWith('image/')) {
-      return res.status(415).json({ error: 'This workflow requires an image source' });
-    }
-
-    const prompt = decodeHeader(req.headers['x-saga-prompt']).trim().slice(0, 2000);
-    const negativePrompt = decodeHeader(req.headers['x-saga-negative-prompt']).trim().slice(0, 2000);
-    const resolution = decodeHeader(req.headers['x-saga-resolution']).trim().slice(0, 64);
-    const sourceFilename = decodeHeader(req.headers['x-saga-source-filename']).trim().slice(0, 240) || 'input.png';
-    const seed = Number.parseInt(String(req.headers['x-saga-seed'] || workflow.defaults.seed), 10);
-    const steps = parseNumber(req.headers['x-saga-steps'], workflow.defaults.steps);
-    const cfg = parseNumber(req.headers['x-saga-cfg'], workflow.defaults.cfg);
-    const megapixels = parseNumber(req.headers['x-saga-megapixels'], workflow.defaults.megapixels);
+    const prompt = jsonMode ? String(body.prompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-prompt']).trim().slice(0, 2000);
+    const negativePrompt = jsonMode ? String(body.negativePrompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-negative-prompt']).trim().slice(0, 2000);
+    const resolution = jsonMode ? String(body.resolution || '').trim().slice(0, 64) : decodeHeader(req.headers['x-saga-resolution']).trim().slice(0, 64);
+    const sourceFilename = (jsonMode ? String(body.sourceFilename || '') : decodeHeader(req.headers['x-saga-source-filename'])).trim().slice(0, 240) || 'input.png';
+    const seed = Number.parseInt(String(jsonMode ? body.seed ?? workflow.defaults.seed : req.headers['x-saga-seed'] || workflow.defaults.seed), 10);
+    const steps = parseNumber(jsonMode ? body.steps : req.headers['x-saga-steps'], workflow.defaults.steps);
+    const cfg = parseNumber(jsonMode ? body.cfg : req.headers['x-saga-cfg'], workflow.defaults.cfg);
+    const megapixels = parseNumber(jsonMode ? body.megapixels : req.headers['x-saga-megapixels'], workflow.defaults.megapixels);
 
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
-    const sourceBytes = await readBody(req, workflow.limits.maxSourceBytes);
-    if (workflow.requiresSourceImage && !sourceBytes.length) {
-      return res.status(400).json({ error: 'Source image is empty' });
+    let sourceBytes = Buffer.alloc(0);
+    let sourceContentType = requestContentType;
+    let sourceKey = '';
+
+    if (jsonMode) {
+      sourceKey = String(body.sourceKey || '').trim();
+      if (workflow.requiresSourceImage && !isSourceKey(sourceKey)) return res.status(400).json({ error: 'Valid sourceKey is required' });
+      if (sourceKey) {
+        const source = await readSourceObject(sourceKey, workflow.limits.maxSourceBytes);
+        sourceBytes = source.bytes;
+        sourceContentType = source.contentType;
+      }
+    } else {
+      if (workflow.requiresSourceImage && !requestContentType.startsWith('image/')) {
+        return res.status(415).json({ error: 'This workflow requires an image source' });
+      }
+      sourceBytes = await readBody(req, workflow.limits.maxSourceBytes);
     }
+
+    if (workflow.requiresSourceImage && !sourceBytes.length) return res.status(400).json({ error: 'Source image is empty' });
+    if (workflow.requiresSourceImage && !sourceContentType.startsWith('image/')) return res.status(415).json({ error: 'Source object is not an image' });
 
     job = await createGenerationJob({
       kind: workflow.kind,
@@ -79,12 +95,18 @@ export default async function handler(req, res) {
       seed,
       workflowId: workflow.id,
       provider: workflow.provider,
+      metadata: {
+        inputTransport: sourceKey ? 'r2' : 'inline',
+        sourceR2Key: sourceKey || null,
+        sourceContentType: sourceContentType || null,
+        sourceFilename,
+      },
     });
     await transitionGenerationJob(job.id, 'running');
 
     const submitted = await submitWorkflow(workflow, {
       sourceBytes,
-      sourceContentType: contentType,
+      sourceContentType,
       sourceFilename,
       prompt,
       negativePrompt,
@@ -100,6 +122,7 @@ export default async function handler(req, res) {
       status: 'running',
       workflow: workflow.id,
       provider: workflow.provider,
+      inputTransport: sourceKey ? 'r2' : 'inline',
     });
   } catch (error) {
     if (job?.id) {
