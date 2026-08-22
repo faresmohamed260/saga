@@ -21,6 +21,11 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
+function sourceKeyFromMetadata(metadata) {
+  const key = metadata && typeof metadata === 'object' ? String(metadata.sourceR2Key || '') : '';
+  return key.startsWith('sources/') ? key : '';
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'DELETE') {
     res.setHeader('Allow', 'DELETE');
@@ -34,13 +39,13 @@ export default async function handler(req, res) {
   if (!client) return res.status(503).json({ error: 'R2 storage is not configured' });
 
   try {
-    const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(id)}&select=id,r2_key,thumbnail_r2_key&limit=1`, { method: 'GET' });
+    const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(id)}&select=id,r2_key,thumbnail_r2_key,metadata&limit=1`, { method: 'GET' });
     const generation = Array.isArray(rows) ? rows[0] : null;
     if (!generation) return res.status(404).json({ error: 'Generation not found' });
 
-    const keys = [generation.r2_key, generation.thumbnail_r2_key].filter(Boolean);
+    const keys = [generation.r2_key, generation.thumbnail_r2_key, sourceKeyFromMetadata(generation.metadata)].filter(Boolean);
     const failures = [];
-    for (const key of keys) {
+    for (const key of [...new Set(keys)]) {
       try {
         await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
       } catch (error) {

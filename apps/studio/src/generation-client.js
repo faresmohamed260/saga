@@ -1,7 +1,3 @@
-function encodeHeader(value) {
-  return encodeURIComponent(String(value ?? ''));
-}
-
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -15,22 +11,47 @@ async function responseError(response, fallback) {
   return `${fallback} (${response.status})`;
 }
 
-export async function submitImageEdit({ sourceFile, prompt, negativePrompt = '', resolution, seed, steps = 4, cfg = 1.0, megapixels = 1.0 }) {
+export async function uploadSourceFile(sourceFile) {
+  const ticketResponse = await fetch('/api/uploads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: sourceFile.name || 'input.png',
+      contentType: sourceFile.type || 'image/png',
+      size: sourceFile.size,
+      purpose: 'generation-source',
+    }),
+  });
+  if (!ticketResponse.ok) throw new Error(await responseError(ticketResponse, 'Could not prepare source upload'));
+  const ticket = await ticketResponse.json();
+  if (!ticket?.uploadUrl || !ticket?.key) throw new Error('Source upload ticket is incomplete.');
+
+  const uploadResponse = await fetch(ticket.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': ticket.contentType || sourceFile.type || 'application/octet-stream' },
+    body: sourceFile,
+  });
+  if (!uploadResponse.ok) throw new Error(`Direct source upload failed (${uploadResponse.status})`);
+  return { key: ticket.key, contentType: ticket.contentType || sourceFile.type || 'application/octet-stream' };
+}
+
+export async function submitImageEdit({ sourceFile, sourceKey, prompt, negativePrompt = '', resolution, seed, steps = 4, cfg = 1.0, megapixels = 1.0 }) {
+  const source = sourceKey ? { key: sourceKey, contentType: sourceFile?.type || 'image/png' } : await uploadSourceFile(sourceFile);
   const response = await fetch('/api/generate', {
     method: 'POST',
-    headers: {
-      'Content-Type': sourceFile.type || 'image/png',
-      'X-Saga-Workflow': 'flux2-klein-image-edit',
-      'X-Saga-Prompt': encodeHeader(prompt),
-      'X-Saga-Negative-Prompt': encodeHeader(negativePrompt),
-      'X-Saga-Resolution': encodeHeader(resolution),
-      'X-Saga-Source-Filename': encodeHeader(sourceFile.name || 'input.png'),
-      'X-Saga-Seed': String(seed ?? ''),
-      'X-Saga-Steps': String(steps),
-      'X-Saga-Cfg': String(cfg),
-      'X-Saga-Megapixels': String(megapixels),
-    },
-    body: sourceFile,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      workflowId: 'flux2-klein-image-edit',
+      sourceKey: source.key,
+      sourceFilename: sourceFile?.name || 'input.png',
+      prompt,
+      negativePrompt,
+      resolution,
+      seed,
+      steps,
+      cfg,
+      megapixels,
+    }),
   });
   if (response.status !== 202) throw new Error(await responseError(response, 'Could not submit generation'));
   const payload = await response.json();
@@ -63,6 +84,7 @@ export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 
 }
 
 export async function runImageEdit(input, options = {}) {
+  if (options.onStatus) options.onStatus('uploading');
   const job = await submitImageEdit(input);
   if (options.onStatus) options.onStatus('running');
   const result = await waitForGeneration(job.id, options);
