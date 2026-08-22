@@ -1,0 +1,46 @@
+name: Apply PR113 UI Fixes
+
+on:
+  push:
+    branches:
+      - "studio/controls-cleanup-picker-fix"
+    paths:
+      - "apps/studio/scripts/apply-v113-ui-fixes.mjs"
+      - ".github/workflows/v113-apply-ui-fixes.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-pr113-ui-fixes
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/studio
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/controls-cleanup-picker-fix
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Apply requested UI fixes
+        run: node scripts/apply-v113-ui-fixes.mjs
+      - name: Commit patched UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/create-controls.jsx src/create-controls-interactions.css scripts/capture-ui-preview.mjs
+          git commit -m "Fix Create picker geometry and redesign advanced settings"
+          git push origin HEAD:studio/controls-cleanup-picker-fix
