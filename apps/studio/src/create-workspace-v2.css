@@ -1,3 +1,7 @@
+@media(min-width:901px){
+  .app-shell{grid-template-columns:248px minmax(0,1fr)!important;}
+}
+
 /* SAGA Create workspace v2 — centered, compact, fully remote previewed UI */
 .workspace .saga-create-stage{
   width:min(1080px,calc(100vw - 250px));
