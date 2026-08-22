@@ -1,0 +1,83 @@
+.workspace .grok-plus-popover.grok-plus-popover-fixed{
+  position:fixed!important;
+  z-index:1100;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+
+.workspace .grok-auto-choice{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.workspace .grok-auto-choice svg{color:#bbb6ff}
+.workspace .grok-resolution-icon.auto{
+  background:linear-gradient(135deg,rgba(122,92,255,.28),rgba(75,156,255,.14));
+  color:#dedaff;
+}
+.workspace .grok-resolution-shape.auto{
+  display:grid;
+  place-items:center;
+  color:#ddd9ff;
+}
+.workspace .grok-aspect-list .ratio-code{
+  display:flex;
+  align-items:center;
+  min-width:0;
+}
+.workspace .grok-aspect-list .ratio-code svg{color:#bbb6ff}
+.workspace .grok-resolution-list button>span:first-child{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.workspace .grok-resolution-list button>span:first-child svg{color:#bbb6ff}
+
+.workspace .edit-sizing-toggle{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  padding:4px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:12px;
+  background:#171b22;
+}
+.workspace .edit-sizing-toggle button{
+  min-height:36px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#87909f;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  font:inherit;
+  font-size:11px;
+  font-weight:650;
+  cursor:pointer;
+}
+.workspace .edit-sizing-toggle button:hover{color:#eef1f5;background:#1e232c}
+.workspace .edit-sizing-toggle button.selected{
+  color:#f1edff;
+  background:#211d32;
+  box-shadow:inset 0 0 0 1px rgba(122,92,255,.22);
+}
+.workspace .edit-sizing-toggle button.selected svg{color:#c7bbff}
+
+.workspace .grok-aspect-list button:focus-visible,
+.workspace .grok-resolution-list button:focus-visible{
+  outline:0;
+  box-shadow:inset 0 0 0 1px rgba(154,137,255,.5);
+}
+.workspace .grok-aspect-button:focus-visible,
+.workspace .grok-resolution-button:focus-visible,
+.workspace .grok-circle-button:focus-visible{
+  outline:2px solid rgba(154,137,255,.72);
+  outline-offset:2px;
+}
+
+@media (max-width:720px){
+  .workspace .grok-auto-choice{padding:0 10px}
+  .workspace .grok-auto-choice svg{width:13px;height:13px}
+}
