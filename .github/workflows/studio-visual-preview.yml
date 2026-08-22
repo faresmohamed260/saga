@@ -1,9 +1,7 @@
 name: Studio Visual Preview
 
 on:
-  push:
-    branches:
-      - "studio/**"
+  pull_request:
     paths:
       - "apps/studio/**"
       - ".github/workflows/studio-visual-preview.yml"
@@ -13,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: studio-visual-${{ github.ref }}
+  group: studio-visual-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
