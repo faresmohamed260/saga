@@ -7,6 +7,7 @@ on:
       - studio/flux2-resolution-r2
       - studio/async-provider-jobs
       - studio/job-retry-cancel
+      - studio/edit-reference-ux
     paths:
       - "integrations/comfyui/flux2_klein_gateway.py"
       - ".github/workflows/deploy-flux2-klein-gateway.yml"
