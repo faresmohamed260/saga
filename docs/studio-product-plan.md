@@ -70,14 +70,33 @@ Support multiple ordered references with semantic roles such as identity, body/a
 
 A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, R2 key, application media URL, MIME type, resolution/dimensions, duration for video, seed, workflow identifier, error information, extensible JSON metadata, and timestamps.
 
-Indexes prioritize newest-first history and status/kind filtering. RLS is enabled from the beginning; Studio's server-side API will own privileged database writes rather than exposing a service credential to the browser.
+Indexes prioritize newest-first history and status/kind filtering. RLS is enabled from the beginning.
+
+### Phase 1 implementation status
+
+Completed:
+
+- `studio_generations` table created in the AI Studio Supabase project.
+- Newest-first, status, and media-kind indexes created.
+- RLS enabled.
+- Bootstrap RLS policies allow anonymous reads and narrowly scoped completed image-edit inserts while Studio uses the public Supabase key through its server API. This is a temporary hobby/demo bootstrap and should be replaced by authenticated/server-privileged access before production use.
+- `/api/history` implemented with newest-first results, a bounded `limit`, and optional `kind` / exact-model filters.
+- `/api/media` now records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
+- Preview `/api/history` verified live on Vercel and currently returns `200` with an empty history, which is expected before the first history-enabled upload.
+
+Remaining for Phase 1:
+
+- Pass prompt and seed metadata from the current FLUX.2 client upload request into `/api/media`.
+- Load `/api/history` into the frontend and replace demo-only History behavior with persisted R2-backed cards.
+- Add gallery filters and pagination/load-more behavior.
+- Add delete/favorite/collection actions after the persistent read path is stable.
 
 ## Immediate milestone
 
 Complete the Supabase-backed history path for the existing FLUX.2 Klein image-edit workflow:
 
-1. R2 upload succeeds.
-2. Studio writes the generation metadata record.
-3. `/api/history` returns persisted records newest first.
-4. History UI renders R2-backed assets after refresh/reopen.
+1. R2 upload succeeds. **Done.**
+2. Studio writes the generation metadata record. **Implemented; live-generation verification pending merge to production.**
+3. `/api/history` returns persisted records newest first. **Implemented and preview-tested.**
+4. History UI renders R2-backed assets after refresh/reopen. **Next.**
 5. Then migrate generation execution to the shared job lifecycle before adding video.
