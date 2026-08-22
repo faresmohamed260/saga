@@ -1,5 +1,6 @@
 const nativeFetch = window.fetch.bind(window);
 let activeGenerationJobId = null;
+const completedJobs = new Map();
 
 function requestUrl(input) {
   if (typeof input === 'string') return input;
@@ -20,6 +21,13 @@ function sameOriginPath(value) {
   }
 }
 
+function headerValue(headers, name) {
+  if (!headers) return '';
+  if (headers instanceof Headers) return headers.get(name) || '';
+  const key = Object.keys(headers).find((entry) => entry.toLowerCase() === name.toLowerCase());
+  return key ? String(headers[key] || '') : '';
+}
+
 async function rememberGenerationJob(response) {
   try {
     const payload = await response.clone().json();
@@ -27,11 +35,15 @@ async function rememberGenerationJob(response) {
   } catch {}
 }
 
-function timeoutResponse(message) {
-  return new Response(JSON.stringify({ error: message, detail: message }), {
-    status: 504,
-    headers: { 'Content-Type': 'application/json' },
+function jsonResponse(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
+}
+
+function timeoutResponse(message) {
+  return jsonResponse({ error: message, detail: message }, 504);
 }
 
 window.fetch = async function sagaFetch(input, init = undefined) {
@@ -62,14 +74,43 @@ window.fetch = async function sagaFetch(input, init = undefined) {
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
       const result = await nativeFetch(`/api/generate/result?jobId=${encodeURIComponent(jobId)}`, {
         method: 'GET',
-        headers: { Accept: 'image/*, application/json' },
+        headers: { Accept: 'application/json' },
         cache: 'no-store',
       });
       if (result.status === 202) continue;
-      return result;
+      if (!result.ok) return result;
+
+      let completed = null;
+      try { completed = await result.clone().json(); } catch {}
+      if (!completed?.persisted || !completed?.mediaUrl) {
+        return jsonResponse({ error: 'Generation completed without persisted media.' }, 502);
+      }
+      completedJobs.set(jobId, completed);
+      const media = await nativeFetch(completed.mediaUrl, { cache: 'no-store' });
+      if (!media.ok) return media;
+      return media;
     }
 
     return timeoutResponse('Generation is still running after 30 minutes.');
+  }
+
+  if (path === '/api/media' && method === 'POST') {
+    const jobId = headerValue(init?.headers, 'X-Saga-Job-Id');
+    const completed = completedJobs.get(jobId);
+    if (completed?.persisted && completed?.mediaUrl) {
+      completedJobs.delete(jobId);
+      return jsonResponse({
+        key: null,
+        url: completed.mediaUrl,
+        thumbnailKey: null,
+        thumbnailUrl: completed.thumbnailUrl || null,
+        persisted: true,
+        generationId: completed.generationId || jobId,
+        historyPersisted: true,
+        jobId,
+        orchestrated: true,
+      }, 201);
+    }
   }
 
   return nativeFetch(input, init);
