@@ -1,9 +1,7 @@
-import { getWorkflow } from '../_workflows.js';
-import { listGenerationJobs, transitionGenerationJob } from '../_generation-jobs.js';
-import { pollWorkflow } from '../_providers.js';
-import { persistImageJobResult } from '../_result-persistence.js';
-
-export const config = { maxDuration: 30 };
+import { getWorkflow } from '../api/_workflows.js';
+import { listGenerationJobs, transitionGenerationJob } from '../api/_generation-jobs.js';
+import { pollWorkflow } from '../api/_providers.js';
+import { persistImageJobResult } from '../api/_result-persistence.js';
 
 const STALE_WITHOUT_PROVIDER_MS = 2 * 60 * 1000;
 
@@ -57,24 +55,14 @@ async function recoverJob(job) {
   }
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    const active = await listGenerationJobs({ status: 'active', limit: 20 });
-    const jobs = Array.isArray(active) ? active : [];
-    const results = [];
-    for (const job of jobs) results.push(await recoverJob(job));
-    const summary = results.reduce((counts, result) => {
-      counts[result.outcome] = (counts[result.outcome] || 0) + 1;
-      return counts;
-    }, {});
-    return res.status(200).json({ checked: jobs.length, summary, results });
-  } catch (error) {
-    console.error('Generation recovery failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation recovery failed' });
-  }
+export async function recoverActiveGenerationJobs() {
+  const active = await listGenerationJobs({ status: 'active', limit: 20 });
+  const jobs = Array.isArray(active) ? active : [];
+  const results = [];
+  for (const job of jobs) results.push(await recoverJob(job));
+  const summary = results.reduce((counts, result) => {
+    counts[result.outcome] = (counts[result.outcome] || 0) + 1;
+    return counts;
+  }, {});
+  return { checked: jobs.length, summary, results };
 }

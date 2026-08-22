@@ -3,6 +3,10 @@
     {
       "source": "/api/job-actions",
       "destination": "/api/jobs"
+    },
+    {
+      "source": "/api/jobs/recover",
+      "destination": "/api/jobs?action=recover"
     }
   ]
 }
