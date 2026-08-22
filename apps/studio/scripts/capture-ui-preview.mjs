@@ -115,8 +115,8 @@ try {
   if (resolutionBadgeText !== '1024') throw new Error(`Resolution toolbar badge expected 1024, got ${resolutionBadgeText}`);
   await shot(desktop, '05-create-hd-toolbar.png');
 
-  const settingsButton = desktop.getByRole('button', { name: 'Advanced settings' });
-  await settingsButton.click();
+  const advancedSettingsButton = desktop.getByRole('button', { name: 'Advanced settings' });
+  await advancedSettingsButton.click();
   const settingsPanel = desktop.locator('.advanced-settings-shell');
   await settingsPanel.waitFor({ state: 'visible' });
   const settingsBox = await settingsPanel.boundingBox();
