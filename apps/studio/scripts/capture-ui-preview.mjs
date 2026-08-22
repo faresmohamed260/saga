@@ -51,19 +51,19 @@ try {
   if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
   await shot(desktop, '01-create-image-centered.png');
 
-  // Image picker keyboard + outside dismissal.
+  // Image picker keyboard, morphing and outside dismissal.
   const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
   await resolutionTrigger.click();
   const resolutionPicker = desktop.locator('.saga-resolution-picker');
   await resolutionPicker.waitFor({ state: 'visible' });
   await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
-  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
-  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
-  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
-  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
   const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));
   if (focusedRole !== 'menuitemradio') throw new Error(`Resolution picker did not focus selected option: ${focusedRole}`);
+  const resolutionPreviewBefore = (await resolutionPicker.locator('.saga-resolution-cube').innerText()).trim();
   await desktop.keyboard.press('ArrowDown');
+  await desktop.waitForTimeout(180);
+  const resolutionPreviewAfter = (await resolutionPicker.locator('.saga-resolution-cube').innerText()).trim();
+  if (resolutionPreviewBefore === resolutionPreviewAfter) throw new Error('Resolution preview did not morph with keyboard focus');
   await desktop.keyboard.press('Escape');
   await expectHidden(resolutionPicker, 'Resolution picker');
 
@@ -71,6 +71,14 @@ try {
   await aspectTrigger.click();
   const aspectPicker = desktop.locator('.saga-aspect-picker');
   await aspectPicker.waitFor({ state: 'visible' });
+  const aspectList = aspectPicker.locator('.saga-morph-list');
+  const aspectScroll = await aspectList.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+  if (aspectScroll.scrollHeight > aspectScroll.clientHeight + 1) throw new Error(`Aspect picker still scrolls: ${JSON.stringify(aspectScroll)}`);
+  const aspectPreviewBefore = await aspectPicker.locator('.saga-preview-shape').boundingBox();
+  await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).hover();
+  await desktop.waitForTimeout(200);
+  const aspectPreviewAfter = await aspectPicker.locator('.saga-preview-shape').boundingBox();
+  if (!aspectPreviewBefore || !aspectPreviewAfter || (Math.abs(aspectPreviewBefore.width - aspectPreviewAfter.width) < 3 && Math.abs(aspectPreviewBefore.height - aspectPreviewAfter.height) < 3)) throw new Error('Aspect preview did not morph on hover');
   await shot(desktop, '02-image-aspect-picker.png');
   await desktop.locator('.saga-stage-heading').click();
   await expectHidden(aspectPicker, 'Aspect picker');
@@ -111,8 +119,16 @@ try {
   await videoResolutionTrigger.click();
   const videoResolutionPicker = desktop.locator('.saga-picker').filter({ has: desktop.getByRole('menu', { name: 'Video resolution' }) });
   await videoResolutionPicker.waitFor({ state: 'visible' });
-  for (const label of ['480p', '720p', '1080p', '2K', '4K']) await videoResolutionPicker.getByRole('menuitemradio', { name: new RegExp(label, 'i') }).waitFor({ state: 'visible' });
-  await videoResolutionPicker.getByRole('menuitemradio', { name: /4K/i }).click();
+  const expectedVideoRows = [['SD', '480p'], ['HD', '720p'], ['Full HD', '1080p'], ['2K', '2048 px'], ['4K', '3840 px']];
+  const videoRows = videoResolutionPicker.getByRole('menuitemradio');
+  if (await videoRows.count() !== expectedVideoRows.length) throw new Error('Video resolution picker row count is wrong');
+  for (let index = 0; index < expectedVideoRows.length; index += 1) {
+    const [label, detail] = expectedVideoRows[index];
+    const row = videoRows.nth(index);
+    if ((await row.locator('.saga-option-label').innerText()).trim() !== label) throw new Error(`Video label mismatch at ${index}`);
+    if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Video pixel detail mismatch at ${index}`);
+  }
+  await videoResolutionPicker.getByRole('menuitemradio', { name: /4K.*3840 px/i }).click();
 
   await durationTrigger.click();
   const durationPicker = desktop.locator('.saga-duration-picker');
@@ -125,6 +141,9 @@ try {
 
   const audioToggle = desktop.locator('.saga-audio-toggle');
   if (!(await audioToggle.getAttribute('aria-pressed') === 'true')) throw new Error('Video audio should default on');
+  const audioBox = await audioToggle.boundingBox();
+  if (!audioBox || Math.abs(audioBox.width - audioBox.height) > 1 || audioBox.width > 38) throw new Error(`Audio toggle is not circular: ${JSON.stringify(audioBox)}`);
+  if ((await audioToggle.innerText()).trim()) throw new Error('Audio toggle should be icon-only');
   await audioToggle.click();
   if (!(await audioToggle.getAttribute('aria-pressed') === 'false')) throw new Error('Video audio toggle did not turn off');
   await shot(desktop, '04-video-controls.png');
@@ -137,7 +156,7 @@ try {
   await expectText(selectedMode, 'Video', 'Persisted media mode');
   await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(0), '4K', 'Persisted video resolution');
   await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(1), '23s', 'Persisted video duration');
-  await expectText(desktop.locator('.saga-audio-toggle'), 'Muted', 'Persisted audio state');
+  if (await desktop.locator('.saga-audio-toggle').getAttribute('aria-pressed') !== 'false') throw new Error('Persisted audio state did not remain muted');
 
   // Switch back to Image and verify image + advanced values also persisted.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
@@ -183,13 +202,19 @@ try {
   await desktop.getByRole('button', { name: 'Create', exact: true }).click();
   await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
 
-  // Output wall has variable card sizes and hover-only actions.
+  // Output wall uses equal-width masonry cards, full-bleed frames and aligned hover-only actions.
   const slots = desktop.locator('.saga-output-slot');
   if (await slots.count() < 2) throw new Error('Output wall did not render sample outputs');
   const firstBox = await slots.nth(0).boundingBox();
   const secondBox = await slots.nth(1).boundingBox();
-  if (!firstBox || !secondBox || (Math.abs(firstBox.width - secondBox.width) < 4 && Math.abs(firstBox.height - secondBox.height) < 4)) throw new Error('Output wall cards are not using varied sizes');
+  if (!firstBox || !secondBox) throw new Error('Could not measure output cards');
+  if (Math.abs(firstBox.width - secondBox.width) > 3) throw new Error(`Output cards are not aligned to equal masonry columns: ${firstBox.width} vs ${secondBox.width}`);
+  if (Math.abs(firstBox.height - secondBox.height) < 4) throw new Error('Output wall cards are not using varied heights');
   const firstCard = slots.nth(0).locator('.media-card');
+  const firstFrame = firstCard.locator('.media-frame');
+  const firstCardBox = await firstCard.boundingBox();
+  const firstFrameBox = await firstFrame.boundingBox();
+  if (!firstCardBox || !firstFrameBox || Math.abs(firstCardBox.width - firstFrameBox.width) > 2 || Math.abs(firstCardBox.height - firstFrameBox.height) > 2) throw new Error(`Output frame is misaligned inside card: card=${JSON.stringify(firstCardBox)} frame=${JSON.stringify(firstFrameBox)}`);
   const cardActions = firstCard.locator('.card-actions');
   const beforeOpacity = await cardActions.evaluate((el) => getComputedStyle(el).opacity);
   if (Number(beforeOpacity) > 0.05) throw new Error(`Output actions should be hidden before hover, opacity=${beforeOpacity}`);
@@ -197,6 +222,8 @@ try {
   await desktop.waitForTimeout(220);
   const afterOpacity = await cardActions.evaluate((el) => getComputedStyle(el).opacity);
   if (Number(afterOpacity) < 0.9) throw new Error(`Output actions did not appear on hover, opacity=${afterOpacity}`);
+  const actionBox = await cardActions.boundingBox();
+  if (!actionBox || actionBox.x < firstCardBox.x + 6 || actionBox.x + actionBox.width > firstCardBox.x + firstCardBox.width - 6) throw new Error(`Output action bar is not aligned to its card: ${JSON.stringify(actionBox)}`);
   await shot(desktop, '07-output-wall-hover.png');
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
