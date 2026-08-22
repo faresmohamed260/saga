@@ -18,6 +18,16 @@ jobs:
           PROD="https://studio.faresuniform.uk"
           generation_id=""
 
+          for stale_id in \
+            c99828f9-963a-429d-84dd-399ff491bd0f \
+            1f2755bb-e104-459b-9f4b-f68fe8eea6d2 \
+            392dff21-d50b-43fe-8fb7-d406d5f0c5a5 \
+            6a45b9c8-23dc-4110-9aee-3f8cf49b5b8a; do
+            echo "cleaning stale disposable generation=$stale_id"
+            curl -sS -X DELETE "$PROD/api/generations?id=$stale_id" || true
+            echo
+          done
+
           cleanup() {
             if [ -n "$generation_id" ]; then
               echo "cleanup generation=$generation_id"
