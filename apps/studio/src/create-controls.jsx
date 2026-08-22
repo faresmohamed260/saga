@@ -292,8 +292,8 @@ function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = fa
 
   useEffect(() => {
     if (!focusWhen) return undefined;
-    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());
-    return () => cancelAnimationFrame(frame);
+    const timer = window.setTimeout(() => refs.current[activeIndex]?.focus(), 40);
+    return () => window.clearTimeout(timer);
   }, [focusWhen, activeIndex, options.length]);
 
   const keyDown = (event, index) => {
