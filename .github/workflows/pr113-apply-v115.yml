@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - apps/studio/scripts/apply-v115-create-evolution.mjs
+      - apps/studio/scripts/patch-main-create-v2.mjs
       - .github/workflows/pr113-apply-v115.yml
 
 permissions:
@@ -22,14 +22,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Apply UI evolution
+      - name: Apply final Create interaction patch
         working-directory: apps/studio
-        run: node scripts/apply-v115-create-evolution.mjs
+        run: node scripts/patch-main-create-v2.mjs
       - name: Commit changes
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/src/main.jsx apps/studio/scripts/capture-ui-preview.mjs
-          git commit -m "Evolve Create workspace controls and layout"
+          git add apps/studio/src/create-controls.jsx apps/studio/src/main.jsx
+          git commit -m "Finish Create picker keyboard and preference persistence"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
