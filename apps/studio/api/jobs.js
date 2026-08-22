@@ -14,6 +14,12 @@ function parseSeed(value) {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+function clampLimit(value) {
+  const parsed = Number.parseInt(String(value || '30'), 10);
+  if (!Number.isFinite(parsed)) return 30;
+  return Math.min(Math.max(parsed, 1), 100);
+}
+
 const allowedTransitions = {
   queued: new Set(['running', 'failed']),
   running: new Set(['completed', 'failed']),
@@ -24,6 +30,16 @@ const allowedTransitions = {
 async function getJob(id) {
   const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(id)}&select=*&limit=1`, { method: 'GET' });
   return Array.isArray(rows) ? rows[0] : null;
+}
+
+async function listJobs({ status, limit }) {
+  const params = new URLSearchParams();
+  params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,resolution,seed,workflow_id,provider,error_message,metadata,created_at,started_at,completed_at,r2_key,media_url,thumbnail_url');
+  params.set('order', 'created_at.desc,id.desc');
+  params.set('limit', String(limit));
+  if (status === 'active') params.set('status', 'in.(queued,running)');
+  else if (['queued', 'running', 'completed', 'failed'].includes(status)) params.set('status', `eq.${status}`);
+  return supabaseRequest(`studio_generations?${params.toString()}`, { method: 'GET' });
 }
 
 export default async function handler(req, res) {
@@ -66,10 +82,20 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       const id = typeof req.query?.id === 'string' ? req.query.id : '';
-      if (!isUuid(id)) return res.status(400).json({ error: 'Invalid job id' });
-      const job = await getJob(id);
-      if (!job) return res.status(404).json({ error: 'Job not found' });
-      return res.status(200).json({ job });
+      if (id) {
+        if (!isUuid(id)) return res.status(400).json({ error: 'Invalid job id' });
+        const job = await getJob(id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        return res.status(200).json({ job });
+      }
+
+      const status = safeText(req.query?.status || 'all', 32).toLowerCase();
+      if (!['all', 'active', 'queued', 'running', 'completed', 'failed'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status filter' });
+      }
+      const limit = clampLimit(req.query?.limit);
+      const rows = await listJobs({ status, limit });
+      return res.status(200).json({ jobs: Array.isArray(rows) ? rows : [], filter: status, limit });
     }
 
     if (req.method === 'PATCH') {
