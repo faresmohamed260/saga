@@ -100,6 +100,7 @@ export default async function handler(req, res) {
         sourceR2Key: sourceKey || null,
         sourceContentType: sourceContentType || null,
         sourceFilename,
+        execution: { steps, cfg, megapixels },
       },
     });
     await transitionGenerationJob(job.id, 'running');

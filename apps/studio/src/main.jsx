@@ -82,6 +82,7 @@ function App() {
   const [jobsFilter, setJobsFilter] = useState('active');
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState('');
+  const [jobActionBusy, setJobActionBusy] = useState('');
   const [seed, setSeed] = useState('42');
   const [editMegapixels, setEditMegapixels] = useState('1.0');
   const [favorites, setFavorites] = useState(new Set());
@@ -133,6 +134,28 @@ function App() {
       setJobsError(err instanceof Error ? err.message : 'Unable to load generation jobs.');
     } finally {
       if (!silent) setJobsLoading(false);
+    }
+  };
+
+  const runJobAction = async (job, action) => {
+    if (!job?.id || jobActionBusy) return;
+    if (action === 'cancel' && !window.confirm('Cancel this generation? The provider job will be stopped if it is still running.')) return;
+    setJobActionBusy(job.id);
+    setJobsError('');
+    try {
+      const response = await fetch('/api/job-actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: job.id, action }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || `${action === 'retry' ? 'Retry' : 'Cancel'} failed (${response.status})`);
+      if (action === 'retry') setJobsFilter('active');
+      await loadJobs({ filter: action === 'retry' ? 'active' : jobsFilter });
+    } catch (err) {
+      setJobsError(err instanceof Error ? err.message : `Unable to ${action} job.`);
+    } finally {
+      setJobActionBusy('');
     }
   };
 
@@ -461,7 +484,11 @@ function App() {
           {renderLibraryHeader('Execution', 'Jobs & queue', 'Live generation lifecycle. This page polls while open; completed media stays in History.', <button className="secondary-button" onClick={() => loadJobs({ filter: jobsFilter })} disabled={jobsLoading}>{jobsLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>)}
           <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Job status filter">{[['active','Active'],['queued','Queued'],['running','Running'],['failed','Failed'],['completed','Completed'],['all','Recent']].map(([value,label]) => <button key={value} className={jobsFilter === value ? 'selected' : ''} onClick={() => setJobsFilter(value)}>{label}</button>)}</div></div>
           {jobsError && <div className="history-state error">{jobsError}</div>}
-          {jobsLoading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <div style={{display:'grid',gap:12}}>{jobs.map((job) => <article key={job.id} style={{border:'1px solid rgba(255,255,255,.08)',borderRadius:14,background:'rgba(255,255,255,.025)',padding:'16px 18px',display:'grid',gap:10}}><div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}><div style={{display:'flex',gap:10,alignItems:'center',minWidth:0}}><span style={{textTransform:'uppercase',fontSize:11,fontWeight:700,letterSpacing:'.08em',padding:'5px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.14)',opacity:job.status === 'failed' ? 1 : .8}}>{job.status}</span><strong style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{job.prompt || 'Untitled job'}</strong></div><span style={{fontSize:12,color:'#7f8999'}}>{formatJobTime(job.created_at)}</span></div><div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:'#8f98a8'}}><span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span><span>{job.provider || 'provider n/a'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}</div><div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:'#687284'}}><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span></div>{job.error_message && <div style={{padding:'10px 12px',borderRadius:9,background:'rgba(120,20,35,.14)',border:'1px solid rgba(255,100,120,.25)',color:'#ffb4c0',fontSize:12}}>{job.error_message}</div>}</article>)}</div>}
+          {jobsLoading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <div style={{display:'grid',gap:12}}>{jobs.map((job) => {
+            const cancelled = Boolean(job.metadata?.cancelled);
+            const actionBusy = jobActionBusy === job.id;
+            return <article key={job.id} style={{border:'1px solid rgba(255,255,255,.08)',borderRadius:14,background:'rgba(255,255,255,.025)',padding:'16px 18px',display:'grid',gap:10}}><div style={{display:'flex',gap:12,alignItems:'center',justifyContent:'space-between',flexWrap:'wrap'}}><div style={{display:'flex',gap:10,alignItems:'center',minWidth:0}}><span style={{textTransform:'uppercase',fontSize:11,fontWeight:700,letterSpacing:'.08em',padding:'5px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.14)',opacity:job.status === 'failed' ? 1 : .8}}>{cancelled ? 'cancelled' : job.status}</span><strong style={{fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{job.prompt || 'Untitled job'}</strong></div><span style={{fontSize:12,color:'#7f8999'}}>{formatJobTime(job.created_at)}</span></div><div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:'#8f98a8'}}><span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span><span>{job.provider || 'provider n/a'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}</div><div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:'#687284'}}><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span></div>{job.error_message && <div style={{padding:'10px 12px',borderRadius:9,background:'rgba(120,20,35,.14)',border:'1px solid rgba(255,100,120,.25)',color:'#ffb4c0',fontSize:12}}>{job.error_message}</div>}<div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>{['queued','running'].includes(job.status) && <button className="secondary-button" disabled={actionBusy} onClick={() => runJobAction(job, 'cancel')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <X size={16}/>} Cancel</button>}{job.status === 'failed' && <button className="secondary-button" disabled={actionBusy} onClick={() => runJobAction(job, 'retry')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <RotateCcw size={16}/>} Retry</button>}</div></article>;
+          })}</div>}
         </section> : section === 'History' ? <section className="history-view">
           {renderLibraryHeader('Library', 'Generation history', 'Thumbnail-first previews. Originals load only when you open an item.', <button className="secondary-button" onClick={() => loadHistory({ append: false })} disabled={historyLoading}>{historyLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>)}
           <div className="history-toolbar"><div className="history-kind-tabs" role="group" aria-label="Media type filter">{[['all','All'],['image','Images'],['video','Videos']].map(([value,label]) => <button key={value} className={historyKind === value ? 'selected' : ''} onClick={() => setHistoryKind(value)}>{label}</button>)}</div><label className="history-model-filter"><span>Model</span><select value={historyModel} onChange={(event) => setHistoryModel(event.target.value)}><option value="all">All models</option>{historyModels.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label></div>
