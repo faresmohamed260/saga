@@ -1,0 +1,303 @@
+.workspace .mode-tabs.create-mode-tabs{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  width:min(1180px,100%);
+  height:auto;
+  margin:34px auto 12px;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.workspace .create-mode-tabs .mode-tab{
+  min-width:0;
+  height:48px;
+  padding:0 14px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:12px;
+  background:#0d1017;
+  color:#8f98a8;
+  gap:9px;
+  font-size:13px;
+  font-weight:600;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
+}
+.workspace .create-mode-tabs .mode-tab:hover{
+  color:#eef1f5;
+  border-color:rgba(255,255,255,.16);
+  background:#11151d;
+}
+.workspace .create-mode-tabs .mode-tab.selected{
+  color:#fff;
+  border-color:rgba(122,92,255,.7);
+  background:linear-gradient(135deg,rgba(111,78,255,.2),rgba(17,21,29,.98));
+  box-shadow:0 0 0 1px rgba(100,78,255,.12),inset 0 1px 0 rgba(255,255,255,.04);
+}
+.workspace .create-mode-tabs .mode-tab.selected:after{display:none}
+.workspace .create-mode-tabs .mode-tab.selected svg{color:#c9bdff}
+
+.workspace .composer-panel-v4{
+  min-height:0;
+  width:min(1180px,100%);
+  margin:0 auto 24px;
+  padding:14px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:18px;
+  background:linear-gradient(180deg,rgba(15,19,26,.98),rgba(10,13,18,.99));
+  box-shadow:0 14px 42px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.workspace .composer-panel-v4 .grok-context-line{
+  margin:0 2px 10px;
+  min-height:23px;
+  padding:0 8px;
+  border-color:rgba(255,255,255,.07);
+  background:#11151c;
+  color:#7f8898;
+}
+.workspace .composer-panel-v4 .prompt-editor-wrap,
+.workspace .composer-panel-v4 .rich-prompt-wrap{
+  position:relative;
+  min-height:104px;
+  margin:0 0 11px;
+  border:1px solid rgba(255,255,255,.075);
+  border-radius:14px;
+  background:#10141b;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.018);
+}
+.workspace .composer-panel-v4 .prompt-editor-wrap:focus-within,
+.workspace .composer-panel-v4 .rich-prompt-wrap:focus-within{
+  border-color:rgba(122,92,255,.45);
+  box-shadow:0 0 0 3px rgba(122,92,255,.06),inset 0 1px 0 rgba(255,255,255,.02);
+}
+.workspace .composer-panel-v4 .prompt-editor-wrap textarea{
+  min-height:104px;
+  padding:16px 16px 18px;
+  color:#eef1f5;
+  font-size:16px;
+  line-height:1.55;
+  letter-spacing:-.008em;
+}
+.workspace .composer-panel-v4 .prompt-editor-wrap textarea::placeholder{color:#727b8a}
+.workspace .composer-panel-v4 .rich-prompt-editor{
+  min-height:104px;
+  padding:16px 16px 18px;
+  color:#eef1f5;
+  font-size:16px;
+  line-height:1.55;
+  letter-spacing:-.008em;
+}
+.workspace .composer-panel-v4 .rich-prompt-editor:empty:before{color:#727b8a}
+.workspace .composer-panel-v4 .reference-strip{margin:0 2px 11px}
+
+.workspace .composer-panel-v4 .grok-toolbar{
+  gap:10px;
+  padding-top:1px;
+}
+.workspace .composer-panel-v4 .grok-toolbar-left,
+.workspace .composer-panel-v4 .grok-toolbar-right{gap:7px}
+.workspace .composer-panel-v4 .grok-circle-button{
+  width:40px;
+  height:40px;
+  background:#11151c;
+  border-color:rgba(255,255,255,.07);
+}
+.workspace .composer-panel-v4 .grok-icon-button{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+}
+.workspace .composer-panel-v4 .grok-text-choice{
+  height:40px;
+  padding:0 14px;
+  border-radius:12px;
+  font-size:13px;
+}
+.workspace .composer-panel-v4 .grok-text-choice.selected{
+  background:#191725;
+  color:#f1edff;
+  box-shadow:inset 0 0 0 1px rgba(122,92,255,.2);
+}
+.workspace .composer-panel-v4 .grok-aspect-button,
+.workspace .composer-panel-v4 .grok-resolution-button{
+  height:40px;
+  padding:0 13px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:12px;
+  background:#11151c;
+  color:#e7e9ee;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:13px;
+  font-weight:600;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.workspace .composer-panel-v4 .grok-aspect-button:hover,
+.workspace .composer-panel-v4 .grok-aspect-button.active,
+.workspace .composer-panel-v4 .grok-resolution-button:hover,
+.workspace .composer-panel-v4 .grok-resolution-button.active{
+  background:#171c25;
+  border-color:rgba(122,92,255,.35);
+}
+.workspace .grok-resolution-wrap,
+.workspace .grok-aspect-wrap{position:relative;flex:none}
+.workspace .grok-resolution-icon{
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border-radius:7px;
+  background:#202633;
+  color:#bbb6ff;
+  font-size:9px;
+  font-weight:700;
+}
+.workspace .grok-resolution-button svg{color:#858e9f}
+.workspace .composer-panel-v4 .grok-ratio-icon{width:16px;max-height:20px;background:#9da4b3}
+.workspace .composer-panel-v4 .grok-prompt-count{color:#626b79}
+.workspace .composer-panel-v4 .grok-settings-button{width:38px;height:38px}
+.workspace .composer-panel-v4 .grok-mic-button{width:40px;height:40px}
+.workspace .composer-panel-v4 .grok-submit{width:44px;height:44px}
+
+.workspace .grok-aspect-popover{
+  grid-template-columns:150px minmax(240px,1fr);
+  border-radius:16px;
+  background:#15191f;
+  border-color:rgba(255,255,255,.1);
+  box-shadow:0 22px 64px rgba(0,0,0,.48);
+}
+.workspace .grok-aspect-preview{
+  padding:12px;
+  gap:5px;
+  border-right-color:rgba(255,255,255,.06);
+}
+.workspace .grok-preview-grid{
+  width:118px;
+  border-radius:12px;
+  background:linear-gradient(to right,transparent calc(33.333% - .5px),rgba(255,255,255,.05) calc(33.333% - .5px),rgba(255,255,255,.05) calc(33.333% + .5px),transparent calc(33.333% + .5px),transparent calc(66.666% - .5px),rgba(255,255,255,.05) calc(66.666% - .5px),rgba(255,255,255,.05) calc(66.666% + .5px),transparent calc(66.666% + .5px)),linear-gradient(to bottom,transparent calc(33.333% - .5px),rgba(255,255,255,.05) calc(33.333% - .5px),rgba(255,255,255,.05) calc(33.333% + .5px),transparent calc(33.333% + .5px),transparent calc(66.666% - .5px),rgba(255,255,255,.05) calc(66.666% - .5px),rgba(255,255,255,.05) calc(66.666% + .5px),transparent calc(66.666% + .5px)),#11151c;
+}
+.workspace .grok-preview-shape{border-width:1.5px}
+.workspace .grok-aspect-preview strong{font-size:14px;margin-top:4px}
+.workspace .grok-aspect-preview small{font-size:10px}
+.workspace .grok-aspect-list{padding:7px}
+.workspace .grok-aspect-morph-indicator{
+  border-radius:8px;
+  background:#20252e;
+  border-color:rgba(255,255,255,.065);
+}
+.workspace .grok-aspect-list button{
+  height:31px;
+  grid-template-columns:58px 1fr 20px;
+  padding:0 9px;
+  margin:0;
+  border-radius:8px;
+  font-size:12px;
+}
+.workspace .grok-aspect-list button svg{width:14px;height:14px}
+
+.workspace .grok-resolution-popover{
+  position:fixed;
+  z-index:1000;
+  display:grid;
+  grid-template-columns:148px minmax(220px,1fr);
+  max-width:calc(100vw - 24px);
+  max-height:calc(100vh - 24px);
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:16px;
+  background:#15191f;
+  box-shadow:0 22px 64px rgba(0,0,0,.48);
+}
+.workspace .grok-resolution-preview{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  padding:12px;
+  border-right:1px solid rgba(255,255,255,.06);
+}
+.workspace .grok-resolution-stage{
+  width:116px;
+  height:116px;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  background:#11151c;
+  border:1px solid rgba(255,255,255,.045);
+}
+.workspace .grok-resolution-shape{
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(196,190,255,.72);
+  border-radius:8px;
+  background:linear-gradient(135deg,rgba(122,92,255,.12),rgba(75,156,255,.06));
+  color:#d9d5ff;
+  font-size:9px;
+  font-weight:700;
+  transition:width .23s cubic-bezier(.2,.8,.2,1),height .23s cubic-bezier(.2,.8,.2,1);
+}
+.workspace .grok-resolution-preview strong{font-size:13px;color:#f1f3f7;margin-top:3px}
+.workspace .grok-resolution-preview small{font-size:9px;color:#7f8898;text-align:center}
+.workspace .grok-resolution-list{position:relative;padding:7px;overflow:auto;overscroll-behavior:contain}
+.workspace .grok-resolution-morph-indicator{
+  position:absolute;
+  z-index:0;
+  left:0;
+  top:0;
+  border:1px solid rgba(255,255,255,.065);
+  border-radius:8px;
+  background:#20252e;
+  pointer-events:none;
+  transition:transform .2s cubic-bezier(.2,.8,.2,1),width .2s cubic-bezier(.2,.8,.2,1),height .2s cubic-bezier(.2,.8,.2,1),opacity .12s ease;
+}
+.workspace .grok-resolution-list button{
+  position:relative;
+  z-index:1;
+  width:100%;
+  height:38px;
+  display:grid;
+  grid-template-columns:1fr 68px 20px;
+  align-items:center;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#d6dbe4;
+  padding:0 9px;
+  text-align:left;
+  cursor:pointer;
+  font-size:12px;
+}
+.workspace .grok-resolution-list button:hover,
+.workspace .grok-resolution-list button:focus-visible{outline:0;color:#fff}
+.workspace .grok-resolution-list button span:nth-child(2){color:#7f8898;text-align:right;font-size:10px}
+.workspace .grok-resolution-list button svg{justify-self:end;color:#ecebff;width:14px;height:14px}
+
+@media (max-width:980px){
+  .workspace .mode-tabs.create-mode-tabs{margin-top:20px}
+  .workspace .composer-panel-v4{margin-top:0}
+}
+@media (max-width:720px){
+  .workspace .mode-tabs.create-mode-tabs{gap:5px;margin-top:12px;margin-bottom:8px}
+  .workspace .create-mode-tabs .mode-tab{height:43px;padding:0 8px;font-size:12px;gap:6px}
+  .workspace .create-mode-tabs .mode-tab svg{width:17px;height:17px}
+  .workspace .composer-panel-v4{padding:10px;border-radius:15px}
+  .workspace .composer-panel-v4 .prompt-editor-wrap,
+  .workspace .composer-panel-v4 .rich-prompt-wrap{min-height:92px;border-radius:12px}
+  .workspace .composer-panel-v4 .prompt-editor-wrap textarea,
+  .workspace .composer-panel-v4 .rich-prompt-editor{min-height:92px;padding:14px;font-size:15px}
+  .workspace .grok-aspect-popover,
+  .workspace .grok-resolution-popover{grid-template-columns:1fr;grid-template-rows:112px minmax(0,1fr);border-radius:14px}
+  .workspace .grok-aspect-preview,
+  .workspace .grok-resolution-preview{border-right:0;border-bottom:1px solid rgba(255,255,255,.06);padding:8px}
+  .workspace .grok-preview-grid{width:78px}
+  .workspace .grok-resolution-stage{width:80px;height:80px}
+  .workspace .grok-aspect-preview strong,
+  .workspace .grok-resolution-preview strong{font-size:12px;margin-top:0}
+  .workspace .grok-aspect-preview small,
+  .workspace .grok-resolution-preview small{font-size:9px}
+  .workspace .grok-aspect-list button{height:30px}
+  .workspace .grok-resolution-list button{height:36px}
+}
