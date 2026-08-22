@@ -1,0 +1,171 @@
+/* High-specificity layout fixes for the Grok-style composer.
+   Keep this file imported after the legacy Studio styles so old full-width
+   control rules cannot stretch the inline toolbar. */
+
+.app-shell{
+  grid-template-columns:248px minmax(0,1fr);
+}
+
+.composer-panel.composer-panel-v3{
+  min-height:210px;
+  padding:12px 14px 10px;
+}
+
+.composer-panel-v3 .prompt-editor-wrap textarea{
+  min-height:96px;
+  padding:18px 2px 10px;
+}
+
+.composer-panel-v3 .rich-prompt-wrap,
+.composer-panel-v3 .rich-prompt-editor{
+  min-height:96px;
+}
+
+.composer-panel-v3 .rich-prompt-editor{
+  padding:16px 2px 10px;
+}
+
+.composer-panel-v3 .composer-inline-toolbar{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-height:47px;
+  padding-top:9px;
+}
+
+.composer-panel-v3 .composer-inline-left{
+  display:flex;
+  flex:1 1 auto;
+  min-width:0;
+  align-items:center;
+  gap:7px;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  overflow-y:visible;
+  scrollbar-width:none;
+}
+
+.composer-panel-v3 .composer-inline-left::-webkit-scrollbar{display:none}
+
+.composer-panel-v3 .composer-inline-right{
+  display:flex;
+  flex:0 0 auto;
+  margin-left:auto;
+  align-items:center;
+  justify-content:flex-end;
+  gap:7px;
+  flex-wrap:nowrap;
+}
+
+.composer-panel-v3 .style-menu-wrap{
+  position:relative;
+  display:flex;
+  flex:0 0 auto;
+}
+
+.composer-panel-v3 .composer-pill,
+.composer-panel-v3 .composer-icon-pill{
+  box-sizing:border-box;
+  flex:0 0 auto;
+  height:36px;
+  min-height:36px;
+  border:1px solid rgba(255,255,255,.11);
+  border-radius:10px;
+  background:#17191e;
+  color:#edf0f4;
+  font-size:11px;
+  font-weight:500;
+  line-height:1;
+}
+
+.composer-panel-v3 button.composer-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:0 11px;
+}
+
+.composer-panel-v3 span.composer-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:0 11px;
+}
+
+.composer-panel-v3 .composer-icon-pill{
+  width:36px;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.composer-panel-v3 .compact-native-select.composer-select-pill{
+  width:auto;
+  min-width:78px;
+  max-width:132px;
+  min-height:36px;
+  height:36px;
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  border-radius:10px;
+  background:#17191e;
+}
+
+.composer-panel-v3 .compact-native-select.composer-select-pill select{
+  width:auto;
+  min-width:76px;
+  height:34px;
+  padding:0 29px 0 10px;
+  font-size:11px;
+  font-weight:500;
+  line-height:34px;
+}
+
+.composer-panel-v3 .compact-native-select.composer-select-pill svg{
+  right:8px;
+}
+
+/* Resolution is already shown in the first select; suppress the duplicate label. */
+.composer-panel-v3 .composer-select-pill + .composer-select-pill + .composer-pill.static{
+  display:none;
+}
+
+.composer-panel-v3 .composer-submit{
+  flex:0 0 auto;
+  width:38px;
+  height:38px;
+  min-width:38px;
+  min-height:38px;
+  padding:0;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.composer-panel-v3 .prompt-count{
+  flex:0 0 auto;
+}
+
+.composer-panel-v3 .composer-settings-popover{
+  right:12px;
+  bottom:58px;
+}
+
+@media (max-width:1100px){
+  .app-shell{grid-template-columns:220px minmax(0,1fr)}
+  .composer-panel-v3 .compact-model{display:none}
+  .composer-panel-v3 .prompt-count{display:none}
+}
+
+@media (max-width:780px){
+  .app-shell{grid-template-columns:1fr}
+  .composer-panel.composer-panel-v3{min-height:190px}
+  .composer-panel-v3 .composer-inline-left{padding-bottom:2px}
+}
