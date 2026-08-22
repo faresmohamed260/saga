@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - studio/flux2-klein-9b-img2img
+      - studio/edit-reference-ux
     paths:
       - "integrations/comfyui/flux2_klein_app.py"
       - "integrations/comfyui/workflows/flux2_klein_9b_image_edit_api.json"
