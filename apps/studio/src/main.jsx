@@ -6,9 +6,9 @@ import {
   ArrowUpRight, MoreHorizontal, ChevronDown, RotateCcw, Dice5, Palette, ImagePlus,
   Menu, ChevronLeft, Maximize2, LoaderCircle, Trash2, Download
 } from 'lucide-react';
+import { runImageEdit } from './generation-client.js';
 import './styles.css';
 
-const FLUX2_API_URL = (import.meta.env.VITE_FLUX2_KLEIN_API_URL || 'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run').replace(/\/$/, '');
 const HISTORY_PAGE_SIZE = 24;
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', History: 'history', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section]));
@@ -34,63 +34,11 @@ const editQualityOptions = [
   { value: '1.0', label: 'Quality', detail: '1.0 MP' },
 ];
 
-function encodeHeader(value) { return encodeURIComponent(String(value ?? '')); }
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
 function formatJobTime(value) {
   if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
-}
-
-async function createGenerationJob(payload) {
-  const response = await fetch('/api/jobs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    let detail = '';
-    try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
-    throw new Error(`Could not queue generation (${response.status})${detail}`);
-  }
-  const body = await response.json();
-  if (!body?.job?.id) throw new Error('Generation queue did not return a job id.');
-  return body.job;
-}
-
-async function transitionGenerationJob(id, status, errorMessage = '') {
-  if (!id) return null;
-  const response = await fetch('/api/jobs', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status, errorMessage }),
-  });
-  if (!response.ok) {
-    let detail = '';
-    try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
-    throw new Error(`Could not update generation job (${response.status})${detail}`);
-  }
-  return await response.json();
-}
-
-async function persistGeneratedImage(blob, { model, resolution, prompt, negativePrompt = '', seed, jobId }) {
-  try {
-    const response = await fetch('/api/media', {
-      method: 'POST',
-      headers: {
-        'Content-Type': blob.type || 'image/png',
-        'X-Saga-Model': encodeHeader(model),
-        'X-Saga-Resolution': encodeHeader(resolution),
-        'X-Saga-Prompt': encodeHeader(prompt),
-        'X-Saga-Negative-Prompt': encodeHeader(negativePrompt),
-        'X-Saga-Seed': String(seed ?? ''),
-        'X-Saga-Job-Id': String(jobId || ''),
-      },
-      body: blob,
-    });
-    if (!response.ok) return null;
-    return await response.json();
-  } catch { return null; }
 }
 
 function toHistoryItem(row) {
@@ -289,49 +237,38 @@ function App() {
     if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
     const effectiveSeed = Number(seed) || 42;
     const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
-    const job = await createGenerationJob({
-      kind: 'image',
-      mode: 'edit',
-      model,
+    setJobStatus('queued');
+
+    const { job, result } = await runImageEdit({
+      sourceFile,
       prompt: prompt.trim(),
       negativePrompt: '',
       resolution: activeEditQuality.detail,
       seed: effectiveSeed,
-      workflowId: 'flux2-klein-image-edit',
-      provider: 'modal',
+      steps: 4,
+      cfg: 1.0,
+      megapixels: Number(editMegapixels),
+    }, {
+      onStatus: setJobStatus,
     });
-    const jobId = job.id;
-    setJobStatus('queued');
 
-    try {
-      await transitionGenerationJob(jobId, 'running');
-      setJobStatus('running');
-
-      const form = new FormData();
-      form.append('image_file', sourceFile, sourceFile.name); form.append('prompt', prompt.trim()); form.append('negative_prompt', '');
-      form.append('seed', String(effectiveSeed)); form.append('steps', '4'); form.append('cfg', '1.0'); form.append('megapixels', editMegapixels);
-      const response = await fetch(`${FLUX2_API_URL}/edit`, { method: 'POST', body: form });
-      if (!response.ok) {
-        let detail = '';
-        try { const body = await response.json(); detail = body?.detail ? `: ${body.detail}` : ''; } catch {}
-        throw new Error(`FLUX.2 Klein request failed (${response.status})${detail}`);
-      }
-      const blob = await response.blob();
-      if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
-
-      const persisted = await persistGeneratedImage(blob, { model, resolution: activeEditQuality.detail, prompt: prompt.trim(), negativePrompt: '', seed: effectiveSeed, jobId });
-      if (!persisted?.historyPersisted || persisted?.generationId !== jobId) throw new Error('Generated image could not be attached to its generation job.');
-
-      setJobStatus('completed');
-      const url = persisted.url || URL.createObjectURL(blob);
-      const item = { id: persisted.generationId, title: prompt.trim(), url: persisted.thumbnailUrl || url, originalUrl: url, generated: true, model, resolution: activeEditQuality.detail, seed: effectiveSeed, persisted: true };
-      setItems((current) => [item, ...current]);
-      if (section === 'History') loadHistory({ append: false });
-    } catch (err) {
-      setJobStatus('failed');
-      try { await transitionGenerationJob(jobId, 'failed', err instanceof Error ? err.message : 'Generation failed.'); } catch {}
-      throw err;
-    }
+    setJobStatus('completed');
+    const item = {
+      id: result.generationId || job.id,
+      title: prompt.trim(),
+      url: result.thumbnailUrl || result.mediaUrl,
+      originalUrl: result.mediaUrl,
+      thumbnailUrl: result.thumbnailUrl || null,
+      generated: true,
+      model,
+      resolution: activeEditQuality.detail,
+      seed: effectiveSeed,
+      kind: 'image',
+      mode: 'edit',
+      persisted: true,
+    };
+    setItems((current) => [item, ...current]);
+    if (section === 'History') loadHistory({ append: false });
   };
 
   const generate = async () => {
@@ -340,8 +277,10 @@ function App() {
     try {
       if (isEdit) await runFluxEdit();
       else { await new Promise((resolve) => window.setTimeout(resolve, 700)); setItems((prev) => [prev[1], prev[3], prev[0], prev[2]]); }
-    } catch (err) { setError(err instanceof Error ? err.message : 'Generation failed.'); }
-    finally { setBusy(false); }
+    } catch (err) {
+      setJobStatus('failed');
+      setError(err instanceof Error ? err.message : 'Generation failed.');
+    } finally { setBusy(false); }
   };
 
   const toggleFavorite = async (item) => {
