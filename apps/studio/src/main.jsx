@@ -25,6 +25,25 @@ const editQualityOptions = [
   { value: '1.0', label: 'Quality', detail: '1.0 MP' },
 ];
 
+async function persistGeneratedImage(blob, { model, resolution }) {
+  try {
+    const response = await fetch('/api/media', {
+      method: 'POST',
+      headers: {
+        'Content-Type': blob.type || 'image/png',
+        'X-Saga-Model': model,
+        'X-Saga-Resolution': resolution,
+      },
+      body: blob,
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return payload?.url || null;
+  } catch {
+    return null;
+  }
+}
+
 function NavItem({ icon: Icon, label, active, onClick }) {
   return <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>;
 }
@@ -106,14 +125,17 @@ function App() {
 
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
-    const url = URL.createObjectURL(blob);
+    const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
+    const persistedUrl = await persistGeneratedImage(blob, { model, resolution: activeEditQuality.detail });
+    const url = persistedUrl || URL.createObjectURL(blob);
     const item = {
       id: `flux-${Date.now()}`,
       title: prompt.trim(),
       url,
       generated: true,
-      model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
+      model,
       resolution: activeEditQuality.detail,
+      persisted: Boolean(persistedUrl),
     };
     setItems((current) => [item, ...current]);
   };
