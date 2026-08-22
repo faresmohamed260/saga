@@ -20,7 +20,7 @@ Gallery surfaces must prefer thumbnails/posters and avoid loading full-resolutio
 
 ## Build phases
 
-### Phase 1 — Persistent media library (current)
+### Phase 1 — Persistent media library (complete for the current single-user bootstrap)
 
 - Persist a database record for every generated asset.
 - Store prompt, model, workflow/mode, resolution, seed, timestamps and R2 key.
@@ -31,7 +31,7 @@ Gallery surfaces must prefer thumbnails/posters and avoid loading full-resolutio
 - Persist favorites and collections.
 - Add delete, download, reuse and edit actions.
 
-### Phase 2 — Generation jobs
+### Phase 2 — Generation jobs (next)
 
 Represent generation lifecycle explicitly:
 
@@ -89,11 +89,11 @@ Completed:
 - `studio_generations` table created in the AI Studio Supabase project.
 - Newest-first, status, media-kind, favorite, and collection membership indexes created.
 - RLS enabled.
-- Bootstrap RLS policies support the current single-user hobby/demo server API. This must be replaced by authenticated/server-privileged access before broader release.
+- Bootstrap RLS policies support the current single-user hobby/demo server API, including completed-generation deletion. These temporary anonymous policies must be replaced by authenticated/server-privileged access before broader release.
 - Server Supabase requests prefer a service-role/secret key when configured, with the publishable key remaining as the temporary bootstrap fallback.
 - `/api/history` supports newest-first results, bounded page size, `offset` pagination, optional media-kind / exact-model filters, model facets, and favorite state.
 - `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
-- Prompt, seed, UTF-8 model metadata, original dimensions, thumbnail creation, thumbnail dimensions, original reads, and thumbnail reads were verified end-to-end with the automated media smoke test.
+- Prompt, seed, UTF-8 model metadata, original dimensions, thumbnail creation, thumbnail dimensions, original reads, and thumbnail reads were verified end-to-end with automated smoke tests.
 - Supabase has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
 - Image persistence creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
 - `/api/media` serves both `generations/...` originals and `thumbnails/...` previews, and supports attachment download responses for originals.
@@ -104,18 +104,19 @@ Completed:
 - Active navigation is URL-backed, so refresh/reopen keeps the current Studio section.
 - Persistent Favorites are stored on `studio_generations.is_favorite`, exposed through `/api/favorites`, and rendered by the Favorites sidebar page.
 - Persistent Collections use `studio_collections` + `studio_collection_items`, with create/rename/delete, add/remove membership, collection covers, counts, and collection detail views.
-- Media cards now support Download original, Reuse settings, Edit this, Add/remove collection membership, and permanent Delete.
+- Media cards support Download original, Reuse settings, Edit this, Add/remove collection membership, and permanent Delete.
 - Edit this fetches the original image on demand and loads it into the existing FLUX.2 Klein edit composer as the new source image.
 - Permanent generation deletion removes the original and thumbnail from R2, then removes the generation row; favorite and collection references cascade with the database row.
+- The production destructive-media smoke test creates disposable media, confirms original + thumbnail reads, confirms attachment download, permanently deletes the generation, verifies both R2 objects return 404, verifies the History row is gone, and leaves no disposable test rows behind.
 
-Remaining for Phase 1:
+Security work before broader release:
 
-- Replace bootstrap anonymous access with authenticated/server-privileged authorization before broader release.
-- Do a final production smoke verification of the destructive delete path using disposable media only.
+- Replace bootstrap anonymous access with Supabase Auth/JWT ownership and server-privileged authorization.
+- Scope generation, favorites, collections, and destructive actions per user.
 
 ## Immediate milestone
 
-Complete the persistent library shell before moving generation execution onto the shared job lifecycle:
+The persistent library shell is complete for the current single-user bootstrap:
 
 1. R2 original upload succeeds. **Done.**
 2. Studio writes generation metadata. **Done.**
@@ -123,5 +124,5 @@ Complete the persistent library shell before moving generation execution onto th
 4. History is persistent and thumbnail-first. **Done.**
 5. Media-kind/model filters and Load more pagination. **Done.**
 6. Persist Favorites and Collections. **Done.**
-7. Finish download/reuse/edit/delete actions. **Implemented; production verification next.**
-8. Migrate generation execution to the shared job lifecycle before adding video workflows.
+7. Download/reuse/edit/delete actions pass production verification. **Done.**
+8. Migrate generation execution to the shared job lifecycle before adding video workflows. **Next.**
