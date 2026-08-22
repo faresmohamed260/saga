@@ -1,0 +1,17 @@
+name: Required Check Compatibility
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-pro:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compatibility gate
+        run: echo "dashboard-pro legacy branch protection compatibility check"
