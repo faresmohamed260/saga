@@ -5,6 +5,7 @@ on:
     branches:
       - studio/flux2-resolution-r2
     paths:
+      - ".github/flux2-resolution-test-trigger.txt"
       - ".github/workflows/test-flux2-klein-resolutions.yml"
   workflow_dispatch:
 
@@ -21,7 +22,13 @@ jobs:
           python - <<'PY'
           import struct, zlib
           w=h=512
-          raw=b''.join(b'\x00'+bytes([(x//2)%256,(y//2)%256,128])*w for y in range(h) for x in [0])
+          rows=[]
+          for y in range(h):
+              row=bytearray()
+              for x in range(w):
+                  row.extend(((x//2)%256,(y//2)%256,128))
+              rows.append(b'\x00'+bytes(row))
+          raw=b''.join(rows)
           def chunk(t,d):
               return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
           png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
