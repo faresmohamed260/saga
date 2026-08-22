@@ -5,7 +5,7 @@ import {
   listGenerationJobs,
   transitionGenerationJob,
 } from './_generation-jobs.js';
-import { cancelGenerationJob, retryGenerationJob } from './_job-actions.js';
+import { cancelGenerationJob, retryGenerationJob } from '../server/job-actions.js';
 
 function safeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
