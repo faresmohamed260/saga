@@ -1,5 +1,6 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { insertGeneration } from './_supabase.js';
 
 const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
@@ -62,12 +63,34 @@ async function readBody(req, limit = 6 * 1024 * 1024) {
   return Buffer.concat(chunks);
 }
 
-function generationKey(contentType) {
+function generationKeys(contentType) {
   const now = new Date();
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const id = randomUUID();
   const ext = contentType === 'image/webp' ? 'webp' : contentType === 'image/jpeg' ? 'jpg' : 'png';
-  return `generations/${year}/${month}/${randomUUID()}.${ext}`;
+  return {
+    original: `generations/${year}/${month}/${id}.${ext}`,
+    thumbnail: `thumbnails/${year}/${month}/${id}.webp`,
+  };
+}
+
+async function createThumbnail(body) {
+  const source = sharp(body, { failOn: 'warning' }).rotate();
+  const metadata = await source.metadata();
+  const { data, info } = await source
+    .clone()
+    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 78, effort: 4 })
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    data,
+    originalWidth: metadata.width || null,
+    originalHeight: metadata.height || null,
+    width: info.width || null,
+    height: info.height || null,
+  };
 }
 
 export default async function handler(req, res) {
@@ -90,17 +113,17 @@ export default async function handler(req, res) {
         return;
       }
 
-      const key = generationKey(contentType);
+      const keys = generationKeys(contentType);
       const model = safeText(decodeHeader(req.headers['x-saga-model']) || 'flux2-klein-9b', 240);
       const resolution = safeText(decodeHeader(req.headers['x-saga-resolution']), 64);
       const prompt = safeText(decodeHeader(req.headers['x-saga-prompt']), 2000);
       const negativePrompt = safeText(decodeHeader(req.headers['x-saga-negative-prompt']), 2000);
       const seed = parseSeed(req.headers['x-saga-seed']);
-      const mediaUrl = `/api/media?key=${encodeURIComponent(key)}`;
+      const mediaUrl = `/api/media?key=${encodeURIComponent(keys.original)}`;
 
       await client.send(new PutObjectCommand({
         Bucket: bucket,
-        Key: key,
+        Key: keys.original,
         Body: body,
         ContentLength: body.length,
         ContentType: contentType,
@@ -112,6 +135,27 @@ export default async function handler(req, res) {
         },
       }));
 
+      let thumbnail = null;
+      let thumbnailUrl = null;
+      try {
+        thumbnail = await createThumbnail(body);
+        await client.send(new PutObjectCommand({
+          Bucket: bucket,
+          Key: keys.thumbnail,
+          Body: thumbnail.data,
+          ContentLength: thumbnail.data.length,
+          ContentType: 'image/webp',
+          CacheControl: 'private, max-age=31536000, immutable',
+          Metadata: {
+            source: 'saga-studio-thumbnail',
+            original: safeMetadata(keys.original, 240),
+          },
+        }));
+        thumbnailUrl = `/api/media?key=${encodeURIComponent(keys.thumbnail)}`;
+      } catch (thumbnailError) {
+        console.error('Thumbnail generation/upload failed', thumbnailError);
+      }
+
       let generation = null;
       try {
         generation = await insertGeneration({
@@ -121,13 +165,19 @@ export default async function handler(req, res) {
           model,
           prompt,
           negative_prompt: negativePrompt,
-          r2_key: key,
+          r2_key: keys.original,
           media_url: mediaUrl,
+          thumbnail_r2_key: thumbnailUrl ? keys.thumbnail : null,
+          thumbnail_url: thumbnailUrl,
           mime_type: contentType,
           resolution,
+          width: thumbnail?.originalWidth || null,
+          height: thumbnail?.originalHeight || null,
+          thumbnail_width: thumbnail?.width || null,
+          thumbnail_height: thumbnail?.height || null,
           seed,
           workflow_id: 'flux2-klein-image-edit',
-          metadata: { source: 'saga-studio', storage: 'cloudflare-r2' },
+          metadata: { source: 'saga-studio', storage: 'cloudflare-r2', thumbnailFormat: thumbnailUrl ? 'webp' : null },
           completed_at: new Date().toISOString(),
         });
       } catch (historyError) {
@@ -135,8 +185,10 @@ export default async function handler(req, res) {
       }
 
       res.status(201).json({
-        key,
+        key: keys.original,
         url: mediaUrl,
+        thumbnailKey: thumbnailUrl ? keys.thumbnail : null,
+        thumbnailUrl,
         persisted: true,
         generationId: generation?.id || null,
         historyPersisted: Boolean(generation?.id),
@@ -150,7 +202,8 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const key = typeof req.query?.key === 'string' ? req.query.key : '';
-    if (!key || !key.startsWith('generations/')) {
+    const allowed = key.startsWith('generations/') || key.startsWith('thumbnails/');
+    if (!key || !allowed) {
       res.status(400).json({ error: 'Invalid media key' });
       return;
     }
