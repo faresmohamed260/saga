@@ -1,0 +1,74 @@
+name: Deploy FLUX.2 Klein gateway
+
+on:
+  push:
+    branches:
+      - main
+      - studio/flux2-resolution-r2
+    paths:
+      - "integrations/comfyui/flux2_klein_gateway.py"
+      - ".github/workflows/deploy-flux2-klein-gateway.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Select modal-01 credentials
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          raw=os.environ.get('SAGA_MODAL_TOKENS_JSON','').strip()
+          if not raw:
+              raise SystemExit('SAGA_MODAL_TOKENS_JSON is not configured')
+          payload=json.loads(raw)
+          accounts=payload.get('accounts') if isinstance(payload,dict) else payload
+          if not isinstance(accounts,list) or not accounts:
+              raise SystemExit('Modal roster is empty')
+          selected=None
+          for account in accounts:
+              if not isinstance(account,dict):
+                  continue
+              label=str(account.get('label') or account.get('name') or account.get('account') or '').strip().lower()
+              if label in {'modal-01','modal01','modal-1','account-01','account-1'}:
+                  selected=account; break
+          selected=selected or accounts[0]
+          token_id=str(selected.get('token_id') or '').strip()
+          token_secret=str(selected.get('token_secret') or '').strip()
+          combined=str(selected.get('api_key') or selected.get('token') or '').strip()
+          if (not token_id or not token_secret) and '.' in combined:
+              token_id,token_secret=combined.split('.',1)
+          if not token_id or not token_secret:
+              raise SystemExit('modal-01 credentials are incomplete')
+          print(f'::add-mask::{token_id}')
+          print(f'::add-mask::{token_secret}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:
+              f.write(f'MODAL_TOKEN_ID={token_id}\nMODAL_TOKEN_SECRET={token_secret}\n')
+          PY
+      - name: Deploy gateway
+        run: modal deploy integrations/comfyui/flux2_klein_gateway.py
+      - name: Publish status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          TITLE="[automation] FLUX.2 Klein gateway deploy"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY=$(printf 'Status: **%s**\n\nBranch: %s\n\nRun: %s\n' "$JOB_STATUS" "${{ github.ref_name }}" "$RUN_URL")
+          ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein gateway deploy" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE" ]; then gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"; else gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"; fi
