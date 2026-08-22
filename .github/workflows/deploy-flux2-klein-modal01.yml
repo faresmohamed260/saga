@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: deploy-flux2-klein-modal01
@@ -24,6 +25,7 @@ jobs:
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PREFETCH_READY: "false"
 
     steps:
       - name: Checkout branch
@@ -55,7 +57,7 @@ jobs:
               raise SystemExit("Modal roster does not contain any accounts")
 
           selected = None
-          for index, account in enumerate(accounts):
+          for account in accounts:
               if not isinstance(account, dict):
                   continue
               label = str(account.get("label") or account.get("name") or account.get("account") or "").strip().lower()
@@ -73,8 +75,7 @@ jobs:
           if not token_id or not token_secret:
               raise SystemExit("modal-01 entry is missing token_id/token_secret")
 
-          env_file = os.environ["GITHUB_ENV"]
-          with open(env_file, "a", encoding="utf-8") as handle:
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
               handle.write(f"MODAL_TOKEN_ID={token_id}\n")
               handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
           print("Selected modal-01 credentials from roster")
@@ -95,4 +96,35 @@ jobs:
               "model": result.get("model"),
               "elapsed_seconds": result.get("elapsed_seconds"),
           })
+          if result.get("ready") is not True:
+              raise SystemExit("prefetch did not report ready=true")
           PY
+          echo "PREFETCH_READY=true" >> "$GITHUB_ENV"
+
+      - name: Publish deployment status issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          TITLE="[automation] FLUX.2 Klein modal-01 deploy status"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY=$(cat <<EOF
+          Automated FLUX.2 Klein 9B deployment report.
+
+          - Status: **${JOB_STATUS}**
+          - Branch: `${{ github.ref_name }}`
+          - Commit: `${{ github.sha }}`
+          - Modal app: `saga-flux2-klein-9b`
+          - Target account: `modal-01`
+          - Model prefetch ready: `${PREFETCH_READY}`
+          - Run: ${RUN_URL}
+          EOF
+          )
+          ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein modal-01 deploy status" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE" ]; then
+            gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+          fi
