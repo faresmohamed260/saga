@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import './create-controls-polish.css';
 import {
   Image as ImageIcon, Video, Crop, Grid2X2, Plus, X, SlidersHorizontal, Sparkles,
   Palette, ChevronDown, RotateCcw, Dice5, Check, AtSign, ArrowUp, Mic
@@ -348,10 +349,51 @@ function SettingsPanel({
   </div>;
 }
 
+function useAnchoredPickerPosition(open, anchorRef, desiredWidth, desiredHeight) {
+  const [position, setPosition] = useState(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const anchor = anchorRef?.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const gap = 9;
+      const edge = 12;
+      const width = Math.min(desiredWidth, viewportWidth - edge * 2);
+      const height = Math.min(desiredHeight, viewportHeight - edge * 2);
+      const spaceAbove = rect.top - edge - gap;
+      const spaceBelow = viewportHeight - rect.bottom - edge - gap;
+      const openAbove = spaceAbove >= Math.min(height, 220) || spaceAbove > spaceBelow;
+      let top = openAbove ? rect.top - gap - height : rect.bottom + gap;
+      top = Math.max(edge, Math.min(top, viewportHeight - height - edge));
+      let left = rect.right - width;
+      left = Math.max(edge, Math.min(left, viewportWidth - width - edge));
+      setPosition({ top, left, width, height });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, anchorRef, desiredWidth, desiredHeight]);
+
+  return position;
+}
+
 function AspectPicker({ aspect, setAspect, open, setOpen, anchorRef }) {
   const itemRefs = useRef([]);
   const [hovered, setHovered] = useState(null);
-  const [position, setPosition] = useState(null);
+  const position = useAnchoredPickerPosition(open, anchorRef, 510, 390);
   const activeIndex = Math.max(0, ASPECT_PRESETS.findIndex((item) => item.value === aspect));
   const hoverIndex = hovered == null ? activeIndex : hovered;
   const active = ASPECT_PRESETS[activeIndex] || ASPECT_PRESETS[0];
@@ -365,46 +407,14 @@ function AspectPicker({ aspect, setAspect, open, setOpen, anchorRef }) {
   } : { opacity: 0 };
 
   const previewSize = useMemo(() => {
-    const max = 132;
+    const max = 94;
     if (display.ratio >= 1) return { width: max, height: max / display.ratio };
     return { width: max * display.ratio, height: max };
   }, [display]);
 
   useEffect(() => {
-    if (!open) {
-      setHovered(null);
-      setPosition(null);
-      return undefined;
-    }
-
-    const updatePosition = () => {
-      const anchor = anchorRef?.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const gap = 12;
-      const edge = 12;
-      const width = Math.min(700, viewportWidth - edge * 2);
-      const height = Math.min(536, viewportHeight - edge * 2);
-      const spaceAbove = rect.top - edge - gap;
-      const spaceBelow = viewportHeight - rect.bottom - edge - gap;
-      const openAbove = spaceAbove >= Math.min(height, 340) || spaceAbove > spaceBelow;
-      let top = openAbove ? rect.top - gap - height : rect.bottom + gap;
-      top = Math.max(edge, Math.min(top, viewportHeight - height - edge));
-      let left = rect.left + rect.width / 2 - width * 0.66;
-      left = Math.max(edge, Math.min(left, viewportWidth - width - edge));
-      setPosition({ top, left, width, height });
-    };
-
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-    };
-  }, [open, anchorRef]);
+    if (!open) setHovered(null);
+  }, [open]);
 
   if (!open) return null;
   return <div className="grok-aspect-popover" style={position || { visibility: 'hidden' }}>
@@ -428,7 +438,57 @@ function AspectPicker({ aspect, setAspect, open, setOpen, anchorRef }) {
       >
         <span className="ratio-code">{option.value}</span>
         <span>{option.label}</span>
-        {option.value === aspect ? <Check size={19}/> : null}
+        {option.value === aspect ? <Check size={15}/> : null}
+      </button>)}
+    </div>
+  </div>;
+}
+
+function ResolutionPicker({ imageResolution, setImageResolution, aspect, open, setOpen, anchorRef }) {
+  const itemRefs = useRef([]);
+  const [hovered, setHovered] = useState(null);
+  const position = useAnchoredPickerPosition(open, anchorRef, 430, 272);
+  const activeIndex = Math.max(0, IMAGE_RESOLUTIONS.findIndex((item) => item.value === Number(imageResolution)));
+  const hoverIndex = hovered == null ? activeIndex : hovered;
+  const active = IMAGE_RESOLUTIONS[activeIndex] || IMAGE_RESOLUTIONS[2];
+  const display = IMAGE_RESOLUTIONS[hoverIndex] || active;
+  const target = itemRefs.current[hoverIndex];
+  const indicatorStyle = target ? {
+    width: target.offsetWidth,
+    height: target.offsetHeight,
+    transform: `translate3d(${target.offsetLeft}px, ${target.offsetTop}px, 0)`,
+    opacity: 1,
+  } : { opacity: 0 };
+  const dimensions = dimensionsForPreset(aspect, display.value);
+  const previewSize = 56 + hoverIndex * 8;
+
+  useEffect(() => {
+    if (!open) setHovered(null);
+  }, [open]);
+
+  if (!open) return null;
+  return <div className="grok-resolution-popover" style={position || { visibility: 'hidden' }}>
+    <div className="grok-resolution-preview">
+      <div className="grok-resolution-stage">
+        <span className="grok-resolution-shape" style={{ width: previewSize, height: previewSize }}>{display.value}</span>
+      </div>
+      <strong>{display.label}</strong>
+      <small>{dimensions.width}×{dimensions.height} · {display.detail}</small>
+    </div>
+    <div className="grok-resolution-list" onMouseLeave={() => setHovered(null)}>
+      <span className="grok-resolution-morph-indicator" style={indicatorStyle}/>
+      {IMAGE_RESOLUTIONS.map((option, index) => <button
+        ref={(node) => { itemRefs.current[index] = node; }}
+        type="button"
+        key={option.value}
+        className={option.value === Number(imageResolution) ? 'active' : ''}
+        onMouseEnter={() => setHovered(index)}
+        onFocus={() => setHovered(index)}
+        onClick={() => { setImageResolution(option.value); setOpen(false); }}
+      >
+        <span>{option.label}</span>
+        <span>{option.detail}</span>
+        {option.value === Number(imageResolution) ? <Check size={15}/> : null}
       </button>)}
     </div>
   </div>;
@@ -444,9 +504,11 @@ export default function CreateWorkspace({
   const isEdit = mode === 'Edit';
   const referenceInputRef = useRef(null);
   const aspectButtonRef = useRef(null);
+  const resolutionButtonRef = useRef(null);
   const speechRef = useRef(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [aspectOpen, setAspectOpen] = useState(false);
+  const [resolutionOpen, setResolutionOpen] = useState(false);
   const [listening, setListening] = useState(false);
 
   const speechSupported = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -465,10 +527,18 @@ export default function CreateWorkspace({
     }
   }, [mode]);
 
+  useEffect(() => {
+    setPlusOpen(false);
+    setAspectOpen(false);
+    setResolutionOpen(false);
+  }, [mode]);
+
   useEffect(() => () => speechRef.current?.stop?.(), []);
 
   const addReferenceFiles = (files) => {
     if (!files.length) return;
+    setAspectOpen(false);
+    setResolutionOpen(false);
     if (mode !== 'Edit') setMode('Edit');
     onAddReferences(files);
     setPlusOpen(false);
@@ -478,6 +548,13 @@ export default function CreateWorkspace({
     const suffix = `Style: ${text}.`;
     setPrompt((current) => current.trim() ? `${current.trim()}\n${suffix}` : suffix);
     setPlusOpen(false);
+  };
+
+  const selectMode = (nextMode) => {
+    setMode(nextMode);
+    setPlusOpen(false);
+    setAspectOpen(false);
+    setResolutionOpen(false);
   };
 
   const toggleVoice = () => {
@@ -523,6 +600,15 @@ export default function CreateWorkspace({
       }}
     />
 
+    <div className="mode-tabs create-mode-tabs">
+      {[[ImageIcon, 'Image'], [Video, 'Video'], [Crop, 'Edit'], [Grid2X2, 'More']].map(([Icon, label]) => <button
+        type="button"
+        className={`mode-tab ${mode === label ? 'selected' : ''}`}
+        key={label}
+        onClick={() => selectMode(label)}
+      ><Icon size={18} strokeWidth={1.8}/><span>{label}</span></button>)}
+    </div>
+
     <section className={`composer-panel composer-panel-v4 ${references.length ? 'has-references' : ''}`}>
       {isEdit && <ReferenceStrip references={references} onRemove={onRemoveReference} onAddClick={() => referenceInputRef.current?.click()}/>} 
 
@@ -541,7 +627,7 @@ export default function CreateWorkspace({
       <div className="grok-toolbar">
         <div className="grok-toolbar-left">
           <div className="grok-plus-wrap">
-            <button type="button" className={`grok-circle-button ${plusOpen ? 'active' : ''}`} title="Add or adjust" onClick={() => setPlusOpen((value) => !value)}><Plus size={26}/></button>
+            <button type="button" className={`grok-circle-button ${plusOpen ? 'active' : ''}`} title="Add or adjust" onClick={() => { setPlusOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); }}><Plus size={23}/></button>
             {plusOpen && <div className="grok-plus-popover">
               <button type="button" onClick={() => referenceInputRef.current?.click()}><Plus size={17}/><span><strong>Add reference</strong><small>Switches to Edit automatically</small></span></button>
               <button type="button" onClick={() => { setSettingsOpen(true); setPlusOpen(false); }}><SlidersHorizontal size={17}/><span><strong>Generation settings</strong><small>Model, outputs, seed, steps and CFG</small></span></button>
@@ -551,24 +637,28 @@ export default function CreateWorkspace({
             </div>}
           </div>
 
-          <button type="button" className={`grok-mode-pill ${mode === 'Image' ? 'selected' : ''}`} onClick={() => setMode('Image')}><ImageIcon size={20} fill="currentColor"/><span>Image</span></button>
-          <button type="button" className={`grok-icon-button ${mode === 'Video' ? 'selected' : ''}`} title="Video" onClick={() => setMode('Video')}><Video size={22} fill={mode === 'Video' ? 'currentColor' : 'none'}/></button>
-          <button type="button" className={`grok-icon-button ${isEdit ? 'selected' : ''}`} title="Edit with references" onClick={() => setMode('Edit')}><Crop size={22}/></button>
-          <button type="button" className={`grok-icon-button ${mode === 'More' ? 'selected' : ''}`} title="More" onClick={() => setMode('More')}><Grid2X2 size={21}/></button>
-
           {!isEdit && mode === 'Image' && <>
             <button type="button" className={`grok-text-choice ${!qualitySelected ? 'selected' : ''}`} onClick={() => setImageResolution(768)}>Speed</button>
             <button type="button" className={`grok-text-choice ${qualitySelected ? 'selected' : ''}`} onClick={() => setImageResolution(1024)}>Quality</button>
 
-            <label className="grok-resolution-select" title="Resolution">
-              <select value={String(imageResolution)} onChange={(event) => setImageResolution(Number(event.target.value))} aria-label="Resolution">
-                {IMAGE_RESOLUTIONS.map((option) => <option key={option.value} value={String(option.value)}>{option.label}</option>)}
-              </select>
-              <ChevronDown size={14}/>
-            </label>
+            <div className="grok-resolution-wrap">
+              <button ref={resolutionButtonRef} type="button" className={`grok-resolution-button ${resolutionOpen ? 'active' : ''}`} onClick={() => { setResolutionOpen((value) => !value); setAspectOpen(false); setPlusOpen(false); }}>
+                <span className="grok-resolution-icon">{String(imageResolution).slice(0, 2)}</span>
+                <span>{imageResolutionOption.label}</span>
+                <ChevronDown size={14}/>
+              </button>
+              <ResolutionPicker
+                imageResolution={imageResolution}
+                setImageResolution={setImageResolution}
+                aspect={aspect}
+                open={resolutionOpen}
+                setOpen={setResolutionOpen}
+                anchorRef={resolutionButtonRef}
+              />
+            </div>
 
             <div className="grok-aspect-wrap">
-              <button ref={aspectButtonRef} type="button" className={`grok-aspect-button ${aspectOpen ? 'active' : ''}`} onClick={() => setAspectOpen((value) => !value)}>
+              <button ref={aspectButtonRef} type="button" className={`grok-aspect-button ${aspectOpen ? 'active' : ''}`} onClick={() => { setAspectOpen((value) => !value); setResolutionOpen(false); setPlusOpen(false); }}>
                 <span className="grok-ratio-icon" style={{ aspectRatio: String((ASPECT_PRESETS.find((item) => item.value === aspect) || ASPECT_PRESETS[0]).ratio) }}/>
                 <span>{aspect}</span>
               </button>
@@ -583,7 +673,7 @@ export default function CreateWorkspace({
 
         <div className="grok-toolbar-right">
           <span className="grok-prompt-count">{prompt.length} / 2000</span>
-          <button type="button" className={`grok-icon-button grok-settings-button ${settingsOpen ? 'selected' : ''}`} title="Generation settings" onClick={() => setSettingsOpen((value) => !value)}><SlidersHorizontal size={20}/></button>
+          <button type="button" className={`grok-icon-button grok-settings-button ${settingsOpen ? 'selected' : ''}`} title="Generation settings" onClick={() => { setSettingsOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); }}><SlidersHorizontal size={19}/></button>
           <button
             type="button"
             className={`grok-mic-button ${listening ? 'listening' : ''}`}
@@ -591,7 +681,7 @@ export default function CreateWorkspace({
             aria-label={speechSupported ? (listening ? 'Stop voice input' : 'Voice input') : 'Voice input unavailable'}
             onClick={toggleVoice}
             disabled={!speechSupported}
-          ><Mic size={22}/></button>
+          ><Mic size={20}/></button>
           <button
             type="button"
             className={`grok-submit ${busy ? 'busy' : ''}`}
@@ -599,7 +689,7 @@ export default function CreateWorkspace({
             aria-label={isEdit ? 'Edit image' : modeLabel === 'Video' ? 'Generate video' : 'Generate'}
             onClick={onGenerate}
             disabled={busy || (isEdit && references.length === 0)}
-          ><ArrowUp size={25}/></button>
+          ><ArrowUp size={23}/></button>
         </div>
       </div>
 
