@@ -1,7 +1,7 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 
-const bucket = process.env.R2_BUCKET_NAME || 'saga-studio-media';
+const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
 
 function getClient() {
   const accountId = String(process.env.R2_ACCOUNT_ID || '').trim();
@@ -12,6 +12,11 @@ function getClient() {
     region: 'auto',
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId, secretAccessKey },
+    // R2 does not support every AWS S3 streaming/checksum signing variant.
+    // Restrict checksum negotiation to operations that require it so larger
+    // binary PutObject requests are signed as ordinary fixed-length payloads.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 }
 
@@ -25,7 +30,7 @@ async function readBody(req, limit = 6 * 1024 * 1024) {
       error.statusCode = 413;
       throw error;
     }
-    chunks.push(chunk);
+    chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
 }
@@ -62,6 +67,7 @@ export default async function handler(req, res) {
         Bucket: bucket,
         Key: key,
         Body: body,
+        ContentLength: body.length,
         ContentType: contentType,
         CacheControl: 'private, max-age=31536000, immutable',
         Metadata: {
@@ -77,7 +83,7 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error('R2 upload failed', error);
-      res.status(error?.statusCode || 500).json({ error: error?.message || 'R2 upload failed' });
+      res.status(error?.statusCode || error?.$metadata?.httpStatusCode || 500).json({ error: error?.message || 'R2 upload failed' });
     }
     return;
   }
