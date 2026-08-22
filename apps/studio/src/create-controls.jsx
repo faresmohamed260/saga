@@ -270,43 +270,184 @@ function SelectMenu({ value, onChange, options, label, className = '' }) {
   </label>;
 }
 
+function clampControl(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function RangeField({ label, help, value, onChange, min, max, step, decimals = 0 }) {
+  const parsed = Number(value);
+  const safeValue = Number.isFinite(parsed) ? clampControl(parsed, min, max) : min;
+  const commit = (raw) => {
+    const next = Number(raw);
+    if (!Number.isFinite(next)) return;
+    const clamped = clampControl(next, min, max);
+    onChange(Number(clamped.toFixed(decimals)));
+  };
+
+  return <div className="advanced-range-field">
+    <div className="advanced-range-heading">
+      <div><strong>{label}</strong>{help && <small>{help}</small>}</div>
+      <input
+        className="advanced-number-input"
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={safeValue}
+        onChange={(event) => commit(event.target.value)}
+        aria-label={`${label} value`}
+      />
+    </div>
+    <input
+      className="advanced-range-input"
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={safeValue}
+      onChange={(event) => commit(event.target.value)}
+      aria-label={label}
+    />
+    <div className="advanced-range-scale"><span>{min}</span><span>{max}</span></div>
+  </div>;
+}
+
+function useFloatingSettingsPosition(open, anchorRef, panelRef, desiredWidth = 420) {
+  const [position, setPosition] = useState(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return undefined;
+    }
+
+    let resizeObserver;
+    const update = () => {
+      const anchor = anchorRef?.current;
+      const panel = panelRef?.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const edge = 12;
+      const gap = 10;
+      const width = Math.min(desiredWidth, viewportWidth - edge * 2);
+      const maxHeight = Math.max(220, viewportHeight - edge * 2);
+      const measuredHeight = Math.min(panel?.scrollHeight || 470, maxHeight);
+      const spaceAbove = rect.top - edge - gap;
+      const spaceBelow = viewportHeight - rect.bottom - edge - gap;
+      const openAbove = spaceAbove >= measuredHeight || spaceAbove > spaceBelow;
+      const rawTop = openAbove ? rect.top - gap - measuredHeight : rect.bottom + gap;
+      const top = Math.max(edge, Math.min(rawTop, viewportHeight - measuredHeight - edge));
+      const left = Math.max(edge, Math.min(rect.right - width, viewportWidth - width - edge));
+      setPosition({ position: 'fixed', top, left, width, maxHeight });
+    };
+
+    const frame = requestAnimationFrame(update);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    if (typeof ResizeObserver !== 'undefined' && panelRef?.current) {
+      resizeObserver = new ResizeObserver(update);
+      resizeObserver.observe(panelRef.current);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      resizeObserver?.disconnect();
+    };
+  }, [open, anchorRef, panelRef, desiredWidth]);
+
+  return position;
+}
+
 function SettingsPanel({
-  open, onClose, mode, outputs, setOutputs, seed, setSeed, steps, setSteps, cfg, setCfg,
+  open, onClose, anchorRef, mode, outputs, setOutputs, seed, setSeed, steps, setSteps, cfg, setCfg,
   workflowId, setWorkflowId, modelId, setModelId,
 }) {
-  if (!open) return null;
+  const panelRef = useRef(null);
+  const position = useFloatingSettingsPosition(open, anchorRef, panelRef, 420);
   const isEdit = mode === 'Edit';
   const modelOptions = isEdit
     ? [{ value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B · DarkBeast V2' }]
     : [{ value: 'saga-image-auto', label: 'SAGA Image · Auto' }];
 
-  return <div className="composer-settings-popover advanced-settings-only">
-    <div className="settings-header"><h2>Advanced settings</h2><button className="square-button" onClick={onClose}><X size={17}/></button></div>
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      if (panelRef.current?.contains(event.target) || anchorRef?.current?.contains(event.target)) return;
+      onClose();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+        requestAnimationFrame(() => anchorRef?.current?.focus());
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open, onClose, anchorRef]);
 
-    <label className="field-label">Model</label>
-    <SelectMenu label="Model" value={modelId} onChange={setModelId} options={modelOptions}/>
-
-    {!isEdit && <>
-      <label className="field-label">Outputs</label>
-      <SelectMenu label="Outputs" value={String(outputs)} onChange={(value) => setOutputs(Number(value))} options={[1, 2, 4].map((value) => ({ value: String(value), label: `${value} output${value === 1 ? '' : 's'}` }))}/>
-    </>}
-
-    <div className="settings-divider"/>
-    <div className="advanced-fields advanced-fields-always">
-      <div className="inline-field"><label>Seed</label><div className="input-box"><input inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9-]/g, ''))}/><button type="button" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={17}/></button></div></div>
-      <div className="inline-field"><label>Steps</label><SelectMenu label="Steps" value={String(steps)} onChange={(value) => setSteps(Number(value))} options={(isEdit ? [4,6,8,12] : [20,30,40,50]).map((value) => ({ value: String(value), label: String(value) }))}/></div>
-      <div className="inline-field"><label>CFG</label><SelectMenu label="CFG" value={String(cfg)} onChange={(value) => setCfg(Number(value))} options={(isEdit ? [1,1.5,2,3] : [3.5,5,7,9]).map((value) => ({ value: String(value), label: Number(value).toFixed(1) }))}/></div>
-      <div className="inline-field"><label>Workflow</label><SelectMenu label="Workflow" value={workflowId} onChange={setWorkflowId} options={isEdit ? [{ value: 'flux2-klein-image-edit', label: 'Klein Multi-Reference Edit' }] : [{ value: 'default-image', label: 'Default Image' }]}/></div>
+  if (!open) return null;
+  return <div
+    ref={panelRef}
+    className="composer-settings-popover advanced-settings-only advanced-settings-shell"
+    style={position || { visibility: 'hidden' }}
+    role="dialog"
+    aria-label="Advanced generation settings"
+  >
+    <div className="advanced-settings-header">
+      <div className="advanced-settings-title">
+        <span>Generation controls</span>
+        <h2>Advanced</h2>
+        <p>Fine-tune sampling and execution without duplicating canvas controls.</p>
+      </div>
+      <button className="square-button advanced-close-button" type="button" onClick={onClose} aria-label="Close advanced settings"><X size={17}/></button>
     </div>
 
-    <button className="reset-button" onClick={() => {
-      setOutputs(isEdit ? 1 : 4);
-      setSeed('42');
-      setSteps(isEdit ? 4 : 30);
-      setCfg(isEdit ? 1 : 7);
-      setWorkflowId(isEdit ? 'flux2-klein-image-edit' : 'default-image');
-      setModelId(isEdit ? 'flux2-klein-9b' : 'saga-image-auto');
-    }}><RotateCcw size={18}/> Reset advanced settings</button>
+    <div className="advanced-settings-body">
+      <div className="advanced-meta-grid">
+        <div className="advanced-meta-field">
+          <label>Model</label>
+          <SelectMenu label="Model" value={modelId} onChange={setModelId} options={modelOptions}/>
+        </div>
+        {!isEdit && <div className="advanced-meta-field">
+          <label>Outputs</label>
+          <SelectMenu label="Outputs" value={String(outputs)} onChange={(value) => setOutputs(Number(value))} options={[1, 2, 4].map((value) => ({ value: String(value), label: `${value} output${value === 1 ? '' : 's'}` }))}/>
+        </div>}
+      </div>
+
+      <section className="advanced-settings-card">
+        <div className="advanced-section-title"><strong>Sampling</strong><small>Precise controls for reproducibility and guidance.</small></div>
+        <div className="advanced-seed-field">
+          <div><strong>Seed</strong><small>Use the same seed to reproduce a result.</small></div>
+          <div className="advanced-seed-input">
+            <input inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9-]/g, ''))} aria-label="Seed"/>
+            <button type="button" title="Random seed" aria-label="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={16}/></button>
+          </div>
+        </div>
+        <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} decimals={0}/>
+        <RangeField label="CFG" help="Prompt guidance strength" value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1}/>
+      </section>
+
+      <section className="advanced-settings-card advanced-execution-card">
+        <div className="advanced-section-title"><strong>Execution</strong><small>Backend workflow used for this mode.</small></div>
+        <SelectMenu label="Workflow" value={workflowId} onChange={setWorkflowId} options={isEdit ? [{ value: 'flux2-klein-image-edit', label: 'Klein Multi-Reference Edit' }] : [{ value: 'default-image', label: 'Default Image' }]}/>
+      </section>
+
+      <button className="reset-button advanced-reset-button" type="button" onClick={() => {
+        setOutputs(isEdit ? 1 : 4);
+        setSeed('42');
+        setSteps(isEdit ? 4 : 30);
+        setCfg(isEdit ? 1 : 7);
+        setWorkflowId(isEdit ? 'flux2-klein-image-edit' : 'default-image');
+        setModelId(isEdit ? 'flux2-klein-9b' : 'saga-image-auto');
+      }}><RotateCcw size={17}/> Reset advanced settings</button>
+    </div>
   </div>;
 }
 
@@ -388,11 +529,13 @@ function AspectPicker({ aspect, setAspect, open, setOpen, anchorRef, autoEnabled
   const display = options[hoverIndex] || options[activeIndex] || options[0];
   const target = itemRefs.current[hoverIndex];
   const indicatorStyle = target ? {
-    width: target.offsetWidth,
+    left: 7,
+    right: 7,
+    width: 'auto',
     height: target.offsetHeight,
-    transform: `translate3d(${target.offsetLeft}px, ${target.offsetTop}px, 0)`,
+    transform: `translate3d(0, ${target.offsetTop}px, 0)`,
     opacity: 1,
-  } : { opacity: 0 };
+  } : { left: 7, right: 7, width: 'auto', opacity: 0 };
 
   const previewSize = useMemo(() => {
     const max = 94;
@@ -463,11 +606,13 @@ function ResolutionPicker({ imageResolution, setImageResolution, aspect, open, s
   const display = options[hoverIndex] || options[activeIndex] || options[0];
   const target = itemRefs.current[hoverIndex];
   const indicatorStyle = target ? {
-    width: target.offsetWidth,
+    left: 7,
+    right: 7,
+    width: 'auto',
     height: target.offsetHeight,
-    transform: `translate3d(${target.offsetLeft}px, ${target.offsetTop}px, 0)`,
+    transform: `translate3d(0, ${target.offsetTop}px, 0)`,
     opacity: 1,
-  } : { opacity: 0 };
+  } : { left: 7, right: 7, width: 'auto', opacity: 0 };
   const dimensions = display.auto ? autoDimensions : dimensionsForPreset(aspect, display.value);
   const previewSize = display.auto ? 68 : 56 + Math.max(0, hoverIndex - (onAutoChange ? 1 : 0)) * 8;
 
@@ -535,6 +680,7 @@ export default function CreateWorkspace({
   const resolutionWrapRef = useRef(null);
   const aspectButtonRef = useRef(null);
   const resolutionButtonRef = useRef(null);
+  const settingsButtonRef = useRef(null);
   const autoInfoBaselineRef = useRef(null);
   const [aspectOpen, setAspectOpen] = useState(false);
   const [resolutionOpen, setResolutionOpen] = useState(false);
@@ -681,7 +827,7 @@ export default function CreateWorkspace({
                 }}
                 onClick={() => { setResolutionOpen((value) => !value); setAspectOpen(false); setSettingsOpen(false); }}
               >
-                <span className={`grok-resolution-icon ${isEdit && editAuto ? 'auto' : ''}`}>{isEdit && editAuto ? 'A' : String(imageResolution).slice(0, 2)}</span>
+                <span className={`grok-resolution-icon ${isEdit && editAuto ? 'auto' : ''}`}>{isEdit && editAuto ? 'A' : String(imageResolution)}</span>
                 <span>{isEdit && editAuto ? 'Auto' : imageResolutionOption.label}</span>
                 <ChevronDown size={14}/>
               </button>
@@ -740,7 +886,7 @@ export default function CreateWorkspace({
 
         <div className="grok-toolbar-right">
           <span className="grok-prompt-count">{prompt.length} / 2000</span>
-          <button type="button" className={`grok-icon-button grok-settings-button ${settingsOpen ? 'selected' : ''}`} title="Advanced settings" aria-label="Advanced settings" onClick={() => { setSettingsOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); }}><SlidersHorizontal size={19}/></button>
+          <button ref={settingsButtonRef} type="button" className={`grok-icon-button grok-settings-button ${settingsOpen ? 'selected' : ''}`} title="Advanced settings" aria-label="Advanced settings" onClick={() => { setSettingsOpen((value) => !value); setAspectOpen(false); setResolutionOpen(false); }}><SlidersHorizontal size={19}/></button>
           <button
             type="button"
             className={`grok-submit ${busy ? 'busy' : ''}`}
@@ -753,7 +899,7 @@ export default function CreateWorkspace({
       </div>
 
       <SettingsPanel
-        open={settingsOpen} onClose={() => setSettingsOpen(false)} mode={mode}
+        open={settingsOpen} onClose={() => setSettingsOpen(false)} anchorRef={settingsButtonRef} mode={mode}
         outputs={outputs} setOutputs={setOutputs}
         seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
         workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}

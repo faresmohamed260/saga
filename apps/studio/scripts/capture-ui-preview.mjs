@@ -85,9 +85,16 @@ try {
   await aspectButton.press('ArrowDown');
   const aspectMenu = desktop.locator('.grok-aspect-popover');
   await aspectMenu.waitFor({ state: 'visible' });
+  const aspectSelected = aspectMenu.locator('[role="menuitemradio"][aria-checked="true"]');
+  const aspectIndicator = aspectMenu.locator('.grok-aspect-morph-indicator');
+  const aspectSelectedBox = await aspectSelected.boundingBox();
+  const aspectIndicatorBox = await aspectIndicator.boundingBox();
+  if (!aspectSelectedBox || !aspectIndicatorBox || Math.abs(aspectSelectedBox.x - aspectIndicatorBox.x) > 3 || Math.abs((aspectSelectedBox.x + aspectSelectedBox.width) - (aspectIndicatorBox.x + aspectIndicatorBox.width)) > 3) {
+    throw new Error('Aspect picker default selection indicator does not span the full row');
+  }
+  await shot(desktop, '03-create-aspect-default-selection.png');
   await aspectMenu.locator('[role="menuitemradio"]').first().press('ArrowDown');
-  await shot(desktop, '03-create-aspect-keyboard.png');
-  await desktop.mouse.click(1320, 900);
+  await desktop.keyboard.press('Escape');
   await assertHidden(aspectMenu, 'Aspect picker');
 
   const resolutionButton = desktop.locator('.grok-resolution-button');
@@ -95,15 +102,44 @@ try {
   await resolutionButton.press('Enter');
   const resolutionMenu = desktop.locator('.grok-resolution-popover');
   await resolutionMenu.waitFor({ state: 'visible' });
-  await resolutionMenu.locator('[role="menuitemradio"]').first().press('ArrowDown');
-  await shot(desktop, '04-create-resolution-keyboard.png');
+  const resolutionSelected = resolutionMenu.locator('[role="menuitemradio"][aria-checked="true"]');
+  const resolutionIndicator = resolutionMenu.locator('.grok-resolution-morph-indicator');
+  const resolutionSelectedBox = await resolutionSelected.boundingBox();
+  const resolutionIndicatorBox = await resolutionIndicator.boundingBox();
+  if (!resolutionSelectedBox || !resolutionIndicatorBox || Math.abs(resolutionSelectedBox.x - resolutionIndicatorBox.x) > 3 || Math.abs((resolutionSelectedBox.x + resolutionSelectedBox.width) - (resolutionIndicatorBox.x + resolutionIndicatorBox.width)) > 3) {
+    throw new Error('Resolution picker default selection indicator does not span the full row');
+  }
+  await shot(desktop, '04-create-resolution-default-selection.png');
+  await resolutionMenu.getByRole('menuitemradio', { name: /HD.*1024 px/i }).click();
+  const resolutionBadgeText = (await desktop.locator('.grok-resolution-icon').first().innerText()).trim();
+  if (resolutionBadgeText !== '1024') throw new Error(`Resolution toolbar badge expected 1024, got ${resolutionBadgeText}`);
+  await shot(desktop, '05-create-hd-toolbar.png');
+
+  const settingsButton = desktop.getByRole('button', { name: 'Advanced settings' });
+  await settingsButton.click();
+  const settingsPanel = desktop.locator('.advanced-settings-shell');
+  await settingsPanel.waitFor({ state: 'visible' });
+  const settingsBox = await settingsPanel.boundingBox();
+  const viewport = desktop.viewportSize();
+  if (!settingsBox || !viewport || settingsBox.x < 8 || settingsBox.y < 8 || settingsBox.x + settingsBox.width > viewport.width - 8 || settingsBox.y + settingsBox.height > viewport.height - 8) {
+    throw new Error(`Advanced settings panel is out of bounds: ${JSON.stringify(settingsBox)}`);
+  }
+  if (await settingsPanel.locator('select[aria-label="Steps"]').count()) throw new Error('Steps is still a preset select');
+  if (await settingsPanel.locator('select[aria-label="CFG"]').count()) throw new Error('CFG is still a preset select');
+  const stepsRange = settingsPanel.locator('input[type="range"][aria-label="Steps"]');
+  const cfgRange = settingsPanel.locator('input[type="range"][aria-label="CFG"]');
+  await stepsRange.fill('17');
+  await cfgRange.fill('2.7');
+  if (await stepsRange.inputValue() !== '17') throw new Error('Steps range did not accept a continuous value');
+  if (await cfgRange.inputValue() !== '2.7') throw new Error('CFG range did not accept a continuous value');
+  await shot(desktop, '06-create-advanced-settings-redesign.png');
   await desktop.mouse.click(1320, 900);
-  await assertHidden(resolutionMenu, 'Resolution picker');
+  await assertHidden(settingsPanel, 'Advanced settings');
 
   await desktop.getByRole('button', { name: 'Edit', exact: true }).click();
   await desktop.locator('.grok-auto-choice').waitFor({ state: 'visible' });
   await assertCount(desktop.locator('.add-reference-tile'), 0, 'Redundant Add references tile');
-  await shot(desktop, '05-create-edit-empty.png');
+  await shot(desktop, '07-create-edit-empty.png');
 
   const uploadButton = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
   const chooserPromise = desktop.waitForEvent('filechooser');
@@ -113,12 +149,12 @@ try {
   await desktop.locator('.reference-tile').waitFor({ state: 'visible', timeout: 5_000 });
   await assertCount(desktop.locator('.grok-plus-popover'), 0, 'Plus popover');
   await assertCount(desktop.locator('.add-reference-tile'), 0, 'Add references tile after upload');
-  await shot(desktop, '06-create-edit-reference-uploaded.png');
+  await shot(desktop, '08-create-edit-reference-uploaded.png');
 
   await desktop.locator('.grok-resolution-button').click();
   const editResolutionMenu = desktop.locator('.grok-resolution-popover');
   await editResolutionMenu.waitFor({ state: 'visible' });
-  await shot(desktop, '07-create-edit-auto-resolution.png');
+  await shot(desktop, '10-create-edit-auto-resolution.png');
   await desktop.mouse.click(1320, 900);
   await assertHidden(editResolutionMenu, 'Edit resolution picker');
 
@@ -129,7 +165,7 @@ try {
   });
   recordDiagnostics(mobile, 'mobile');
   await waitForStudio(mobile);
-  await shot(mobile, '08-create-mobile.png');
+  await shot(mobile, '11-create-mobile.png');
 
   if (diagnostics.pageErrors.length) {
     throw new Error(`Page errors detected: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
