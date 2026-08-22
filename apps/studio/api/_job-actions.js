@@ -38,7 +38,35 @@ async function markCancelled(job) {
   return cancelled;
 }
 
-async function retryJob(job) {
+export async function cancelGenerationJob(id) {
+  const job = await getGenerationJob(safeText(id, 64));
+  if (!job) {
+    const error = new Error('Job not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!['queued', 'running'].includes(job.status)) {
+    const error = new Error('Job is no longer cancellable');
+    error.statusCode = 409;
+    throw error;
+  }
+  const workflow = getWorkflow(job.workflow_id);
+  if (!workflow) {
+    const error = new Error('Generation workflow is no longer registered');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (job.provider_job_id) await cancelWorkflow(workflow, job.provider_job_id);
+  return markCancelled(job);
+}
+
+export async function retryGenerationJob(id) {
+  const job = await getGenerationJob(safeText(id, 64));
+  if (!job) {
+    const error = new Error('Job not found');
+    error.statusCode = 404;
+    throw error;
+  }
   if (job.status !== 'failed') {
     const error = new Error('Only failed or cancelled jobs can be retried');
     error.statusCode = 409;
@@ -106,46 +134,11 @@ async function retryJob(job) {
       cfg,
       megapixels,
     });
-    retry = await setProviderJobId(retry.id, submitted.providerJobId);
-    return retry;
+    return setProviderJobId(retry.id, submitted.providerJobId);
   } catch (error) {
     try {
       await transitionGenerationJob(retry.id, 'failed', { errorMessage: error?.message || 'Retry submit failed' });
     } catch {}
     throw error;
-  }
-}
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    const body = typeof req.body === 'object' && req.body ? req.body : {};
-    const id = safeText(body.id, 64);
-    const action = safeText(body.action, 32).toLowerCase();
-    const job = await getGenerationJob(id);
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-
-    if (action === 'cancel') {
-      if (!['queued', 'running'].includes(job.status)) return res.status(409).json({ error: 'Job is no longer cancellable' });
-      const workflow = getWorkflow(job.workflow_id);
-      if (!workflow) return res.status(409).json({ error: 'Generation workflow is no longer registered' });
-      if (job.provider_job_id) await cancelWorkflow(workflow, job.provider_job_id);
-      const cancelled = await markCancelled(job);
-      return res.status(200).json({ job: cancelled, action: 'cancelled' });
-    }
-
-    if (action === 'retry') {
-      const retried = await retryJob(job);
-      return res.status(201).json({ job: retried, action: 'retried', retryOf: job.id });
-    }
-
-    return res.status(400).json({ error: 'Unknown job action' });
-  } catch (error) {
-    console.error('Generation job action failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation job action failed' });
   }
 }
