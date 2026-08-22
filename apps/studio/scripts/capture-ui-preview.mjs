@@ -56,6 +56,7 @@ try {
   await resolutionTrigger.click();
   const resolutionPicker = desktop.locator('.saga-resolution-picker');
   await resolutionPicker.waitFor({ state: 'visible' });
+  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
   const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));
   if (focusedRole !== 'menuitemradio') throw new Error(`Resolution picker did not focus selected option: ${focusedRole}`);
   await desktop.keyboard.press('ArrowDown');
