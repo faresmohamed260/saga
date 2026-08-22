@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 
-const FLUX2_API_URL = (import.meta.env.VITE_FLUX2_KLEIN_API_URL || 'https://faresmohamed260--saga-flux2-klein-9b-web.modal.run').replace(/\/$/, '');
+const FLUX2_API_URL = (import.meta.env.VITE_FLUX2_KLEIN_API_URL || 'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run').replace(/\/$/, '');
 
 const samples = [
   { id: 1, title: 'Forest refuge', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=85' },
@@ -19,6 +19,30 @@ const samples = [
 
 const navPrimary = [[WandSparkles, 'Create'], [History, 'History'], [Heart, 'Favorites'], [Folder, 'Collections']];
 const navSecondary = [[Box, 'Models'], [Workflow, 'Workflows']];
+const editQualityOptions = [
+  { value: '0.25', label: 'Draft', detail: '0.25 MP' },
+  { value: '0.5', label: 'Balanced', detail: '0.5 MP' },
+  { value: '1.0', label: 'Quality', detail: '1.0 MP' },
+];
+
+async function persistGeneratedImage(blob, { model, resolution }) {
+  try {
+    const response = await fetch('/api/media', {
+      method: 'POST',
+      headers: {
+        'Content-Type': blob.type || 'image/png',
+        'X-Saga-Model': model,
+        'X-Saga-Resolution': resolution,
+      },
+      body: blob,
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return payload?.url || null;
+  } catch {
+    return null;
+  }
+}
 
 function NavItem({ icon: Icon, label, active, onClick }) {
   return <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>;
@@ -35,6 +59,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [seed, setSeed] = useState('42');
+  const [editMegapixels, setEditMegapixels] = useState('1.0');
   const [favorites, setFavorites] = useState(new Set());
   const [items, setItems] = useState(samples);
   const [sourceFile, setSourceFile] = useState(null);
@@ -44,6 +69,7 @@ function App() {
 
   const visibleItems = useMemo(() => items.slice(0, outputs), [items, outputs]);
   const isEdit = mode === 'Edit';
+  const activeEditQuality = editQualityOptions.find((option) => option.value === editMegapixels) || editQualityOptions[2];
 
   const chooseSource = () => fileInputRef.current?.click();
 
@@ -83,7 +109,7 @@ function App() {
     form.append('seed', String(Number(seed) || 42));
     form.append('steps', '4');
     form.append('cfg', '1.0');
-    form.append('megapixels', '0.25');
+    form.append('megapixels', editMegapixels);
 
     const response = await fetch(`${FLUX2_API_URL}/edit`, { method: 'POST', body: form });
     if (!response.ok) {
@@ -99,13 +125,17 @@ function App() {
 
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
-    const url = URL.createObjectURL(blob);
+    const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
+    const persistedUrl = await persistGeneratedImage(blob, { model, resolution: activeEditQuality.detail });
+    const url = persistedUrl || URL.createObjectURL(blob);
     const item = {
       id: `flux-${Date.now()}`,
       title: prompt.trim(),
       url,
       generated: true,
-      model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
+      model,
+      resolution: activeEditQuality.detail,
+      persisted: Boolean(persistedUrl),
     };
     setItems((current) => [item, ...current]);
   };
@@ -176,7 +206,7 @@ function App() {
         </section>
 
         {error && <div style={{marginTop:12,padding:'12px 14px',border:'1px solid rgba(255,100,120,.35)',borderRadius:10,background:'rgba(120,20,35,.14)',color:'#ffb4c0',fontSize:13}}>{error}</div>}
-        {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps</div>}
+        {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps · {activeEditQuality.detail}</div>}
 
         <div className="action-row">
           <div className="attach-actions"><button className="secondary-button" onClick={chooseSource}><ImagePlus size={18}/>{isEdit ? (sourceFile?'Replace source':'Source image') : 'Reference'}</button><button className="secondary-button"><Palette size={18}/> Style</button></div>
@@ -185,7 +215,7 @@ function App() {
 
         <section className="gallery-grid">
           {visibleItems.map((item) => <article className="media-card" key={item.id}>
-            <div className="media-frame" style={{backgroundImage:`url(${item.url})`}}><div className="size-badge"><Sparkles size={12}/>{item.generated?'FLUX.2 Klein 9B':'1024 × 1024'}</div><div className="media-hover"><button><Maximize2 size={18}/></button></div></div>
+            <div className="media-frame" style={{backgroundImage:`url(${item.url})`}}><div className="size-badge"><Sparkles size={12}/>{item.generated?`${item.resolution || 'FLUX.2'} · Klein 9B`:'1024 × 1024'}</div><div className="media-hover"><button><Maximize2 size={18}/></button></div></div>
             <div className="card-actions"><button className={favorites.has(item.id)?'favorite active':'favorite'} onClick={()=>toggleFavorite(item.id)}><Heart size={20} fill={favorites.has(item.id)?'currentColor':'none'}/></button><button onClick={generate}><RefreshCcw size={19}/></button><button onClick={()=>{setMode('Edit'); setPrompt('');}}><Pencil size={19}/></button><button><ArrowUpRight size={20}/></button><button><MoreHorizontal size={20}/></button></div>
           </article>)}
         </section>
@@ -198,7 +228,8 @@ function App() {
         <label className="field-label">Aspect Ratio</label>
         <div className="aspect-grid">{['1:1','16:9','9:16','4:3'].map((ratio)=><button key={ratio} onClick={()=>setAspect(ratio)} className={aspect===ratio?'selected':''}><span className={`ratio-icon ratio-${ratio.replace(':','-')}`}/>{ratio}</button>)}</div>
         <label className="field-label">Resolution</label>
-        <button className="select-box"><span>{isEdit?'0.25 MP validation mode':`1024 × 1024 (${aspect})`}</span><ChevronDown size={16}/></button>
+        {isEdit ? <div className="output-grid">{editQualityOptions.map((option)=><button key={option.value} onClick={()=>setEditMegapixels(option.value)} className={editMegapixels===option.value?'selected':''} title={option.detail}>{option.label}</button>)}</div> : <button className="select-box"><span>{`1024 × 1024 (${aspect})`}</span><ChevronDown size={16}/></button>}
+        {isEdit && <div style={{marginTop:8,color:'#7f8999',fontSize:11}}>Draft 0.25 MP · Balanced 0.5 MP · Quality 1.0 MP</div>}
         <label className="field-label">Outputs</label>
         <div className="output-grid">{[1,2,4].map((count)=><button key={count} onClick={()=>setOutputs(count)} className={outputs===count?'selected':''}>{count}</button>)}</div>
         <div className="settings-divider"/>
@@ -209,7 +240,7 @@ function App() {
           <div className="inline-field"><label>CFG</label><button className="compact-select">{isEdit?'1.0':'7.0'} <ChevronDown size={15}/></button></div>
           <div className="inline-field"><label>Workflow</label><button className="compact-select">{isEdit?'Klein Edit':'Default'} <ChevronDown size={15}/></button></div>
         </div>}
-        <button className="reset-button" onClick={()=>{setAspect('1:1');setOutputs(4);setSeed('42');}}><RotateCcw size={18}/> Reset to Defaults</button>
+        <button className="reset-button" onClick={()=>{setAspect('1:1');setOutputs(4);setSeed('42');setEditMegapixels('1.0');}}><RotateCcw size={18}/> Reset to Defaults</button>
       </aside>
       {settingsOpen && <div className="panel-scrim" onClick={()=>setSettingsOpen(false)}/>} 
     </div>

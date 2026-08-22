@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "latest",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "vite": "latest",
