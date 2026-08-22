@@ -1,9 +1,9 @@
 name: Studio Job Lifecycle Smoke
 
 on:
-  push:
+  pull_request:
     branches:
-      - studio/job-lifecycle-smoke
+      - main
     paths:
       - .github/workflows/studio-job-lifecycle-smoke.yml
 
