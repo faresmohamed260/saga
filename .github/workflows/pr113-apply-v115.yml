@@ -1,6 +1,6 @@
 name: Apply PR113 Create Evolution
 
-# This helper only applies idempotent PR fixes during remote visual iteration.
+# Temporary idempotent helper for the remote PR visual-iteration loop.
 on:
   pull_request:
     branches: [main]
