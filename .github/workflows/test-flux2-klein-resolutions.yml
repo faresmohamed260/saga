@@ -38,7 +38,7 @@ jobs:
 
       - name: Run sequential resolution tests
         env:
-          API_URL: https://faresmohamed260--saga-flux2-klein-9b-web.modal.run/edit
+          API_URL: https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run/edit
         run: |
           set -euo pipefail
           printf "megapixels,http_status,seconds,bytes\n" > resolution-results.csv
