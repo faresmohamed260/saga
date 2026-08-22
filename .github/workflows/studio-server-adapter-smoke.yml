@@ -1,0 +1,76 @@
+name: Studio Server Adapter Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/studio-server-adapter-smoke.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify preview workflow adapter
+        shell: bash
+        env:
+          PREVIEW_ORIGIN: https://studio-3coh4egms-faresmohamed260-6733s-projects.vercel.app
+          PREVIEW_SHARE: bSDTPE35GuHQnix3rC2UULPSfrsJBBzh
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import struct, zlib
+          w = h = 256
+          raw = bytearray()
+          for y in range(h):
+              raw.append(0)
+              for x in range(w):
+                  raw.extend((x % 256, y % 256, (x + y) % 256))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n'
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+          png += chunk(b'IDAT', zlib.compress(bytes(raw), 9))
+          png += chunk(b'IEND', b'')
+          open('/tmp/input.png', 'wb').write(png)
+          PY
+
+          curl -fsSL -c /tmp/vercel-cookies.txt \
+            "$PREVIEW_ORIGIN/?_vercel_share=$PREVIEW_SHARE" \
+            -o /tmp/preview-index.html
+
+          registry_status=$(curl -sS -b /tmp/vercel-cookies.txt -o /tmp/registry.json -w '%{http_code}' \
+            "$PREVIEW_ORIGIN/api/generate")
+          echo "registry_status=$registry_status"
+          cat /tmp/registry.json
+          test "$registry_status" = "200"
+          jq -e '.workflows[] | select(.id == "flux2-klein-image-edit" and .provider == "modal-flux2-klein")' /tmp/registry.json >/dev/null
+
+          asset=$(grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' /tmp/preview-index.html | head -n1)
+          test -n "$asset"
+          curl -fsSL -b /tmp/vercel-cookies.txt "$PREVIEW_ORIGIN$asset" -o /tmp/app.js
+          grep -q '/api/generate' /tmp/app.js
+          if grep -q 'faresmohamed260--saga-flux2-klein-gateway-web.modal.run' /tmp/app.js; then
+            echo 'Modal gateway URL is still present in the production browser bundle' >&2
+            exit 1
+          fi
+
+          edit_status=$(curl -sS -b /tmp/vercel-cookies.txt -o /tmp/output.png -D /tmp/edit-headers.txt -w '%{http_code}' \
+            -X POST "$PREVIEW_ORIGIN/api/generate/edit" \
+            -F 'image_file=@/tmp/input.png;type=image/png' \
+            -F 'prompt=Keep the image composition unchanged and preserve the simple gradient.' \
+            -F 'negative_prompt=' \
+            -F 'seed=42' \
+            -F 'steps=4' \
+            -F 'cfg=1.0' \
+            -F 'megapixels=0.25')
+          echo "edit_status=$edit_status"
+          cat /tmp/edit-headers.txt
+          test "$edit_status" = "200"
+          grep -qi '^content-type: image/' /tmp/edit-headers.txt
+          grep -qi '^x-saga-workflow: flux2-klein-image-edit' /tmp/edit-headers.txt
+          grep -qi '^x-saga-provider: modal-flux2-klein' /tmp/edit-headers.txt
+          test -s /tmp/output.png
+
+          echo 'Server workflow adapter smoke passed'
