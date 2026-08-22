@@ -6,6 +6,7 @@ import {
   transitionGenerationJob,
 } from './_generation-jobs.js';
 import { cancelGenerationJob, retryGenerationJob } from '../server/job-actions.js';
+import { recoverActiveGenerationJobs } from '../server/job-recovery.js';
 
 function safeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
@@ -17,11 +18,13 @@ function clampLimit(value) {
   return Math.min(Math.max(parsed, 1), 100);
 }
 
+export const config = { maxDuration: 30 };
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = typeof req.body === 'object' && req.body ? req.body : {};
-      const action = safeText(body.action, 32).toLowerCase();
+      const action = safeText(body.action || req.query?.action, 32).toLowerCase();
       if (action === 'cancel') {
         const job = await cancelGenerationJob(body.id);
         return res.status(200).json({ job, action: 'cancelled' });
@@ -30,6 +33,10 @@ export default async function handler(req, res) {
         const originalId = safeText(body.id, 64);
         const job = await retryGenerationJob(originalId);
         return res.status(201).json({ job, action: 'retried', retryOf: originalId });
+      }
+      if (action === 'recover') {
+        const result = await recoverActiveGenerationJobs();
+        return res.status(200).json(result);
       }
       if (action) return res.status(400).json({ error: 'Unknown job action' });
 
