@@ -1,0 +1,30 @@
+name: Patch PR113 Create Sidebar
+on:
+  push:
+    branches: [studio/controls-cleanup-picker-fix]
+    paths:
+      - apps/studio/scripts/patch-main-create-v2.mjs
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/controls-cleanup-picker-fix
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Patch Studio wiring
+        working-directory: apps/studio
+        run: node scripts/patch-main-create-v2.mjs
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src/main.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Wire More into sidebar and preserve mode settings"
+          git push origin HEAD:studio/controls-cleanup-picker-fix
