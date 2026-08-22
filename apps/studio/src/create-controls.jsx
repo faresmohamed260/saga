@@ -283,7 +283,7 @@ function useOutsideDismiss(open, refs, close) {
   }, [open, refs, close]);
 }
 
-function MorphList({ options, value, onChoose, render, ariaLabel }) {
+function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = false }) {
   const refs = useRef([]);
   const [hoverIndex, setHoverIndex] = useState(null);
   const activeIndex = Math.max(0, options.findIndex((item) => item.value === value));
@@ -291,9 +291,10 @@ function MorphList({ options, value, onChoose, render, ariaLabel }) {
   const rowHeight = 42;
 
   useEffect(() => {
+    if (!focusWhen) return undefined;
     const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [activeIndex, options.length]);
+  }, [focusWhen, activeIndex, options.length]);
 
   const keyDown = (event, index) => {
     let next = null;
@@ -371,6 +372,7 @@ function AspectPicker({ open, setOpen, anchorRef, aspect, setAspect, editAuto, s
         <small>{editAuto ? (autoInfo?.ratioLabel || 'Primary reference canvas') : ASPECT_PRESETS.find((item) => item.value === aspect)?.label}</small>
       </div>
       <MorphList
+        focusWhen={open}
         ariaLabel="Aspect ratio"
         options={ASPECT_PRESETS}
         value={editAuto ? '__none__' : aspect}
@@ -407,6 +409,7 @@ function ResolutionPicker({
         <small>{editAuto ? autoInfo?.detail : dimensions ? `${dimensions.width}×${dimensions.height}` : ''}</small>
       </div>
       <MorphList
+        focusWhen={open}
         ariaLabel="Resolution"
         options={IMAGE_RESOLUTIONS}
         value={editAuto ? '__none__' : Number(imageResolution)}
@@ -430,6 +433,7 @@ function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
   return (
     <PickerShell open={open} anchorRef={anchorRef} width={310} height={238} onClose={() => setOpen(false)}>
       <MorphList
+        focusWhen={open}
         ariaLabel="Video resolution"
         options={VIDEO_RESOLUTIONS}
         value={value}
