@@ -303,31 +303,30 @@
 .workspace .saga-output-wall{
   width:min(780px,100%);
   margin:54px auto 0;
-  column-count:3;
-  column-gap:10px;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-auto-flow:dense;
+  grid-auto-rows:24px;
+  gap:10px;
 }
 .workspace .saga-output-slot{
-  width:100%;
-  display:inline-block;
-  margin:0 0 10px;
-  break-inside:avoid;
+  min-width:0;
   overflow:hidden;
   border-radius:16px;
-  vertical-align:top;
 }
-.workspace .saga-output-slot-0{aspect-ratio:4/5}
-.workspace .saga-output-slot-1{aspect-ratio:3/4}
-.workspace .saga-output-slot-2{aspect-ratio:1/1}
-.workspace .saga-output-slot-3{aspect-ratio:4/5}
-.workspace .saga-output-slot-4{aspect-ratio:1/1}
-.workspace .saga-output-slot-5{aspect-ratio:3/4}
+.workspace .saga-output-slot-0{grid-row:span 11}
+.workspace .saga-output-slot-1{grid-row:span 13}
+.workspace .saga-output-slot-2{grid-row:span 9}
+.workspace .saga-output-slot-3{grid-row:span 12}
+.workspace .saga-output-slot-4{grid-row:span 9}
+.workspace .saga-output-slot-5{grid-row:span 13}
 .workspace .saga-output-wall .media-card{width:100%;height:100%;min-height:0;border-radius:16px;overflow:hidden;background:#0e1217;border:1px solid #242a33;box-sizing:border-box;position:relative}
 .workspace .saga-output-wall .media-frame{width:100%!important;height:100%!important;min-width:100%!important;min-height:100%!important;aspect-ratio:auto!important;border-radius:0!important;position:relative;background-size:cover!important;background-position:center!important}
 .workspace .saga-output-wall .size-badge{opacity:0;transform:translateY(-4px);transition:.18s ease}
 .workspace .saga-output-wall .card-actions{
-  position:absolute!important;left:8px!important;right:8px!important;bottom:8px!important;z-index:8!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:center!important;gap:4px!important;padding:6px!important;box-sizing:border-box!important;border:1px solid rgba(255,255,255,.09)!important;border-radius:12px!important;background:rgba(10,12,16,.82)!important;backdrop-filter:blur(14px);opacity:0;transform:translateY(7px);pointer-events:none;transition:opacity .18s ease,transform .18s ease;
+  position:absolute!important;left:8px!important;right:8px!important;bottom:8px!important;z-index:8!important;display:grid!important;grid-auto-flow:column!important;grid-auto-columns:minmax(0,1fr)!important;grid-template-columns:none!important;align-items:center!important;gap:3px!important;height:42px!important;padding:5px!important;box-sizing:border-box!important;border:1px solid rgba(255,255,255,.09)!important;border-radius:12px!important;background:rgba(10,12,16,.82)!important;backdrop-filter:blur(14px);opacity:0;transform:translateY(7px);pointer-events:none;transition:opacity .18s ease,transform .18s ease;
 }
-.workspace .saga-output-wall .card-actions button{width:100%;min-width:0;height:30px;border-radius:8px!important}
+.workspace .saga-output-wall .card-actions button{width:100%;min-width:0;height:30px!important;border-radius:8px!important}
 .workspace .saga-output-wall .media-card:hover .card-actions,
 .workspace .saga-output-wall .media-card:focus-within .card-actions,
 .workspace .saga-output-wall .media-card:hover .size-badge{opacity:1;transform:none;pointer-events:auto}
@@ -353,7 +352,12 @@
   .workspace .saga-preview-grid{width:84px;height:84px;background-size:28px 28px}
   .workspace .saga-advanced-panel{width:calc(100vw - 16px)!important;max-height:calc(100vh - 16px)!important}
   .workspace .saga-advanced-top{grid-template-columns:1fr}
-  .workspace .saga-output-wall{margin-top:34px;column-count:2;column-gap:7px}
-  .workspace .saga-output-slot{margin-bottom:7px}
+  .workspace .saga-output-wall{margin-top:34px;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:20px;gap:7px}
+  .workspace .saga-output-slot-0{grid-row:span 12}
+  .workspace .saga-output-slot-1{grid-row:span 15}
+  .workspace .saga-output-slot-2{grid-row:span 10}
+  .workspace .saga-output-slot-3{grid-row:span 13}
+  .workspace .saga-output-slot-4{grid-row:span 10}
+  .workspace .saga-output-slot-5{grid-row:span 15}
   .workspace .saga-output-wall .card-actions{opacity:1;transform:none;pointer-events:auto}
 }
