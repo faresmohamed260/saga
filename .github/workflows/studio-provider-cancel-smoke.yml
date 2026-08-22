@@ -1,0 +1,84 @@
+name: Studio Provider Cancel Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/studio-provider-cancel-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Submit and cancel disposable FLUX provider job
+        shell: bash
+        env:
+          GATEWAY: https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import struct, zlib
+          w = h = 64
+          raw = bytearray()
+          for y in range(h):
+              raw.append(0)
+              for x in range(w):
+                  raw.extend((x * 4 % 256, y * 4 % 256, (x + y) * 2 % 256))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n'
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+          png += chunk(b'IDAT', zlib.compress(bytes(raw), 9))
+          png += chunk(b'IEND', b'')
+          open('/tmp/input.png', 'wb').write(png)
+          PY
+
+          health=$(curl -fsSL "$GATEWAY/health")
+          echo "$health"
+          test "$(printf '%s' "$health" | jq -r '.cancel_jobs')" = "true"
+
+          submit_status=$(curl -sS -o /tmp/submit.json -w '%{http_code}' \
+            -X POST "$GATEWAY/jobs/edit" \
+            -F image_file=@/tmp/input.png \
+            -F 'prompt=Disposable cancellation smoke test' \
+            -F 'negative_prompt=' \
+            -F 'seed=42' \
+            -F 'steps=4' \
+            -F 'cfg=1.0' \
+            -F 'megapixels=0.25')
+          echo "submit_status=$submit_status body=$(cat /tmp/submit.json)"
+          test "$submit_status" = "200"
+          call_id=$(jq -r '.call_id // empty' /tmp/submit.json)
+          test -n "$call_id"
+
+          cancel_status=$(curl -sS -o /tmp/cancel.json -w '%{http_code}' \
+            -X DELETE "$GATEWAY/jobs/$call_id" \
+            -H 'Accept: application/json')
+          echo "cancel_status=$cancel_status body=$(cat /tmp/cancel.json)"
+          test "$cancel_status" = "200"
+          jq -e --arg id "$call_id" '.status == "cancelled" and .call_id == $id' /tmp/cancel.json >/dev/null
+
+          # Cancellation is asynchronous inside Modal. Confirm it does not later resolve to an image.
+          terminal=0
+          for attempt in $(seq 1 15); do
+            poll_status=$(curl -sS -o /tmp/poll.bin -D /tmp/poll.headers -w '%{http_code}' \
+              "$GATEWAY/jobs/$call_id")
+            echo "poll_attempt=$attempt status=$poll_status"
+            if [ "$poll_status" = "202" ]; then
+              sleep 2
+              continue
+            fi
+            if [ "$poll_status" = "200" ]; then
+              echo 'Cancelled provider job unexpectedly completed with an image.' >&2
+              exit 1
+            fi
+            terminal=1
+            break
+          done
+          test "$terminal" = "1"
+          echo 'Provider cancellation smoke passed'
