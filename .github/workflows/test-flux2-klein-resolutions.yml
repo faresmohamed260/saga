@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   smoke:
@@ -69,3 +70,24 @@ jobs:
           path: |
             resolution-results.csv
             out-*.png
+
+      - name: Publish results issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          TITLE="[automation] FLUX.2 Klein resolution smoke"
+          RESULTS="No results file was produced."
+          if [ -f resolution-results.csv ]; then
+            RESULTS=$(cat resolution-results.csv)
+          fi
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY=$(printf 'Status: **%s**\n\n```csv\n%s\n```\n\nRun: %s\n' "$JOB_STATUS" "$RESULTS" "$RUN_URL")
+          ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein resolution smoke" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE" ]; then
+            gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+          fi
