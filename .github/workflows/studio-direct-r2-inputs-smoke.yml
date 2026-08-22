@@ -14,8 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      PREVIEW_ORIGIN: https://studio-87opl62jm-faresmohamed260-6733s-projects.vercel.app
-      PREVIEW_SHARE: TOd9GdV3EehRPSqtXiobqzuhNbXl4YZj
+      ORIGIN: https://studio.faresuniform.uk
     steps:
       - name: Verify direct R2 upload and keyed generation
         shell: bash
@@ -33,10 +32,8 @@ jobs:
           open('/tmp/input.png','wb').write(png)
           PY
 
-          curl -fsSL -c /tmp/cookies.txt "$PREVIEW_ORIGIN/?_vercel_share=$PREVIEW_SHARE" -o /tmp/index.html
-
-          ticket_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/ticket.json -w '%{http_code}' \
-            -X POST "$PREVIEW_ORIGIN/api/uploads" -H 'Content-Type: application/json' \
+          ticket_status=$(curl -sS -o /tmp/ticket.json -w '%{http_code}' \
+            -X POST "$ORIGIN/api/uploads" -H 'Content-Type: application/json' \
             --data "{\"filename\":\"input.png\",\"contentType\":\"image/png\",\"size\":$(stat -c%s /tmp/input.png)}")
           echo "ticket_status=$ticket_status"; cat /tmp/ticket.json
           test "$ticket_status" = "201"
@@ -49,33 +46,36 @@ jobs:
             -H 'Access-Control-Request-Method: PUT' \
             -H 'Access-Control-Request-Headers: content-type')
           echo "preflight_status=$preflight"
-          grep -qi '^access-control-allow-origin:' /tmp/preflight.headers
-          grep -qi 'PUT' /tmp/preflight.headers
+          grep -qi '^access-control-allow-origin: https://studio.faresuniform.uk' /tmp/preflight.headers
+          grep -qi '^access-control-allow-methods:.*PUT' /tmp/preflight.headers
 
           put_status=$(curl -sS -o /tmp/put.txt -w '%{http_code}' -X PUT "$upload_url" -H 'Content-Type: image/png' --data-binary @/tmp/input.png)
           echo "put_status=$put_status"; test "$put_status" = "200"
 
-          submit_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/submit.json -w '%{http_code}' \
-            -X POST "$PREVIEW_ORIGIN/api/generate" -H 'Content-Type: application/json' \
+          submit_status=$(curl -sS -o /tmp/submit.json -w '%{http_code}' \
+            -X POST "$ORIGIN/api/generate" -H 'Content-Type: application/json' \
             --data "{\"workflowId\":\"flux2-klein-image-edit\",\"sourceKey\":\"$source_key\",\"sourceFilename\":\"input.png\",\"prompt\":\"Preserve the simple gradient composition.\",\"negativePrompt\":\"\",\"resolution\":\"0.25 MP\",\"seed\":42,\"steps\":4,\"cfg\":1.0,\"megapixels\":0.25}")
           echo "submit_status=$submit_status"; cat /tmp/submit.json
           test "$submit_status" = "202"
           jq -e '.inputTransport == "r2"' /tmp/submit.json >/dev/null
           job_id=$(jq -r '.job.id // empty' /tmp/submit.json); test -n "$job_id"
 
-          cleanup() { curl -sS -b /tmp/cookies.txt -X DELETE "$PREVIEW_ORIGIN/api/generations?id=$job_id" >/dev/null || true; }
+          cleanup() { curl -sS -X DELETE "$ORIGIN/api/generations?id=$job_id" >/dev/null || true; }
           trap cleanup EXIT
 
+          completed=0
           for attempt in $(seq 1 90); do
-            status=$(curl -sS -b /tmp/cookies.txt -o /tmp/result.json -w '%{http_code}' "$PREVIEW_ORIGIN/api/generate/result?jobId=$job_id")
+            status=$(curl -sS -o /tmp/result.json -w '%{http_code}' "$ORIGIN/api/generate/result?jobId=$job_id")
             echo "poll=$attempt status=$status"
             if [ "$status" = "202" ]; then sleep 10; continue; fi
             test "$status" = "200"
             jq -e '.status == "completed" and .persisted == true and (.mediaUrl|length>0) and (.thumbnailUrl|length>0)' /tmp/result.json >/dev/null
+            completed=1
             break
           done
+          test "$completed" = "1"
 
-          job_status=$(curl -sS -b /tmp/cookies.txt -o /tmp/job.json -w '%{http_code}' "$PREVIEW_ORIGIN/api/jobs?id=$job_id")
+          job_status=$(curl -sS -o /tmp/job.json -w '%{http_code}' "$ORIGIN/api/jobs?id=$job_id")
           test "$job_status" = "200"
           jq -e --arg key "$source_key" '.job.metadata.inputTransport == "r2" and .job.metadata.sourceR2Key == $key and .job.status == "completed"' /tmp/job.json >/dev/null
           echo 'Direct R2 input smoke passed'
