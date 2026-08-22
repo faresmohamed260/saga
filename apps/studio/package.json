@@ -12,9 +12,10 @@
     "@aws-sdk/client-s3": "latest",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "sharp": "latest",
+    "vite": "latest"
   },
   "devDependencies": {}
 }

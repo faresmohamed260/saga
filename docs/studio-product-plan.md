@@ -10,11 +10,13 @@ The application should support first-class text-to-image, image editing, image-t
 
 - **Vercel / Studio UI** — frontend and lightweight API orchestration.
 - **Modal + ComfyUI** — GPU inference and workflow execution.
-- **Cloudflare R2** — durable binary media storage (images, thumbnails, videos).
+- **Cloudflare R2** — durable binary media storage for originals, thumbnails/posters, and videos.
 - **Supabase Postgres** — generation/job metadata, prompts, model/workflow information, favorites and collections.
 - **GitHub** — application, workflow and infrastructure source of truth.
 
 R2 owns media bytes. Supabase owns searchable application state. The database stores R2 keys/API media URLs rather than image/video blobs.
+
+Gallery surfaces must prefer thumbnails/posters and avoid loading full-resolution originals until the user opens, downloads, edits, reuses, or plays an asset.
 
 ## Build phases
 
@@ -22,6 +24,7 @@ R2 owns media bytes. Supabase owns searchable application state. The database st
 
 - Persist a database record for every generated asset.
 - Store prompt, model, workflow/mode, resolution, seed, timestamps and R2 key.
+- Generate a lightweight image thumbnail for gallery/history use and persist its key/URL/dimensions separately from the original.
 - Add a history API with newest-first pagination.
 - Replace demo-only History behavior with persisted generation history.
 - Add image/video/model filters.
@@ -60,15 +63,18 @@ Support multiple ordered references with semantic roles such as identity, body/a
 
 ### Phase 6 — Video foundation
 
-- Persist MP4/WebM assets in R2.
-- Video thumbnails/posters.
+- Persist MP4/WebM originals in R2.
+- Generate static poster thumbnails for video gallery cards.
+- Load posters in gallery/history rather than video payloads.
 - Video cards/player.
 - Long-running job polling/status.
 - Connect the first image-to-video workflow, then text-to-video.
 
 ## Current storage contract
 
-A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, R2 key, application media URL, MIME type, resolution/dimensions, duration for video, seed, workflow identifier, error information, extensible JSON metadata, and timestamps.
+A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, original R2 key/application media URL, thumbnail R2 key/application URL, original and thumbnail dimensions, MIME type, resolution, duration for video, seed, workflow identifier, error information, extensible JSON metadata, and timestamps.
+
+Current image thumbnails are generated server-side as WebP, constrained to a maximum 512 x 512 bounding box without upscaling. Original media remains unchanged in R2.
 
 Indexes prioritize newest-first history and status/kind filtering. RLS is enabled from the beginning.
 
@@ -83,12 +89,17 @@ Completed:
 - `/api/history` implemented with newest-first results, a bounded `limit`, and optional `kind` / exact-model filters.
 - `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
 - The production path has been verified with a real generation: R2 upload/read succeeds and Supabase receives the completed generation row.
-- Prompt and seed metadata are now forwarded from the FLUX.2 client to `/api/media`.
+- Prompt and seed metadata are forwarded from the FLUX.2 client to `/api/media`.
 - UTF-8 model names are URL-encoded in browser headers and decoded server-side before Supabase insertion, preventing the previous replacement-character corruption while keeping R2 object metadata ASCII-safe for signature compatibility.
+- Supabase now has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
+- Image persistence now creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
+- `/api/media` can securely serve both `generations/...` originals and `thumbnails/...` previews.
+- `/api/history` returns the thumbnail fields needed by the gallery.
 
 Remaining for Phase 1:
 
-- Load `/api/history` into the frontend and replace demo-only History behavior with persisted R2-backed cards.
+- Verify thumbnail creation with the next production generation.
+- Load `/api/history` into the frontend and replace demo-only History behavior with persisted thumbnail-backed cards, falling back to the original only for legacy rows without thumbnails.
 - Add gallery filters and pagination/load-more behavior.
 - Add delete/favorite/collection actions after the persistent read path is stable.
 
@@ -96,9 +107,10 @@ Remaining for Phase 1:
 
 Complete the Supabase-backed history path for the existing FLUX.2 Klein image-edit workflow:
 
-1. R2 upload succeeds. **Done.**
+1. R2 original upload succeeds. **Done.**
 2. Studio writes the generation metadata record. **Done.**
-3. Prompt, seed, and model metadata are stored correctly. **Fixed; verify with the next production generation.**
-4. `/api/history` returns persisted records newest first. **Done.**
-5. History UI renders R2-backed assets after refresh/reopen. **Next.**
-6. Then migrate generation execution to the shared job lifecycle before adding video.
+3. Prompt, seed, and model metadata are stored correctly. **Implemented; verify with the next production generation.**
+4. Image thumbnail is generated, stored in R2, and linked from Supabase. **Implemented; production verification next.**
+5. `/api/history` returns persisted records newest first with thumbnail metadata. **Done.**
+6. History UI renders thumbnail-backed assets after refresh/reopen and only loads originals on demand. **Next.**
+7. Then migrate generation execution to the shared job lifecycle before adding video.
