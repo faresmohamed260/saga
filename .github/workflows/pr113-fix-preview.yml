@@ -1,0 +1,32 @@
+name: Fix PR113 Preview Script
+on:
+  push:
+    branches: ["studio/controls-cleanup-picker-fix"]
+    paths:
+      - "apps/studio/scripts/fix-preview-duplicate.mjs"
+      - ".github/workflows/pr113-fix-preview.yml"
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/studio
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/controls-cleanup-picker-fix
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - run: node scripts/fix-preview-duplicate.mjs
+      - shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/capture-ui-preview.mjs
+          git commit -m "Fix Playwright advanced settings QA variable"
+          git push origin HEAD:studio/controls-cleanup-picker-fix
