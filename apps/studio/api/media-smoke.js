@@ -2,6 +2,7 @@ import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 
 const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
+const targetOrigin = String(process.env.SAGA_STUDIO_SMOKE_TARGET || 'https://studio.faresuniform.uk').replace(/\/$/, '');
 
 function getR2Client() {
   const accountId = String(process.env.R2_ACCOUNT_ID || '').trim();
@@ -17,13 +18,6 @@ function getR2Client() {
   });
 }
 
-function originFor(req) {
-  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
-  if (!host) throw new Error('Unable to determine deployment host');
-  return `${proto}://${host}`;
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -36,7 +30,6 @@ export default async function handler(req, res) {
   const prompt = 'SAGA automated media smoke test';
   const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
   const seed = '424242';
-  const origin = originFor(req);
   let upload = null;
 
   try {
@@ -49,7 +42,7 @@ export default async function handler(req, res) {
       },
     }).png().toBuffer();
 
-    const uploadResponse = await fetch(`${origin}/api/media`, {
+    const uploadResponse = await fetch(`${targetOrigin}/api/media`, {
       method: 'POST',
       headers: {
         'content-type': 'image/png',
@@ -65,20 +58,20 @@ export default async function handler(req, res) {
     try { upload = JSON.parse(uploadText); } catch { upload = { raw: uploadText }; }
     if (!uploadResponse.ok) return res.status(uploadResponse.status).json({ ok: false, stage: 'upload', upload });
 
-    const historyResponse = await fetch(`${origin}/api/history?limit=20`, { headers: { accept: 'application/json' } });
+    const historyResponse = await fetch(`${targetOrigin}/api/history?limit=20`, { headers: { accept: 'application/json' } });
     const history = await historyResponse.json();
     const row = Array.isArray(history?.items) ? history.items.find((item) => item.id === upload.generationId) : null;
 
     let thumbnailCheck = null;
     if (row?.thumbnail_url) {
-      const response = await fetch(`${origin}${row.thumbnail_url}`);
+      const response = await fetch(`${targetOrigin}${row.thumbnail_url}`);
       const bytes = Buffer.from(await response.arrayBuffer());
       thumbnailCheck = { ok: response.ok, status: response.status, contentType: response.headers.get('content-type'), bytes: bytes.length };
     }
 
     let originalCheck = null;
     if (row?.media_url) {
-      const response = await fetch(`${origin}${row.media_url}`);
+      const response = await fetch(`${targetOrigin}${row.media_url}`);
       const bytes = Buffer.from(await response.arrayBuffer());
       originalCheck = { ok: response.ok, status: response.status, contentType: response.headers.get('content-type'), bytes: bytes.length };
     }
@@ -105,8 +98,14 @@ export default async function handler(req, res) {
 
     return res.status(ok ? 200 : 500).json({
       ok,
+      targetOrigin,
       generationId: upload?.generationId || null,
       checks,
+      upload: {
+        key: upload?.key || null,
+        thumbnailKey: upload?.thumbnailKey || null,
+        historyPersisted: Boolean(upload?.historyPersisted),
+      },
       row: row ? {
         id: row.id,
         prompt: row.prompt,
@@ -129,6 +128,6 @@ export default async function handler(req, res) {
     if (upload?.thumbnailKey) {
       try { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: upload.thumbnailKey })); } catch {}
     }
-    return res.status(500).json({ ok: false, stage: 'exception', error: error?.message || String(error) });
+    return res.status(500).json({ ok: false, stage: 'exception', targetOrigin, error: error?.message || String(error) });
   }
 }
