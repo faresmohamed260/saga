@@ -1,0 +1,63 @@
+name: Studio Media Actions Smoke
+
+on:
+  push:
+    branches:
+      - studio/media-actions-smoke
+    paths:
+      - .github/workflows/studio-media-actions-smoke.yml
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise upload, download and permanent delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROD="https://studio.faresuniform.uk"
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6K1sAAAAASUVORK5CYII=' | base64 -d > /tmp/saga-smoke.png
+
+          upload_headers=/tmp/upload-headers.txt
+          upload_body=/tmp/upload.json
+          status=$(curl -sS -D "$upload_headers" -o "$upload_body" -w '%{http_code}' \
+            -X POST "$PROD/api/media" \
+            -H 'Content-Type: image/png' \
+            -H 'X-Saga-Model: Smoke%20Test%20%C2%B7%20Media%20Actions' \
+            -H 'X-Saga-Resolution: 1%20px' \
+            -H 'X-Saga-Prompt: Disposable%20media%20actions%20smoke%20test' \
+            -H 'X-Saga-Seed: 123456789' \
+            --data-binary @/tmp/saga-smoke.png)
+          test "$status" = "201"
+
+          generation_id=$(jq -r '.generationId // empty' "$upload_body")
+          original_path=$(jq -r '.url // empty' "$upload_body")
+          thumbnail_path=$(jq -r '.thumbnailUrl // empty' "$upload_body")
+          test -n "$generation_id"
+          test -n "$original_path"
+          test -n "$thumbnail_path"
+
+          original_before=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$original_path")
+          thumb_before=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$thumbnail_path")
+          test "$original_before" = "200"
+          test "$thumb_before" = "200"
+
+          download_headers=/tmp/download-headers.txt
+          download_status=$(curl -sS -D "$download_headers" -o /tmp/downloaded.png -w '%{http_code}' "$PROD$original_path&download=1")
+          test "$download_status" = "200"
+          grep -qi '^content-disposition: attachment;' "$download_headers"
+
+          delete_body=/tmp/delete.json
+          delete_status=$(curl -sS -o "$delete_body" -w '%{http_code}' -X DELETE "$PROD/api/generations?id=$generation_id")
+          test "$delete_status" = "200"
+          test "$(jq -r '.deleted' "$delete_body")" = "true"
+
+          original_after=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$original_path")
+          thumb_after=$(curl -sS -o /dev/null -w '%{http_code}' "$PROD$thumbnail_path")
+          test "$original_after" = "404"
+          test "$thumb_after" = "404"
+
+          history=$(curl -sS "$PROD/api/history?limit=100&offset=0")
+          test "$(printf '%s' "$history" | jq --arg id "$generation_id" '[.items[] | select(.id == $id)] | length')" = "0"
+
+          echo "Production media action smoke passed for disposable generation $generation_id"
