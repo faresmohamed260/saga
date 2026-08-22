@@ -37,7 +37,38 @@ const editQualityOptions = [
 function encodeHeader(value) { return encodeURIComponent(String(value ?? '')); }
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
 
-async function persistGeneratedImage(blob, { model, resolution, prompt, negativePrompt = '', seed }) {
+async function createGenerationJob(payload) {
+  const response = await fetch('/api/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    let detail = '';
+    try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
+    throw new Error(`Could not queue generation (${response.status})${detail}`);
+  }
+  const body = await response.json();
+  if (!body?.job?.id) throw new Error('Generation queue did not return a job id.');
+  return body.job;
+}
+
+async function transitionGenerationJob(id, status, errorMessage = '') {
+  if (!id) return null;
+  const response = await fetch('/api/jobs', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status, errorMessage }),
+  });
+  if (!response.ok) {
+    let detail = '';
+    try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
+    throw new Error(`Could not update generation job (${response.status})${detail}`);
+  }
+  return await response.json();
+}
+
+async function persistGeneratedImage(blob, { model, resolution, prompt, negativePrompt = '', seed, jobId }) {
   try {
     const response = await fetch('/api/media', {
       method: 'POST',
@@ -48,6 +79,7 @@ async function persistGeneratedImage(blob, { model, resolution, prompt, negative
         'X-Saga-Prompt': encodeHeader(prompt),
         'X-Saga-Negative-Prompt': encodeHeader(negativePrompt),
         'X-Saga-Seed': String(seed ?? ''),
+        'X-Saga-Job-Id': String(jobId || ''),
       },
       body: blob,
     });
@@ -92,6 +124,7 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [jobStatus, setJobStatus] = useState('');
   const [seed, setSeed] = useState('42');
   const [editMegapixels, setEditMegapixels] = useState('1.0');
   const [favorites, setFavorites] = useState(new Set());
@@ -224,28 +257,55 @@ function App() {
     if (!sourceFile) throw new Error('Add a source image before running an edit.');
     if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
     const effectiveSeed = Number(seed) || 42;
-    const form = new FormData();
-    form.append('image_file', sourceFile, sourceFile.name); form.append('prompt', prompt.trim()); form.append('negative_prompt', '');
-    form.append('seed', String(effectiveSeed)); form.append('steps', '4'); form.append('cfg', '1.0'); form.append('megapixels', editMegapixels);
-    const response = await fetch(`${FLUX2_API_URL}/edit`, { method: 'POST', body: form });
-    if (!response.ok) {
-      let detail = '';
-      try { const body = await response.json(); detail = body?.detail ? `: ${body.detail}` : ''; } catch {}
-      throw new Error(`FLUX.2 Klein request failed (${response.status})${detail}`);
-    }
-    const blob = await response.blob();
-    if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
     const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
-    const persisted = await persistGeneratedImage(blob, { model, resolution: activeEditQuality.detail, prompt: prompt.trim(), negativePrompt: '', seed: effectiveSeed });
-    const url = persisted?.url || URL.createObjectURL(blob);
-    const item = { id: persisted?.generationId || `flux-${Date.now()}`, title: prompt.trim(), url: persisted?.thumbnailUrl || url, originalUrl: url, generated: true, model, resolution: activeEditQuality.detail, seed: effectiveSeed, persisted: Boolean(persisted?.historyPersisted) };
-    setItems((current) => [item, ...current]);
-    if (persisted?.historyPersisted && section === 'History') loadHistory({ append: false });
+    const job = await createGenerationJob({
+      kind: 'image',
+      mode: 'edit',
+      model,
+      prompt: prompt.trim(),
+      negativePrompt: '',
+      resolution: activeEditQuality.detail,
+      seed: effectiveSeed,
+      workflowId: 'flux2-klein-image-edit',
+      provider: 'modal',
+    });
+    const jobId = job.id;
+    setJobStatus('queued');
+
+    try {
+      await transitionGenerationJob(jobId, 'running');
+      setJobStatus('running');
+
+      const form = new FormData();
+      form.append('image_file', sourceFile, sourceFile.name); form.append('prompt', prompt.trim()); form.append('negative_prompt', '');
+      form.append('seed', String(effectiveSeed)); form.append('steps', '4'); form.append('cfg', '1.0'); form.append('megapixels', editMegapixels);
+      const response = await fetch(`${FLUX2_API_URL}/edit`, { method: 'POST', body: form });
+      if (!response.ok) {
+        let detail = '';
+        try { const body = await response.json(); detail = body?.detail ? `: ${body.detail}` : ''; } catch {}
+        throw new Error(`FLUX.2 Klein request failed (${response.status})${detail}`);
+      }
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
+
+      const persisted = await persistGeneratedImage(blob, { model, resolution: activeEditQuality.detail, prompt: prompt.trim(), negativePrompt: '', seed: effectiveSeed, jobId });
+      if (!persisted?.historyPersisted || persisted?.generationId !== jobId) throw new Error('Generated image could not be attached to its generation job.');
+
+      setJobStatus('completed');
+      const url = persisted.url || URL.createObjectURL(blob);
+      const item = { id: persisted.generationId, title: prompt.trim(), url: persisted.thumbnailUrl || url, originalUrl: url, generated: true, model, resolution: activeEditQuality.detail, seed: effectiveSeed, persisted: true };
+      setItems((current) => [item, ...current]);
+      if (section === 'History') loadHistory({ append: false });
+    } catch (err) {
+      setJobStatus('failed');
+      try { await transitionGenerationJob(jobId, 'failed', err instanceof Error ? err.message : 'Generation failed.'); } catch {}
+      throw err;
+    }
   };
 
   const generate = async () => {
     if (busy) return;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setJobStatus('');
     try {
       if (isEdit) await runFluxEdit();
       else { await new Promise((resolve) => window.setTimeout(resolve, 700)); setItems((prev) => [prev[1], prev[3], prev[0], prev[2]]); }
@@ -444,8 +504,8 @@ function App() {
           <div className="mode-tabs">{[[ImageIcon,'Image'],[Video,'Video'],[Crop,'Edit'],[Grid2X2,'More']].map(([Icon,label]) => <button className={`mode-tab ${mode===label?'selected':''}`} key={label} onClick={() => {setMode(label); setError('');}}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>)}</div>
           <section className="composer-panel"><div className="chip-row">{isEdit ? (sourcePreview ? <div className="ref-chip"><div className="chip-thumb" style={{backgroundImage:`url(${sourcePreview})`}}/><div><strong>Source image</strong><span>{sourceFile?.name}</span></div><button onClick={clearSource} style={{background:'transparent',border:0,color:'inherit',cursor:'pointer'}}><X size={16}/></button></div> : <button className="add-chip" onClick={chooseSource} title="Add source image"><Plus size={22}/></button>) : <><div className="ref-chip"><div className="chip-thumb forest"/><div><strong>Reference</strong><span>forest_mood.png</span></div><X size={16}/></div><div className="ref-chip"><div className="chip-thumb style"/><div><strong>Style</strong><span>Cinematic Teal & Orange</span></div><X size={16}/></div><button className="add-chip"><Plus size={22}/></button></>}</div><textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder={mode==='Video'?'Describe the motion, scene, and camera movement...':isEdit?'Describe what you want FLUX.2 Klein to change...':'Describe what you want to create...'} maxLength={2000}/><div className="composer-footer"><span>{prompt.length} / 2000</span><Sparkles size={18}/></div></section>
           {error && <div style={{marginTop:12,padding:'12px 14px',border:'1px solid rgba(255,100,120,.35)',borderRadius:10,background:'rgba(120,20,35,.14)',color:'#ffb4c0',fontSize:13}}>{error}</div>}
-          {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps · {activeEditQuality.detail}</div>}
-          <div className="action-row"><div className="attach-actions"><button className="secondary-button" onClick={chooseSource}><ImagePlus size={18}/>{isEdit ? (sourceFile?'Replace source':'Source image') : 'Reference'}</button><button className="secondary-button"><Palette size={18}/> Style</button></div><div className="generate-actions"><button className="square-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={19}/></button><button className={`generate-button ${busy?'busy':''}`} onClick={generate} disabled={busy}><Sparkles size={18}/>{busy ? (isEdit?'Editing…':'Generating…') : (isEdit?'Edit image':'Generate')}</button></div></div>
+          {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>{jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps · {activeEditQuality.detail}</div>}
+          <div className="action-row"><div className="attach-actions"><button className="secondary-button" onClick={chooseSource}><ImagePlus size={18}/>{isEdit ? (sourceFile?'Replace source':'Source image') : 'Reference'}</button><button className="secondary-button"><Palette size={18}/> Style</button></div><div className="generate-actions"><button className="square-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={19}/></button><button className={`generate-button ${busy?'busy':''}`} onClick={generate} disabled={busy}><Sparkles size={18}/>{busy ? (isEdit?(jobStatus === 'queued' ? 'Queued…' : 'Editing…'):'Generating…') : (isEdit?'Edit image':'Generate')}</button></div></div>
           <section className="gallery-grid">{visibleItems.map((item) => renderCard(item, false))}</section>
         </>}
       </main>
