@@ -6,6 +6,11 @@ on:
       - studio/media-actions-smoke
     paths:
       - .github/workflows/studio-media-actions-smoke.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/studio-media-actions-smoke.yml
 
 jobs:
   smoke:
