@@ -44,23 +44,26 @@ This becomes the common contract for fast image jobs and long-running video jobs
 Current Phase 2 implementation:
 
 - `/api/jobs` creates queued jobs, validates lifecycle transitions, fetches one job, and lists lifecycle jobs by status.
-- Shared `_generation-jobs.js` helpers now own job creation, reads, listing and status transitions so execution routes and the Jobs API use the same lifecycle logic.
+- Shared `_generation-jobs.js` helpers own job creation, reads, listing, provider job identifiers and status transitions so execution routes and the Jobs API use the same lifecycle logic.
 - FLUX.2 Klein image edits create the job before execution, move it to `running`, and attach the persisted output to the same generation UUID on completion.
-- Failed requests move the existing job to `failed` and keep prompt/model/seed/workflow/error metadata for inspection.
-- `/api/media` finalizes an existing job instead of inserting a second generation row when a valid job UUID is supplied. A terminal or stale job cannot silently create a duplicate completed generation.
+- Failed requests keep prompt/model/seed/workflow/error metadata for inspection.
 - `/api/history` intentionally returns completed generations only so queued/running/failed jobs do not appear as broken library cards.
-- Supabase generation rows include `started_at` and `provider` fields in addition to `created_at` / `completed_at`.
+- Supabase generation rows include `started_at`, `provider`, and `provider_job_id` in addition to `created_at` / `completed_at`.
 - The production lifecycle smoke test verified `queued -> running -> completed`, timestamps, job reads, deletion, and cleanup without leaving disposable rows behind.
 - Studio has a URL-backed Jobs page with Active / Queued / Running / Failed / Completed / Recent filters. The page polls every three seconds while open and shows prompt, model, provider, seed, resolution, timestamps, and failure details.
 - `_workflows.js` is the first server workflow registry. The initial entry is `flux2-klein-image-edit`, which declares kind, mode, model, provider, defaults, output type and input limits.
-- `_providers.js` is the provider adapter layer. The FLUX.2 Klein adapter owns the Modal gateway URL, multipart provider request, timeout, validation and provider error normalization.
-- `/api/generate` is the shared server orchestration endpoint for registry-driven generation. It can create/transition jobs and execute a registered workflow from a provider-neutral request.
-- `/api/generate/edit` is the production compatibility route used by the current edit composer. It accepts the existing multipart edit request but executes it through the server workflow/provider registry instead of letting the browser call Modal directly.
+- `_providers.js` is the provider adapter layer. The FLUX.2 Klein adapter owns the Modal gateway URL, multipart provider submit/poll requests, validation and provider error normalization.
+- Modal exposes async submit/poll endpoints backed by `Function.spawn()` / `FunctionCall`, so cold GPU starts no longer require one Vercel request to remain open for several minutes.
+- `/api/generate` is the shared server orchestration endpoint for registry-driven generation. It creates the job, moves it to `running`, submits the provider job, stores the provider job id, and returns `202` quickly.
+- `/api/generate/result` polls the provider using short requests. Successful image results are now persisted server-side to R2, a WebP thumbnail is generated, and the same Supabase generation row is finalized as `completed` before persisted URLs are returned.
+- Orchestrator-owned media keys are deterministic from the generation UUID, making repeated completion polls idempotent and preventing orphan duplicates from concurrent/retried result requests.
+- `/api/generate/edit` remains a temporary compatibility route used by the current edit composer. The browser compatibility bridge consumes orchestrator-persisted media and suppresses the old second `/api/media` upload.
 - Production Vite configuration points `VITE_FLUX2_KLEIN_API_URL` at `/api/generate`, so the existing client path resolves to `/api/generate/edit` without exposing or depending on the Modal gateway URL in the production browser bundle.
+- The async provider smoke test verified fast `202` submission, repeated `202` polling during a cold start, eventual provider completion, R2 original + thumbnail persistence, final completed job state, and disposable cleanup without a five-minute Vercel function timeout.
 
 Next within Phase 2:
 
-- Collapse the compatibility path into the unified `/api/generate` orchestration contract so job creation, execution and persistence are all owned server-side in one flow.
+- Remove the temporary compatibility fetch shim and have the React composer call `/api/generate` + `/api/generate/result` directly.
 - Move source/reference uploads to a direct-to-R2 or equivalent upload path before long video workflows, avoiding large browser -> Vercel request bodies.
 - Add safe retry/cancel semantics once provider execution can be controlled server-side.
 - Add recovery rules for jobs stranded in `queued` or `running` by browser/network interruption.
@@ -100,7 +103,7 @@ Support multiple ordered references with semantic roles such as identity, body/a
 
 ## Current storage contract
 
-A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, original R2 key/application media URL, thumbnail R2 key/application URL, original and thumbnail dimensions, MIME type, resolution, duration for video, seed, workflow identifier, provider, favorite state, error information, extensible JSON metadata, and lifecycle timestamps.
+A generation record contains a UUID, status, media kind, mode, model, prompt, optional negative prompt, original R2 key/application media URL, thumbnail R2 key/application URL, original and thumbnail dimensions, MIME type, resolution, duration for video, seed, workflow identifier, provider, provider job identifier, favorite state, error information, extensible JSON metadata, and lifecycle timestamps.
 
 Collections are stored separately in `studio_collections`, with generation membership in `studio_collection_items`. Deleting a collection removes membership rows but does not delete the underlying generated media.
 
@@ -152,6 +155,8 @@ The persistent library shell is complete and generation execution is moving onto
 7. Download/reuse/edit/delete actions pass production verification. **Done.**
 8. Shared `queued -> running -> completed | failed` job contract. **Done and production-smoke-tested for FLUX.2 image editing.**
 9. Active Jobs/Queue UI with lifecycle polling and filters. **Done.**
-10. Shared server-side workflow registry and provider execution adapter. **Implemented; production generation verification next.**
-11. Unify source upload + generation + persistence behind the server orchestration contract. **Next.**
-12. Add the first video workflow on top of the shared job contract.
+10. Shared server-side workflow registry and provider execution adapter. **Done.**
+11. Async provider submit/poll path that survives cold starts beyond Vercel's synchronous function window. **Done and smoke-tested.**
+12. Server-owned provider-result persistence to R2 + Supabase. **Implemented; production deployment verification is blocked only by the current Vercel Hobby build-rate window.**
+13. Remove the browser compatibility shim and call the unified orchestration API directly from the React composer. **Next.**
+14. Add the first video workflow on top of the shared job contract.
