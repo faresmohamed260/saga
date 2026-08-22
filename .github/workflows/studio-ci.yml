@@ -1,0 +1,42 @@
+name: Studio CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/studio/**"
+      - ".github/workflows/studio-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/studio/**"
+      - ".github/workflows/studio-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/studio/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Guard browser execution boundary
+        run: |
+          if grep -R "saga-flux2-klein-gateway-web.modal.run" src index.html; then
+            echo "Direct Modal gateway URL must not be shipped in the Studio browser source." >&2
+            exit 1
+          fi
+          if grep -R "async-provider-fetch" src index.html; then
+            echo "Temporary async fetch shim must not return." >&2
+            exit 1
+          fi
