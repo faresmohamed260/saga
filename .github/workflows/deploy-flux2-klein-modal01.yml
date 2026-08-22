@@ -3,6 +3,7 @@ name: Deploy FLUX.2 Klein 9B to modal-01
 on:
   push:
     branches:
+      - main
       - studio/flux2-klein-9b-img2img
     paths:
       - "integrations/comfyui/flux2_klein_app.py"
