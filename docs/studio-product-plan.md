@@ -86,32 +86,33 @@ Completed:
 - Newest-first, status, and media-kind indexes created.
 - RLS enabled.
 - Bootstrap RLS policies allow anonymous reads and narrowly scoped completed image-edit inserts while Studio uses the public Supabase key through its server API. This is a temporary hobby/demo bootstrap and should be replaced by authenticated/server-privileged access before production use.
-- `/api/history` implemented with newest-first results, a bounded `limit`, and optional `kind` / exact-model filters.
+- `/api/history` supports newest-first results, bounded page size, `offset` pagination, optional media-kind / exact-model filters, and model facets for the UI filter.
 - `/api/media` records a generation row after a successful R2 upload and returns `generationId` / `historyPersisted` in the upload response.
 - Prompt, seed, UTF-8 model metadata, original dimensions, thumbnail creation, thumbnail dimensions, original reads, and thumbnail reads were verified end-to-end with the automated media smoke test.
 - Supabase has `thumbnail_r2_key`, `thumbnail_url`, `thumbnail_width`, and `thumbnail_height` fields.
 - Image persistence creates a WebP gallery thumbnail, uploads it under `thumbnails/...`, records original/thumbnail dimensions, and returns the thumbnail URL alongside the original.
 - `/api/media` serves both `generations/...` originals and `thumbnails/...` previews.
 - `/api/history` returns the thumbnail fields needed by the gallery.
-- The Studio History view now fetches `/api/history`, renders thumbnail-backed persisted cards, refreshes on demand, survives page refresh/reopen, and falls back to the original URL for legacy rows without thumbnails.
+- The Studio History view fetches `/api/history`, renders thumbnail-backed persisted cards, refreshes on demand, survives page refresh/reopen, and falls back to the original URL for legacy image rows without thumbnails.
 - Opening a History card loads the full original in an on-demand viewer instead of using the original for the grid.
-- Newly generated persisted images immediately use their thumbnail URL in the Create gallery when available and trigger a History refresh after persistence.
+- Newly generated persisted images immediately use their thumbnail URL in the Create gallery when available.
+- History now has All / Images / Videos filters, a model selector, 24-item pages, and Load more pagination.
+- Video history rows are poster-first when a thumbnail exists, use a lightweight placeholder when no poster exists, and open the original only in the on-demand player.
 
 Remaining for Phase 1:
 
-- Add gallery filters for media kind and model.
-- Add pagination/load-more behavior instead of the current bounded 48-item History request.
 - Persist favorites and collections in Supabase rather than local React state.
 - Add delete/download/reuse/edit actions with final UX and authorization rules.
+- Replace bootstrap anonymous RLS with authenticated/server-privileged access before broader release.
 
 ## Immediate milestone
 
-Complete the Supabase-backed history path for the existing FLUX.2 Klein image-edit workflow:
+Complete the persistent library shell before moving generation execution onto the shared job lifecycle:
 
 1. R2 original upload succeeds. **Done.**
-2. Studio writes the generation metadata record. **Done.**
+2. Studio writes generation metadata. **Done.**
 3. Prompt, seed, model, dimensions, thumbnail storage, and both media reads pass automated verification. **Done.**
-4. `/api/history` returns persisted records newest first with thumbnail metadata. **Done.**
-5. History UI renders thumbnail-backed assets after refresh/reopen and only loads originals on demand. **Implemented; preview/production UI verification next.**
-6. Add filters and pagination/load-more.
-7. Then migrate generation execution to the shared job lifecycle before adding video.
+4. History is persistent and thumbnail-first. **Done.**
+5. Media-kind/model filters and Load more pagination. **Implemented; deployment verification next.**
+6. Persist favorites and collections, then finish delete/download/reuse/edit actions.
+7. Migrate generation execution to the shared job lifecycle before adding video workflows.
