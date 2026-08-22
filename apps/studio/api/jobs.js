@@ -37,6 +37,7 @@ async function listJobs({ status, limit }) {
   params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,resolution,seed,workflow_id,provider,error_message,metadata,created_at,started_at,completed_at,r2_key,media_url,thumbnail_url');
   params.set('order', 'created_at.desc,id.desc');
   params.set('limit', String(limit));
+  params.set('metadata', 'cs.{"lifecycle":"job-v1"}');
   if (status === 'active') params.set('status', 'in.(queued,running)');
   else if (['queued', 'running', 'completed', 'failed'].includes(status)) params.set('status', `eq.${status}`);
   return supabaseRequest(`studio_generations?${params.toString()}`, { method: 'GET' });
