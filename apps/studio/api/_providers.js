@@ -130,6 +130,24 @@ async function pollModalFlux2Klein(workflow, providerJobId) {
   };
 }
 
+async function cancelModalFlux2Klein(workflow, providerJobId) {
+  const response = await fetch(`${getModalGatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = await response.json();
+      detail = body?.detail ? `: ${body.detail}` : '';
+    } catch {}
+    const error = new Error(`FLUX.2 provider cancel failed (${response.status})${detail}`);
+    error.statusCode = response.status >= 500 ? 502 : response.status;
+    throw error;
+  }
+  return { status: 'cancelled', provider: workflow.provider };
+}
+
 export async function submitWorkflow(workflow, rawInput) {
   const normalized = normalizeInput(workflow, rawInput);
   if (workflow.provider === 'modal-flux2-klein') return submitModalFlux2Klein(workflow, normalized);
@@ -150,6 +168,19 @@ export async function pollWorkflow(workflow, providerJobId) {
     throw error;
   }
   if (workflow.provider === 'modal-flux2-klein') return pollModalFlux2Klein(workflow, providerJobId);
+  const error = new Error(`Unsupported provider: ${workflow.provider}`);
+  error.statusCode = 501;
+  throw error;
+}
+
+export async function cancelWorkflow(workflow, providerJobId) {
+  if (!workflow) {
+    const error = new Error('Unknown workflow');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!providerJobId) return { status: 'cancelled', provider: workflow.provider };
+  if (workflow.provider === 'modal-flux2-klein') return cancelModalFlux2Klein(workflow, providerJobId);
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
