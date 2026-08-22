@@ -958,7 +958,7 @@ export default function CreateWorkspace({
           setImageResolution={setImageResolution}
           aspect={aspect}
           editAuto={isEdit && editAuto}
-          setEditAuto={setEditAuto}
+          setEditAuto={isEdit ? setEditAuto : () => {}}
           autoInfo={autoEditInfo}
         />
         <AspectPicker
@@ -968,7 +968,7 @@ export default function CreateWorkspace({
           aspect={aspect}
           setAspect={setAspect}
           editAuto={isEdit && editAuto}
-          setEditAuto={setEditAuto}
+          setEditAuto={isEdit ? setEditAuto : () => {}}
           autoRatio={primaryRatio}
           autoInfo={autoEditInfo}
         />
