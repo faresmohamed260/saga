@@ -4,7 +4,7 @@ import {
   WandSparkles, History, Heart, Folder, Box, Workflow, Settings, Image as ImageIcon,
   Video, Crop, Grid2X2, Plus, X, SlidersHorizontal, Sparkles, RefreshCcw, Pencil,
   ArrowUpRight, MoreHorizontal, ChevronDown, RotateCcw, Dice5, Palette, ImagePlus,
-  Menu, ChevronLeft, Maximize2, LoaderCircle, Trash2
+  Menu, ChevronLeft, Maximize2, LoaderCircle, Trash2, Download
 } from 'lucide-react';
 import './styles.css';
 
@@ -319,6 +319,76 @@ function App() {
     if (response.ok || response.status === 204) { await loadCollectionItems(selectedCollection); await loadCollections(); }
   };
 
+  const reuseSettings = (item) => {
+    setPrompt(item.title || '');
+    if (item.seed != null) setSeed(String(item.seed));
+    const quality = editQualityOptions.find((option) => option.detail === item.resolution);
+    if (quality) setEditMegapixels(quality.value);
+    setMode(item.kind === 'video' ? 'Video' : item.mode === 'edit' ? 'Edit' : 'Image');
+    setSection('Create');
+    setError('');
+  };
+
+  const editThis = async (item) => {
+    if (item.kind === 'video') return window.alert('Video editing will be connected with the video workflow phase.');
+    const mediaUrl = item.originalUrl || item.url;
+    if (!mediaUrl) return;
+    try {
+      const response = await fetch(mediaUrl);
+      if (!response.ok) throw new Error(`Media request failed (${response.status})`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Selected media is not an image.');
+      if (sourcePreview) URL.revokeObjectURL(sourcePreview);
+      const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+      const file = new File([blob], `saga-edit-${item.id}.${extension}`, { type: blob.type || 'image/png' });
+      setSourceFile(file);
+      setSourcePreview(URL.createObjectURL(blob));
+      setPrompt('');
+      if (item.seed != null) setSeed(String(item.seed));
+      const quality = editQualityOptions.find((option) => option.detail === item.resolution);
+      if (quality) setEditMegapixels(quality.value);
+      setMode('Edit');
+      setSection('Create');
+      setError('');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not prepare this image for editing.');
+    }
+  };
+
+  const downloadItem = (item) => {
+    const mediaUrl = item.originalUrl || item.url;
+    if (!mediaUrl) return;
+    const separator = mediaUrl.includes('?') ? '&' : '?';
+    const link = document.createElement('a');
+    link.href = `${mediaUrl}${separator}download=1`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const deleteGeneration = async (item) => {
+    if (!item.persisted || !isUuid(item.id)) return window.alert('Only persisted generations can be deleted.');
+    if (!window.confirm('Permanently delete this generation? This removes the original, thumbnail, favorites, and collection memberships.')) return;
+    try {
+      const response = await fetch(`/api/generations?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      if (!response.ok) {
+        let detail = '';
+        try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
+        throw new Error(`Delete failed (${response.status})${detail}`);
+      }
+      setSelectedMedia((current) => current?.id === item.id ? null : current);
+      setHistoryItems((current) => current.filter((entry) => entry.id !== item.id));
+      setFavoriteItems((current) => current.filter((entry) => entry.id !== item.id));
+      setCollectionItems((current) => current.filter((entry) => entry.id !== item.id));
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      setFavorites((current) => { const next = new Set(current); next.delete(item.id); return next; });
+      await loadCollections();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not delete generation.');
+    }
+  };
+
   const openMedia = (item) => setSelectedMedia(item);
   const renderCard = (item, history = false, inCollection = false) => (
     <article className={`media-card ${history ? 'history-card' : ''}`} key={item.id}>
@@ -328,12 +398,14 @@ function App() {
         <div className="media-hover"><button aria-label="Open full media"><Maximize2 size={18}/></button></div>
       </div>
       {history && <div className="history-copy"><div className="history-prompt">{item.title}</div><div className="history-meta"><span>{item.model || 'Unknown model'}</span>{item.seed != null && <span>Seed {item.seed}</span>}</div></div>}
-      <div className="card-actions">
-        <button className={favorites.has(item.id) ? 'favorite active' : 'favorite'} onClick={() => toggleFavorite(item)}><Heart size={20} fill={favorites.has(item.id) ? 'currentColor' : 'none'}/></button>
-        <button onClick={() => { setPrompt(item.title || ''); setMode('Edit'); setSection('Create'); }}><RefreshCcw size={19}/></button>
-        <button onClick={() => { setPrompt(item.title || ''); setMode('Edit'); setSection('Create'); }}><Pencil size={19}/></button>
-        <button onClick={() => openMedia(item)}><ArrowUpRight size={20}/></button>
-        <button title={inCollection ? 'Remove from collection' : 'Add to collection'} onClick={() => inCollection ? removeFromCollection(item) : addToCollection(item)}>{inCollection ? <Trash2 size={18}/> : <Folder size={18}/>}</button>
+      <div className="card-actions" style={{gridTemplateColumns:'repeat(7,1fr)'}}>
+        <button title="Favorite" className={favorites.has(item.id) ? 'favorite active' : 'favorite'} onClick={() => toggleFavorite(item)}><Heart size={19} fill={favorites.has(item.id) ? 'currentColor' : 'none'}/></button>
+        <button title="Reuse settings" onClick={() => reuseSettings(item)}><RefreshCcw size={18}/></button>
+        <button title="Edit this" onClick={() => editThis(item)}><Pencil size={18}/></button>
+        <button title="Download original" onClick={() => downloadItem(item)}><Download size={18}/></button>
+        <button title="Open full media" onClick={() => openMedia(item)}><ArrowUpRight size={19}/></button>
+        <button title={inCollection ? 'Remove from collection' : 'Add to collection'} onClick={() => inCollection ? removeFromCollection(item) : addToCollection(item)}>{inCollection ? <Folder size={18}/> : <Folder size={18}/>}</button>
+        <button title="Delete permanently" onClick={() => deleteGeneration(item)}><Trash2 size={18}/></button>
       </div>
     </article>
   );
