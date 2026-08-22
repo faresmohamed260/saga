@@ -28,6 +28,17 @@ jobs:
           node-version: "22"
       - run: npm install --no-audit --no-fund
       - run: npm run build
+      - name: Guard Vercel Hobby function count
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t routes < <(find api -type f -name '*.js' ! -name '_*.js' | sort)
+          printf 'Vercel API routes (%s):\n' "${#routes[@]}"
+          printf '  %s\n' "${routes[@]}"
+          if [ "${#routes[@]}" -gt 12 ]; then
+            echo "Studio exceeds Vercel Hobby's 12 Serverless Function limit." >&2
+            exit 1
+          fi
       - name: Guard browser execution boundary
         run: |
           if grep -R "saga-flux2-klein-gateway-web.modal.run" src index.html; then
