@@ -23,10 +23,10 @@ const signatureNew = `function MorphList({ options, value, onChoose, render, ari
 if (create.includes(signatureOld)) create = create.replace(signatureOld, signatureNew);
 else if (!create.includes(signatureNew)) throw new Error('MorphList signature target not found');
 
-const effectOld = `  useEffect(() => {\n    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);\n  }, [activeIndex, options.length]);`;
-const effectNew = `  useEffect(() => {\n    if (!focusWhen) return undefined;\n    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);\n  }, [focusWhen, activeIndex, options.length]);`;
-if (create.includes(effectOld)) create = create.replace(effectOld, effectNew);
-else if (!create.includes('if (!focusWhen) return undefined;')) throw new Error('MorphList focus effect target not found');
+const rafEffect = `  useEffect(() => {\n    if (!focusWhen) return undefined;\n    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);\n  }, [focusWhen, activeIndex, options.length]);`;
+const timedEffect = `  useEffect(() => {\n    if (!focusWhen) return undefined;\n    const timer = window.setTimeout(() => refs.current[activeIndex]?.focus(), 40);\n    return () => window.clearTimeout(timer);\n  }, [focusWhen, activeIndex, options.length]);`;
+if (create.includes(rafEffect)) create = create.replace(rafEffect, timedEffect);
+else if (!create.includes('window.setTimeout(() => refs.current[activeIndex]?.focus(), 40)')) throw new Error('MorphList focus timing target not found');
 
 for (const label of ['Aspect ratio', 'Resolution', 'Video resolution']) {
   const oldCall = `<MorphList\n        ariaLabel="${label}"`;
