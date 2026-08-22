@@ -9,6 +9,7 @@ import {
 import './styles.css';
 
 const FLUX2_API_URL = (import.meta.env.VITE_FLUX2_KLEIN_API_URL || 'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run').replace(/\/$/, '');
+const HISTORY_PAGE_SIZE = 24;
 
 const samples = [
   { id: 1, title: 'Forest refuge', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=85' },
@@ -51,10 +52,11 @@ async function persistGeneratedImage(blob, { model, resolution, prompt, negative
 }
 
 function toHistoryItem(row) {
+  const previewUrl = row.thumbnail_url || (row.kind === 'image' ? row.media_url : '');
   return {
     id: row.id,
     title: row.prompt || 'Untitled generation',
-    url: row.thumbnail_url || row.media_url,
+    url: previewUrl,
     originalUrl: row.media_url,
     thumbnailUrl: row.thumbnail_url,
     generated: true,
@@ -90,7 +92,12 @@ function App() {
   const [items, setItems] = useState(samples);
   const [historyItems, setHistoryItems] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyAppending, setHistoryAppending] = useState(false);
   const [historyError, setHistoryError] = useState('');
+  const [historyKind, setHistoryKind] = useState('all');
+  const [historyModel, setHistoryModel] = useState('all');
+  const [historyModels, setHistoryModels] = useState([]);
+  const [historyPage, setHistoryPage] = useState({ nextOffset: null, hasMore: false });
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [sourceFile, setSourceFile] = useState(null);
   const [sourcePreview, setSourcePreview] = useState('');
@@ -101,28 +108,35 @@ function App() {
   const isEdit = mode === 'Edit';
   const activeEditQuality = editQualityOptions.find((option) => option.value === editMegapixels) || editQualityOptions[2];
 
-  const loadHistory = async () => {
-    setHistoryLoading(true);
+  const loadHistory = async ({ append = false, kind = historyKind, model = historyModel } = {}) => {
+    if (append && historyPage.nextOffset == null) return;
+    append ? setHistoryAppending(true) : setHistoryLoading(true);
     setHistoryError('');
     try {
-      const response = await fetch('/api/history?kind=image&limit=48', { headers: { Accept: 'application/json' } });
+      const params = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE), offset: String(append ? historyPage.nextOffset : 0) });
+      if (kind === 'image' || kind === 'video') params.set('kind', kind);
+      if (model !== 'all') params.set('model', model);
+
+      const response = await fetch(`/api/history?${params.toString()}`, { headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error(`History request failed (${response.status})`);
       const payload = await response.json();
-      setHistoryItems((Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem));
+      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
+      setHistoryItems((current) => append ? [...current, ...nextItems] : nextItems);
+      setHistoryPage({
+        nextOffset: payload?.page?.nextOffset ?? null,
+        hasMore: Boolean(payload?.page?.hasMore),
+      });
+      if (Array.isArray(payload?.facets?.models)) setHistoryModels(payload.facets.models);
     } catch (err) {
       setHistoryError(err instanceof Error ? err.message : 'Unable to load generation history.');
     } finally {
-      setHistoryLoading(false);
+      append ? setHistoryAppending(false) : setHistoryLoading(false);
     }
   };
 
   useEffect(() => {
-    loadHistory();
-  }, []);
-
-  useEffect(() => {
-    if (section === 'History') loadHistory();
-  }, [section]);
+    if (section === 'History') loadHistory({ append: false, kind: historyKind, model: historyModel });
+  }, [section, historyKind, historyModel]);
 
   const chooseSource = () => fileInputRef.current?.click();
 
@@ -200,7 +214,7 @@ function App() {
       persisted: Boolean(persisted?.historyPersisted),
     };
     setItems((current) => [item, ...current]);
-    if (persisted?.historyPersisted) loadHistory();
+    if (persisted?.historyPersisted && section === 'History') loadHistory({ append: false });
   };
 
   const generate = async () => {
@@ -234,14 +248,15 @@ function App() {
   const renderCard = (item, history = false) => (
     <article className={`media-card ${history ? 'history-card' : ''}`} key={item.id}>
       <div
-        className="media-frame"
-        style={{ backgroundImage: `url(${item.url})` }}
+        className={`media-frame ${!item.url ? 'media-frame-empty' : ''}`}
+        style={item.url ? { backgroundImage: `url(${item.url})` } : undefined}
         onClick={() => openMedia(item)}
         role="button"
         tabIndex={0}
       >
-        <div className="size-badge"><Sparkles size={12}/>{item.generated ? `${item.resolution || 'Image'}${history ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
-        <div className="media-hover"><button aria-label="Open full image"><Maximize2 size={18}/></button></div>
+        {!item.url && <div className="media-placeholder"><Video size={28}/><span>Video preview</span></div>}
+        <div className="size-badge">{item.kind === 'video' ? <Video size={12}/> : <Sparkles size={12}/>} {item.generated ? `${item.resolution || (item.kind === 'video' ? 'Video' : 'Image')}${history ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
+        <div className="media-hover"><button aria-label="Open full media"><Maximize2 size={18}/></button></div>
       </div>
       {history && <div className="history-copy">
         <div className="history-prompt">{item.title}</div>
@@ -281,12 +296,29 @@ function App() {
           <section className="history-view">
             <div className="history-header">
               <div><div className="history-eyebrow">Library</div><h1>Generation history</h1><p>Thumbnail-first previews. Originals load only when you open an item.</p></div>
-              <button className="secondary-button" onClick={loadHistory} disabled={historyLoading}>{historyLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>
+              <button className="secondary-button" onClick={() => loadHistory({ append: false })} disabled={historyLoading}>{historyLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>
             </div>
+
+            <div className="history-toolbar">
+              <div className="history-kind-tabs" role="group" aria-label="Media type filter">
+                {[['all','All'],['image','Images'],['video','Videos']].map(([value,label]) => <button key={value} className={historyKind === value ? 'selected' : ''} onClick={() => setHistoryKind(value)}>{label}</button>)}
+              </div>
+              <label className="history-model-filter">
+                <span>Model</span>
+                <select value={historyModel} onChange={(event) => setHistoryModel(event.target.value)}>
+                  <option value="all">All models</option>
+                  {historyModels.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}
+                </select>
+              </label>
+            </div>
+
             {historyError && <div className="history-state error">{historyError}</div>}
             {historyLoading && historyItems.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading history…</div>
-              : historyItems.length === 0 ? <div className="history-state">No persisted generations yet.</div>
-              : <section className="gallery-grid history-grid">{historyItems.map((item) => renderCard(item, true))}</section>}
+              : historyItems.length === 0 ? <div className="history-state">No generations match these filters.</div>
+              : <>
+                <section className="gallery-grid history-grid">{historyItems.map((item) => renderCard(item, true))}</section>
+                {historyPage.hasMore && <div className="history-load-more"><button className="secondary-button" onClick={() => loadHistory({ append: true })} disabled={historyAppending}>{historyAppending ? <LoaderCircle className="spin" size={18}/> : <Plus size={18}/>} {historyAppending ? 'Loading…' : 'Load more'}</button></div>}
+              </>}
           </section>
         ) : (
           <>
@@ -348,8 +380,10 @@ function App() {
       {selectedMedia && <div className="media-modal" onClick={() => setSelectedMedia(null)}>
         <div className="media-modal-card" onClick={(event) => event.stopPropagation()}>
           <button className="media-modal-close" onClick={() => setSelectedMedia(null)}><X size={20}/></button>
-          <img src={selectedMedia.originalUrl || selectedMedia.url} alt={selectedMedia.title || 'Generated image'} />
-          <div className="media-modal-copy"><strong>{selectedMedia.title || 'Generated image'}</strong><span>{selectedMedia.model || ''}{selectedMedia.seed != null ? ` · Seed ${selectedMedia.seed}` : ''}</span></div>
+          {selectedMedia.kind === 'video'
+            ? <video src={selectedMedia.originalUrl} poster={selectedMedia.thumbnailUrl || undefined} controls playsInline />
+            : <img src={selectedMedia.originalUrl || selectedMedia.url} alt={selectedMedia.title || 'Generated image'} />}
+          <div className="media-modal-copy"><strong>{selectedMedia.title || 'Generated media'}</strong><span>{selectedMedia.model || ''}{selectedMedia.seed != null ? ` · Seed ${selectedMedia.seed}` : ''}</span></div>
         </div>
       </div>}
     </div>
