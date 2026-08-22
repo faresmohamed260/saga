@@ -31,9 +31,9 @@ export const IMAGE_RESOLUTIONS = [
 ];
 
 const VIDEO_RESOLUTIONS = [
-  { value: '480p', label: '480p', detail: 'SD' },
-  { value: '720p', label: '720p', detail: 'HD' },
-  { value: '1080p', label: '1080p', detail: 'Full HD' },
+  { value: '480p', label: 'SD', detail: '480p' },
+  { value: '720p', label: 'HD', detail: '720p' },
+  { value: '1080p', label: 'Full HD', detail: '1080p' },
   { value: '2K', label: '2K', detail: '2048 px' },
   { value: '4K', label: '4K', detail: '3840 px' },
 ];
@@ -283,18 +283,28 @@ function useOutsideDismiss(open, refs, close) {
   }, [open, refs, close]);
 }
 
-function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = false }) {
+function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = false, onPreview }) {
   const refs = useRef([]);
   const [hoverIndex, setHoverIndex] = useState(null);
   const activeIndex = Math.max(0, options.findIndex((item) => item.value === value));
   const targetIndex = hoverIndex == null ? activeIndex : hoverIndex;
-  const rowHeight = 42;
+  const rowHeight = 32;
 
   useEffect(() => {
     if (!focusWhen) return undefined;
     const timer = window.setTimeout(() => refs.current[activeIndex]?.focus(), 40);
     return () => window.clearTimeout(timer);
   }, [focusWhen, activeIndex, options.length]);
+
+  const previewAt = (index) => {
+    setHoverIndex(index);
+    onPreview?.(options[index]);
+  };
+
+  const resetPreview = () => {
+    setHoverIndex(null);
+    onPreview?.(null);
+  };
 
   const keyDown = (event, index) => {
     let next = null;
@@ -313,7 +323,7 @@ function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = fa
   };
 
   return (
-    <div className="saga-morph-list" role="menu" aria-label={ariaLabel} onMouseLeave={() => setHoverIndex(null)}>
+    <div className="saga-morph-list" role="menu" aria-label={ariaLabel} onMouseLeave={resetPreview}>
       <span
         className="saga-morph-indicator"
         style={{ transform: `translate3d(0, ${targetIndex * rowHeight}px, 0)`, height: rowHeight }}
@@ -327,8 +337,8 @@ function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = fa
           tabIndex={index === activeIndex ? 0 : -1}
           className={option.value === value ? 'selected' : ''}
           key={option.value}
-          onMouseEnter={() => setHoverIndex(index)}
-          onFocus={() => setHoverIndex(index)}
+          onMouseEnter={() => previewAt(index)}
+          onFocus={() => previewAt(index)}
           onKeyDown={(event) => keyDown(event, index)}
           onClick={() => onChoose(option)}
         >
@@ -363,7 +373,7 @@ function AspectPicker({ open, setOpen, anchorRef, aspect, setAspect, editAuto, s
   }, [preview]);
 
   return (
-    <PickerShell open={open} anchorRef={anchorRef} width={420} height={354} className="saga-aspect-picker" onClose={() => setOpen(false)}>
+    <PickerShell open={open} anchorRef={anchorRef} width={390} height={370} className="saga-aspect-picker" onClose={() => setOpen(false)}>
       <div className="saga-picker-preview">
         <div className="saga-preview-grid">
           <span className="saga-preview-shape" style={previewSize} />
@@ -373,6 +383,7 @@ function AspectPicker({ open, setOpen, anchorRef, aspect, setAspect, editAuto, s
       </div>
       <MorphList
         focusWhen={open}
+        onPreview={(option) => setPreview(option?.ratio ?? displayRatio)}
         ariaLabel="Aspect ratio"
         options={ASPECT_PRESETS}
         value={editAuto ? '__none__' : aspect}
@@ -402,7 +413,7 @@ function ResolutionPicker({
   const dimensions = editAuto ? autoDimensions : dimensionsForPreset(aspect, previewValue);
 
   return (
-    <PickerShell open={open} anchorRef={anchorRef} width={410} height={282} className="saga-resolution-picker" onClose={() => setOpen(false)}>
+    <PickerShell open={open} anchorRef={anchorRef} width={390} height={220} className="saga-resolution-picker" onClose={() => setOpen(false)}>
       <div className="saga-picker-preview saga-resolution-preview">
         <div className="saga-resolution-cube">{editAuto ? <Sparkles size={20} /> : previewValue}</div>
         <strong>{editAuto ? 'Auto' : IMAGE_RESOLUTIONS.find((item) => item.value === Number(imageResolution))?.label}</strong>
@@ -410,6 +421,7 @@ function ResolutionPicker({
       </div>
       <MorphList
         focusWhen={open}
+        onPreview={(option) => setPreviewValue(option ? Number(option.value) : Number(imageResolution))}
         ariaLabel="Resolution"
         options={IMAGE_RESOLUTIONS}
         value={editAuto ? '__none__' : Number(imageResolution)}
@@ -431,7 +443,7 @@ function ResolutionPicker({
 
 function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
   return (
-    <PickerShell open={open} anchorRef={anchorRef} width={310} height={238} onClose={() => setOpen(false)}>
+    <PickerShell open={open} anchorRef={anchorRef} width={300} height={176} className="saga-video-resolution-picker" onClose={() => setOpen(false)}>
       <MorphList
         focusWhen={open}
         ariaLabel="Video resolution"
@@ -901,11 +913,11 @@ export default function CreateWorkspace({
                     type="button"
                     className={`saga-audio-toggle ${videoAudio ? 'active' : ''}`}
                     aria-pressed={videoAudio}
+                    aria-label={videoAudio ? 'Disable audio' : 'Enable audio'}
                     title={videoAudio ? 'Audio enabled' : 'Audio disabled'}
                     onClick={() => setVideoAudio((current) => !current)}
                   >
                     {videoAudio ? <Volume2 size={17} /> : <VolumeX size={17} />}
-                    <span>{videoAudio ? 'Audio' : 'Muted'}</span>
                   </button>
                 </>
               )}
