@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "visual:preview": "node scripts/capture-ui-preview.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "latest",
@@ -18,5 +19,7 @@
     "sharp": "latest",
     "vite": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "playwright": "latest"
+  }
 }

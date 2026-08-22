@@ -1,0 +1,85 @@
+name: Studio Visual Preview
+
+on:
+  pull_request:
+    paths:
+      - "apps/studio/**"
+      - ".github/workflows/studio-visual-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/studio
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Studio dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build Studio
+        run: npm run build
+
+      - name: Start remote runner preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          echo $! > /tmp/saga-studio-preview.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+
+      - name: Capture Playwright screenshots
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:preview
+
+      - name: Publish visual preview artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-ui-preview-${{ github.run_id }}
+          path: |
+            apps/studio/visual-preview/*.png
+            apps/studio/visual-preview/diagnostics.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Add workflow summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Studio visual preview"
+            echo
+            echo "Rendered entirely inside this GitHub Actions runner with Playwright."
+            echo
+            echo "Screenshots are attached to this run as the \`studio-ui-preview-${{ github.run_id }}\` artifact."
+            echo
+            echo "No Vercel Preview deployment is used by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
