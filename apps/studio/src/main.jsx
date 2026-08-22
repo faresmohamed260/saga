@@ -1,10 +1,10 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   WandSparkles, History, Heart, Folder, Box, Workflow, Settings, Image as ImageIcon,
   Video, Crop, Grid2X2, Plus, X, SlidersHorizontal, Sparkles, RefreshCcw, Pencil,
   ArrowUpRight, MoreHorizontal, ChevronDown, RotateCcw, Dice5, Palette, ImagePlus,
-  Menu, ChevronLeft, Maximize2
+  Menu, ChevronLeft, Maximize2, LoaderCircle
 } from 'lucide-react';
 import './styles.css';
 
@@ -44,11 +44,30 @@ async function persistGeneratedImage(blob, { model, resolution, prompt, negative
       body: blob,
     });
     if (!response.ok) return null;
-    const payload = await response.json();
-    return payload?.url || null;
+    return await response.json();
   } catch {
     return null;
   }
+}
+
+function toHistoryItem(row) {
+  return {
+    id: row.id,
+    title: row.prompt || 'Untitled generation',
+    url: row.thumbnail_url || row.media_url,
+    originalUrl: row.media_url,
+    thumbnailUrl: row.thumbnail_url,
+    generated: true,
+    persisted: true,
+    model: row.model,
+    resolution: row.resolution,
+    seed: row.seed,
+    kind: row.kind,
+    mode: row.mode,
+    width: row.width,
+    height: row.height,
+    createdAt: row.created_at,
+  };
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
@@ -69,6 +88,10 @@ function App() {
   const [editMegapixels, setEditMegapixels] = useState('1.0');
   const [favorites, setFavorites] = useState(new Set());
   const [items, setItems] = useState(samples);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState(null);
   const [sourceFile, setSourceFile] = useState(null);
   const [sourcePreview, setSourcePreview] = useState('');
   const [error, setError] = useState('');
@@ -77,6 +100,29 @@ function App() {
   const visibleItems = useMemo(() => items.slice(0, outputs), [items, outputs]);
   const isEdit = mode === 'Edit';
   const activeEditQuality = editQualityOptions.find((option) => option.value === editMegapixels) || editQualityOptions[2];
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const response = await fetch('/api/history?kind=image&limit=48', { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`History request failed (${response.status})`);
+      const payload = await response.json();
+      setHistoryItems((Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem));
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : 'Unable to load generation history.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  useEffect(() => {
+    if (section === 'History') loadHistory();
+  }, [section]);
 
   const chooseSource = () => fileInputRef.current?.click();
 
@@ -134,24 +180,27 @@ function App() {
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
     const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
-    const persistedUrl = await persistGeneratedImage(blob, {
+    const persisted = await persistGeneratedImage(blob, {
       model,
       resolution: activeEditQuality.detail,
       prompt: prompt.trim(),
       negativePrompt: '',
       seed: effectiveSeed,
     });
-    const url = persistedUrl || URL.createObjectURL(blob);
+    const url = persisted?.url || URL.createObjectURL(blob);
     const item = {
-      id: `flux-${Date.now()}`,
+      id: persisted?.generationId || `flux-${Date.now()}`,
       title: prompt.trim(),
-      url,
+      url: persisted?.thumbnailUrl || url,
+      originalUrl: url,
       generated: true,
       model,
       resolution: activeEditQuality.detail,
-      persisted: Boolean(persistedUrl),
+      seed: effectiveSeed,
+      persisted: Boolean(persisted?.historyPersisted),
     };
     setItems((current) => [item, ...current]);
+    if (persisted?.historyPersisted) loadHistory();
   };
 
   const generate = async () => {
@@ -180,6 +229,34 @@ function App() {
     });
   };
 
+  const openMedia = (item) => setSelectedMedia(item);
+
+  const renderCard = (item, history = false) => (
+    <article className={`media-card ${history ? 'history-card' : ''}`} key={item.id}>
+      <div
+        className="media-frame"
+        style={{ backgroundImage: `url(${item.url})` }}
+        onClick={() => openMedia(item)}
+        role="button"
+        tabIndex={0}
+      >
+        <div className="size-badge"><Sparkles size={12}/>{item.generated ? `${item.resolution || 'Image'}${history ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
+        <div className="media-hover"><button aria-label="Open full image"><Maximize2 size={18}/></button></div>
+      </div>
+      {history && <div className="history-copy">
+        <div className="history-prompt">{item.title}</div>
+        <div className="history-meta"><span>{item.model || 'Unknown model'}</span>{item.seed != null && <span>Seed {item.seed}</span>}</div>
+      </div>}
+      <div className="card-actions">
+        <button className={favorites.has(item.id) ? 'favorite active' : 'favorite'} onClick={() => toggleFavorite(item.id)}><Heart size={20} fill={favorites.has(item.id) ? 'currentColor' : 'none'}/></button>
+        <button onClick={() => { setPrompt(item.title || ''); setMode('Edit'); setSection('Create'); }}><RefreshCcw size={19}/></button>
+        <button onClick={() => { setPrompt(item.title || ''); setMode('Edit'); setSection('Create'); }}><Pencil size={19}/></button>
+        <button onClick={() => openMedia(item)}><ArrowUpRight size={20}/></button>
+        <button><MoreHorizontal size={20}/></button>
+      </div>
+    </article>
+  );
+
   return (
     <div className="app-shell">
       <input ref={fileInputRef} type="file" accept="image/*" onChange={onSourceChange} style={{display:'none'}} />
@@ -200,39 +277,49 @@ function App() {
       <main className="workspace">
         <div className="mobile-topbar"><button className="icon-button" onClick={() => setMobileNav(true)}><Menu size={20}/></button><div className="mobile-brand">SAGA Studio</div><button className="icon-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={20}/></button></div>
 
-        <div className="mode-tabs">
-          {[[ImageIcon,'Image'],[Video,'Video'],[Crop,'Edit'],[Grid2X2,'More']].map(([Icon,label]) => <button className={`mode-tab ${mode===label?'selected':''}`} key={label} onClick={() => {setMode(label); setError('');}}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>)}
-        </div>
+        {section === 'History' ? (
+          <section className="history-view">
+            <div className="history-header">
+              <div><div className="history-eyebrow">Library</div><h1>Generation history</h1><p>Thumbnail-first previews. Originals load only when you open an item.</p></div>
+              <button className="secondary-button" onClick={loadHistory} disabled={historyLoading}>{historyLoading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>
+            </div>
+            {historyError && <div className="history-state error">{historyError}</div>}
+            {historyLoading && historyItems.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading history…</div>
+              : historyItems.length === 0 ? <div className="history-state">No persisted generations yet.</div>
+              : <section className="gallery-grid history-grid">{historyItems.map((item) => renderCard(item, true))}</section>}
+          </section>
+        ) : (
+          <>
+            <div className="mode-tabs">
+              {[[ImageIcon,'Image'],[Video,'Video'],[Crop,'Edit'],[Grid2X2,'More']].map(([Icon,label]) => <button className={`mode-tab ${mode===label?'selected':''}`} key={label} onClick={() => {setMode(label); setError('');}}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>)}
+            </div>
 
-        <section className="composer-panel">
-          <div className="chip-row">
-            {isEdit ? (
-              sourcePreview ? <div className="ref-chip"><div className="chip-thumb" style={{backgroundImage:`url(${sourcePreview})`}}/><div><strong>Source image</strong><span>{sourceFile?.name}</span></div><button onClick={clearSource} style={{background:'transparent',border:0,color:'inherit',cursor:'pointer'}}><X size={16}/></button></div>
-              : <button className="add-chip" onClick={chooseSource} title="Add source image"><Plus size={22}/></button>
-            ) : <>
-              <div className="ref-chip"><div className="chip-thumb forest"/><div><strong>Reference</strong><span>forest_mood.png</span></div><X size={16}/></div>
-              <div className="ref-chip"><div className="chip-thumb style"/><div><strong>Style</strong><span>Cinematic Teal & Orange</span></div><X size={16}/></div>
-              <button className="add-chip"><Plus size={22}/></button>
-            </>}
-          </div>
-          <textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder={mode==='Video'?'Describe the motion, scene, and camera movement...':isEdit?'Describe what you want FLUX.2 Klein to change...':'Describe what you want to create...'} maxLength={2000}/>
-          <div className="composer-footer"><span>{prompt.length} / 2000</span><Sparkles size={18}/></div>
-        </section>
+            <section className="composer-panel">
+              <div className="chip-row">
+                {isEdit ? (
+                  sourcePreview ? <div className="ref-chip"><div className="chip-thumb" style={{backgroundImage:`url(${sourcePreview})`}}/><div><strong>Source image</strong><span>{sourceFile?.name}</span></div><button onClick={clearSource} style={{background:'transparent',border:0,color:'inherit',cursor:'pointer'}}><X size={16}/></button></div>
+                  : <button className="add-chip" onClick={chooseSource} title="Add source image"><Plus size={22}/></button>
+                ) : <>
+                  <div className="ref-chip"><div className="chip-thumb forest"/><div><strong>Reference</strong><span>forest_mood.png</span></div><X size={16}/></div>
+                  <div className="ref-chip"><div className="chip-thumb style"/><div><strong>Style</strong><span>Cinematic Teal & Orange</span></div><X size={16}/></div>
+                  <button className="add-chip"><Plus size={22}/></button>
+                </>}
+              </div>
+              <textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder={mode==='Video'?'Describe the motion, scene, and camera movement...':isEdit?'Describe what you want FLUX.2 Klein to change...':'Describe what you want to create...'} maxLength={2000}/>
+              <div className="composer-footer"><span>{prompt.length} / 2000</span><Sparkles size={18}/></div>
+            </section>
 
-        {error && <div style={{marginTop:12,padding:'12px 14px',border:'1px solid rgba(255,100,120,.35)',borderRadius:10,background:'rgba(120,20,35,.14)',color:'#ffb4c0',fontSize:13}}>{error}</div>}
-        {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps · {activeEditQuality.detail}</div>}
+            {error && <div style={{marginTop:12,padding:'12px 14px',border:'1px solid rgba(255,100,120,.35)',borderRadius:10,background:'rgba(120,20,35,.14)',color:'#ffb4c0',fontSize:13}}>{error}</div>}
+            {isEdit && <div style={{marginTop:12,color:'#8f98a8',fontSize:12}}>Live backend · FLUX.2 Klein 9B · modal-01 · A10 · 4 steps · {activeEditQuality.detail}</div>}
 
-        <div className="action-row">
-          <div className="attach-actions"><button className="secondary-button" onClick={chooseSource}><ImagePlus size={18}/>{isEdit ? (sourceFile?'Replace source':'Source image') : 'Reference'}</button><button className="secondary-button"><Palette size={18}/> Style</button></div>
-          <div className="generate-actions"><button className="square-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={19}/></button><button className={`generate-button ${busy?'busy':''}`} onClick={generate} disabled={busy}><Sparkles size={18}/>{busy ? (isEdit?'Editing…':'Generating…') : (isEdit?'Edit image':'Generate')}</button></div>
-        </div>
+            <div className="action-row">
+              <div className="attach-actions"><button className="secondary-button" onClick={chooseSource}><ImagePlus size={18}/>{isEdit ? (sourceFile?'Replace source':'Source image') : 'Reference'}</button><button className="secondary-button"><Palette size={18}/> Style</button></div>
+              <div className="generate-actions"><button className="square-button" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={19}/></button><button className={`generate-button ${busy?'busy':''}`} onClick={generate} disabled={busy}><Sparkles size={18}/>{busy ? (isEdit?'Editing…':'Generating…') : (isEdit?'Edit image':'Generate')}</button></div>
+            </div>
 
-        <section className="gallery-grid">
-          {visibleItems.map((item) => <article className="media-card" key={item.id}>
-            <div className="media-frame" style={{backgroundImage:`url(${item.url})`}}><div className="size-badge"><Sparkles size={12}/>{item.generated?`${item.resolution || 'FLUX.2'} · Klein 9B`:'1024 × 1024'}</div><div className="media-hover"><button><Maximize2 size={18}/></button></div></div>
-            <div className="card-actions"><button className={favorites.has(item.id)?'favorite active':'favorite'} onClick={()=>toggleFavorite(item.id)}><Heart size={20} fill={favorites.has(item.id)?'currentColor':'none'}/></button><button onClick={generate}><RefreshCcw size={19}/></button><button onClick={()=>{setMode('Edit'); setPrompt('');}}><Pencil size={19}/></button><button><ArrowUpRight size={20}/></button><button><MoreHorizontal size={20}/></button></div>
-          </article>)}
-        </section>
+            <section className="gallery-grid">{visibleItems.map((item) => renderCard(item, false))}</section>
+          </>
+        )}
       </main>
 
       <aside className={`settings-panel ${settingsOpen?'open':''}`}>
@@ -257,6 +344,14 @@ function App() {
         <button className="reset-button" onClick={()=>{setAspect('1:1');setOutputs(4);setSeed('42');setEditMegapixels('1.0');}}><RotateCcw size={18}/> Reset to Defaults</button>
       </aside>
       {settingsOpen && <div className="panel-scrim" onClick={()=>setSettingsOpen(false)}/>} 
+
+      {selectedMedia && <div className="media-modal" onClick={() => setSelectedMedia(null)}>
+        <div className="media-modal-card" onClick={(event) => event.stopPropagation()}>
+          <button className="media-modal-close" onClick={() => setSelectedMedia(null)}><X size={20}/></button>
+          <img src={selectedMedia.originalUrl || selectedMedia.url} alt={selectedMedia.title || 'Generated image'} />
+          <div className="media-modal-copy"><strong>{selectedMedia.title || 'Generated image'}</strong><span>{selectedMedia.model || ''}{selectedMedia.seed != null ? ` · Seed ${selectedMedia.seed}` : ''}</span></div>
+        </div>
+      </div>}
     </div>
   );
 }
