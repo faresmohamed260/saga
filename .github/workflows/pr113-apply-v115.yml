@@ -30,6 +30,6 @@ jobs:
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/studio/src/create-controls.jsx apps/studio/src/main.jsx
-          git commit -m "Finish Create picker keyboard and preference persistence"
+          git add apps/studio/src/create-controls.jsx apps/studio/src/main.jsx apps/studio/src/create-workspace-v2.css
+          git commit -m "Finish Create workspace layout and persistence"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
