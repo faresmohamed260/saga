@@ -18,6 +18,8 @@ R2 owns media bytes. Supabase owns searchable application state. The database st
 
 Gallery surfaces must prefer thumbnails/posters and avoid loading full-resolution originals until the user opens, downloads, edits, reuses, or plays an asset.
 
+Generation execution is routed through Studio server APIs. The browser should select a workflow and submit inputs, while provider URLs and provider-specific transport stay on the server side.
+
 ## Build phases
 
 ### Phase 1 — Persistent media library (complete for the current single-user bootstrap)
@@ -42,17 +44,24 @@ This becomes the common contract for fast image jobs and long-running video jobs
 Current Phase 2 implementation:
 
 - `/api/jobs` creates queued jobs, validates lifecycle transitions, fetches one job, and lists lifecycle jobs by status.
-- FLUX.2 Klein image edits create the job before calling Modal, move it to `running`, and attach the persisted output to the same generation UUID on completion.
+- Shared `_generation-jobs.js` helpers now own job creation, reads, listing and status transitions so execution routes and the Jobs API use the same lifecycle logic.
+- FLUX.2 Klein image edits create the job before execution, move it to `running`, and attach the persisted output to the same generation UUID on completion.
 - Failed requests move the existing job to `failed` and keep prompt/model/seed/workflow/error metadata for inspection.
 - `/api/media` finalizes an existing job instead of inserting a second generation row when a valid job UUID is supplied. A terminal or stale job cannot silently create a duplicate completed generation.
 - `/api/history` intentionally returns completed generations only so queued/running/failed jobs do not appear as broken library cards.
 - Supabase generation rows include `started_at` and `provider` fields in addition to `created_at` / `completed_at`.
 - The production lifecycle smoke test verified `queued -> running -> completed`, timestamps, job reads, deletion, and cleanup without leaving disposable rows behind.
 - Studio has a URL-backed Jobs page with Active / Queued / Running / Failed / Completed / Recent filters. The page polls every three seconds while open and shows prompt, model, provider, seed, resolution, timestamps, and failure details.
+- `_workflows.js` is the first server workflow registry. The initial entry is `flux2-klein-image-edit`, which declares kind, mode, model, provider, defaults, output type and input limits.
+- `_providers.js` is the provider adapter layer. The FLUX.2 Klein adapter owns the Modal gateway URL, multipart provider request, timeout, validation and provider error normalization.
+- `/api/generate` is the shared server orchestration endpoint for registry-driven generation. It can create/transition jobs and execute a registered workflow from a provider-neutral request.
+- `/api/generate/edit` is the production compatibility route used by the current edit composer. It accepts the existing multipart edit request but executes it through the server workflow/provider registry instead of letting the browser call Modal directly.
+- Production Vite configuration points `VITE_FLUX2_KLEIN_API_URL` at `/api/generate`, so the existing client path resolves to `/api/generate/edit` without exposing or depending on the Modal gateway URL in the production browser bundle.
 
 Next within Phase 2:
 
-- Move provider execution behind a common server-side workflow adapter so image and video jobs share one execution contract.
+- Collapse the compatibility path into the unified `/api/generate` orchestration contract so job creation, execution and persistence are all owned server-side in one flow.
+- Move source/reference uploads to a direct-to-R2 or equivalent upload path before long video workflows, avoiding large browser -> Vercel request bodies.
 - Add safe retry/cancel semantics once provider execution can be controlled server-side.
 - Add recovery rules for jobs stranded in `queued` or `running` by browser/network interruption.
 
@@ -142,6 +151,7 @@ The persistent library shell is complete and generation execution is moving onto
 6. Persist Favorites and Collections. **Done.**
 7. Download/reuse/edit/delete actions pass production verification. **Done.**
 8. Shared `queued -> running -> completed | failed` job contract. **Done and production-smoke-tested for FLUX.2 image editing.**
-9. Active Jobs/Queue UI with lifecycle polling and filters. **Implemented.**
-10. Move execution behind the shared server-side provider/workflow adapter. **Next.**
-11. Add the first video workflow on top of the shared job contract.
+9. Active Jobs/Queue UI with lifecycle polling and filters. **Done.**
+10. Shared server-side workflow registry and provider execution adapter. **Implemented; production generation verification next.**
+11. Unify source upload + generation + persistence behind the server orchestration contract. **Next.**
+12. Add the first video workflow on top of the shared job contract.
