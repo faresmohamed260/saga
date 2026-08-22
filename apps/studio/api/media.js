@@ -27,6 +27,16 @@ function safeMetadata(value, maxLength) {
     .slice(0, maxLength);
 }
 
+function decodeHeader(value) {
+  const raw = String(value || '');
+  if (!raw) return '';
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function safeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
 }
@@ -81,10 +91,10 @@ export default async function handler(req, res) {
       }
 
       const key = generationKey(contentType);
-      const model = safeText(req.headers['x-saga-model'] || 'flux2-klein-9b', 240);
-      const resolution = safeText(req.headers['x-saga-resolution'] || '', 64);
-      const prompt = safeText(req.headers['x-saga-prompt'] || '', 2000);
-      const negativePrompt = safeText(req.headers['x-saga-negative-prompt'] || '', 2000);
+      const model = safeText(decodeHeader(req.headers['x-saga-model']) || 'flux2-klein-9b', 240);
+      const resolution = safeText(decodeHeader(req.headers['x-saga-resolution']), 64);
+      const prompt = safeText(decodeHeader(req.headers['x-saga-prompt']), 2000);
+      const negativePrompt = safeText(decodeHeader(req.headers['x-saga-negative-prompt']), 2000);
       const seed = parseSeed(req.headers['x-saga-seed']);
       const mediaUrl = `/api/media?key=${encodeURIComponent(key)}`;
 

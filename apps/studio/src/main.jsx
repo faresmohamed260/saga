@@ -25,14 +25,21 @@ const editQualityOptions = [
   { value: '1.0', label: 'Quality', detail: '1.0 MP' },
 ];
 
-async function persistGeneratedImage(blob, { model, resolution }) {
+function encodeHeader(value) {
+  return encodeURIComponent(String(value ?? ''));
+}
+
+async function persistGeneratedImage(blob, { model, resolution, prompt, negativePrompt = '', seed }) {
   try {
     const response = await fetch('/api/media', {
       method: 'POST',
       headers: {
         'Content-Type': blob.type || 'image/png',
-        'X-Saga-Model': model,
-        'X-Saga-Resolution': resolution,
+        'X-Saga-Model': encodeHeader(model),
+        'X-Saga-Resolution': encodeHeader(resolution),
+        'X-Saga-Prompt': encodeHeader(prompt),
+        'X-Saga-Negative-Prompt': encodeHeader(negativePrompt),
+        'X-Saga-Seed': String(seed ?? ''),
       },
       body: blob,
     });
@@ -102,11 +109,12 @@ function App() {
     if (!sourceFile) throw new Error('Add a source image before running an edit.');
     if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
 
+    const effectiveSeed = Number(seed) || 42;
     const form = new FormData();
     form.append('image_file', sourceFile, sourceFile.name);
     form.append('prompt', prompt.trim());
     form.append('negative_prompt', '');
-    form.append('seed', String(Number(seed) || 42));
+    form.append('seed', String(effectiveSeed));
     form.append('steps', '4');
     form.append('cfg', '1.0');
     form.append('megapixels', editMegapixels);
@@ -126,7 +134,13 @@ function App() {
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) throw new Error('The generation backend returned an unexpected response.');
     const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
-    const persistedUrl = await persistGeneratedImage(blob, { model, resolution: activeEditQuality.detail });
+    const persistedUrl = await persistGeneratedImage(blob, {
+      model,
+      resolution: activeEditQuality.detail,
+      prompt: prompt.trim(),
+      negativePrompt: '',
+      seed: effectiveSeed,
+    });
     const url = persistedUrl || URL.createObjectURL(blob);
     const item = {
       id: `flux-${Date.now()}`,
