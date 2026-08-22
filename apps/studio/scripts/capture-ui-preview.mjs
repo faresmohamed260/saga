@@ -14,6 +14,11 @@ const diagnostics = {
   pageErrors: [],
 };
 
+const referencePng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+
 function recordDiagnostics(page, label) {
   page.on('console', (message) => {
     if (message.type() === 'error') diagnostics.consoleErrors.push({ label, text: message.text() });
@@ -26,7 +31,7 @@ function recordDiagnostics(page, label) {
 async function waitForStudio(page) {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('.composer-panel-v4').waitFor({ state: 'visible', timeout: 20_000 });
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(500);
 }
 
 async function shot(page, filename) {
@@ -41,6 +46,11 @@ async function assertHidden(locator, label) {
   });
 }
 
+async function assertCount(locator, expected, label) {
+  const count = await locator.count();
+  if (count !== expected) throw new Error(`${label}: expected ${expected}, got ${count}`);
+}
+
 const browser = await chromium.launch({ headless: true });
 
 try {
@@ -51,15 +61,24 @@ try {
   });
   recordDiagnostics(desktop, 'desktop');
   await waitForStudio(desktop);
-  await shot(desktop, '01-create-image-default.png');
 
-  const plusButton = desktop.locator('button[title="Add or adjust"]');
-  await plusButton.click();
-  const plusMenu = desktop.locator('.grok-plus-popover');
-  await plusMenu.waitFor({ state: 'visible' });
-  await shot(desktop, '02-create-plus-menu.png');
-  await desktop.mouse.click(1320, 900);
-  await assertHidden(plusMenu, 'Plus menu');
+  await assertCount(desktop.locator('.grok-mic-button'), 0, 'Mic control');
+  await assertCount(desktop.getByRole('button', { name: 'Speed', exact: true }), 0, 'Speed shortcut');
+  await assertCount(desktop.getByRole('button', { name: 'Quality', exact: true }), 0, 'Quality shortcut');
+  await shot(desktop, '01-create-image-clean.png');
+
+  const settingsButton = desktop.getByRole('button', { name: 'Advanced settings', exact: true });
+  await settingsButton.click();
+  const settings = desktop.locator('.composer-settings-popover');
+  await settings.waitFor({ state: 'visible' });
+  await settings.getByText('Seed', { exact: true }).waitFor({ state: 'visible' });
+  await settings.getByText('Steps', { exact: true }).waitFor({ state: 'visible' });
+  await settings.getByText('CFG', { exact: true }).waitFor({ state: 'visible' });
+  await assertCount(settings.getByText('Aspect Ratio', { exact: true }), 0, 'Redundant aspect setting');
+  await assertCount(settings.getByText('Resolution', { exact: true }), 0, 'Redundant resolution setting');
+  await shot(desktop, '02-create-advanced-settings.png');
+  await settingsButton.click();
+  await assertHidden(settings, 'Advanced settings');
 
   const aspectButton = desktop.locator('.grok-aspect-button');
   await aspectButton.focus();
@@ -68,7 +87,7 @@ try {
   await aspectMenu.waitFor({ state: 'visible' });
   await aspectMenu.locator('[role="menuitemradio"]').first().press('ArrowDown');
   await shot(desktop, '03-create-aspect-keyboard.png');
-  await desktop.keyboard.press('Escape');
+  await desktop.mouse.click(1320, 900);
   await assertHidden(aspectMenu, 'Aspect picker');
 
   const resolutionButton = desktop.locator('.grok-resolution-button');
@@ -83,17 +102,21 @@ try {
 
   await desktop.getByRole('button', { name: 'Edit', exact: true }).click();
   await desktop.locator('.grok-auto-choice').waitFor({ state: 'visible' });
-  await shot(desktop, '05-create-edit-auto.png');
+  await assertCount(desktop.locator('.add-reference-tile'), 0, 'Redundant Add references tile');
+  await shot(desktop, '05-create-edit-empty.png');
 
-  const editAspectMenu = desktop.locator('.grok-aspect-popover');
-  await desktop.locator('.grok-aspect-button').click();
-  await editAspectMenu.waitFor({ state: 'visible' });
-  await shot(desktop, '06-create-edit-auto-aspect.png');
-  await desktop.mouse.click(1320, 900);
-  await assertHidden(editAspectMenu, 'Edit aspect picker');
+  const uploadButton = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  const chooserPromise = desktop.waitForEvent('filechooser');
+  await uploadButton.click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
+  await desktop.locator('.reference-tile').waitFor({ state: 'visible', timeout: 5_000 });
+  await assertCount(desktop.locator('.grok-plus-popover'), 0, 'Plus popover');
+  await assertCount(desktop.locator('.add-reference-tile'), 0, 'Add references tile after upload');
+  await shot(desktop, '06-create-edit-reference-uploaded.png');
 
-  const editResolutionMenu = desktop.locator('.grok-resolution-popover');
   await desktop.locator('.grok-resolution-button').click();
+  const editResolutionMenu = desktop.locator('.grok-resolution-popover');
   await editResolutionMenu.waitFor({ state: 'visible' });
   await shot(desktop, '07-create-edit-auto-resolution.png');
   await desktop.mouse.click(1320, 900);
