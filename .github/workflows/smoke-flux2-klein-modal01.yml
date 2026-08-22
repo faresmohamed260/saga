@@ -1,0 +1,113 @@
+name: Smoke Test FLUX.2 Klein 9B modal-01
+
+on:
+  push:
+    branches:
+      - studio/flux2-klein-smoke
+    paths:
+      - ".github/workflows/smoke-flux2-klein-modal01.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Modal
+        run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Select and mask modal-01 credentials
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ["SAGA_MODAL_TOKENS_JSON"])
+          accounts = payload if isinstance(payload, list) else payload.get("accounts") or payload.get("tokens") or payload.get("roster") or []
+          selected = None
+          for account in accounts:
+              if not isinstance(account, dict):
+                  continue
+              label = str(account.get("label") or account.get("name") or account.get("account") or "").strip().lower()
+              if label in {"modal-01", "modal01", "modal-1", "account-01", "account-1"}:
+                  selected = account
+                  break
+          selected = selected or accounts[0]
+          token_id = str(selected.get("token_id") or "").strip()
+          token_secret = str(selected.get("token_secret") or "").strip()
+          combined = str(selected.get("api_key") or selected.get("token") or "").strip()
+          if (not token_id or not token_secret) and "." in combined:
+              token_id, token_secret = combined.split(".", 1)
+          if not token_id or not token_secret:
+              raise SystemExit("modal-01 credentials are incomplete")
+          print(f"::add-mask::{token_id}")
+          print(f"::add-mask::{token_secret}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"MODAL_TOKEN_ID={token_id}\n")
+              handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
+          PY
+
+      - name: Run real image-edit smoke test
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, json, modal, time
+          png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAACKUlEQVR4nO3cvU0DQRRF4WdETyQ0QQcUQUIFJBRBBzRB4qqGYCQLCa1lm905d5lzUv9o9L552sRwaK2Vcd3RB5g9AeAEgBMATgA4AeAEgBMATgA4AeAEgBMATgA4AeAEgLu/9gNPr8ctzvGf+nx7uPzNbgCcAHACwAkAJwCcAHACwAkAJwCcAHACwAkAJwCcAHACwAkAJwCcAHACwAkAJwCcAHACwF39u6CEPh5fll56/nofeZK/txuAM0NfetsuMHYAcOHolz4YzhANcPPof39JLEPuQ3iV6W/0bSuWuAEbDStzFeI2YOurmrYKWQBjphNlEAQwci45BikA4ycSYpACMG0RANRlTFgCHoCdAm7AA0weDIBfQPwMbgAcCZBw/XvgSdwAOAHgBIDDAHIeAD3qPG4AnABwAsAJACcAnABwAsAJAIcBpP0+hzqPGwAnAJwAcCRAzmMAPIkbAAcDJCwBewY3AI4HYC8gvoI8QHFTwKdfIQAzlwIw/jImXP/KAaixEwmZfkUB1Ki55Ey/0gBq++lETb8y/0y1z2j1H+qkjb4XtwGn1p1X5vQrcwNOrbIKsaPvRQP0bmYIH31vBwC9n9P0/wXB7W7KZ8p9CE+SAHACwAkAJwCcAHACwAkAJwCcAHACwAkAJwCcAHACwAkAJwCcAHACwAkAJwCcAHACwB1aa/QZps4NgBMATgA4AeAEgBMATgA4AeAEgBMATgA4AeAEgBMA7ht1h26/2wBKiwAAAABJRU5ErkJggg==")
+          cls = modal.Cls.from_name("saga-flux2-klein-9b", "Flux2KleinWorker")
+          started = time.perf_counter()
+          result = cls().edit.remote(
+              image_bytes=png,
+              filename="smoke.png",
+              prompt="Turn the blue square into a glossy red cube while keeping the orange circle visible.",
+              seed=42,
+              steps=4,
+              cfg=1.0,
+              megapixels=0.25,
+          )
+          payload = {
+              "success": bool(result),
+              "bytes": len(result or b""),
+              "elapsed_seconds": round(time.perf_counter() - started, 3),
+          }
+          print(json.dumps(payload))
+          if len(result or b"") < 1000:
+              raise SystemExit("Smoke test returned no usable image")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"SMOKE_BYTES={len(result)}\n")
+          PY
+
+      - name: Publish smoke status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          SMOKE_BYTES: ${{ env.SMOKE_BYTES }}
+        run: |
+          TITLE="[automation] FLUX.2 Klein modal-01 smoke status"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY=$(printf '%s\n' \
+            'Real FLUX.2 Klein 9B image-edit smoke test.' \
+            '' \
+            "- Status: **${JOB_STATUS}**" \
+            '- Target: modal-01 / A10' \
+            '- Steps: 4' \
+            "- Output bytes: ${SMOKE_BYTES:-0}" \
+            "- Run: ${RUN_URL}")
+          ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein modal-01 smoke status" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE" ]; then
+            gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+          fi
