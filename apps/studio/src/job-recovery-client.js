@@ -5,9 +5,10 @@ async function recoverActiveJobs() {
   if (recoveryInFlight || document.visibilityState === 'hidden') return;
   recoveryInFlight = true;
   try {
-    await fetch('/api/jobs/recover', {
+    await fetch('/api/jobs', {
       method: 'POST',
-      headers: { Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ action: 'recover' }),
       cache: 'no-store',
     });
   } catch {
