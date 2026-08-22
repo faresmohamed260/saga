@@ -290,6 +290,11 @@ function MorphList({ options, value, onChoose, render, ariaLabel }) {
   const targetIndex = hoverIndex == null ? activeIndex : hoverIndex;
   const rowHeight = 42;
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [activeIndex, options.length]);
+
   const keyDown = (event, index) => {
     let next = null;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (index + 1) % options.length;
@@ -702,8 +707,8 @@ export default function CreateWorkspace({
       seed,
       steps: Number(steps),
       cfg: Number(cfg),
-      workflowId,
-      modelId,
+      workflowId: isEdit ? 'default-image' : workflowId,
+      modelId: isEdit ? 'saga-image-auto' : modelId,
       editAuto,
       videoResolution,
       videoDuration,
