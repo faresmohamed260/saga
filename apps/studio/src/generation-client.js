@@ -57,14 +57,13 @@ async function loadImageForCanvas(file) {
   }
 }
 
-async function cropPrimaryToAspect(file, aspect) {
+async function preparePrimaryCanvas(file, aspect, resolution) {
   if (!file || typeof document === 'undefined') return file;
   const targetRatio = parseAspect(aspect);
+  const target = manualDimensions(aspect, resolution);
   const source = await loadImageForCanvas(file);
   try {
     const sourceRatio = source.width / Math.max(1, source.height);
-    if (Math.abs(sourceRatio - targetRatio) / targetRatio < 0.008) return file;
-
     let sx = 0;
     let sy = 0;
     let sw = source.width;
@@ -72,23 +71,25 @@ async function cropPrimaryToAspect(file, aspect) {
     if (sourceRatio > targetRatio) {
       sw = source.height * targetRatio;
       sx = (source.width - sw) / 2;
-    } else {
+    } else if (sourceRatio < targetRatio) {
       sh = source.width / targetRatio;
       sy = (source.height - sh) / 2;
     }
 
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(64, Math.round(sw));
-    canvas.height = Math.max(64, Math.round(sh));
+    canvas.width = target.width;
+    canvas.height = target.height;
     const context = canvas.getContext('2d', { alpha: true });
     if (!context) throw new Error('Could not prepare the manual edit canvas.');
-    context.drawImage(source.image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source.image, sx, sy, sw, sh, 0, 0, target.width, target.height);
 
     const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the manual edit canvas.')), 'image/png', 1);
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the manual edit canvas.')), 'image/webp', 0.96);
     });
     const baseName = String(file.name || 'input').replace(/\.[^.]+$/, '');
-    return new File([blob], `${baseName}-saga-canvas.png`, { type: 'image/png', lastModified: Date.now() });
+    return new File([blob], `${baseName}-saga-canvas.webp`, { type: 'image/webp', lastModified: Date.now() });
   } finally {
     source.close();
   }
@@ -100,7 +101,7 @@ async function applyEditSizing(input) {
   const dimensions = manualDimensions(editSizingPreference.aspect, editSizingPreference.resolution);
   const megapixels = Math.max(0.25, Math.min(4, (dimensions.width * dimensions.height) / 1_000_000));
   const files = Array.from(input.sourceFiles?.length ? input.sourceFiles : input.sourceFile ? [input.sourceFile] : []);
-  if (files.length) files[0] = await cropPrimaryToAspect(files[0], editSizingPreference.aspect);
+  if (files.length) files[0] = await preparePrimaryCanvas(files[0], editSizingPreference.aspect, editSizingPreference.resolution);
 
   return {
     ...input,
