@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const model = typeof req.query?.model === 'string' ? req.query.model : '';
 
     const params = new URLSearchParams();
-    params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,mime_type,resolution,width,height,duration_ms,seed,workflow_id,error_message,metadata,created_at,completed_at');
+    params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,thumbnail_r2_key,thumbnail_url,mime_type,resolution,width,height,thumbnail_width,thumbnail_height,duration_ms,seed,workflow_id,error_message,metadata,created_at,completed_at');
     params.set('order', 'created_at.desc');
     params.set('limit', String(limit));
     if (kind === 'image' || kind === 'video') params.set('kind', `eq.${kind}`);
