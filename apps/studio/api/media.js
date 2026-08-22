@@ -1,5 +1,6 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
+import { insertGeneration } from './_supabase.js';
 
 const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
 
@@ -24,6 +25,16 @@ function safeMetadata(value, maxLength) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLength);
+}
+
+function safeText(value, maxLength) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function parseSeed(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 async function readBody(req, limit = 6 * 1024 * 1024) {
@@ -68,7 +79,15 @@ export default async function handler(req, res) {
         res.status(400).json({ error: 'Empty upload' });
         return;
       }
+
       const key = generationKey(contentType);
+      const model = safeText(req.headers['x-saga-model'] || 'flux2-klein-9b', 240);
+      const resolution = safeText(req.headers['x-saga-resolution'] || '', 64);
+      const prompt = safeText(req.headers['x-saga-prompt'] || '', 2000);
+      const negativePrompt = safeText(req.headers['x-saga-negative-prompt'] || '', 2000);
+      const seed = parseSeed(req.headers['x-saga-seed']);
+      const mediaUrl = `/api/media?key=${encodeURIComponent(key)}`;
+
       await client.send(new PutObjectCommand({
         Bucket: bucket,
         Key: key,
@@ -78,14 +97,39 @@ export default async function handler(req, res) {
         CacheControl: 'private, max-age=31536000, immutable',
         Metadata: {
           source: 'saga-studio',
-          model: safeMetadata(req.headers['x-saga-model'] || 'flux2-klein-9b', 120),
-          resolution: safeMetadata(req.headers['x-saga-resolution'] || '', 32),
+          model: safeMetadata(model, 120),
+          resolution: safeMetadata(resolution, 32),
         },
       }));
+
+      let generation = null;
+      try {
+        generation = await insertGeneration({
+          status: 'completed',
+          kind: 'image',
+          mode: 'edit',
+          model,
+          prompt,
+          negative_prompt: negativePrompt,
+          r2_key: key,
+          media_url: mediaUrl,
+          mime_type: contentType,
+          resolution,
+          seed,
+          workflow_id: 'flux2-klein-image-edit',
+          metadata: { source: 'saga-studio', storage: 'cloudflare-r2' },
+          completed_at: new Date().toISOString(),
+        });
+      } catch (historyError) {
+        console.error('Generation history insert failed', historyError);
+      }
+
       res.status(201).json({
         key,
-        url: `/api/media?key=${encodeURIComponent(key)}`,
+        url: mediaUrl,
         persisted: true,
+        generationId: generation?.id || null,
+        historyPersisted: Boolean(generation?.id),
       });
     } catch (error) {
       console.error('R2 upload failed', error);
