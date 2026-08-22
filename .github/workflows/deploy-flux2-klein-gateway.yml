@@ -7,7 +7,6 @@ on:
       - studio/flux2-resolution-r2
       - studio/async-provider-jobs
       - studio/job-retry-cancel
-      - studio/edit-reference-ux
     paths:
       - "integrations/comfyui/flux2_klein_gateway.py"
       - ".github/workflows/deploy-flux2-klein-gateway.yml"
@@ -20,7 +19,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -63,47 +62,6 @@ jobs:
           PY
       - name: Deploy gateway
         run: modal deploy integrations/comfyui/flux2_klein_gateway.py
-      - name: Real two-reference provider smoke
-        if: github.ref_name == 'studio/edit-reference-ux'
-        env:
-          GATEWAY: https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run
-        shell: bash
-        run: |
-          python -m pip install --quiet pillow requests
-          python - <<'PY'
-          import io, os, time
-          import requests
-          from PIL import Image, ImageDraw
-
-          def png(size, background, draw_fn):
-              image=Image.new('RGB', size, background)
-              draw_fn(ImageDraw.Draw(image))
-              buf=io.BytesIO(); image.save(buf, format='PNG'); return buf.getvalue()
-
-          first=png((320,256),(238,228,207),lambda d:(d.rectangle((30,50,145,220),fill=(55,95,170)),d.ellipse((170,55,285,205),fill=(215,95,70))))
-          second=png((256,320),(35,39,47),lambda d:(d.rectangle((45,50,210,130),fill=(70,185,125)),d.polygon([(55,260),(128,150),(205,260)],fill=(230,190,65))))
-          gateway=os.environ['GATEWAY'].rstrip('/')
-          health=requests.get(gateway+'/health',timeout=30); health.raise_for_status()
-          assert health.json().get('multiple_references') is True, health.text
-          submit=requests.post(gateway+'/jobs/edit',files=[('image_files',('image-1.png',first,'image/png')),('image_files',('image-2.png',second,'image/png'))],data={
-              'prompt':'Using @Image 1 as the primary canvas, keep its composition and incorporate the green rectangular motif from @Image 2 as a subtle design element.',
-              'negative_prompt':'','seed':'42','steps':'4','cfg':'1.0','megapixels':'0.25'
-          },timeout=60)
-          print('submit',submit.status_code,submit.text[:500]); submit.raise_for_status()
-          body=submit.json(); assert body.get('reference_count') == 2, body
-          call_id=body['call_id']; deadline=time.time()+1800
-          while time.time()<deadline:
-              result=requests.get(gateway+'/jobs/'+call_id,headers={'Accept':'image/*, application/json'},timeout=60)
-              if result.status_code == 202:
-                  time.sleep(3); continue
-              print('result',result.status_code,result.headers.get('content-type'),len(result.content)); result.raise_for_status()
-              assert result.headers.get('content-type','').startswith('image/'), result.headers
-              assert len(result.content)>10000, len(result.content)
-              print({'multi_reference_smoke':'passed','call_id':call_id,'bytes':len(result.content)})
-              break
-          else:
-              raise SystemExit('multi-reference provider job timed out')
-          PY
       - name: Publish status
         if: always()
         env:
@@ -113,6 +71,6 @@ jobs:
         run: |
           TITLE="[automation] FLUX.2 Klein gateway deploy"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY=$(printf 'Status: **%s**\n\nBranch: %s\n\nIncludes real two-reference provider smoke on the multi-reference branch.\n\nRun: %s\n' "$JOB_STATUS" "${{ github.ref_name }}" "$RUN_URL")
+          BODY=$(printf 'Status: **%s**\n\nBranch: %s\n\nRun: %s\n' "$JOB_STATUS" "${{ github.ref_name }}" "$RUN_URL")
           ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein gateway deploy" in:title' --json number --jq '.[0].number // empty')
           if [ -n "$ISSUE" ]; then gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"; else gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"; fi
