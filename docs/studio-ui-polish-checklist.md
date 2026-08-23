@@ -8,12 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 5 — stored video poster thumbnails**
+**Iteration 6 — lazy/deferred Gallery video previews**
 
-- Status: `[x]` complete
-- Completed item: **05**
-- Next item: **06 — lazy-load Gallery hover video previews**
-- Rule: do not start Item 06 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[~]` in progress
+- Working item: **06**
+- Rule: defer poster-backed video sources until eligible hover/keyboard-preview intent while visible; keep reduced-motion and touch layouts static; validate with GitHub CI/visual preview and professional screenshot review before completion.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -25,7 +24,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 ## P1 — core UX and architecture
 
 - [x] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Completed videos now expose a server-side poster through the Modal gateway; Studio converts it to the standard 512px WebP thumbnail, persists it in R2/Supabase, and Gallery displays the stored poster first with `preload="none"`. **Iteration 5 complete.**
-- [ ] **06. Lazy-load Gallery hover video previews.** `preload="none"`/deferred `src`, attach/play on hover/focus/visibility, pause/detach appropriately, respect reduced motion and touch behavior.
+- [~] **06. Lazy-load Gallery hover video previews.** `preload="none"`/deferred `src`, attach/play on hover/focus/visibility, pause/detach appropriately, respect reduced motion and touch behavior. **Iteration 6 in progress.**
 - [ ] **07. Merge Auto + aspect ratio into one clear Aspect control.** Example states: `Aspect · Auto 16:9`, `Aspect · Auto 4:3 · From reference`, or manual ratio.
 - [ ] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator.
 - [ ] **09. Standardize resolution terminology and expose actual delivery dimensions.** Prefer `1080p` over `Full HD`; show context such as `1920×1080 at 16:9` or `1080×1920 at 9:16`.
