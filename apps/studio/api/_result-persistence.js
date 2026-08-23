@@ -2,6 +2,7 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import { supabaseRequest } from './_supabase.js';
 
+// The REDGraft validation workflow exercises video persistence against live R2/Supabase credentials.
 const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
 
 function getClient() {
