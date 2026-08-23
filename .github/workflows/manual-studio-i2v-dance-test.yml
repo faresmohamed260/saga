@@ -1,0 +1,159 @@
+name: Manual Studio I2V dance test
+
+on:
+  push:
+    branches:
+      - studio/fix-video-workflow-id
+    paths:
+      - .github/workflows/manual-studio-i2v-dance-test.yml
+      - apps/studio/scripts/manual-i2v-reference.b64
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install client dependency
+        run: python -m pip install --upgrade "requests>=2.32,<3"
+
+      - name: Decode supplied reference image
+        shell: bash
+        run: |
+          base64 -d apps/studio/scripts/manual-i2v-reference.b64 > /tmp/manual-i2v-reference.jpg
+          file /tmp/manual-i2v-reference.jpg
+          test -s /tmp/manual-i2v-reference.jpg
+
+      - name: Run real production image-to-video generation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import time
+          import requests
+
+          base = "https://studio.faresuniform.uk"
+          ref_path = pathlib.Path('/tmp/manual-i2v-reference.jpg')
+          ref_bytes = ref_path.read_bytes()
+          prompt = (
+              "A confident woman in an elegant black dress performs a graceful energetic dance in place, "
+              "smooth full-body movement, natural arm and hip motion, a subtle turn and step sequence, "
+              "maintain her facial identity, hairstyle, dress, body proportions, and the nighttime window setting, "
+              "realistic human motion, stable anatomy, locked camera, no scene change."
+          )
+
+          ticket_response = requests.post(
+              f"{base}/api/uploads",
+              json={
+                  "filename": "manual-i2v-dance-reference.jpg",
+                  "contentType": "image/jpeg",
+                  "size": len(ref_bytes),
+                  "purpose": "generation-source",
+              },
+              timeout=120,
+          )
+          if ticket_response.status_code != 201:
+              raise SystemExit(f"Upload ticket failed {ticket_response.status_code}: {ticket_response.text[:2000]}")
+          ticket = ticket_response.json()
+          print(json.dumps({"upload_ticket": {"key": ticket.get("key"), "contentType": ticket.get("contentType")}}, indent=2))
+
+          upload_response = requests.put(
+              ticket["uploadUrl"],
+              data=ref_bytes,
+              headers={"Content-Type": ticket.get("contentType") or "image/jpeg"},
+              timeout=180,
+          )
+          if not upload_response.ok:
+              raise SystemExit(f"Reference upload failed {upload_response.status_code}: {upload_response.text[:2000]}")
+
+          submit_response = requests.post(
+              f"{base}/api/generate",
+              json={
+                  "workflowId": "ltx25-redgraft-video",
+                  "sourceKeys": [ticket["key"]],
+                  "sourceFilenames": ["manual-i2v-dance-reference.jpg"],
+                  "sourceContentTypes": ["image/jpeg"],
+                  "prompt": prompt,
+                  "negativePrompt": "",
+                  "resolution": "720p",
+                  "durationSeconds": 5,
+                  "audioEnabled": False,
+                  "seed": 20260823,
+              },
+              timeout=180,
+          )
+          if submit_response.status_code != 202:
+              raise SystemExit(f"Generation submit failed {submit_response.status_code}: {submit_response.text[:4000]}")
+          submitted = submit_response.json()
+          job_id = (submitted.get("job") or {}).get("id")
+          if not job_id:
+              raise SystemExit(f"No job id returned: {submitted}")
+          print(json.dumps({"submitted": submitted}, indent=2, default=str))
+
+          deadline = time.time() + 75 * 60
+          final = None
+          while time.time() < deadline:
+              response = requests.get(
+                  f"{base}/api/generate/result",
+                  params={"jobId": job_id},
+                  headers={"Accept": "application/json"},
+                  timeout=180,
+              )
+              if response.status_code == 202:
+                  print(f"job {job_id}: running")
+                  time.sleep(8)
+                  continue
+              if not response.ok:
+                  raise SystemExit(f"Generation poll failed {response.status_code}: {response.text[:4000]}")
+              final = response.json()
+              break
+          if not final:
+              raise SystemExit("Generation timed out after 75 minutes")
+          if final.get("status") != "completed" or not final.get("mediaUrl"):
+              raise SystemExit(f"Generation did not complete with media: {final}")
+
+          media_url = final["mediaUrl"]
+          full_media_url = media_url if str(media_url).startswith("http") else f"{base}{media_url}"
+          media_response = requests.get(full_media_url, timeout=300)
+          media_response.raise_for_status()
+          if not media_response.headers.get("content-type", "").startswith("video/"):
+              raise SystemExit(f"Persisted output is not video: {media_response.headers.get('content-type')}")
+          if len(media_response.content) < 100_000:
+              raise SystemExit(f"Persisted video unexpectedly small: {len(media_response.content)} bytes")
+          pathlib.Path('/tmp/manual-i2v-dance.mp4').write_bytes(media_response.content)
+
+          result = {
+              "ready": True,
+              "jobId": job_id,
+              "generationId": final.get("generationId"),
+              "workflowId": "ltx25-redgraft-video",
+              "resolution": "720p",
+              "durationSeconds": 5,
+              "audioEnabled": False,
+              "seed": 20260823,
+              "prompt": prompt,
+              "bytes": len(media_response.content),
+              "contentType": media_response.headers.get("content-type"),
+              "mediaUrl": full_media_url,
+          }
+          pathlib.Path('/tmp/manual-i2v-dance-result.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+          print(json.dumps(result, indent=2))
+          PY
+
+      - name: Publish generated dance video
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-i2v-dance-${{ github.run_id }}
+          path: |
+            /tmp/manual-i2v-dance.mp4
+            /tmp/manual-i2v-dance-result.json
+          retention-days: 3
