@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { ArrowUpRight, Check, Download, Folder, Heart, Maximize2, Pencil, RefreshCcw, Sparkles, Trash2, Video } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowUpRight, Check, Download, Folder, Heart, Maximize2, MoreHorizontal, Pencil, RefreshCcw, Sparkles, Trash2, Video } from 'lucide-react';
 
 export default function MediaCard({
   item,
@@ -19,6 +19,8 @@ export default function MediaCard({
   onSelect,
 }) {
   const videoRef = useRef(null);
+  const moreRef = useRef(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const favorite = favorites.has(item.id);
   const videoSource = item.originalUrl || item.url || '';
   const openOrSelect = () => selectable ? onSelect?.(item) : onOpen(item);
@@ -26,15 +28,105 @@ export default function MediaCard({
     event.stopPropagation();
     callback?.(item);
   };
+  const menuAction = (callback) => (event) => {
+    event.stopPropagation();
+    setMoreOpen(false);
+    callback?.(item);
+  };
 
-  const actions = (
-    <div className={`card-actions ${history ? 'media-actions-overlay' : ''}`}>
-      <button title="Favorite" aria-label="Favorite" className={favorite ? 'favorite active' : 'favorite'} onClick={action(onToggleFavorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'}/></button>
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!moreRef.current?.contains(event.target)) setMoreOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      setMoreOpen(false);
+      moreRef.current?.querySelector('.media-more-trigger')?.focus();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [moreOpen]);
+
+  useEffect(() => {
+    if (selectable && moreOpen) setMoreOpen(false);
+  }, [selectable, moreOpen]);
+
+  const favoriteLabel = favorite ? 'Remove from favorites' : 'Add to favorites';
+  const collectionLabel = inCollection ? 'Remove from collection' : 'Add to collection';
+
+  const galleryActions = (
+    <div className="card-actions media-actions-overlay" aria-label="Media actions">
+      <button
+        type="button"
+        title={favoriteLabel}
+        aria-label={favoriteLabel}
+        className={`media-action-primary favorite ${favorite ? 'active' : ''}`}
+        onClick={action(onToggleFavorite)}
+      >
+        <Heart size={17} fill={favorite ? 'currentColor' : 'none'}/>
+      </button>
+      <button
+        type="button"
+        title="Download original"
+        aria-label="Download original"
+        className="media-action-primary media-action-desktop-download"
+        onClick={action(onDownload)}
+      >
+        <Download size={16}/>
+      </button>
+      <button
+        type="button"
+        title="Open full media"
+        aria-label="Open full media"
+        className="media-action-primary"
+        onClick={action(onOpen)}
+      >
+        <ArrowUpRight size={17}/>
+      </button>
+      <div className="media-actions-menu" ref={moreRef}>
+        <button
+          type="button"
+          title="More actions"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          className="media-action-primary media-more-trigger"
+          onClick={(event) => {
+            event.stopPropagation();
+            setMoreOpen((value) => !value);
+          }}
+        >
+          <MoreHorizontal size={18}/>
+        </button>
+        {moreOpen && (
+          <div className="media-actions-popover" role="menu" aria-label="More media actions" onClick={(event) => event.stopPropagation()}>
+            <button type="button" role="menuitem" onClick={menuAction(onReuseSettings)}><RefreshCcw size={15}/><span>Reuse settings</span></button>
+            <button type="button" role="menuitem" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>
+            <button type="button" role="menuitem" className="media-overflow-download" onClick={menuAction(onDownload)}><Download size={15}/><span>Download original</span></button>
+            <button type="button" role="menuitem" onClick={menuAction(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={15}/><span>{collectionLabel}</span></button>
+            <div className="media-actions-menu-divider" role="separator"/>
+            <button type="button" role="menuitem" className="danger" onClick={menuAction(onDelete)}><Trash2 size={15}/><span>Delete permanently</span></button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const standardActions = (
+    <div className="card-actions">
+      <button title={favoriteLabel} aria-label={favoriteLabel} className={favorite ? 'favorite active' : 'favorite'} onClick={action(onToggleFavorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'}/></button>
       <button title="Reuse settings" aria-label="Reuse settings" onClick={action(onReuseSettings)}><RefreshCcw size={16}/></button>
       <button title="Edit this" aria-label="Edit this" onClick={action(onEdit)}><Pencil size={16}/></button>
       <button title="Download original" aria-label="Download original" onClick={action(onDownload)}><Download size={16}/></button>
       <button title="Open full media" aria-label="Open full media" onClick={action(onOpen)}><ArrowUpRight size={17}/></button>
-      <button title={inCollection ? 'Remove from collection' : 'Add to collection'} aria-label={inCollection ? 'Remove from collection' : 'Add to collection'} onClick={action(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={16}/></button>
+      <button title={collectionLabel} aria-label={collectionLabel} onClick={action(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={16}/></button>
       <button title="Delete permanently" aria-label="Delete permanently" onClick={action(onDelete)}><Trash2 size={16}/></button>
     </div>
   );
@@ -93,7 +185,7 @@ export default function MediaCard({
           </button>
         )}
         {!history && <div className="media-hover"><button aria-label="Open full media" onClick={action(onOpen)}><Maximize2 size={18}/></button></div>}
-        {history && !selectable && actions}
+        {history && !selectable && galleryActions}
       </div>
       {history && (
         <div className="history-copy">
@@ -108,7 +200,7 @@ export default function MediaCard({
           </div>
         </div>
       )}
-      {!history && actions}
+      {!history && standardActions}
     </article>
   );
 }
