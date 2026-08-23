@@ -96,6 +96,8 @@ try {
     const preview = videoPreviews.nth(index);
     if (!(await preview.getAttribute('poster'))) throw new Error(`Video card ${index} is missing its stored poster URL`);
     if (await preview.getAttribute('preload') !== 'none') throw new Error(`Poster-backed video card ${index} should use preload=none`);
+    if (await preview.getAttribute('src')) throw new Error(`Poster-backed video card ${index} eagerly attached its MP4 source`);
+    if (await preview.getAttribute('data-preview-state') !== 'deferred') throw new Error(`Video card ${index} should start in deferred preview state`);
   }
 
   const firstBox = await cards.first().boundingBox();
@@ -117,6 +119,9 @@ try {
 
   await page.keyboard.press('Tab');
   await primaryButtons.first().focus();
+  const focusedVideo = cards.first().locator('video');
+  await page.waitForFunction((element) => element?.getAttribute('data-preview-state') === 'active', await focusedVideo.elementHandle());
+  if (!(await focusedVideo.getAttribute('src'))) throw new Error('Keyboard focus did not attach the deferred video source');
   if (!(await primaryButtons.first().evaluate((element) => element.matches(':focus-visible')))) throw new Error('Primary media action does not receive :focus-visible treatment');
   const primaryFocusStyle = await primaryButtons.first().evaluate((element) => {
     const style = getComputedStyle(element);
@@ -133,12 +138,18 @@ try {
   await page.locator('body').click({ position: { x: 2, y: 2 } });
   await page.waitForTimeout(220);
   const resetOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
+  if (await focusedVideo.getAttribute('src')) throw new Error('Video source stayed attached after keyboard focus left the card');
+  if (await focusedVideo.getAttribute('data-preview-state') !== 'deferred') throw new Error('Video preview did not return to deferred state after focus left');
   if (beforeOpacity < 0.9) throw new Error(`Gallery actions should be exposed while the card has keyboard focus, opacity=${beforeOpacity}`);
   if (resetOpacity > 0.05) throw new Error(`Gallery actions should hide after keyboard focus leaves the card, opacity=${resetOpacity}`);
   await cards.first().locator('.media-frame').hover();
   await page.waitForTimeout(180);
   const afterOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
   if (afterOpacity < 0.9) throw new Error(`Gallery actions did not appear over media on hover, opacity=${afterOpacity}`);
+  if (!(await focusedVideo.getAttribute('src'))) throw new Error('Desktop hover did not attach the deferred MP4 source');
+  if (await focusedVideo.getAttribute('data-preview-state') !== 'active') throw new Error('Desktop hover did not activate video preview state');
+  await page.screenshot({ path: path.join(outputDir, '11c-gallery-video-preview-hover.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('11c-gallery-video-preview-hover.png');
 
   const desktopPrimary = overlay.locator('.media-action-primary:visible');
   if (await desktopPrimary.count() !== 4) throw new Error(`Desktop Gallery should expose exactly 4 immediate actions, found ${await desktopPrimary.count()}`);
@@ -185,6 +196,22 @@ try {
   await page.screenshot({ path: path.join(outputDir, '12-gallery-manager.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('12-gallery-manager.png');
 
+  const reduced = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  reduced.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'reduced-motion', text: error?.stack || error?.message || String(error) }));
+  await reduced.emulateMedia({ reducedMotion: 'reduce' });
+  await mockHistory(reduced);
+  await reduced.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await reduced.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
+  const reducedCard = reduced.locator('.gallery-grid .history-card').first();
+  const reducedVideo = reducedCard.locator('video');
+  await reducedCard.locator('.media-frame').hover();
+  await reduced.waitForTimeout(180);
+  if (await reducedVideo.getAttribute('src')) throw new Error('Reduced-motion mode attached a hover video source');
+  if (await reducedVideo.getAttribute('data-preview-state') !== 'deferred') throw new Error('Reduced-motion mode should keep poster-backed video deferred');
+  await reduced.screenshot({ path: path.join(outputDir, '10d-gallery-reduced-motion.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('10d-gallery-reduced-motion.png');
+  await reduced.close();
+
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   mobile.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'mobile', text: error?.stack || error?.message || String(error) }));
   await mockHistory(mobile);
@@ -197,6 +224,13 @@ try {
   if (!mobileFirst || !mobileSecond || Math.abs(mobileFirst.width - mobileSecond.width) > 3 || Math.abs(mobileFirst.x - mobileSecond.x) < mobileFirst.width * .7) {
     throw new Error(`Mobile Gallery is not a stable two-column grid: ${JSON.stringify({ mobileFirst, mobileSecond })}`);
   }
+
+  const mobileVideo = mobileCards.first().locator('video');
+  if (await mobileVideo.getAttribute('src')) throw new Error('Mobile Gallery eagerly attached a poster-backed MP4 source');
+  await mobileCards.first().locator('.media-frame').hover();
+  await mobile.waitForTimeout(120);
+  if (await mobileVideo.getAttribute('src')) throw new Error('Narrow/touch-oriented Gallery hover should not attach a video source');
+  if (await mobileVideo.getAttribute('data-preview-state') !== 'deferred') throw new Error('Mobile Gallery should keep video previews poster-only');
 
   const mobileOverlay = mobileCards.first().locator('.media-actions-overlay');
   const mobileOpacity = Number(await mobileOverlay.evaluate((element) => getComputedStyle(element).opacity));

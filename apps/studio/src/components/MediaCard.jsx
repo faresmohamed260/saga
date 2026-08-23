@@ -18,12 +18,28 @@ export default function MediaCard({
   selected = false,
   onSelect,
 }) {
+  const frameRef = useRef(null);
   const videoRef = useRef(null);
   const moreRef = useRef(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [previewIntent, setPreviewIntent] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(!history);
+  const [previewMotionAllowed, setPreviewMotionAllowed] = useState(false);
+  const [previewHoverCapable, setPreviewHoverCapable] = useState(false);
   const favorite = favorites.has(item.id);
   const videoSource = item.originalUrl || item.url || '';
   const itemLabel = item.title || 'media';
+  const isGalleryVideo = history && item.kind === 'video' && Boolean(videoSource);
+  const previewActive = isGalleryVideo
+    && !selectable
+    && previewVisible
+    && previewIntent
+    && previewMotionAllowed
+    && previewHoverCapable;
+  const legacyFrameAttached = isGalleryVideo && !item.thumbnailUrl && previewVisible;
+  const attachedVideoSource = history
+    ? ((previewActive || legacyFrameAttached) ? videoSource : '')
+    : videoSource;
   const openOrSelect = () => selectable ? onSelect?.(item) : onOpen(item);
   const action = (callback) => (event) => {
     event.stopPropagation();
@@ -34,6 +50,52 @@ export default function MediaCard({
     setMoreOpen(false);
     callback?.(item);
   };
+
+  useEffect(() => {
+    if (!isGalleryVideo) return undefined;
+    const node = frameRef.current;
+    if (!node) return undefined;
+    if (typeof IntersectionObserver === 'undefined') {
+      setPreviewVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setPreviewVisible(Boolean(entry?.isIntersecting));
+    }, { rootMargin: '120px 0px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isGalleryVideo]);
+
+  useEffect(() => {
+    if (!isGalleryVideo) return undefined;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const hoverFine = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const updateCapabilities = () => {
+      setPreviewMotionAllowed(!reducedMotion.matches);
+      setPreviewHoverCapable(hoverFine.matches && window.innerWidth > 640);
+    };
+    updateCapabilities();
+    reducedMotion.addEventListener?.('change', updateCapabilities);
+    hoverFine.addEventListener?.('change', updateCapabilities);
+    window.addEventListener('resize', updateCapabilities);
+    return () => {
+      reducedMotion.removeEventListener?.('change', updateCapabilities);
+      hoverFine.removeEventListener?.('change', updateCapabilities);
+      window.removeEventListener('resize', updateCapabilities);
+    };
+  }, [isGalleryVideo]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!isGalleryVideo || !video) return;
+    if (previewActive) {
+      video.play().catch(() => {});
+      return;
+    }
+    video.pause();
+    if (item.thumbnailUrl && video.currentSrc) video.load();
+  }, [isGalleryVideo, previewActive, item.thumbnailUrl]);
 
   useEffect(() => {
     if (!moreOpen) return undefined;
@@ -57,7 +119,8 @@ export default function MediaCard({
 
   useEffect(() => {
     if (selectable && moreOpen) setMoreOpen(false);
-  }, [selectable, moreOpen]);
+    if (selectable && previewIntent) setPreviewIntent(false);
+  }, [selectable, moreOpen, previewIntent]);
 
   const favoriteLabel = favorite ? 'Remove from favorites' : 'Add to favorites';
   const collectionLabel = inCollection ? 'Remove from collection' : 'Add to collection';
@@ -138,25 +201,36 @@ export default function MediaCard({
   return (
     <article className={`media-card ${history ? 'history-card' : ''} ${selected ? 'selected' : ''} ${selectable ? 'selectable' : ''}`}>
       <div
+        ref={frameRef}
         className={`media-frame ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}
         style={item.url && item.kind !== 'video' ? { backgroundImage: `url(${item.url})` } : undefined}
         onMouseEnter={() => {
-          if (history && !selectable && videoRef.current) videoRef.current.play().catch(() => {});
+          if (isGalleryVideo && !selectable) setPreviewIntent(true);
         }}
         onMouseLeave={() => {
-          if (videoRef.current) videoRef.current.pause();
+          if (isGalleryVideo) setPreviewIntent(false);
+        }}
+        onFocusCapture={() => {
+          if (isGalleryVideo && !selectable) setPreviewIntent(true);
+        }}
+        onBlurCapture={(event) => {
+          if (isGalleryVideo && !event.currentTarget.contains(event.relatedTarget)) setPreviewIntent(false);
         }}
       >
         {item.kind === 'video' && videoSource ? (
           <video
             ref={videoRef}
             className="media-video-preview"
-            src={videoSource}
+            src={attachedVideoSource || undefined}
             poster={item.thumbnailUrl || undefined}
             muted
             playsInline
             loop
-            preload={item.thumbnailUrl ? 'none' : 'metadata'}
+            preload={history ? (item.thumbnailUrl ? 'none' : (previewVisible ? 'metadata' : 'none')) : 'metadata'}
+            data-preview-state={previewActive ? 'active' : attachedVideoSource ? 'fallback' : 'deferred'}
+            onCanPlay={(event) => {
+              if (previewActive) event.currentTarget.play().catch(() => {});
+            }}
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
               if (!item.thumbnailUrl && Number.isFinite(video.duration) && video.duration > 0.1 && video.currentTime === 0) {
