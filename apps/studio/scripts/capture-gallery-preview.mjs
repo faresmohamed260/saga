@@ -90,7 +90,13 @@ try {
 
   if (await page.getByRole('button', { name: 'History', exact: true }).count()) throw new Error('Legacy History navigation is still visible');
   if (await cards.count() !== rows.length) throw new Error(`Gallery rendered ${await cards.count()} cards instead of ${rows.length}`);
-  if (await page.locator('.history-card video').count() !== 3) throw new Error('Video cards did not render inline video previews');
+  const videoPreviews = page.locator('.history-card video');
+  if (await videoPreviews.count() !== 3) throw new Error('Video cards did not render inline video previews');
+  for (let index = 0; index < 3; index += 1) {
+    const preview = videoPreviews.nth(index);
+    if (!(await preview.getAttribute('poster'))) throw new Error(`Video card ${index} is missing its stored poster URL`);
+    if (await preview.getAttribute('preload') !== 'none') throw new Error(`Poster-backed video card ${index} should use preload=none`);
+  }
 
   const firstBox = await cards.first().boundingBox();
   if (!firstBox || firstBox.width > 230 || firstBox.width < 175) throw new Error(`Gallery card density is outside the intended range: ${JSON.stringify(firstBox)}`);
@@ -106,6 +112,8 @@ try {
 
   await page.screenshot({ path: path.join(outputDir, '10-gallery-grid.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('10-gallery-grid.png');
+  await page.locator('.gallery-grid').screenshot({ path: path.join(outputDir, '10c-gallery-video-posters.png'), animations: 'disabled' });
+  diagnostics.screenshots.push('10c-gallery-video-posters.png');
 
   await page.keyboard.press('Tab');
   await primaryButtons.first().focus();

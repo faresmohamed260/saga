@@ -256,7 +256,8 @@ async function pollModalFlux2Klein(workflow, providerJobId) {
 }
 
 async function pollModalLtx25(workflow, providerJobId) {
-  const response = await fetch(`${getLtx25GatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
+  const encodedJobId = encodeURIComponent(providerJobId);
+  const response = await fetch(`${getLtx25GatewayUrl()}/jobs/${encodedJobId}`, {
     method: 'GET',
     headers: { Accept: 'video/*, application/json' },
   });
@@ -273,10 +274,34 @@ async function pollModalLtx25(workflow, providerJobId) {
     error.statusCode = 502;
     throw error;
   }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  let posterBytes = null;
+  let posterContentType = null;
+  try {
+    const posterResponse = await fetch(`${getLtx25GatewayUrl()}/jobs/${encodedJobId}/poster`, {
+      method: 'GET',
+      headers: { Accept: 'image/*, application/json' },
+    });
+    if (posterResponse.ok) {
+      const candidateType = String(posterResponse.headers.get('content-type') || '').split(';')[0].trim();
+      if (candidateType.startsWith('image/')) {
+        posterBytes = Buffer.from(await posterResponse.arrayBuffer());
+        posterContentType = candidateType;
+      }
+    } else if (![202, 404, 410].includes(posterResponse.status)) {
+      console.error(`REDGraft LTX 2.5 poster fetch failed (${posterResponse.status})`);
+    }
+  } catch (error) {
+    console.error('REDGraft LTX 2.5 poster fetch failed', error);
+  }
+
   return {
     status: 'completed',
-    bytes: Buffer.from(await response.arrayBuffer()),
+    bytes,
     contentType,
+    posterBytes,
+    posterContentType,
     provider: workflow.provider,
   };
 }

@@ -49,7 +49,7 @@ function objectKeys(job, contentType) {
   };
 }
 
-async function createThumbnail(body) {
+export async function createThumbnail(body) {
   const source = sharp(body, { failOn: 'warning' }).rotate();
   const metadata = await source.metadata();
   const { data, info } = await source
@@ -113,6 +113,27 @@ async function putOriginal(client, job, bytes, contentType, key) {
   }));
 }
 
+async function persistThumbnail(client, job, bytes, keys) {
+  const thumbnail = await createThumbnail(bytes);
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: keys.thumbnail,
+    Body: thumbnail.data,
+    ContentLength: thumbnail.data.length,
+    ContentType: 'image/webp',
+    CacheControl: 'private, max-age=31536000, immutable',
+    Metadata: {
+      source: 'saga-studio-thumbnail',
+      original: safeMetadata(keys.original, 240),
+      kind: safeMetadata(job.kind, 24),
+    },
+  }));
+  return {
+    thumbnail,
+    thumbnailUrl: `/api/media?key=${encodeURIComponent(keys.thumbnail)}`,
+  };
+}
+
 export async function persistImageJobResult(job, bytes, contentType = 'image/png') {
   if (!String(contentType).startsWith('image/')) throw new Error('Image persistence requires an image result');
   if (!assertPersistable(job, bytes)) return job;
@@ -131,20 +152,7 @@ export async function persistImageJobResult(job, bytes, contentType = 'image/png
   let thumbnail = null;
   let thumbnailUrl = null;
   try {
-    thumbnail = await createThumbnail(bytes);
-    await client.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: keys.thumbnail,
-      Body: thumbnail.data,
-      ContentLength: thumbnail.data.length,
-      ContentType: 'image/webp',
-      CacheControl: 'private, max-age=31536000, immutable',
-      Metadata: {
-        source: 'saga-studio-thumbnail',
-        original: safeMetadata(keys.original, 240),
-      },
-    }));
-    thumbnailUrl = `/api/media?key=${encodeURIComponent(keys.thumbnail)}`;
+    ({ thumbnail, thumbnailUrl } = await persistThumbnail(client, job, bytes, keys));
   } catch (error) {
     console.error('Orchestrated thumbnail persistence failed', error);
   }
@@ -172,7 +180,13 @@ export async function persistImageJobResult(job, bytes, contentType = 'image/png
   });
 }
 
-export async function persistVideoJobResult(job, bytes, contentType = 'video/mp4') {
+export async function persistVideoJobResult(
+  job,
+  bytes,
+  contentType = 'video/mp4',
+  posterBytes = null,
+  posterContentType = 'image/jpeg',
+) {
   if (!String(contentType).startsWith('video/')) throw new Error('Video persistence requires a video result');
   if (!assertPersistable(job, bytes)) return job;
 
@@ -187,15 +201,26 @@ export async function persistVideoJobResult(job, bytes, contentType = 'video/mp4
   const mediaUrl = `/api/media?key=${encodeURIComponent(keys.original)}`;
   await putOriginal(client, job, bytes, contentType, keys.original);
 
+  let thumbnail = null;
+  let thumbnailUrl = null;
+  if (Buffer.isBuffer(posterBytes) && posterBytes.length && String(posterContentType).startsWith('image/')) {
+    try {
+      ({ thumbnail, thumbnailUrl } = await persistThumbnail(client, job, posterBytes, keys));
+    } catch (error) {
+      console.error('Orchestrated video poster persistence failed', error);
+    }
+  }
+
   const metadata = {
     ...(job.metadata && typeof job.metadata === 'object' ? job.metadata : {}),
     storage: 'cloudflare-r2',
     persistence: 'orchestrator-v1',
-    thumbnailFormat: null,
+    thumbnailFormat: thumbnailUrl ? 'webp' : null,
     video: {
       ...((job.metadata && typeof job.metadata === 'object' && job.metadata.video) || {}),
       contentType,
       byteLength: bytes.length,
+      posterSourceContentType: thumbnailUrl ? String(posterContentType) : null,
     },
   };
 
@@ -203,13 +228,13 @@ export async function persistVideoJobResult(job, bytes, contentType = 'video/mp4
     status: 'completed',
     r2_key: keys.original,
     media_url: mediaUrl,
-    thumbnail_r2_key: null,
-    thumbnail_url: null,
+    thumbnail_r2_key: thumbnailUrl ? keys.thumbnail : null,
+    thumbnail_url: thumbnailUrl,
     mime_type: contentType,
-    width: null,
-    height: null,
-    thumbnail_width: null,
-    thumbnail_height: null,
+    width: thumbnail?.originalWidth || null,
+    height: thumbnail?.originalHeight || null,
+    thumbnail_width: thumbnail?.width || null,
+    thumbnail_height: thumbnail?.height || null,
     error_message: null,
     metadata,
     completed_at: new Date().toISOString(),

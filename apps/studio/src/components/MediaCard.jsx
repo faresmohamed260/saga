@@ -156,7 +156,7 @@ export default function MediaCard({
             muted
             playsInline
             loop
-            preload="metadata"
+            preload={item.thumbnailUrl ? 'none' : 'metadata'}
             onLoadedMetadata={(event) => {
               const video = event.currentTarget;
               if (!item.thumbnailUrl && Number.isFinite(video.duration) && video.duration > 0.1 && video.currentTime === 0) {

@@ -23,7 +23,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.3.0")
+    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.4.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -42,6 +42,18 @@ def web():
 
     def _worker():
         return modal.Cls.from_name(RUNTIME_APP_NAME, RUNTIME_CLASS_NAME)()
+
+    def _split_result(result):
+        if isinstance(result, (bytes, bytearray)):
+            return bytes(result), None, None
+        if isinstance(result, dict):
+            video = result.get("video")
+            poster = result.get("poster")
+            poster_type = str(result.get("poster_content_type") or "image/jpeg")
+            if isinstance(video, (bytes, bytearray)) and video:
+                normalized_poster = bytes(poster) if isinstance(poster, (bytes, bytearray)) and poster else None
+                return bytes(video), normalized_poster, poster_type
+        return None, None, None
 
     @api.get("/health")
     async def health():
@@ -137,9 +149,29 @@ def web():
         except Exception as exc:  # noqa: BLE001
             print({"event": "ltx25_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"LTX 2.5 runtime failed: {type(exc).__name__}: {exc}") from exc
-        if not isinstance(result, (bytes, bytearray)) or not result:
+        video, _, _ = _split_result(result)
+        if not video:
             raise HTTPException(status_code=502, detail="LTX 2.5 runtime returned an empty video")
-        return Response(content=bytes(result), media_type="video/mp4")
+        return Response(content=video, media_type="video/mp4")
+
+    @api.get("/jobs/{call_id}/poster")
+    async def poll_video_poster(call_id: str):
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+            result = call.get(timeout=0)
+        except TimeoutError:
+            return JSONResponse(status_code=202, content={"status": "running", "call_id": call_id})
+        except modal.exception.OutputExpiredError as exc:
+            raise HTTPException(status_code=410, detail="LTX 2.5 job result expired") from exc
+        except Exception as exc:  # noqa: BLE001
+            print({"event": "ltx25_gateway_poster_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
+            raise HTTPException(status_code=502, detail=f"LTX 2.5 poster fetch failed: {type(exc).__name__}: {exc}") from exc
+        _, poster, poster_type = _split_result(result)
+        if not poster:
+            raise HTTPException(status_code=404, detail="LTX 2.5 poster is unavailable")
+        if not str(poster_type or "").startswith("image/"):
+            raise HTTPException(status_code=502, detail="LTX 2.5 poster has an invalid content type")
+        return Response(content=poster, media_type=poster_type)
 
     @api.delete("/jobs/{call_id}")
     async def cancel_video(call_id: str):

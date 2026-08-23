@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
     const contentType = result.contentType || workflow.outputMimeType;
     const completed = workflow.kind === 'video'
-      ? await persistVideoJobResult(job, result.bytes, contentType)
+      ? await persistVideoJobResult(job, result.bytes, contentType, result.posterBytes, result.posterContentType)
       : await persistImageJobResult(job, result.bytes, contentType);
     return res.status(200).json({
       status: 'completed',
