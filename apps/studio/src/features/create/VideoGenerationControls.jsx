@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, CheckCircle2, ChevronDown, Gauge, LoaderCircle, Sparkles, XCircle } from 'lucide-react';
 
 export const VIDEO_ASPECT_PRESETS = [
@@ -22,6 +22,14 @@ function gcd(a, b) {
   let right = Math.abs(Math.round(Number(b) || 0));
   while (right) [left, right] = [right, left % right];
   return left || 1;
+}
+
+function aspectRatioValue(value, fallback = 16 / 9) {
+  const match = String(value || '').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  if (!match) return fallback;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width > 0 && height > 0 ? width / height : fallback;
 }
 
 export function referenceAspect(reference) {
@@ -57,7 +65,8 @@ function useOutsideDismiss(open, rootRef, close) {
 function CompactPicker({ label, value, options, onChoose, leading }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  useOutsideDismiss(open, rootRef, () => setOpen(false));
+  const close = useCallback(() => setOpen(false), []);
+  useOutsideDismiss(open, rootRef, close);
   return (
     <div className="saga-video-inline-picker" ref={rootRef}>
       <button
@@ -105,6 +114,7 @@ export function VideoOutputControls({
   setFrameRate,
 }) {
   const aspectValue = autoAspect ? effectiveAspect : manualAspect;
+  const aspectIconRatio = aspectRatioValue(aspectValue, referenceInfo.ratio || 16 / 9);
   return (
     <div className="saga-video-extra-controls" aria-label="Video output controls">
       <button
@@ -119,7 +129,7 @@ export function VideoOutputControls({
       <CompactPicker
         label="Video aspect ratio"
         value={aspectValue}
-        leading={<span className="saga-aspect-icon" style={{ aspectRatio: String(referenceInfo.ratio || 16 / 9) }} />}
+        leading={<span className="saga-aspect-icon" style={{ aspectRatio: String(aspectIconRatio) }} />}
         options={VIDEO_ASPECT_PRESETS}
         onChoose={(value) => {
           setManualAspect(value);
@@ -130,7 +140,7 @@ export function VideoOutputControls({
         label="Video frame rate"
         value={`${frameRate} fps`}
         leading={<Gauge size={15} />}
-        options={VIDEO_FRAME_RATES.map((fps) => ({ value: `${fps} fps`, raw: fps }))}
+        options={VIDEO_FRAME_RATES.map((fps) => ({ value: `${fps} fps` }))}
         onChoose={(value) => setFrameRate(Number.parseInt(value, 10) || 24)}
       />
     </div>
