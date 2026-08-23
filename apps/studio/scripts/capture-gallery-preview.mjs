@@ -212,7 +212,7 @@ try {
   diagnostics.screenshots.push('10d-gallery-reduced-motion.png');
   await reduced.close();
 
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark', hasTouch: true, isMobile: true });
   mobile.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'mobile', text: error?.stack || error?.message || String(error) }));
   await mockHistory(mobile);
   await mobile.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
@@ -227,10 +227,12 @@ try {
 
   const mobileVideo = mobileCards.first().locator('video');
   if (await mobileVideo.getAttribute('src')) throw new Error('Mobile Gallery eagerly attached a poster-backed MP4 source');
-  await mobileCards.first().locator('.media-frame').hover();
+  const mobileFineHover = await mobile.evaluate(() => window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  if (mobileFineHover) throw new Error('Touch-emulated Gallery unexpectedly reports fine-hover input capability');
+  await mobileCards.first().locator('.media-frame').dispatchEvent('mouseenter');
   await mobile.waitForTimeout(120);
-  if (await mobileVideo.getAttribute('src')) throw new Error('Narrow/touch-oriented Gallery hover should not attach a video source');
-  if (await mobileVideo.getAttribute('data-preview-state') !== 'deferred') throw new Error('Mobile Gallery should keep video previews poster-only');
+  if (await mobileVideo.getAttribute('src')) throw new Error('Touch Gallery synthetic hover attached a video source');
+  if (await mobileVideo.getAttribute('data-preview-state') !== 'deferred') throw new Error('Touch Gallery should keep video previews poster-only');
 
   const mobileOverlay = mobileCards.first().locator('.media-actions-overlay');
   const mobileOpacity = Number(await mobileOverlay.evaluate((element) => getComputedStyle(element).opacity));

@@ -64,6 +64,8 @@ assert.match(persistenceSource, /thumbnail_r2_key: thumbnailUrl \? keys\.thumbna
 assert.match(cardSource, /src=\{attachedVideoSource \|\| undefined\}/);
 assert.match(cardSource, /data-preview-state=\{previewActive \? 'active'/);
 assert.match(cardSource, /preload=\{history \? \(item\.thumbnailUrl \? 'none'/);
+assert.match(cardSource, /setPreviewHoverCapable\(hoverFine\.matches\)/);
+assert.doesNotMatch(cardSource, /innerWidth > 640/);
 
 console.log(JSON.stringify({
   ready: true,

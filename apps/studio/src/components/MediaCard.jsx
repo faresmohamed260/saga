@@ -73,16 +73,14 @@ export default function MediaCard({
     const hoverFine = window.matchMedia('(hover: hover) and (pointer: fine)');
     const updateCapabilities = () => {
       setPreviewMotionAllowed(!reducedMotion.matches);
-      setPreviewHoverCapable(hoverFine.matches && window.innerWidth > 640);
+      setPreviewHoverCapable(hoverFine.matches);
     };
     updateCapabilities();
     reducedMotion.addEventListener?.('change', updateCapabilities);
     hoverFine.addEventListener?.('change', updateCapabilities);
-    window.addEventListener('resize', updateCapabilities);
     return () => {
       reducedMotion.removeEventListener?.('change', updateCapabilities);
       hoverFine.removeEventListener?.('change', updateCapabilities);
-      window.removeEventListener('resize', updateCapabilities);
     };
   }, [isGalleryVideo]);
 
