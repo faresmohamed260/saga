@@ -6,7 +6,7 @@ import {
   ArrowUpRight, ChevronDown, RotateCcw, Menu, ChevronLeft,
   Maximize2, LoaderCircle, Trash2, Download, Video
 } from 'lucide-react';
-import { runImageEdit } from './generation-client.js';
+import { runImageEdit, runVideoGeneration } from './generation-client.js';
 import CreateWorkspace from './create-controls.jsx';
 import './styles.css';
 import './create-controls.css';
@@ -275,7 +275,20 @@ function App() {
       const dimensions = await imageDimensions(file);
       valid.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file, preview: URL.createObjectURL(file), ...dimensions });
     }
-    if (valid.length) { setReferences((current) => [...current, ...valid]); setMode('Edit'); setError(''); }
+    if (valid.length) {
+      if (mode === 'Video') {
+        const next = valid[0];
+        setReferences((current) => {
+          current.forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
+          return next ? [next] : [];
+        });
+        if (valid.length > 1) valid.slice(1).forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
+      } else {
+        setReferences((current) => [...current, ...valid]);
+        setMode('Edit');
+      }
+      setError('');
+    }
   };
 
   const removeReference = (index) => {
@@ -323,13 +336,52 @@ function App() {
     if (section === 'History') loadHistory({ append: false });
   };
 
-  const generate = async () => {
+  const runLtxVideo = async (videoOptions = {}) => {
+    if (!prompt.trim()) throw new Error('Describe the video you want to generate.');
+    const effectiveSeed = Number(seed) || 42;
+    const videoResolution = String(videoOptions.videoResolution || '480p');
+    const videoDuration = Math.max(5, Math.min(30, Math.round(Number(videoOptions.videoDuration) || 5)));
+    const videoAudio = videoOptions.videoAudio !== false;
+    const sourceFile = references[0]?.file || null;
+    setJobStatus(sourceFile ? 'uploading' : 'queued');
+
+    const { job, result } = await runVideoGeneration({
+      sourceFile,
+      prompt: prompt.trim(),
+      resolution: videoResolution,
+      durationSeconds: videoDuration,
+      audioEnabled: videoAudio,
+      seed: effectiveSeed,
+    }, { onStatus: setJobStatus });
+
+    setJobStatus('completed');
+    const item = {
+      id: result.generationId || job.id,
+      title: prompt.trim(),
+      url: result.thumbnailUrl || result.mediaUrl,
+      originalUrl: result.mediaUrl,
+      thumbnailUrl: result.thumbnailUrl || null,
+      generated: true,
+      model: 'LTX-Video 2.3 · 22B Distilled',
+      resolution: videoResolution,
+      seed: effectiveSeed,
+      kind: 'video',
+      mode: sourceFile ? 'image-to-video' : 'video',
+      persisted: true,
+      durationSeconds: videoDuration,
+      audioEnabled: videoAudio,
+    };
+    setItems((current) => [item, ...current]);
+    if (section === 'History') loadHistory({ append: false });
+  };
+
+  const generate = async (generationOptions = {}) => {
     if (busy) return;
     setBusy(true); setError(''); setJobStatus('');
     try {
       if (isEdit) await runFluxEdit();
       else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
-      else if (mode === 'Video') throw new Error('Video generation is the next workflow milestone and is not connected yet.');
+      else if (mode === 'Video') await runLtxVideo(generationOptions);
       else throw new Error('Choose Image, Video, or Edit to generate media.');
     } catch (err) {
       setJobStatus('failed');
@@ -475,7 +527,8 @@ function App() {
   const openMedia = (item) => setSelectedMedia(item);
   const renderCard = (item, history = false, inCollection = false) => (
     <article className={`media-card ${history ? 'history-card' : ''}`} key={item.id}>
-      <div className={`media-frame ${!item.url ? 'media-frame-empty' : ''}`} style={item.url ? { backgroundImage: `url(${item.url})` } : undefined} onClick={() => openMedia(item)} role="button" tabIndex={0}>
+      <div className={`media-frame ${!item.url ? 'media-frame-empty' : ''}`} style={item.url && item.kind !== 'video' ? { backgroundImage: `url(${item.url})` } : undefined} onClick={() => openMedia(item)} role="button" tabIndex={0}>
+        {item.kind === 'video' && item.url ? <video className="media-video-preview" src={item.originalUrl || item.url} muted playsInline preload="metadata" /> : null}
         {!item.url && <div className="media-placeholder"><Video size={28}/><span>Video preview</span></div>}
         <div className="size-badge">{item.kind === 'video' ? <Video size={12}/> : <Sparkles size={12}/>} {item.generated ? `${item.resolution || (item.kind === 'video' ? 'Video' : 'Image')}${history ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
         <div className="media-hover"><button aria-label="Open full media"><Maximize2 size={18}/></button></div>

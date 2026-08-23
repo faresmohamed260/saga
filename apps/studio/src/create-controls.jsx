@@ -195,9 +195,10 @@ function ReferenceStrip({ references, onRemove, onInsert }) {
           <button
             type="button"
             className="saga-reference-main"
-            title={`Insert Image ${index + 1} at cursor`}
+            title={onInsert ? `Insert Image ${index + 1} at cursor` : `Image ${index + 1} video reference`}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onInsert(index)}
+            onClick={() => onInsert?.(index)}
+            disabled={!onInsert}
           >
             <span className="saga-reference-thumb" style={{ backgroundImage: `url(${reference.preview})` }}>
               <b>{index + 1}</b>
@@ -801,11 +802,11 @@ export default function CreateWorkspace({
         </div>
 
         <section className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''}`}>
-          {isEdit && (
+          {(isEdit || (isVideo && references.length > 0)) && (
             <ReferenceStrip
               references={references}
               onRemove={onRemoveReference}
-              onInsert={(index) => promptRef.current?.insertReference(index)}
+              onInsert={isEdit ? (index) => promptRef.current?.insertReference(index) : undefined}
             />
           )}
 
@@ -946,7 +947,7 @@ export default function CreateWorkspace({
                 className="saga-submit"
                 title={isEdit ? 'Edit image' : isVideo ? 'Generate video' : 'Generate image'}
                 aria-label={isEdit ? 'Edit image' : isVideo ? 'Generate video' : 'Generate image'}
-                onClick={onGenerate}
+                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
                 disabled={busy || (isEdit && references.length === 0)}
               >
                 <ArrowUp size={21} />
