@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/studio-iteration6-lazy-preview.yml"
       - "apps/studio/scripts/iteration6_lazy_preview_patch.py"
+      - "apps/studio/scripts/check-video-poster-contract.mjs"
 
 permissions:
   contents: write
@@ -28,12 +29,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python apps/studio/scripts/iteration6_lazy_preview_patch.py progress
-          git add docs/studio-ui-polish-checklist.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Mark lazy Gallery previews in progress"
-          git push origin HEAD:studio/video-gallery-ux
+          if grep -q '^\*\*Iteration 6 — lazy/deferred Gallery video previews\*\*$' docs/studio-ui-polish-checklist.md; then
+            echo "Iteration 6 is already marked in progress"
+          else
+            python apps/studio/scripts/iteration6_lazy_preview_patch.py progress
+            git add docs/studio-ui-polish-checklist.md
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Mark lazy Gallery previews in progress"
+            git push origin HEAD:studio/video-gallery-ux
+          fi
 
       - name: Apply lazy Gallery preview implementation
         run: python apps/studio/scripts/iteration6_lazy_preview_patch.py product
@@ -48,7 +53,7 @@ jobs:
         working-directory: apps/studio
         run: npm install --no-audit --no-fund
 
-      - name: Run existing poster contract
+      - name: Run poster and deferred-preview contract
         working-directory: apps/studio
         run: npm run test:poster
 
