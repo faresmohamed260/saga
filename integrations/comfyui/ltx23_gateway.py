@@ -2,9 +2,9 @@ import os
 
 import modal
 
-APP_NAME = "saga-ltx23-gateway"
-RUNTIME_APP_NAME = "saga-ltx23-video"
-RUNTIME_CLASS_NAME = "LTX23Worker"
+APP_NAME = "saga-ltx25-gateway"
+RUNTIME_APP_NAME = "saga-ltx25-video"
+RUNTIME_CLASS_NAME = "LTX25Worker"
 MODAL_VERSION = "1.4.2"
 
 image = modal.Image.debian_slim(python_version="3.11").pip_install(
@@ -15,14 +15,14 @@ image = modal.Image.debian_slim(python_version="3.11").pip_install(
 app = modal.App(APP_NAME, image=image)
 
 
-@app.function(image=image, timeout=3600)
+@app.function(image=image, timeout=4200)
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI, File, Form, HTTPException, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA LTX 2.3 Video Gateway", version="0.1.0")
+    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.2.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -47,7 +47,7 @@ def web():
         try:
             runtime = _worker().health.remote()
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=f"LTX 2.3 runtime health failed: {type(exc).__name__}: {exc}") from exc
+            raise HTTPException(status_code=502, detail=f"LTX 2.5 runtime health failed: {type(exc).__name__}: {exc}") from exc
         return {
             "ready": bool(runtime.get("ready")),
             "gateway": APP_NAME,
@@ -101,10 +101,11 @@ def web():
                 "call_id": call.object_id,
                 "kind": "video",
                 "mode": "image-to-video" if image_bytes else "text-to-video",
+                "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
             }
         except Exception as exc:  # noqa: BLE001
-            print({"event": "ltx23_gateway_spawn_failed", "error": repr(exc)}, flush=True)
-            raise HTTPException(status_code=502, detail=f"LTX 2.3 runtime submit failed: {type(exc).__name__}: {exc}") from exc
+            print({"event": "ltx25_gateway_spawn_failed", "error": repr(exc)}, flush=True)
+            raise HTTPException(status_code=502, detail=f"LTX 2.5 runtime submit failed: {type(exc).__name__}: {exc}") from exc
 
     @api.get("/jobs/{call_id}")
     async def poll_video(call_id: str):
@@ -114,12 +115,12 @@ def web():
         except TimeoutError:
             return JSONResponse(status_code=202, content={"status": "running", "call_id": call_id})
         except modal.exception.OutputExpiredError as exc:
-            raise HTTPException(status_code=410, detail="LTX 2.3 job result expired") from exc
+            raise HTTPException(status_code=410, detail="LTX 2.5 job result expired") from exc
         except Exception as exc:  # noqa: BLE001
-            print({"event": "ltx23_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
-            raise HTTPException(status_code=502, detail=f"LTX 2.3 runtime failed: {type(exc).__name__}: {exc}") from exc
+            print({"event": "ltx25_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
+            raise HTTPException(status_code=502, detail=f"LTX 2.5 runtime failed: {type(exc).__name__}: {exc}") from exc
         if not isinstance(result, (bytes, bytearray)) or not result:
-            raise HTTPException(status_code=502, detail="LTX 2.3 runtime returned an empty video")
+            raise HTTPException(status_code=502, detail="LTX 2.5 runtime returned an empty video")
         return Response(content=bytes(result), media_type="video/mp4")
 
     @api.delete("/jobs/{call_id}")
@@ -129,8 +130,8 @@ def web():
             call.cancel(terminate_containers=False)
             return {"status": "cancelled", "call_id": call_id}
         except modal.exception.OutputExpiredError as exc:
-            raise HTTPException(status_code=410, detail="LTX 2.3 job result expired") from exc
+            raise HTTPException(status_code=410, detail="LTX 2.5 job result expired") from exc
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=f"LTX 2.3 cancel failed: {type(exc).__name__}: {exc}") from exc
+            raise HTTPException(status_code=502, detail=f"LTX 2.5 cancel failed: {type(exc).__name__}: {exc}") from exc
 
     return api
