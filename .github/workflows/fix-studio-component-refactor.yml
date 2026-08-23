@@ -1,0 +1,51 @@
+name: Fix Studio component refactor
+
+on:
+  push:
+    branches:
+      - studio/component-architecture
+    paths:
+      - "apps/studio/scripts/fix-component-refactor.mjs"
+      - ".github/workflows/fix-studio-component-refactor.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/component-architecture
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Apply fix
+        run: node apps/studio/scripts/fix-component-refactor.mjs
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-package-lock
+
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          if git diff --quiet -- apps/studio/src/app/App.jsx; then
+            echo "No App.jsx changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src/app/App.jsx
+          git commit -m "Fix Studio component architecture imports"
+          git push origin HEAD:studio/component-architecture
