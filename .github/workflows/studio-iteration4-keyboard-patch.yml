@@ -29,11 +29,35 @@ jobs:
       - name: Apply iteration 4 source and test changes
         run: python apps/studio/scripts/iteration4_keyboard_patch.py
 
-      - name: Stabilize asynchronous focus assertions
+      - name: Harden nested picker Escape and asynchronous focus assertions
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+
+          controls = Path('apps/studio/src/create-controls.jsx')
+          text = controls.read_text()
+          text = text.replace(
+              'function useOutsideDismiss(open, refs, close, returnFocusRef = null) {',
+              'function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNestedEscape = false) {',
+              1,
+          )
+          text = text.replace(
+              "      if (event.key !== 'Escape') return;\n      event.preventDefault();\n      event.stopPropagation();\n      close();\n      requestAnimationFrame(() => returnFocusRef?.current?.focus());",
+              "      if (event.key !== 'Escape') return;\n      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\\\"true\\\"]'))) return;\n      event.preventDefault();\n      event.stopPropagation();\n      close();\n      requestAnimationFrame(() => returnFocusRef?.current?.focus());",
+              1,
+          )
+          text = text.replace(
+              '  }, [open, refs, close, returnFocusRef]);',
+              '  }, [open, refs, close, returnFocusRef, protectNestedEscape]);',
+              1,
+          )
+          text = text.replace(
+              '  useOutsideDismiss(open, [anchorRef, panelRef], onClose, anchorRef);',
+              '  useOutsideDismiss(open, [anchorRef, panelRef], onClose, anchorRef, true);',
+              1,
+          )
+          controls.write_text(text)
 
           ui = Path('apps/studio/scripts/capture-ui-preview.mjs')
           text = ui.read_text()
@@ -52,6 +76,10 @@ jobs:
           text = text.replace(
               "await videoResolutionPicker.waitFor({ state: 'visible' });\n  const expectedVideoRows",
               "await videoResolutionPicker.waitFor({ state: 'visible' });\n  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });\n  const expectedVideoRows",
+          )
+          text = text.replace(
+              "  await desktop.keyboard.press('Escape');\n  await expectFocused(outputTrigger, 'Advanced select trigger after Escape');",
+              "  await desktop.keyboard.press('Escape');\n  await advanced.waitFor({ state: 'visible' });\n  await expectFocused(outputTrigger, 'Advanced select trigger after Escape');",
           )
           ui.write_text(text)
 
