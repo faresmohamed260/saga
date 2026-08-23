@@ -8,11 +8,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 3 — MediaCard interaction semantics and accessibility**
+**Iteration 4 — custom-picker keyboard behavior**
 
-- Status: `[x]` complete
-- Completed item: **03**
-- Next item: **04 — custom-picker keyboard behavior**
+- Status: `[~]` in progress
+- Working item: **04**
 - Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
@@ -20,7 +19,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **01. Exact requested video duration after LTX 8n+1 padding.** Preserve model-required 8n+1 generation frames while clamping delivered video frames and trimming audio to the requested duration; validate 24/25/30 FPS with ffprobe. **Iteration 1 complete.**
 - [x] **02. Reduce per-card immediate actions, especially on mobile.** Desktop now exposes Favorite, Download, Open, and More; secondary actions live in More. Mobile exposes three touch-safe actions (Favorite, Open, More) and moves Download into the More surface. Delete is separated in the overflow surface. **Iteration 2 complete.**
 - [x] **03. Refactor MediaCard interaction semantics/accessibility.** Media frames are structural containers; each card now has one native primary button for open/select, selection uses `aria-pressed`, the visible checkbox is non-interactive/decorative, focus order starts with the primary media action, and nested button-like semantics are removed. **Iteration 3 complete.**
-- [ ] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states.
+- [~] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states. **Iteration 4 in progress.**
 
 ## P1 — core UX and architecture
 
