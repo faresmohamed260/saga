@@ -54,8 +54,10 @@ const [runtimeSource, gatewaySource, resultSource, persistenceSource, cardSource
   readFile('api/_result-persistence.js', 'utf8'),
   readFile('src/components/MediaCard.jsx', 'utf8'),
 ]);
-assert.match(runtimeSource, /"poster_content_type": "image\/jpeg"/);
-assert.match(runtimeSource, /_create_video_poster\(final_path\)/);
+assert.match(runtimeSource, /\) -> bytes:/);
+assert.doesNotMatch(runtimeSource, /_create_video_poster/);
+assert.match(gatewaySource, /apt_install\("ffmpeg"\)/);
+assert.match(gatewaySource, /def _extract_poster\(video: bytes\)/);
 assert.match(gatewaySource, /\/jobs\/\{call_id\}\/poster/);
 assert.match(resultSource, /result\.posterBytes, result\.posterContentType/);
 assert.match(persistenceSource, /thumbnail_r2_key: thumbnailUrl \? keys\.thumbnail : null/);

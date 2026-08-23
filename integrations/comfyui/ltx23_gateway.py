@@ -8,7 +8,7 @@ RUNTIME_APP_NAME = "saga-ltx25-video"
 RUNTIME_CLASS_NAME = "LTX25Worker"
 MODAL_VERSION = "1.4.2"
 
-image = modal.Image.debian_slim(python_version="3.11").pip_install(
+image = modal.Image.debian_slim(python_version="3.11").apt_install("ffmpeg").pip_install(
     f"modal=={MODAL_VERSION}",
     "fastapi[standard]==0.121.0",
     "python-multipart>=0.0.20,<1",
@@ -43,17 +43,24 @@ def web():
     def _worker():
         return modal.Cls.from_name(RUNTIME_APP_NAME, RUNTIME_CLASS_NAME)()
 
-    def _split_result(result):
-        if isinstance(result, (bytes, bytearray)):
-            return bytes(result), None, None
-        if isinstance(result, dict):
-            video = result.get("video")
-            poster = result.get("poster")
-            poster_type = str(result.get("poster_content_type") or "image/jpeg")
-            if isinstance(video, (bytes, bytearray)) and video:
-                normalized_poster = bytes(poster) if isinstance(poster, (bytes, bytearray)) and poster else None
-                return bytes(video), normalized_poster, poster_type
-        return None, None, None
+    def _extract_poster(video: bytes) -> bytes:
+        import subprocess
+
+        command = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-ss", "0.08",
+            "-i", "pipe:0",
+            "-frames:v", "1",
+            "-f", "image2pipe",
+            "-vcodec", "mjpeg",
+            "-q:v", "3",
+            "pipe:1",
+        ]
+        result = subprocess.run(command, input=video, capture_output=True, check=False)
+        if result.returncode != 0 or not result.stdout:
+            detail = result.stderr.decode("utf-8", errors="replace")[-3000:]
+            raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")
+        return bytes(result.stdout)
 
     @api.get("/health")
     async def health():
@@ -149,10 +156,9 @@ def web():
         except Exception as exc:  # noqa: BLE001
             print({"event": "ltx25_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"LTX 2.5 runtime failed: {type(exc).__name__}: {exc}") from exc
-        video, _, _ = _split_result(result)
-        if not video:
+        if not isinstance(result, (bytes, bytearray)) or not result:
             raise HTTPException(status_code=502, detail="LTX 2.5 runtime returned an empty video")
-        return Response(content=video, media_type="video/mp4")
+        return Response(content=bytes(result), media_type="video/mp4")
 
     @api.get("/jobs/{call_id}/poster")
     async def poll_video_poster(call_id: str):
@@ -166,12 +172,14 @@ def web():
         except Exception as exc:  # noqa: BLE001
             print({"event": "ltx25_gateway_poster_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"LTX 2.5 poster fetch failed: {type(exc).__name__}: {exc}") from exc
-        _, poster, poster_type = _split_result(result)
-        if not poster:
-            raise HTTPException(status_code=404, detail="LTX 2.5 poster is unavailable")
-        if not str(poster_type or "").startswith("image/"):
-            raise HTTPException(status_code=502, detail="LTX 2.5 poster has an invalid content type")
-        return Response(content=poster, media_type=poster_type)
+        if not isinstance(result, (bytes, bytearray)) or not result:
+            raise HTTPException(status_code=502, detail="LTX 2.5 runtime returned an empty video")
+        try:
+            poster = _extract_poster(bytes(result))
+        except Exception as exc:  # noqa: BLE001
+            print({"event": "ltx25_gateway_poster_extract_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
+            raise HTTPException(status_code=502, detail=f"LTX 2.5 poster extraction failed: {type(exc).__name__}: {exc}") from exc
+        return Response(content=poster, media_type="image/jpeg")
 
     @api.delete("/jobs/{call_id}")
     async def cancel_video(call_id: str):

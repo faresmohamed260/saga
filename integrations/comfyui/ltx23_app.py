@@ -622,22 +622,6 @@ def _finalize_video(
     return final_path
 
 
-def _create_video_poster(video_path: Path) -> bytes:
-    poster_path = video_path.with_name(f"{video_path.stem}-poster.jpg")
-    command = [
-        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-ss", "0.08",
-        "-i", str(video_path),
-        "-frames:v", "1",
-        "-q:v", "3",
-        str(poster_path),
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    if result.returncode != 0 or not poster_path.is_file() or poster_path.stat().st_size <= 0:
-        raise RuntimeError(f"ffmpeg poster extraction failed: {result.stderr[-3000:]}")
-    return poster_path.read_bytes()
-
-
 @app.function(
     image=image,
     timeout=7200,
@@ -754,7 +738,7 @@ class LTX25Worker:
         aspect_ratio: str = "16:9",
         frame_rate: int = DEFAULT_FPS,
         source_image: bytes | None = None,
-    ) -> dict[str, Any]:
+    ) -> bytes:
         del negative_prompt  # REDGraft reference recipe uses zeroed negative conditioning.
         prompt = (prompt or "").strip()
         if not prompt:
@@ -812,7 +796,6 @@ class LTX25Worker:
                         frame_rate=int(frame_rate),
                         duration_seconds=int(duration_seconds),
                     )
-                    poster_bytes = _create_video_poster(final_path)
                     _log(
                         "ltx25_delivery_ready",
                         resolution=resolution,
@@ -822,12 +805,7 @@ class LTX25Worker:
                         width=delivery_width,
                         height=delivery_height,
                         bytes=final_path.stat().st_size,
-                        poster_bytes=len(poster_bytes),
                     )
-                    return {
-                        "video": final_path.read_bytes(),
-                        "poster": poster_bytes,
-                        "poster_content_type": "image/jpeg",
-                    }
+                    return final_path.read_bytes()
             time.sleep(2)
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")
