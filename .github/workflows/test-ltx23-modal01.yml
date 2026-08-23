@@ -40,7 +40,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install Modal client dependencies
-        run: python -m pip install --upgrade "modal==1.4.2" "requests>=2.32,<3"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade "modal==1.4.2" "requests>=2.32,<3"
 
       - name: Select modal-01 credentials
         shell: bash
