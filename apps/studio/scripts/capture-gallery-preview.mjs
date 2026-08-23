@@ -95,12 +95,42 @@ try {
   const firstBox = await cards.first().boundingBox();
   if (!firstBox || firstBox.width > 230 || firstBox.width < 175) throw new Error(`Gallery card density is outside the intended range: ${JSON.stringify(firstBox)}`);
 
+  // MediaCard semantics: the frame is structural, the primary action is a real button,
+  // and no interactive control is nested inside another interactive control.
+  if (await page.locator('.history-card .media-frame[role="button"]').count()) throw new Error('Gallery media frame still uses button-like role semantics');
+  if (await page.locator('.history-card button button').count()) throw new Error('Gallery contains nested button elements');
+  const primaryButtons = page.locator('.history-card .media-frame-primary');
+  if (await primaryButtons.count() !== rows.length) throw new Error(`Expected one primary media button per card, found ${await primaryButtons.count()}`);
+  if ((await primaryButtons.first().evaluate((element) => element.tagName)) !== 'BUTTON') throw new Error('Primary media action is not a native button');
+  if (await primaryButtons.first().getAttribute('aria-pressed') !== null) throw new Error('Browse-mode primary media button should not expose selection state');
+  const firstFocusableClass = await cards.first().locator('button').first().getAttribute('class');
+  if (!firstFocusableClass?.includes('media-frame-primary')) throw new Error(`Primary media action is not first in card focus order: ${firstFocusableClass}`);
+
   await page.screenshot({ path: path.join(outputDir, '10-gallery-grid.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('10-gallery-grid.png');
 
+  // Force keyboard modality, then inspect the dedicated primary action focus treatment.
+  await page.keyboard.press('Tab');
+  await primaryButtons.first().focus();
+  if (!(await primaryButtons.first().evaluate((element) => element.matches(':focus-visible')))) throw new Error('Primary media action does not receive :focus-visible treatment');
+  const primaryFocusStyle = await primaryButtons.first().evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+  });
+  if (primaryFocusStyle.outlineStyle === 'none' || Number.parseFloat(primaryFocusStyle.outlineWidth) < 2) {
+    throw new Error(`Primary media focus indicator is not visually strong enough: ${JSON.stringify(primaryFocusStyle)}`);
+  }
+  await page.screenshot({ path: path.join(outputDir, '10b-gallery-keyboard-focus.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('10b-gallery-keyboard-focus.png');
+
   const overlay = cards.first().locator('.media-actions-overlay');
   const beforeOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
-  if (beforeOpacity > 0.05) throw new Error(`Gallery actions should be hidden before hover, opacity=${beforeOpacity}`);
+  // Keyboard focus intentionally reveals the action surface. Blur before measuring hover-only state.
+  await page.locator('body').click({ position: { x: 2, y: 2 } });
+  await page.waitForTimeout(50);
+  const resetOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
+  if (beforeOpacity < 0.9) throw new Error(`Gallery actions should be exposed while the card has keyboard focus, opacity=${beforeOpacity}`);
+  if (resetOpacity > 0.05) throw new Error(`Gallery actions should hide after keyboard focus leaves the card, opacity=${resetOpacity}`);
   await cards.first().locator('.media-frame').hover();
   await page.waitForTimeout(180);
   const afterOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
@@ -131,9 +161,19 @@ try {
   const manager = page.locator('.gallery-manager');
   await manager.waitFor({ state: 'visible' });
   if (await cards.first().locator('.media-actions-overlay').count()) throw new Error('Per-card hover actions remain mounted during Manage mode');
-  await cards.nth(0).locator('.media-select-toggle').click();
-  await cards.nth(2).locator('.media-select-toggle').click();
-  if (!(await manager.locator('strong').innerText()).includes('2 selected')) throw new Error('Gallery manager did not track two selected items');
+  const selectionIndicators = page.locator('.history-card .media-select-toggle');
+  if (await selectionIndicators.count() !== rows.length) throw new Error('Manage mode did not render a selection indicator for every card');
+  if (await selectionIndicators.first().evaluate((element) => element.tagName) === 'BUTTON') throw new Error('Selection indicator remains a duplicate interactive button');
+  if (await selectionIndicators.first().getAttribute('aria-hidden') !== 'true') throw new Error('Visual selection indicator should be hidden from assistive technology');
+
+  const firstSelectButton = cards.nth(0).locator('.media-frame-primary');
+  const thirdSelectButton = cards.nth(2).locator('.media-frame-primary');
+  if (await firstSelectButton.getAttribute('aria-pressed') !== 'false') throw new Error('Manage-mode primary action does not expose unselected aria-pressed state');
+  await firstSelectButton.press('Space');
+  if (await firstSelectButton.getAttribute('aria-pressed') !== 'true') throw new Error('Space did not select the first Gallery card');
+  await thirdSelectButton.press('Enter');
+  if (await thirdSelectButton.getAttribute('aria-pressed') !== 'true') throw new Error('Enter did not select the third Gallery card');
+  if (!(await manager.locator('strong').innerText()).includes('2 selected')) throw new Error('Gallery manager did not track two keyboard-selected items');
   for (const label of ['Favorite', 'Download', 'Delete']) {
     const button = manager.getByRole('button', { name: label, exact: true });
     if (await button.isDisabled()) throw new Error(`${label} bulk action stayed disabled after selection`);
@@ -184,8 +224,10 @@ try {
   await mobile.getByRole('button', { name: 'Manage', exact: true }).click();
   const mobileManager = mobile.locator('.gallery-manager');
   await mobileManager.waitFor({ state: 'visible' });
-  await mobileCards.first().locator('.media-select-toggle').click();
-  if (!(await mobileManager.locator('strong').innerText()).includes('1 selected')) throw new Error('Mobile Gallery manager did not track selection');
+  const mobileSelectButton = mobileCards.first().locator('.media-frame-primary');
+  await mobileSelectButton.press('Space');
+  if (await mobileSelectButton.getAttribute('aria-pressed') !== 'true') throw new Error('Mobile primary selection action did not expose selected state');
+  if (!(await mobileManager.locator('strong').innerText()).includes('1 selected')) throw new Error('Mobile Gallery manager did not track keyboard selection');
   const managerBox = await mobileManager.boundingBox();
   if (!managerBox || managerBox.x < 0 || managerBox.x + managerBox.width > 390) throw new Error(`Mobile Gallery manager overflows viewport: ${JSON.stringify(managerBox)}`);
   await mobile.screenshot({ path: path.join(outputDir, '14-gallery-mobile-manager.png'), fullPage: true, animations: 'disabled' });
