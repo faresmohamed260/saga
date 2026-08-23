@@ -1,1 +1,1 @@
-FAIL: stage=validate-secrets; type=TypeError
+FAIL: stage=read-existing-cors; type=ClientError
