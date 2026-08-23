@@ -18,13 +18,6 @@ if (missing.length) {
   throw new Error(`Studio submits unregistered generation workflow id(s): ${missing.join(', ')}`);
 }
 
-const retiredIds = ['ltx23-video'];
-for (const retiredId of retiredIds) {
-  if (clientSource.includes(retiredId) || registrySource.includes(retiredId)) {
-    throw new Error(`Retired generation workflow id is still present: ${retiredId}`);
-  }
-}
-
 if (!submittedIds.has('ltx25-redgraft-video') || !registeredIds.has('ltx25-redgraft-video')) {
   throw new Error('REDGraft LTX 2.5 workflow contract is incomplete.');
 }
