@@ -132,7 +132,7 @@
   .gallery-manager{flex-wrap:wrap;top:8px}
   .gallery-manager-spacer{display:none}
   .history-view .history-grid{grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}
-  .history-card .media-actions-overlay{height:46px;grid-template-columns:repeat(3,1fr);opacity:1;transform:none;pointer-events:auto}
+  .history-card .media-actions-overlay{height:46px;grid-template-columns:repeat(3,1fr);opacity:1;transform:none;pointer-events:auto;backdrop-filter:none}
   .history-card .media-action-desktop-download{display:none!important}
   .history-card .media-overflow-download{display:flex!important}
   .media-actions-popover{position:fixed;left:14px;right:14px;bottom:14px;width:auto;padding:8px;border-radius:14px;z-index:90}
