@@ -10,8 +10,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 4 — custom-picker keyboard behavior**
 
-- Status: `[~]` in progress
-- Working item: **04**
+- Status: `[x]` complete
+- Working item: **04 complete**
+- Next item: **05 — stored video poster thumbnails**
+- Gate: stop for user approval before starting Item 05.
 - Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
@@ -19,7 +21,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **01. Exact requested video duration after LTX 8n+1 padding.** Preserve model-required 8n+1 generation frames while clamping delivered video frames and trimming audio to the requested duration; validate 24/25/30 FPS with ffprobe. **Iteration 1 complete.**
 - [x] **02. Reduce per-card immediate actions, especially on mobile.** Desktop now exposes Favorite, Download, Open, and More; secondary actions live in More. Mobile exposes three touch-safe actions (Favorite, Open, More) and moves Download into the More surface. Delete is separated in the overflow surface. **Iteration 2 complete.**
 - [x] **03. Refactor MediaCard interaction semantics/accessibility.** Media frames are structural containers; each card now has one native primary button for open/select, selection uses `aria-pressed`, the visible checkbox is non-interactive/decorative, focus order starts with the primary media action, and nested button-like semantics are removed. **Iteration 3 complete.**
-- [~] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states. **Iteration 4 in progress.**
+- [x] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter/Space select, Escape close, focus return, clear `:focus-visible` states. **Iteration 4 complete.**
 
 ## P1 — core UX and architecture
 
@@ -95,3 +97,18 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Professional visual review: the full-frame focus ring is clearly visible, keyboard focus reveals the action bar, selection remains visually distinct through the card border/check indicator, and the focused selected card retains a separate inner focus boundary. No additional item-03 defects were found.
 - [x] Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on the validated Iteration 3 product head (`1503d40a1421a81e4c7b169edbfda0affc6e42d9`).
 - [x] Professional review result for item 03: complete. No new checklist item was required; broader typography/contrast tuning remains tracked under item 27.
+
+### Iteration 4 — custom-picker keyboard behavior
+
+- [x] Kept native button triggers while adding keyboard opening with Enter/Space and Arrow keys across Image resolution/aspect, Video resolution, Advanced custom listboxes, and the Video aspect/FPS controls.
+- [x] Added roving keyboard focus with Arrow navigation plus Home/End movement and Enter/Space selection for custom menu/listbox options.
+- [x] Added deterministic Escape handling with focus restoration to the originating trigger.
+- [x] Fixed nested Escape behavior in Advanced settings so Escape closes the active child picker first instead of also dismissing the parent Advanced panel.
+- [x] Made selection/Escape focus restoration synchronous where the trigger remains mounted, eliminating a cross-picker race where delayed focus from one picker could steal focus from the next picker and close it.
+- [x] Added clear 2px `:focus-visible` treatment for picker triggers and options without conflating keyboard focus with the selected state.
+- [x] Added deterministic Playwright coverage for open/navigation/select/Escape/focus-return behavior and focus-indicator strength across the shared Create pickers and dedicated Video output pickers.
+- [x] Final GitHub runner validation passed the build and the complete `visual:preview` suite in Studio Iteration 4 Keyboard Patch run `32669033886`; artifact `9500854358` contains all Create, Video, Gallery, desktop, and mobile screenshots with no page errors.
+- [x] Dedicated visual evidence: `02b-image-picker-keyboard-focus.png`, `03b-advanced-picker-keyboard-focus.png`, and `05f-video-picker-keyboard-focus.png`.
+- [x] Professional visual review confirmed the focus boundary is strong and consistent, selected state remains separately legible, menus stay within their established visual system, and no Iteration 4 layout regression was found.
+- [x] Validated product implementation commit: `9a09522d1c7dac4eed1fd4d6f4d5f4db78582a0f`.
+- [x] Professional review result for item 04: complete. Item 05 remains gated on user approval.
