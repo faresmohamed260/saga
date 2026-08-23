@@ -10,15 +10,16 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 3 — MediaCard interaction semantics and accessibility**
 
-- Status: `[~]` in progress
-- Working item: **03**
+- Status: `[x]` complete
+- Completed item: **03**
+- Next item: **04 — custom-picker keyboard behavior**
 - Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
 - [x] **01. Exact requested video duration after LTX 8n+1 padding.** Preserve model-required 8n+1 generation frames while clamping delivered video frames and trimming audio to the requested duration; validate 24/25/30 FPS with ffprobe. **Iteration 1 complete.**
 - [x] **02. Reduce per-card immediate actions, especially on mobile.** Desktop now exposes Favorite, Download, Open, and More; secondary actions live in More. Mobile exposes three touch-safe actions (Favorite, Open, More) and moves Download into the More surface. Delete is separated in the overflow surface. **Iteration 2 complete.**
-- [~] **03. Refactor MediaCard interaction semantics/accessibility.** Remove nested button-like semantics; use a dedicated primary preview button or explicit checkbox/select interaction, correct focus order, and accessible labels. **Iteration 3 in progress.**
+- [x] **03. Refactor MediaCard interaction semantics/accessibility.** Media frames are structural containers; each card now has one native primary button for open/select, selection uses `aria-pressed`, the visible checkbox is non-interactive/decorative, focus order starts with the primary media action, and nested button-like semantics are removed. **Iteration 3 complete.**
 - [ ] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states.
 
 ## P1 — core UX and architecture
@@ -80,3 +81,18 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Second professional visual review confirmed the mobile More surface now spans the viewport width, sits at the bottom with safe margins, exposes all secondary actions, and keeps Delete separated.
 - [x] Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on the final Iteration 2 product head (`2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`).
 - [x] Professional review result for item 02: no remaining action-density or touch-safety comments. Accessibility semantics remain intentionally tracked as item 03 rather than being folded into this iteration.
+
+### Iteration 3 — MediaCard interaction semantics and accessibility
+
+- [x] Removed `role="button"`/manual keyboard handlers from the structural `.media-frame` container.
+- [x] Added one native `.media-frame-primary` button per card as the first focusable control; native Enter/Space activation now drives open/select behavior.
+- [x] Browse mode exposes an accessible Open label without selection state; Manage mode exposes Select/Deselect labels plus `aria-pressed`.
+- [x] Converted the visible selection checkbox from a second interactive button into an `aria-hidden` visual indicator, so clicking the indicator still resolves to the full-frame primary selection control without duplicate tab stops.
+- [x] Replaced the redundant non-Gallery hover Open button with a decorative icon while preserving the primary full-frame native button.
+- [x] Added a visible 2px keyboard focus ring to the primary media action and retained action-overlay disclosure on `focus-within` so keyboard users can discover secondary actions.
+- [x] Added deterministic Playwright assertions for: no button-like frame role, no nested buttons, one native primary action per card, primary-first focus order, `:focus-visible` strength, browse/manage ARIA state, non-interactive selection indicators, and Enter/Space selection behavior on desktop/mobile.
+- [x] The first CI run exposed a test-timing issue rather than a product defect: the assertion checked the 160ms action-overlay fade only 50ms after focus left. The test was corrected to observe the completed transition rather than weakening the product behavior.
+- [x] Final Studio Visual Preview passed and generated the dedicated `10b-gallery-keyboard-focus.png` evidence plus desktop/mobile Manage screenshots.
+- [x] Professional visual review: the full-frame focus ring is clearly visible, keyboard focus reveals the action bar, selection remains visually distinct through the card border/check indicator, and the focused selected card retains a separate inner focus boundary. No additional item-03 defects were found.
+- [x] Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on the validated Iteration 3 product head (`1503d40a1421a81e4c7b169edbfda0affc6e42d9`).
+- [x] Professional review result for item 03: complete. No new checklist item was required; broader typography/contrast tuning remains tracked under item 27.
