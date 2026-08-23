@@ -7,10 +7,25 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function safeBoolean(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(text)) return true;
+  if (['0', 'false', 'no', 'off'].includes(text)) return false;
+  return fallback;
+}
+
 function getModalGatewayUrl() {
   return String(
     process.env.FLUX2_KLEIN_GATEWAY_URL ||
     'https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run',
+  ).replace(/\/$/, '');
+}
+
+function getLtx23GatewayUrl() {
+  return String(
+    process.env.LTX23_GATEWAY_URL ||
+    'https://faresmohamed260--saga-ltx23-gateway-web.modal.run',
   ).replace(/\/$/, '');
 }
 
@@ -29,6 +44,25 @@ function buildFluxForm(workflow, input) {
   form.append('steps', String(input.steps));
   form.append('cfg', String(input.cfg));
   form.append('megapixels', String(input.megapixels));
+  return form;
+}
+
+function buildLtx23Form(workflow, input) {
+  const form = new FormData();
+  const source = input.sources[0];
+  if (source) {
+    form.append(
+      'image_file',
+      new Blob([source.bytes], { type: source.contentType || 'image/png' }),
+      source.filename || 'input.png',
+    );
+  }
+  form.append('prompt', input.prompt);
+  form.append('negative_prompt', input.negativePrompt || workflow.defaults.negativePrompt);
+  form.append('seed', String(input.seed));
+  form.append('resolution', input.resolution);
+  form.append('duration_seconds', String(input.durationSeconds));
+  form.append('audio_enabled', String(input.audioEnabled));
   return form;
 }
 
@@ -83,7 +117,7 @@ function normalizeInput(workflow, rawInput) {
     throw error;
   }
 
-  return {
+  const normalized = {
     sources,
     prompt: prompt.slice(0, 2400),
     negativePrompt: String(rawInput.negativePrompt || workflow.defaults.negativePrompt).slice(0, 2000),
@@ -96,6 +130,34 @@ function normalizeInput(workflow, rawInput) {
       workflow.limits.maxMegapixels,
     ),
   };
+
+  if (workflow.kind === 'video') {
+    const allowedResolutions = workflow.limits.resolutions || [];
+    const requestedResolution = String(rawInput.resolution || workflow.defaults.resolution || '').trim();
+    if (!allowedResolutions.includes(requestedResolution)) {
+      const error = new Error(`Unsupported video resolution: ${requestedResolution || 'empty'}`);
+      error.statusCode = 400;
+      throw error;
+    }
+    normalized.resolution = requestedResolution;
+    normalized.durationSeconds = clamp(
+      Math.round(safeNumber(rawInput.durationSeconds, workflow.defaults.durationSeconds)),
+      workflow.limits.minDurationSeconds,
+      workflow.limits.maxDurationSeconds,
+    );
+    normalized.audioEnabled = safeBoolean(rawInput.audioEnabled, workflow.defaults.audioEnabled);
+  }
+
+  return normalized;
+}
+
+async function parseProviderError(response) {
+  let detail = '';
+  try {
+    const body = await response.json();
+    detail = body?.detail ? `: ${body.detail}` : body?.error ? `: ${body.error}` : '';
+  } catch {}
+  return detail;
 }
 
 async function submitModalFlux2Klein(workflow, input) {
@@ -104,11 +166,7 @@ async function submitModalFlux2Klein(workflow, input) {
     body: buildFluxForm(workflow, input),
   });
   if (!response.ok) {
-    let detail = '';
-    try {
-      const body = await response.json();
-      detail = body?.detail ? `: ${body.detail}` : '';
-    } catch {}
+    const detail = await parseProviderError(response);
     const error = new Error(`FLUX.2 provider submit failed (${response.status})${detail}`);
     error.statusCode = response.status >= 500 ? 502 : response.status;
     throw error;
@@ -122,6 +180,26 @@ async function submitModalFlux2Klein(workflow, input) {
   return { providerJobId: payload.call_id, provider: workflow.provider, status: payload.status || 'queued' };
 }
 
+async function submitModalLtx23(workflow, input) {
+  const response = await fetch(`${getLtx23GatewayUrl()}/jobs/video`, {
+    method: 'POST',
+    body: buildLtx23Form(workflow, input),
+  });
+  if (!response.ok) {
+    const detail = await parseProviderError(response);
+    const error = new Error(`LTX 2.3 provider submit failed (${response.status})${detail}`);
+    error.statusCode = response.status >= 500 ? 502 : response.status;
+    throw error;
+  }
+  const payload = await response.json();
+  if (!payload?.call_id) {
+    const error = new Error('LTX 2.3 provider did not return a call id');
+    error.statusCode = 502;
+    throw error;
+  }
+  return { providerJobId: payload.call_id, provider: workflow.provider, status: payload.status || 'queued' };
+}
+
 async function pollModalFlux2Klein(workflow, providerJobId) {
   const response = await fetch(`${getModalGatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
     method: 'GET',
@@ -129,11 +207,7 @@ async function pollModalFlux2Klein(workflow, providerJobId) {
   });
   if (response.status === 202) return { status: 'running', provider: workflow.provider };
   if (!response.ok) {
-    let detail = '';
-    try {
-      const body = await response.json();
-      detail = body?.detail ? `: ${body.detail}` : '';
-    } catch {}
+    const detail = await parseProviderError(response);
     const error = new Error(`FLUX.2 provider poll failed (${response.status})${detail}`);
     error.statusCode = response.status >= 500 ? 502 : response.status;
     throw error;
@@ -152,18 +226,40 @@ async function pollModalFlux2Klein(workflow, providerJobId) {
   };
 }
 
-async function cancelModalFlux2Klein(workflow, providerJobId) {
-  const response = await fetch(`${getModalGatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
+async function pollModalLtx23(workflow, providerJobId) {
+  const response = await fetch(`${getLtx23GatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
+    method: 'GET',
+    headers: { Accept: 'video/*, application/json' },
+  });
+  if (response.status === 202) return { status: 'running', provider: workflow.provider };
+  if (!response.ok) {
+    const detail = await parseProviderError(response);
+    const error = new Error(`LTX 2.3 provider poll failed (${response.status})${detail}`);
+    error.statusCode = response.status >= 500 ? 502 : response.status;
+    throw error;
+  }
+  const contentType = String(response.headers.get('content-type') || workflow.outputMimeType).split(';')[0].trim();
+  if (!contentType.startsWith('video/')) {
+    const error = new Error('Generation provider returned a non-video response');
+    error.statusCode = 502;
+    throw error;
+  }
+  return {
+    status: 'completed',
+    bytes: Buffer.from(await response.arrayBuffer()),
+    contentType,
+    provider: workflow.provider,
+  };
+}
+
+async function cancelProviderJob(gatewayUrl, providerLabel, workflow, providerJobId) {
+  const response = await fetch(`${gatewayUrl}/jobs/${encodeURIComponent(providerJobId)}`, {
     method: 'DELETE',
     headers: { Accept: 'application/json' },
   });
   if (!response.ok) {
-    let detail = '';
-    try {
-      const body = await response.json();
-      detail = body?.detail ? `: ${body.detail}` : '';
-    } catch {}
-    const error = new Error(`FLUX.2 provider cancel failed (${response.status})${detail}`);
+    const detail = await parseProviderError(response);
+    const error = new Error(`${providerLabel} provider cancel failed (${response.status})${detail}`);
     error.statusCode = response.status >= 500 ? 502 : response.status;
     throw error;
   }
@@ -173,6 +269,7 @@ async function cancelModalFlux2Klein(workflow, providerJobId) {
 export async function submitWorkflow(workflow, rawInput) {
   const normalized = normalizeInput(workflow, rawInput);
   if (workflow.provider === 'modal-flux2-klein') return submitModalFlux2Klein(workflow, normalized);
+  if (workflow.provider === 'modal-ltx23') return submitModalLtx23(workflow, normalized);
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
@@ -190,6 +287,7 @@ export async function pollWorkflow(workflow, providerJobId) {
     throw error;
   }
   if (workflow.provider === 'modal-flux2-klein') return pollModalFlux2Klein(workflow, providerJobId);
+  if (workflow.provider === 'modal-ltx23') return pollModalLtx23(workflow, providerJobId);
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
@@ -202,7 +300,12 @@ export async function cancelWorkflow(workflow, providerJobId) {
     throw error;
   }
   if (!providerJobId) return { status: 'cancelled', provider: workflow.provider };
-  if (workflow.provider === 'modal-flux2-klein') return cancelModalFlux2Klein(workflow, providerJobId);
+  if (workflow.provider === 'modal-flux2-klein') {
+    return cancelProviderJob(getModalGatewayUrl(), 'FLUX.2', workflow, providerJobId);
+  }
+  if (workflow.provider === 'modal-ltx23') {
+    return cancelProviderJob(getLtx23GatewayUrl(), 'LTX 2.3', workflow, providerJobId);
+  }
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
