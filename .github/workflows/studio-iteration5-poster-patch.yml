@@ -99,15 +99,28 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Commit validated iteration 5 changes and remove temporary patch machinery
+      - name: Commit validated iteration 5 product changes
         shell: bash
         run: |
           set -euo pipefail
+          # Workflow files are updated separately through the GitHub connector because
+          # the Actions token cannot push workflow modifications without workflow scope.
+          git restore --source=HEAD -- .github/workflows/studio-ci.yml .github/workflows/test-ltx23-modal01.yml
+          rm -rf apps/studio/visual-preview
+          rm -f apps/studio/package-lock.json
           rm -f apps/studio/scripts/iteration5_poster_patch.py
-          rm -f .github/workflows/studio-iteration5-poster-patch.yml
-          git add -A
+          git add integrations/comfyui/ltx23_app.py \
+                  integrations/comfyui/ltx23_gateway.py \
+                  apps/studio/api/_providers.js \
+                  apps/studio/api/_result-persistence.js \
+                  apps/studio/api/generate/result.js \
+                  apps/studio/src/components/MediaCard.jsx \
+                  apps/studio/scripts/capture-gallery-preview.mjs \
+                  apps/studio/scripts/check-video-poster-contract.mjs \
+                  apps/studio/scripts/iteration5_poster_patch.py \
+                  apps/studio/package.json
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "No product changes to commit"
             exit 1
           fi
           git config user.name "github-actions[bot]"
