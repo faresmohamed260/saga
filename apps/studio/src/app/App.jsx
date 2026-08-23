@@ -30,16 +30,7 @@ const samples = [
   { id: 4, title: 'Future city', url: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=1200&q=85' },
 ];
 
-const navPrimary = [[WandSparkles, 'Create'], [LoaderCircle, 'Jobs'], [History, 'History'], [Heart, 'Favorites'], [Folder, 'Collections']];
-const navSecondary = [[Box, 'Models'], [Workflow, 'Workflows']];
-
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
-function formatJobTime(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
-}
-
 function toHistoryItem(row) {
   const previewUrl = row.thumbnail_url || (row.kind === 'image' ? row.media_url : '');
   return {
@@ -88,10 +79,6 @@ function autoReferenceSizing(reference) {
     detail: `≈ ${targetWidth} × ${targetHeight} · ${megapixels.toFixed(2)} MP`,
     ratioLabel: `${Math.round(width / divisor)}:${Math.round(height / divisor)} from Image 1`,
   };
-}
-
-function NavItem({ icon: Icon, label, active, onClick }) {
-  return <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}><Icon size={19} strokeWidth={1.8}/><span>{label}</span></button>;
 }
 
 export default function App() {
