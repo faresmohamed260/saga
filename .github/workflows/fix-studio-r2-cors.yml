@@ -48,17 +48,14 @@ jobs:
                   raise RuntimeError('missing-required-r2-secret')
               endpoint = f'https://{account}.r2.cloudflarestorage.com'
 
+              stage = 'create-client'
               s3 = boto3.client(
                   's3',
                   endpoint_url=endpoint,
                   aws_access_key_id=access,
                   aws_secret_access_key=secret,
                   region_name='auto',
-                  config=Config(
-                      signature_version='s3v4',
-                      request_checksum_calculation='when_required',
-                      response_checksum_validation='when_required',
-                  ),
+                  config=Config(signature_version='s3v4'),
               )
 
               stage = 'read-existing-cors'
