@@ -340,6 +340,7 @@ def _workflow(
     duration_seconds: int,
     audio_enabled: bool,
     source_name: str | None,
+    output_token: str,
 ) -> dict[str, Any]:
     target_width, target_height = RESOLUTIONS[resolution]
     low_width, low_height = target_width // 2, target_height // 2
@@ -434,7 +435,7 @@ def _workflow(
             "class_type": "SaveVideo",
             "inputs": {
                 "video": ["32", 0],
-                "filename_prefix": "saga/ltx25-redgraft",
+                "filename_prefix": f"saga/ltx25-redgraft-{output_token}",
                 "format": "auto",
                 "codec": "auto",
             },
@@ -487,19 +488,59 @@ def _workflow(
     return graph
 
 
-def _find_new_video(started_at: float) -> Path:
-    candidates = [
-        path
+def _history_video_paths(history_item: dict[str, Any] | None) -> list[Path]:
+    video_suffixes = {".mp4", ".webm", ".mov", ".mkv"}
+    found: list[Path] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            filename = value.get("filename")
+            if isinstance(filename, str) and Path(filename).suffix.lower() in video_suffixes:
+                subfolder = value.get("subfolder") or ""
+                folder_type = str(value.get("type") or value.get("folder_type") or "output").lower()
+                if folder_type in {"output", "temp"}:
+                    root = OUTPUT_DIR if folder_type == "output" else COMFY_DIR / "temp"
+                    found.append(root / str(subfolder) / filename)
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                visit(child)
+
+    if history_item:
+        visit(history_item.get("outputs") or {})
+    return found
+
+
+def _find_new_video(started_at: float, history_item: dict[str, Any] | None = None, timeout: int = 30) -> Path:
+    video_suffixes = {".mp4", ".webm", ".mov", ".mkv"}
+    deadline = time.time() + timeout
+    history_paths = _history_video_paths(history_item)
+
+    while time.time() < deadline:
+        for path in history_paths:
+            if path.is_file() and path.stat().st_size > 0:
+                return path
+
+        candidates = [
+            path
+            for path in OUTPUT_DIR.rglob("*")
+            if path.is_file()
+            and path.suffix.lower() in video_suffixes
+            and path.stat().st_mtime >= started_at - 2
+        ]
+        if candidates:
+            return max(candidates, key=lambda path: path.stat().st_mtime)
+        time.sleep(0.5)
+
+    summary = [
+        (str(path), path.stat().st_size, path.stat().st_mtime)
         for path in OUTPUT_DIR.rglob("*")
-        if path.is_file() and path.stat().st_mtime >= started_at - 1
-    ]
-    video_files = [
-        path for path in candidates if path.suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}
-    ]
-    if not video_files:
-        summary = [(str(path), path.stat().st_size) for path in candidates[-20:]]
-        raise RuntimeError(f"ComfyUI completed but no video output was found; files={summary}")
-    return max(video_files, key=lambda path: path.stat().st_mtime)
+        if path.is_file()
+    ][-20:]
+    raise RuntimeError(
+        f"ComfyUI completed but no video output was found; history_paths={[str(path) for path in history_paths]}; files={summary}"
+    )
 
 
 @app.function(
@@ -628,6 +669,7 @@ class LTX25Worker:
             raise ValueError("duration_seconds must be between 5 and 30")
 
         source_name = _upload_image(source_image) if source_image else None
+        output_token = uuid.uuid4().hex[:12]
         graph = _workflow(
             prompt=prompt,
             seed=int(seed),
@@ -635,6 +677,7 @@ class LTX25Worker:
             duration_seconds=int(duration_seconds),
             audio_enabled=bool(audio_enabled),
             source_name=source_name,
+            output_token=output_token,
         )
         started_at = time.time()
         client_id = str(uuid.uuid4())
@@ -657,7 +700,7 @@ class LTX25Worker:
                         f"ComfyUI REDGraft LTX 2.5 execution failed: {json.dumps(status)[:7000]}"
                     )
                 if status.get("completed") is True:
-                    video_path = _find_new_video(started_at)
+                    video_path = _find_new_video(started_at, item)
                     return video_path.read_bytes()
             time.sleep(2)
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")
