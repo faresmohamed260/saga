@@ -36,7 +36,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ### P0 — correctness, interaction safety, accessibility
 
-- [~] **01. Exact requested video duration after LTX 8n+1 padding.** Pass `duration_seconds` to delivery finalization, trim the delivery encode to the requested duration, and assert duration with ffprobe across representative FPS values. **Iteration 1.**
+- [x] **01. Exact requested video duration after LTX 8n+1 padding.** Preserve model-required 8n+1 generation frames while clamping delivered video frames and trimming audio to the requested duration; validate 24/25/30 FPS with ffprobe. **Iteration 1 complete.**
 - [ ] **02. Reduce per-card immediate actions, especially on mobile.** Desktop should expose only high-frequency actions plus an overflow menu; mobile should use touch-safe primary actions and a `More` sheet/menu. Delete must not sit beside routine actions.
 - [ ] **03. Refactor MediaCard interaction semantics/accessibility.** Remove nested button-like semantics; use a dedicated primary preview button or explicit checkbox/select interaction, correct focus order, and accessible labels.
 - [ ] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states.
@@ -81,6 +81,30 @@ The current implementation is a credible product direction rather than a broken 
 
 ### Iteration 1 — exact video delivery duration
 
-**Status:** in progress.
+**Status:** complete.
 
-Goal: preserve LTX-required 8n+1 frame padding internally while making the delivered MP4 match the user's requested duration exactly (within a strict ffprobe tolerance), then rerun CI + visual preview and inspect for regressions.
+**Goal:** preserve LTX-required 8n+1 frame padding internally while making the delivered MP4 match the user's requested duration exactly.
+
+**Implementation:**
+- Kept the 8n+1 internal frame-count contract required by LTX.
+- Passed `duration_seconds` through the delivery finalizer.
+- The first implementation used ffmpeg `-t`, but the real 25 FPS generated-audio smoke exposed a 5.160000-second delivery for a requested 5 seconds. The test was not loosened.
+- Replaced the insufficient `-t` approach with explicit delivered-frame clamping (`duration_seconds × frame_rate`) plus audio `atrim`/PTS reset. This keeps the internal latent sequence valid while enforcing the external delivery contract.
+- Expanded the live Modal smoke coverage to representative 24, 25, and 30 FPS paths, including generated audio and gateway image-to-video.
+
+**Validated delivery results:**
+- 24 FPS text-to-video, muted: **5.000000 s**, H.264, 854×480.
+- 25 FPS text-to-video with generated AAC audio: **5.000000 s**, H.264 + AAC, 854×480.
+- 30 FPS gateway image-to-video, muted: **5.000000 s**, H.264, 854×480.
+
+**Validation status:**
+- REDGraft LTX 2.5 Modal validate job: passed.
+- Live R2 + Supabase persistence job: passed.
+- Studio CI: passed.
+- Studio Visual Preview: passed.
+- Backend Architecture CI: passed.
+- Required Check Compatibility: passed.
+
+**Visual review:** this was deliberately a backend correctness iteration. The latest GitHub-rendered Create, generation-progress, desktop Gallery, and mobile Gallery-manager screenshots were inspected. No visual/layout regression was introduced.
+
+**Professional review result:** P0 duration correctness is resolved. The implementation now separates the model's internal temporal constraint from the user's delivery contract, which is the correct architecture. No new visual issues were introduced by this change. The next highest-priority unresolved item is **02 — reduce per-card action density and improve mobile touch safety**.
