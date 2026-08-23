@@ -29,7 +29,7 @@ jobs:
       - name: Apply iteration 4 source and test changes
         run: python apps/studio/scripts/iteration4_keyboard_patch.py
 
-      - name: Harden nested picker Escape and asynchronous focus assertions
+      - name: Harden nested picker Escape, focus restoration, and async assertions
         shell: bash
         run: |
           python - <<'PY'
@@ -44,7 +44,7 @@ jobs:
           )
           text = text.replace(
               "      if (event.key !== 'Escape') return;\n      event.preventDefault();\n      event.stopPropagation();\n      close();\n      requestAnimationFrame(() => returnFocusRef?.current?.focus());",
-              "      if (event.key !== 'Escape') return;\n      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\\\"true\\\"]'))) return;\n      event.preventDefault();\n      event.stopPropagation();\n      close();\n      requestAnimationFrame(() => returnFocusRef?.current?.focus());",
+              "      if (event.key !== 'Escape') return;\n      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\\\"true\\\"]'))) return;\n      event.preventDefault();\n      event.stopPropagation();\n      close();\n      returnFocusRef?.current?.focus();",
               1,
           )
           text = text.replace(
@@ -57,7 +57,15 @@ jobs:
               '  useOutsideDismiss(open, [anchorRef, panelRef], onClose, anchorRef, true);',
               1,
           )
+          text = text.replace('requestAnimationFrame(() => triggerRef.current?.focus());', 'triggerRef.current?.focus();')
+          text = text.replace('requestAnimationFrame(() => anchorRef.current?.focus());', 'anchorRef.current?.focus();')
           controls.write_text(text)
+
+          video_controls = Path('apps/studio/src/features/create/VideoGenerationControls.jsx')
+          text = video_controls.read_text()
+          text = text.replace('requestAnimationFrame(() => returnFocusRef?.current?.focus());', 'returnFocusRef?.current?.focus();')
+          text = text.replace('requestAnimationFrame(() => triggerRef.current?.focus());', 'triggerRef.current?.focus();')
+          video_controls.write_text(text)
 
           ui = Path('apps/studio/scripts/capture-ui-preview.mjs')
           text = ui.read_text()
