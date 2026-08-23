@@ -47,7 +47,7 @@ jobs:
               if relative.endswith('create-controls.jsx'):
                   text = text.replace(
                       "const timer = window.setTimeout(() => refs.current[activeIndex]?.focus(), 40);\n    return () => window.clearTimeout(timer);",
-                      "const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);",
+                      "const timer = window.setTimeout(() => refs.current[activeIndex]?.focus(), 0);\n    return () => window.clearTimeout(timer);",
                   )
               path.write_text(text)
 
