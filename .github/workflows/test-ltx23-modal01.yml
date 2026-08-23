@@ -9,7 +9,7 @@ on:
       - "apps/studio/api/_result-persistence.js"
       - ".github/workflows/test-ltx23-modal01.yml"
   push:
-    branches: [studio/ltx23-video-backend]
+    branches: [studio/ltx25-redgraft-video-backend]
     paths:
       - "integrations/comfyui/ltx23_app.py"
       - "integrations/comfyui/ltx23_gateway.py"

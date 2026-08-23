@@ -221,7 +221,7 @@ export async function submitVideoGeneration({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      workflowId: 'ltx23-video',
+      workflowId: 'ltx25-redgraft-video',
       sourceKeys: uploaded ? [uploaded.key] : [],
       sourceFilenames: uploaded ? [uploaded.filename] : [],
       sourceContentTypes: uploaded ? [uploaded.contentType] : [],

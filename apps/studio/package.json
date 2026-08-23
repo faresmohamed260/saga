@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/check-workflow-contract.mjs && vite build",
     "preview": "vite preview",
     "visual:preview": "node scripts/capture-ui-preview.mjs"
   },
