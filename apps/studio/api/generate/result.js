@@ -1,6 +1,6 @@
 import { getGenerationJob, isUuid, transitionGenerationJob } from '../_generation-jobs.js';
 import { pollWorkflow } from '../_providers.js';
-import { persistImageJobResult } from '../_result-persistence.js';
+import { persistImageJobResult, persistVideoJobResult } from '../_result-persistence.js';
 import { getWorkflow } from '../_workflows.js';
 
 export const config = { maxDuration: 30 };
@@ -23,6 +23,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         status: 'completed',
         persisted: true,
+        kind: job.kind || null,
         generationId: job.id,
         mediaUrl: job.media_url,
         thumbnailUrl: job.thumbnail_url || null,
@@ -36,10 +37,14 @@ export default async function handler(req, res) {
     const result = await pollWorkflow(workflow, job.provider_job_id);
     if (result.status !== 'completed') return res.status(202).json({ status: 'running' });
 
-    const completed = await persistImageJobResult(job, result.bytes, result.contentType || workflow.outputMimeType);
+    const contentType = result.contentType || workflow.outputMimeType;
+    const completed = workflow.kind === 'video'
+      ? await persistVideoJobResult(job, result.bytes, contentType)
+      : await persistImageJobResult(job, result.bytes, contentType);
     return res.status(200).json({
       status: 'completed',
       persisted: true,
+      kind: workflow.kind,
       generationId: completed.id,
       mediaUrl: completed.media_url,
       thumbnailUrl: completed.thumbnail_url || null,
