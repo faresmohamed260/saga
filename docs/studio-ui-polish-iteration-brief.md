@@ -11,11 +11,11 @@ The **canonical checklist** is stored separately at [`docs/studio-ui-polish-chec
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–06**.
-- Next item: **07 — merge Auto + aspect ratio into one clear Aspect control**.
-- Do not begin Item 07 until the user says **continue**.
+- Completed checklist items: **01–07**.
+- Next item: **08 — unify Image and Video aspect selection into one reusable `AspectPicker`**.
+- Do not begin Item 08 until the user says **continue**.
 - Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 6. Final refinement run `32671818722` passed the deferred-preview contract, build, and full visual suite; artifact `9501593078` was professionally reviewed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.
+- Latest completed item is Iteration 7. Refinement run `32673600494` passed source validation, the poster/deferred-preview contract, build, and the full visual suite; artifact `9502051993` was professionally reviewed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.
 
 ## Non-negotiable process
 
@@ -49,7 +49,7 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes clearer Auto/aspect controls, shared aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes shared Image/Video aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
 
 ## Iteration log
 
@@ -122,3 +122,17 @@ The implementation is now a coherent product direction rather than a broken prot
 **Visual review:** static poster state, hover-preview state, reduced-motion state, and touch/mobile Gallery all preserve the established grid, action overlays, focus treatment, and mobile action geometry. No new Item 06 visual defect remains.
 
 **Validation:** final refinement run `32671818722` passed source validation, `npm run test:poster`, Studio build, the full Playwright visual suite, and artifact upload (`9501593078`). Product refinement commit `c7ba940865eba1be07c23f2b09b6a78a051c2b92`. No Gallery page errors were recorded. Item 07 is next and remains gated on explicit user approval.
+
+### Iteration 7 — unified Video Aspect control
+
+**Status:** complete.
+
+**Implementation:** replaced the separate Video Auto toggle plus ratio picker with one Aspect picker. Its trigger communicates automatic/manual mode and the effective ratio directly, including full reference provenance (`Aspect · Auto 4:3 · From reference`). The menu places Auto alongside the manual ratio choices; Auto follows the first reference when present and falls back to 16:9, while any explicit ratio switches to manual mode. Existing persistence and generation payload semantics remain unchanged.
+
+**Deterministic coverage:** the Video-output Playwright suite now rejects any separate Auto button, requires exactly Aspect + FPS extra controls, verifies default Auto selection, keyboard navigation to manual 9:16, returning to Auto through the same menu, reference-derived 4:3 state, 16:9 fallback after reference removal, complete desktop option visibility, mobile trigger containment, and mobile menu viewport containment.
+
+**Professional review cycle:** the first visual review accepted the combined-control direction but rejected two details: `Ref` was too abbreviated for a primary state label, and the new Auto row pushed `21:9 Cinematic` partly behind the desktop menu scroll boundary. The refinement uses the full `From reference` wording and a desktop-only Aspect-menu height that exposes all twelve choices without scrolling while preserving the viewport-safe mobile cap.
+
+**Visual review:** the final desktop trigger/menu, reference-derived state, keyboard-focus state, and 390px mobile state were inspected. The control reads as one coherent setting, reference provenance is explicit, all desktop choices are visible, and mobile layout remains unclipped. No additional Item 07 defect remains.
+
+**Validation:** dedicated refinement run `32673600494` passed source formatting, `npm run test:poster`, Studio build, the full `visual:preview` suite, and artifact upload (`9502051993`). Refined product head `93c4f7005ee651778775fb217892558487c1ede3`. Item 08 is next and remains gated on explicit user approval.

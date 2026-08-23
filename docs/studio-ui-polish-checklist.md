@@ -10,9 +10,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 7 — unified Video Aspect control**
 
-- Status: `[~]` in progress
-- Working item: **07**
-- Rule: replace the separate Auto + ratio controls with one explicit Aspect control that exposes automatic/manual mode, effective ratio, and reference provenance; preserve keyboard behavior and validate desktop/mobile GitHub visual previews before completion.
+- Status: `[x]` complete
+- Completed item: **07**
+- Next item: **08 — unify Image and Video aspect selection into one reusable `AspectPicker`**
+- Rule: do not start Item 08 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -25,7 +26,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 - [x] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Completed videos now expose a server-side poster through the Modal gateway; Studio converts it to the standard 512px WebP thumbnail, persists it in R2/Supabase, and Gallery displays the stored poster first with `preload="none"`. **Iteration 5 complete.**
 - [x] **06. Lazy-load Gallery hover video previews.** Poster-backed Gallery videos defer MP4 `src` until an in-view desktop fine-pointer hover or keyboard-focus preview is eligible; leaving intent pauses/detaches the source, reduced-motion and touch stay poster-only, and legacy thumbnail-less rows only attach their metadata fallback while visible. **Iteration 6 complete.**
-- [~] **07. Merge Auto + aspect ratio into one clear Aspect control.** Example states: `Aspect · Auto 16:9`, `Aspect · Auto 4:3 · From reference`, or manual ratio. **Iteration 7 in progress.**
+- [x] **07. Merge Auto + aspect ratio into one clear Aspect control.** Video now exposes one Aspect picker that combines Auto/manual mode, effective ratio, and reference provenance in a single trigger/menu while preserving keyboard behavior. **Iteration 7 complete.**
 - [ ] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator.
 - [ ] **09. Standardize resolution terminology and expose actual delivery dimensions.** Prefer `1080p` over `Full HD`; show context such as `1920×1080 at 16:9` or `1080×1920 at 9:16`.
 - [ ] **10. Strengthen the Generate primary action.** Make Generate read clearly as the principal verb/action on desktop while retaining a compact mobile treatment.
@@ -140,3 +141,17 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Final deterministic contract, build, and visual-preview suite passed in refinement run `32671818722`; artifact `9501593078` contains the final Gallery evidence with no Gallery page errors.
 - [x] Final professional visual review found no sizing, clipping, action, focus, reduced-motion, or mobile regression.
 - [x] Professional review result for Item 06: complete. No new checklist item required. **Item 07 is next and remains gated on user approval.**
+
+### Iteration 7 — unified Video Aspect control
+
+- [x] Removed the separate Video `Auto` button; Video output now exposes only a unified Aspect picker plus FPS in the extra-controls group.
+- [x] Unified trigger states communicate mode and effective value directly: `Aspect · Auto 16:9`, `Aspect · Auto 4:3 · From reference`, and manual states such as `Aspect · 9:16`.
+- [x] Auto is the first radio option inside the same Aspect menu; choosing it restores reference-following behavior, while choosing any ratio switches to manual mode.
+- [x] Preserved the existing exact reduced reference ratio, 16:9 fallback, persisted settings, generated `videoAspectMode`, and Item 04 keyboard contract (Arrow navigation, Home/End, Enter/Space, Escape, focus return).
+- [x] Added deterministic assertions that no separate Auto control remains, Aspect + FPS are the only Video extra controls, Auto is selected by default, manual selection exits Auto, reference provenance is visible, mobile layout is not clipped, and the mobile Aspect menu stays inside the viewport.
+- [x] First professional visual review found two Item 07 issues: the trigger abbreviated reference provenance as `Ref`, and adding Auto made the final `21:9 Cinematic` option partially hidden behind the desktop menu scroll boundary.
+- [x] Refinement changed the visible state to the full `From reference` wording and gave the desktop Aspect menu enough height to show all twelve choices without scrolling; mobile retains viewport-safe scrolling.
+- [x] Initial implementation/review run `32673410326` passed and produced artifact `9502002385`; refinement run `32673600494` passed source validation, poster/deferred-preview contract, build, full visual suite, and artifact upload `9502051993`.
+- [x] Final professional visual review confirmed the unified control is clearer, all desktop Aspect choices are visible, reference provenance is explicit, keyboard focus remains strong, and the mobile control/menu geometry is not clipped.
+- [x] Refined product head: `93c4f7005ee651778775fb217892558487c1ede3`.
+- [x] Professional review result for Item 07: complete. No new checklist item required. **Item 08 is next and remains gated on user approval.**
