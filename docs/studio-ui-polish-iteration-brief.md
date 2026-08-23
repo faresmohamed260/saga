@@ -21,12 +21,13 @@ The **canonical checklist** is stored separately at [`docs/studio-ui-polish-chec
    - run GitHub CI and the GitHub Studio Visual Preview workflow;
    - inspect the generated screenshots/artifacts, not just workflow status;
    - act as a professional web developer/product UX reviewer and critique the result;
-   - record any newly discovered issue as a new checklist item;
+   - if the visual/professional review finds an issue in the current item, improve it and repeat the review before closing the iteration;
+   - record any newly discovered out-of-scope issue as a new checklist item;
    - update the canonical checklist and this iteration log on GitHub;
    - **stop after the iteration** and report to the user what changed, what the professional review found, the updated checklist, CI status, and visual evidence. Wait for the user to say continue or stop.
 6. Every iteration must provide visual feedback. If the iteration is backend-only, still inspect and provide a current visual-regression screenshot to prove no UI regression, and explicitly state that no deliberate visual change was expected.
 7. Do not call an iteration complete merely because tests pass. The visual artifact must be inspected by the professional reviewer.
-8. Continue the implementation → visual review → professional critique → checklist update cycle until the professional reviewer has no remaining comments or suggestions, or the user stops the process.
+8. Continue the implementation → visual review → professional critique → improvement cycle inside the current checklist item until that item has no remaining actionable comments; then close the iteration and wait for the user.
 9. Favor reusable components, explicit state/data flow, accessibility, performance, and maintainability over one-off CSS/DOM patches.
 10. Do not silently weaken tests to make them pass. If a visual or correctness test exposes a real problem, fix the product.
 11. Before starting a new session or iteration, read this brief and the canonical checklist from the branch so the process cannot drift.
@@ -53,6 +54,14 @@ The current implementation is a credible product direction rather than a broken 
 
 ### Iteration 2 — Gallery action density and mobile touch safety
 
-**Status:** in progress.
+**Status:** complete.
 
-**Goal:** reduce seven immediate Gallery actions into a small set of high-frequency controls plus a clear `More` surface; keep destructive actions separated from routine actions; make mobile actions visible without hover and meet touch-target expectations. Deterministic visual assertions must cover desktop action count, overflow placement, destructive-action separation, and mobile touch target sizing.
+**Implementation:** reduced desktop per-card immediate actions from seven to four: Favorite, Download, Open, and More. Reuse, Edit, Add/Remove collection, and Delete moved into the More menu. Mobile now shows only Favorite, Open, and More as immediate actions; Download moves into More. Mobile action targets are at least 44px and are visible without hover. Delete is separated from routine actions and styled as destructive in overflow.
+
+**Deterministic checks:** visual-preview assertions now verify four visible desktop primary actions, three visible mobile primary actions, no immediate Delete action, expected More contents, and minimum mobile touch-target size.
+
+**Professional review cycle:** the first visual review found that the initial mobile More implementation was clipped by the card/overlay containing block, so only the lower overflow actions were visibly usable. That implementation was not accepted. The mobile overlay backdrop-filter was removed as a containing block, allowing the fixed More surface to span the viewport. A second GitHub visual-preview run was inspected and confirmed the More surface now renders at full mobile width with safe margins, all secondary actions visible, and Delete separated.
+
+**Validation:** Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on the final Iteration 2 product head `2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`. The REDGraft Modal smoke is unrelated to this UI-only item and continued independently on the PR.
+
+**Professional review:** no remaining action-density or mobile touch-safety comments for item 02. The next highest-priority item is **03 — refactor MediaCard interaction semantics/accessibility**. That remains separate so accessibility work is handled deliberately rather than mixed into the visual-density pass.
