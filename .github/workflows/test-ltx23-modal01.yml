@@ -115,8 +115,7 @@ jobs:
               "ConditioningZeroOut", "LTXVEmptyLatentAudio", "LTXVConcatAVLatent",
               "LTXVSeparateAVLatent", "LTXVConditioning", "LTXVCropGuides",
               "LTXVLatentUpsampler", "LTXVImgToVideoInplace", "LTXVPreprocess",
-              "LTXVAudioVAEDecode", "LoadImage", "LatentUpscaleBy", "ImageScale",
-              "CreateVideo", "SaveVideo",
+              "LatentUpscaleBy", "ImageScale", "CreateVideo", "SaveVideo",
           ]
           missing = [name for name in required if not info.get(name)]
           if missing:
