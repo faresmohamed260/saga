@@ -11,11 +11,11 @@ The **canonical checklist** is stored separately at [`docs/studio-ui-polish-chec
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–05**.
-- Next item: **06 — lazy-load Gallery hover video previews**.
-- Do not begin Item 06 until the user says **continue**.
+- Completed checklist items: **01–06**.
+- Next item: **07 — merge Auto + aspect ratio into one clear Aspect control**.
+- Do not begin Item 07 until the user says **continue**.
 - Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 5. Its final product review passed Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility. The REDGraft Modal smoke is externally blocked because the configured Modal workspace is disabled.
+- Latest completed item is Iteration 6. Final refinement run `32671818722` passed the deferred-preview contract, build, and full visual suite; artifact `9501593078` was professionally reviewed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.
 
 ## Non-negotiable process
 
@@ -49,7 +49,7 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes true lazy/deferred video preview loading, clearer Auto/aspect controls, shared aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes clearer Auto/aspect controls, shared aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
 
 ## Iteration log
 
@@ -108,3 +108,17 @@ The implementation is now a coherent product direction rather than a broken prot
 **Validation:** Required Check Compatibility, Studio CI (including the poster contract), Studio Visual Preview, and Backend Architecture CI passed on reviewed head `44e6f5df0e5e8d97a021078f0d31e21d431a8a81`. The REDGraft live Modal smoke deployed the runtime but failed at the subsequent prefetch invocation because Modal returned `ConflictError: workspace ... is disabled`; runtime/gateway rendering and live poster/R2 persistence therefore could not execute. Treat this as an external validation blocker and rerun live coverage when the workspace is enabled.
 
 **Professional review:** Item 05 has no remaining actionable comments. The next iteration is **Item 06 — lazy-load Gallery hover video previews**, gated on explicit user approval.
+
+### Iteration 6 — lazy/deferred Gallery video previews
+
+**Status:** complete.
+
+**Implementation:** poster-backed Gallery videos now render only their stored poster until an eligible preview is requested. The MP4 `src` is attached only for visible Gallery videos when desktop fine-pointer hover or keyboard focus expresses preview intent; the video is muted, inline, and looping, and is paused/detached when intent or visibility leaves. `IntersectionObserver` gates preview activity, reduced-motion users remain poster-only, and legacy rows without a stored poster only attach their metadata fallback while visible.
+
+**Deterministic coverage:** Gallery Playwright verifies initial `src` absence, keyboard-focus attach/detach, hover activation, reduced-motion suppression, and true touch-emulated suppression (`hasTouch: true`, `isMobile: true`). `test:poster` also guards the deferred-source contract and the final input-modality implementation.
+
+**Professional review cycle:** the first validation run exposed a stale poster-contract assertion that still expected the old preload expression; the contract was updated to match the new deferred behavior. The first professional source review then rejected a `window.innerWidth > 640` gate because narrow desktop windows are not touch devices. The final refinement uses only `(hover: hover) and (pointer: fine)` and validates a genuinely touch-emulated page. The refined visual suite passed and was inspected.
+
+**Visual review:** static poster state, hover-preview state, reduced-motion state, and touch/mobile Gallery all preserve the established grid, action overlays, focus treatment, and mobile action geometry. No new Item 06 visual defect remains.
+
+**Validation:** final refinement run `32671818722` passed source validation, `npm run test:poster`, Studio build, the full Playwright visual suite, and artifact upload (`9501593078`). Product refinement commit `c7ba940865eba1be07c23f2b09b6a78a051c2b92`. No Gallery page errors were recorded. Item 07 is next and remains gated on explicit user approval.

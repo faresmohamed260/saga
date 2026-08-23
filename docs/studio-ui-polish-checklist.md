@@ -10,9 +10,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 6 — lazy/deferred Gallery video previews**
 
-- Status: `[~]` in progress
-- Working item: **06**
-- Rule: defer poster-backed video sources until eligible hover/keyboard-preview intent while visible; keep reduced-motion and touch layouts static; validate with GitHub CI/visual preview and professional screenshot review before completion.
+- Status: `[x]` complete
+- Completed item: **06**
+- Next item: **07 — merge Auto + aspect ratio into one clear Aspect control**
+- Rule: do not start Item 07 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -24,7 +25,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 ## P1 — core UX and architecture
 
 - [x] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Completed videos now expose a server-side poster through the Modal gateway; Studio converts it to the standard 512px WebP thumbnail, persists it in R2/Supabase, and Gallery displays the stored poster first with `preload="none"`. **Iteration 5 complete.**
-- [~] **06. Lazy-load Gallery hover video previews.** `preload="none"`/deferred `src`, attach/play on hover/focus/visibility, pause/detach appropriately, respect reduced motion and touch behavior. **Iteration 6 in progress.**
+- [x] **06. Lazy-load Gallery hover video previews.** Poster-backed Gallery videos defer MP4 `src` until an in-view desktop fine-pointer hover or keyboard-focus preview is eligible; leaving intent pauses/detaches the source, reduced-motion and touch stay poster-only, and legacy thumbnail-less rows only attach their metadata fallback while visible. **Iteration 6 complete.**
 - [ ] **07. Merge Auto + aspect ratio into one clear Aspect control.** Example states: `Aspect · Auto 16:9`, `Aspect · Auto 4:3 · From reference`, or manual ratio.
 - [ ] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator.
 - [ ] **09. Standardize resolution terminology and expose actual delivery dimensions.** Prefer `1080p` over `Full HD`; show context such as `1920×1080 at 16:9` or `1080×1920 at 9:16`.
@@ -126,3 +127,17 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Required Check Compatibility, Studio CI (including poster contract), Studio Visual Preview, and Backend Architecture CI all passed on the final reviewed product head.
 - [x] REDGraft live Modal smoke could not execute past prefetch because the configured Modal workspace is externally disabled (`modal.exception.ConflictError: workspace ... is disabled`). Runtime deployment succeeded before that rejection. This is recorded as an external validation blocker, not a product-code failure; live poster/R2 verification should be rerun when the workspace is re-enabled.
 - [x] Professional review result for item 05: complete. No remaining Item 05 comments. **Item 06 is next and remains gated on user approval.**
+
+### Iteration 6 — lazy/deferred Gallery video previews
+
+- [x] Poster-backed Gallery videos render stored posters with no MP4 `src` on initial load.
+- [x] In-view desktop fine-pointer hover and keyboard focus attach the source and start the muted looping preview; leaving hover/focus pauses and detaches it again.
+- [x] `IntersectionObserver` gates preview activity to visible/near-visible cards with a small viewport margin.
+- [x] Reduced-motion mode remains poster-only and never auto-attaches or plays the MP4.
+- [x] True Playwright touch emulation (`hasTouch: true`, `isMobile: true`) remains poster-only even when a synthetic mouseenter is dispatched.
+- [x] Legacy rows without stored posters retain the metadata/seek fallback, but only while visible.
+- [x] The first validation run exposed a stale poster-contract assertion that still expected the old exact preload expression; the contract was updated to assert the new deferred-source behavior rather than weakening the product.
+- [x] Professional source review rejected an initial `window.innerWidth > 640` hover gate because viewport width is not input modality. The final implementation uses `(hover: hover) and (pointer: fine)` directly and tests true touch emulation.
+- [x] Final deterministic contract, build, and visual-preview suite passed in refinement run `32671818722`; artifact `9501593078` contains the final Gallery evidence with no Gallery page errors.
+- [x] Final professional visual review found no sizing, clipping, action, focus, reduced-motion, or mobile regression.
+- [x] Professional review result for Item 06: complete. No new checklist item required. **Item 07 is next and remains gated on user approval.**
