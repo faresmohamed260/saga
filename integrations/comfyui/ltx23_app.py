@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import time
@@ -20,7 +21,8 @@ MODEL_ROOT = CACHE_DIR / "studio-models"
 OUTPUT_DIR = COMFY_DIR / "output"
 INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
-FPS = 24
+DEFAULT_FPS = 24
+FRAME_RATES = {24, 25, 30}
 GPU_TYPE = os.environ.get("MODAL_LTX25_GPU", "A10")
 
 CHECKPOINT = "REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors"
@@ -51,6 +53,7 @@ RESOLUTIONS: dict[str, tuple[int, int]] = {
     "4K": (3840, 2176),
 }
 ENABLED_RESOLUTIONS = {"480p", "720p", "1080p", "2K"}
+RESOLUTION_SHORT_EDGES = {"480p": 480, "720p": 720, "1080p": 1080, "2K": 1152, "4K": 2160}
 
 LOW_STAGE_SIGMAS = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 HIGH_STAGE_SIGMAS = "0.85, 0.7250, 0.4219, 0.0"
@@ -328,8 +331,45 @@ def _upload_image(image_bytes: bytes, filename: str = "saga-video-reference.png"
     return payload.get("name") or filename
 
 
-def _frame_count(duration_seconds: int) -> int:
-    return int(duration_seconds) * FPS + 1
+def _parse_aspect_ratio(value: str) -> float:
+    left, separator, right = str(value or "16:9").strip().partition(":")
+    if not separator:
+        raise ValueError("aspect_ratio must be W:H")
+    width = float(left)
+    height = float(right)
+    ratio = width / height
+    if not math.isfinite(ratio) or ratio < 0.4 or ratio > 2.5:
+        raise ValueError("aspect_ratio is outside the supported range")
+    return ratio
+
+
+def _even(value: float) -> int:
+    return max(2, int(round(float(value) / 2.0)) * 2)
+
+
+def _align64(value: int) -> int:
+    return max(64, int(math.ceil(int(value) / 64.0)) * 64)
+
+
+def _delivery_dimensions(resolution: str, aspect_ratio: str) -> tuple[int, int]:
+    ratio = _parse_aspect_ratio(aspect_ratio)
+    short_edge = RESOLUTION_SHORT_EDGES[resolution]
+    if ratio >= 1:
+        height = short_edge
+        width = _even(height * ratio)
+    else:
+        width = short_edge
+        height = _even(width / ratio)
+    return width, height
+
+
+def _internal_dimensions(resolution: str, aspect_ratio: str) -> tuple[int, int]:
+    width, height = _delivery_dimensions(resolution, aspect_ratio)
+    return _align64(width), _align64(height)
+
+
+def _frame_count(duration_seconds: int, frame_rate: int) -> int:
+    return int(duration_seconds) * int(frame_rate) + 1
 
 
 def _workflow(
@@ -339,12 +379,14 @@ def _workflow(
     resolution: str,
     duration_seconds: int,
     audio_enabled: bool,
+    aspect_ratio: str,
+    frame_rate: int,
     source_name: str | None,
     output_token: str,
 ) -> dict[str, Any]:
-    target_width, target_height = RESOLUTIONS[resolution]
+    target_width, target_height = _internal_dimensions(resolution, aspect_ratio)
     low_width, low_height = target_width // 2, target_height // 2
-    frames = _frame_count(duration_seconds)
+    frames = _frame_count(duration_seconds, frame_rate)
 
     graph: dict[str, Any] = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": CHECKPOINT, "weight_dtype": "default"}},
@@ -359,7 +401,7 @@ def _workflow(
         "7": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}},
         "8": {
             "class_type": "LTXVConditioning",
-            "inputs": {"positive": ["6", 0], "negative": ["7", 0], "frame_rate": FPS},
+            "inputs": {"positive": ["6", 0], "negative": ["7", 0], "frame_rate": frame_rate},
         },
         "9": {
             "class_type": "EmptyLTXVLatentVideo",
@@ -367,7 +409,7 @@ def _workflow(
         },
         "10": {
             "class_type": "LTXVEmptyLatentAudio",
-            "inputs": {"audio_vae": ["4", 0], "frames_number": frames, "frame_rate": FPS, "batch_size": 1},
+            "inputs": {"audio_vae": ["4", 0], "frames_number": frames, "frame_rate": frame_rate, "batch_size": 1},
         },
         "12": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["9", 0], "audio_latent": ["10", 0]}},
         "13": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed)}},
@@ -398,7 +440,7 @@ def _workflow(
         },
         "21": {
             "class_type": "LatentUpscaleBy",
-            "inputs": {"samples": ["20", 0], "upscale_method": "bicubic", "scale_by": 0.5},
+            "inputs": {"samples": ["20", 0], "upscale_method": "bicubic", "scale_by": 1.0},
         },
         "23": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["21", 0], "audio_latent": ["18", 1]}},
         "24": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed) + 1}},
@@ -430,7 +472,7 @@ def _workflow(
                 "temporal_overlap": 24,
             },
         },
-        "32": {"class_type": "CreateVideo", "inputs": {"images": ["30", 0], "fps": FPS, "bit_depth": 8}},
+        "32": {"class_type": "CreateVideo", "inputs": {"images": ["30", 0], "fps": frame_rate, "bit_depth": 8}},
         "33": {
             "class_type": "SaveVideo",
             "inputs": {
@@ -543,6 +585,29 @@ def _find_new_video(started_at: float, history_item: dict[str, Any] | None = Non
     )
 
 
+
+def _finalize_video(video_path: Path, *, width: int, height: int, frame_rate: int) -> Path:
+    final_path = video_path.with_name(f"{video_path.stem}-delivery.mp4")
+    video_filter = (
+        f"scale={int(width)}:{int(height)}:force_original_aspect_ratio=increase,"
+        f"crop={int(width)}:{int(height)},fps={int(frame_rate)},setsar=1"
+    )
+    command = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(video_path),
+        "-map", "0:v:0", "-map", "0:a?",
+        "-vf", video_filter,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(final_path),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0 or not final_path.is_file() or final_path.stat().st_size <= 0:
+        raise RuntimeError(f"ffmpeg delivery encode failed: {result.stderr[-3000:]}")
+    return final_path
+
+
 @app.function(
     image=image,
     timeout=7200,
@@ -605,7 +670,8 @@ class LTX25Worker:
             "ready": True,
             "app": APP_NAME,
             "gpu": GPU_TYPE,
-            "fps": FPS,
+            "default_fps": DEFAULT_FPS,
+            "frame_rates": sorted(FRAME_RATES),
             "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
             "checkpoint": CHECKPOINT,
             "checkpoint_autov2": CHECKPOINT_AUTOV2,
@@ -655,6 +721,8 @@ class LTX25Worker:
         resolution: str = "480p",
         duration_seconds: int = 5,
         audio_enabled: bool = True,
+        aspect_ratio: str = "16:9",
+        frame_rate: int = DEFAULT_FPS,
         source_image: bytes | None = None,
     ) -> bytes:
         del negative_prompt  # REDGraft reference recipe uses zeroed negative conditioning.
@@ -667,6 +735,9 @@ class LTX25Worker:
             raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 A10 runtime")
         if not 5 <= int(duration_seconds) <= 30:
             raise ValueError("duration_seconds must be between 5 and 30")
+        _parse_aspect_ratio(aspect_ratio)
+        if int(frame_rate) not in FRAME_RATES:
+            raise ValueError("frame_rate must be 24, 25, or 30")
 
         source_name = _upload_image(source_image) if source_image else None
         output_token = uuid.uuid4().hex[:12]
@@ -676,6 +747,8 @@ class LTX25Worker:
             resolution=resolution,
             duration_seconds=int(duration_seconds),
             audio_enabled=bool(audio_enabled),
+            aspect_ratio=str(aspect_ratio),
+            frame_rate=int(frame_rate),
             source_name=source_name,
             output_token=output_token,
         )
@@ -701,6 +774,22 @@ class LTX25Worker:
                     )
                 if status.get("completed") is True:
                     video_path = _find_new_video(started_at, item)
-                    return video_path.read_bytes()
+                    delivery_width, delivery_height = _delivery_dimensions(resolution, aspect_ratio)
+                    final_path = _finalize_video(
+                        video_path,
+                        width=delivery_width,
+                        height=delivery_height,
+                        frame_rate=int(frame_rate),
+                    )
+                    _log(
+                        "ltx25_delivery_ready",
+                        resolution=resolution,
+                        aspect_ratio=aspect_ratio,
+                        frame_rate=int(frame_rate),
+                        width=delivery_width,
+                        height=delivery_height,
+                        bytes=final_path.stat().st_size,
+                    )
+                    return final_path.read_bytes()
             time.sleep(2)
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")

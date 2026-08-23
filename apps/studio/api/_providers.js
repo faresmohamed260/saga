@@ -15,6 +15,25 @@ function safeBoolean(value, fallback) {
   return fallback;
 }
 
+function normalizeAspectRatio(value, fallback = '16:9') {
+  const text = String(value || fallback).trim();
+  const match = text.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  if (!match) {
+    const error = new Error(`Unsupported video aspect ratio: ${text || 'empty'}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const ratio = width / height;
+  if (!Number.isFinite(ratio) || ratio < 0.4 || ratio > 2.5) {
+    const error = new Error(`Video aspect ratio is outside the supported range: ${text}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return `${width}:${height}`;
+}
+
 function getModalGatewayUrl() {
   return String(
     process.env.FLUX2_KLEIN_GATEWAY_URL ||
@@ -63,6 +82,8 @@ function buildLtx25Form(workflow, input) {
   form.append('resolution', input.resolution);
   form.append('duration_seconds', String(input.durationSeconds));
   form.append('audio_enabled', String(input.audioEnabled));
+  form.append('aspect_ratio', input.aspectRatio);
+  form.append('frame_rate', String(input.frameRate));
   return form;
 }
 
@@ -146,6 +167,14 @@ function normalizeInput(workflow, rawInput) {
       workflow.limits.maxDurationSeconds,
     );
     normalized.audioEnabled = safeBoolean(rawInput.audioEnabled, workflow.defaults.audioEnabled);
+    normalized.aspectRatio = normalizeAspectRatio(rawInput.aspectRatio, workflow.defaults.aspectRatio);
+    const requestedFrameRate = Math.round(safeNumber(rawInput.frameRate, workflow.defaults.frameRate));
+    if (!(workflow.limits.frameRates || []).includes(requestedFrameRate)) {
+      const error = new Error(`Unsupported video frame rate: ${requestedFrameRate}`);
+      error.statusCode = 400;
+      throw error;
+    }
+    normalized.frameRate = requestedFrameRate;
   }
 
   return normalized;

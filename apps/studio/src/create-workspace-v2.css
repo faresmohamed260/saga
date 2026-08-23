@@ -363,3 +363,37 @@
 }
 
 .workspace .media-video-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+/* Reusable video output controls + generation lifecycle feedback. */
+.workspace .saga-video-extra-controls{display:flex;align-items:center;gap:7px;min-width:0}
+.workspace .saga-video-inline-picker{position:relative;display:inline-flex}
+.workspace .saga-video-option-menu{
+  position:absolute;left:0;bottom:calc(100% + 8px);z-index:1800;min-width:184px;padding:6px;border:1px solid #303743;border-radius:12px;background:rgba(18,22,28,.985);box-shadow:0 18px 48px rgba(0,0,0,.48);backdrop-filter:blur(18px)
+}
+.workspace .saga-video-option-menu button{
+  width:100%;min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 9px;border:0;border-radius:8px;background:transparent;color:#cbd0d8;text-align:left;cursor:pointer
+}
+.workspace .saga-video-option-menu button:hover,.workspace .saga-video-option-menu button.selected{background:#252a33;color:#fff}
+.workspace .saga-video-option-menu button>span{display:flex;align-items:baseline;gap:7px;min-width:0}
+.workspace .saga-video-option-menu strong{font-size:10px;white-space:nowrap}
+.workspace .saga-video-option-menu small{font-size:9px;color:#778292;white-space:nowrap}
+.workspace .saga-generation-progress{
+  display:flex;align-items:flex-start;gap:10px;margin:0 12px 11px;padding:10px 12px;border:1px solid #29313c;border-radius:12px;background:#10151c;color:#dfe4eb
+}
+.workspace .saga-generation-progress-icon{width:28px;height:28px;display:grid;place-items:center;flex:0 0 28px;border-radius:9px;background:#1d2330;color:#a998ff}
+.workspace .saga-generation-progress-copy{min-width:0;flex:1}
+.workspace .saga-generation-progress-copy>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.workspace .saga-generation-progress-copy strong{font-size:11px}
+.workspace .saga-generation-progress-copy>div:first-child span{font-size:9px;color:#758195;white-space:nowrap}
+.workspace .saga-generation-progress-copy small{display:block;margin-top:2px;color:#7e899a;font-size:9px;line-height:1.4}
+.workspace .saga-generation-progress-track{position:relative;height:3px;margin-top:8px;overflow:hidden;border-radius:999px;background:#242b35}
+.workspace .saga-generation-progress-track span{position:absolute;inset:0 auto 0 0;border-radius:inherit;background:#8c76ff}
+.workspace .saga-generation-progress-track.indeterminate span{width:38%;animation:saga-progress-slide 1.25s ease-in-out infinite}
+.workspace .saga-generation-progress-track.terminal span{width:100%}
+.workspace .saga-generation-progress.is-completed{border-color:rgba(94,190,140,.24)}
+.workspace .saga-generation-progress.is-completed .saga-generation-progress-icon{color:#73d7a4;background:rgba(43,113,76,.18)}
+.workspace .saga-generation-progress.is-failed{border-color:rgba(238,97,116,.28)}
+.workspace .saga-generation-progress.is-failed .saga-generation-progress-icon{color:#ff9dac;background:rgba(116,39,51,.22)}
+@keyframes saga-progress-slide{0%{transform:translateX(-115%)}50%{transform:translateX(110%)}100%{transform:translateX(280%)}}
+@media(max-width:760px){.workspace .saga-video-extra-controls{flex-wrap:wrap}.workspace .saga-video-option-menu{bottom:auto;top:calc(100% + 8px)}}
+@media(prefers-reduced-motion:reduce){.workspace .saga-generation-progress-track.indeterminate span{animation:none;width:100%;opacity:.55}}

@@ -82,6 +82,13 @@ export default async function handler(req, res) {
       jsonMode ? body.audioEnabled : req.headers['x-saga-audio-enabled'],
       workflow.defaults.audioEnabled,
     );
+    const aspectRatio = String(
+      jsonMode ? body.aspectRatio ?? workflow.defaults.aspectRatio : decodeHeader(req.headers['x-saga-aspect-ratio']) || workflow.defaults.aspectRatio || '16:9',
+    ).trim().slice(0, 32);
+    const frameRate = parseNumber(
+      jsonMode ? body.frameRate : req.headers['x-saga-frame-rate'],
+      workflow.defaults.frameRate || 24,
+    );
 
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
@@ -160,7 +167,7 @@ export default async function handler(req, res) {
           steps,
           cfg,
           megapixels,
-          ...(workflow.kind === 'video' ? { durationSeconds, audioEnabled, resolution } : {}),
+          ...(workflow.kind === 'video' ? { durationSeconds, audioEnabled, resolution, aspectRatio, frameRate } : {}),
         },
       },
     });
@@ -180,6 +187,8 @@ export default async function handler(req, res) {
       megapixels,
       durationSeconds,
       audioEnabled,
+      aspectRatio,
+      frameRate,
     });
     const updatedJob = await setProviderJobId(job.id, submitted.providerJobId);
 

@@ -204,6 +204,8 @@ export async function submitVideoGeneration({
   resolution = '480p',
   durationSeconds = 5,
   audioEnabled = true,
+  aspectRatio = '16:9',
+  frameRate = 24,
   seed = 42,
 }) {
   let uploaded = null;
@@ -230,6 +232,8 @@ export async function submitVideoGeneration({
       resolution,
       durationSeconds,
       audioEnabled,
+      aspectRatio,
+      frameRate,
       seed,
     }),
   });

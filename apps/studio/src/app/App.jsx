@@ -14,8 +14,8 @@ import WorkflowsView from '../features/catalog/WorkflowsView.jsx';
 import SettingsView from '../features/settings/SettingsView.jsx';
 
 const HISTORY_PAGE_SIZE = 24;
-const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', History: 'history', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
-const HASH_SECTIONS = Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section]));
+const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
+const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
 
 function sectionFromLocation() {
   if (typeof window === 'undefined') return 'Create';
@@ -32,7 +32,7 @@ const samples = [
 
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
 function toHistoryItem(row) {
-  const previewUrl = row.thumbnail_url || (row.kind === 'image' ? row.media_url : '');
+  const previewUrl = row.thumbnail_url || row.media_url || '';
   return {
     id: row.id,
     title: row.prompt || 'Untitled generation',
@@ -50,6 +50,8 @@ function toHistoryItem(row) {
     width: row.width,
     height: row.height,
     createdAt: row.created_at,
+    aspectRatio: row.metadata?.execution?.aspectRatio || null,
+    frameRate: row.metadata?.execution?.frameRate || null,
   };
 }
 
@@ -219,7 +221,7 @@ export default function App() {
       setHistoryPage({ nextOffset: payload?.page?.nextOffset ?? null, hasMore: Boolean(payload?.page?.hasMore) });
       if (Array.isArray(payload?.facets?.models)) setHistoryModels(payload.facets.models);
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Unable to load generation history.');
+      setHistoryError(err instanceof Error ? err.message : 'Unable to load Gallery.');
     } finally {
       append ? setHistoryAppending(false) : setHistoryLoading(false);
     }
@@ -267,7 +269,7 @@ export default function App() {
   };
 
   React.useEffect(() => {
-    if (section === 'History') loadHistory({ append: false, kind: historyKind, model: historyModel });
+    if (section === 'Gallery') loadHistory({ append: false, kind: historyKind, model: historyModel });
     if (section === 'Favorites') loadFavorites();
     if (section === 'Collections') { setSelectedCollection(null); setCollectionItems([]); loadCollections(); }
   }, [section, historyKind, historyModel]);
@@ -345,7 +347,7 @@ export default function App() {
       persisted: true,
     };
     setItems((current) => [item, ...current]);
-    if (section === 'History') loadHistory({ append: false });
+    if (section === 'Gallery') loadHistory({ append: false });
   };
 
   const runLtxVideo = async (videoOptions = {}) => {
@@ -354,6 +356,9 @@ export default function App() {
     const videoResolution = String(videoOptions.videoResolution || '480p');
     const videoDuration = Math.max(5, Math.min(30, Math.round(Number(videoOptions.videoDuration) || 5)));
     const videoAudio = videoOptions.videoAudio !== false;
+    const videoAspect = String(videoOptions.videoAspect || '16:9');
+    const requestedFrameRate = Number(videoOptions.videoFrameRate);
+    const videoFrameRate = [24, 25, 30].includes(requestedFrameRate) ? requestedFrameRate : 24;
     const sourceFile = references[0]?.file || null;
     setJobStatus(sourceFile ? 'uploading' : 'queued');
 
@@ -363,6 +368,8 @@ export default function App() {
       resolution: videoResolution,
       durationSeconds: videoDuration,
       audioEnabled: videoAudio,
+      aspectRatio: videoAspect,
+      frameRate: videoFrameRate,
       seed: effectiveSeed,
     }, { onStatus: setJobStatus });
 
@@ -374,7 +381,7 @@ export default function App() {
       originalUrl: result.mediaUrl,
       thumbnailUrl: result.thumbnailUrl || null,
       generated: true,
-      model: 'LTX-Video 2.3 · 22B Distilled',
+      model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot',
       resolution: videoResolution,
       seed: effectiveSeed,
       kind: 'video',
@@ -382,9 +389,11 @@ export default function App() {
       persisted: true,
       durationSeconds: videoDuration,
       audioEnabled: videoAudio,
+      aspectRatio: videoAspect,
+      frameRate: videoFrameRate,
     };
     setItems((current) => [item, ...current]);
-    if (section === 'History') loadHistory({ append: false });
+    if (section === 'Gallery') loadHistory({ append: false });
   };
 
   const generate = async (generationOptions = {}) => {
@@ -536,6 +545,63 @@ export default function App() {
     }
   };
 
+  const bulkFavorite = async (selectedItems) => {
+    const candidates = selectedItems.filter(Boolean);
+    if (!candidates.length) return false;
+    setFavorites((current) => {
+      const next = new Set(current);
+      candidates.forEach((item) => next.add(item.id));
+      return next;
+    });
+    const persisted = candidates.filter((item) => item.persisted && isUuid(item.id));
+    try {
+      await Promise.all(persisted.map(async (item) => {
+        const response = await fetch('/api/favorites', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, isFavorite: true }) });
+        if (!response.ok) throw new Error(`Favorite update failed (${response.status})`);
+      }));
+      setHistoryItems((current) => current.map((entry) => candidates.some((item) => item.id === entry.id) ? { ...entry, favorite: true } : entry));
+      return true;
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not favorite selected media.');
+      await loadHistory({ append: false });
+      return false;
+    }
+  };
+
+  const bulkDownload = async (selectedItems) => {
+    selectedItems.forEach((item) => downloadItem(item));
+    return true;
+  };
+
+  const bulkDelete = async (selectedItems) => {
+    const candidates = selectedItems.filter((item) => item.persisted && isUuid(item.id));
+    if (!candidates.length) return false;
+    if (!window.confirm(`Permanently delete ${candidates.length} selected generation${candidates.length === 1 ? '' : 's'}? This removes originals, favorites, collection memberships, and retained source references.`)) return false;
+    try {
+      await Promise.all(candidates.map(async (item) => {
+        const response = await fetch(`/api/generations?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(`Delete failed for one or more items (${response.status})`);
+      }));
+      const ids = new Set(candidates.map((item) => item.id));
+      setSelectedMedia((current) => current && ids.has(current.id) ? null : current);
+      setHistoryItems((current) => current.filter((entry) => !ids.has(entry.id)));
+      setFavoriteItems((current) => current.filter((entry) => !ids.has(entry.id)));
+      setCollectionItems((current) => current.filter((entry) => !ids.has(entry.id)));
+      setItems((current) => current.filter((entry) => !ids.has(entry.id)));
+      setFavorites((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      await loadCollections();
+      return true;
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not delete selected media.');
+      await loadHistory({ append: false });
+      return false;
+    }
+  };
+
   const openMedia = (item) => setSelectedMedia(item);
   const renderCard = (item, history = false, inCollection = false) => (
     <MediaCard
@@ -571,7 +637,7 @@ export default function App() {
         <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => setSettingsOpen(true)} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
-          : section === 'History' ? <HistoryView items={historyItems} kind={historyKind} model={historyModel} models={historyModels} page={historyPage} loading={historyLoading} appending={historyAppending} error={historyError} onKindChange={setHistoryKind} onModelChange={setHistoryModel} onRefresh={() => loadHistory({ append: false })} onLoadMore={() => loadHistory({ append: true })} renderCard={renderCard} />
+          : section === 'Gallery' ? <HistoryView items={historyItems} kind={historyKind} model={historyModel} models={historyModels} page={historyPage} loading={historyLoading} appending={historyAppending} error={historyError} onKindChange={setHistoryKind} onModelChange={setHistoryModel} onRefresh={() => loadHistory({ append: false })} onLoadMore={() => loadHistory({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
           : section === 'Models' ? <ModelsView />

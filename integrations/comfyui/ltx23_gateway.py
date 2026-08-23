@@ -1,4 +1,5 @@
 import os
+import re
 
 import modal
 
@@ -66,6 +67,8 @@ def web():
         resolution: str = Form("480p"),
         duration_seconds: int = Form(5),
         audio_enabled: bool = Form(True),
+        aspect_ratio: str = Form("16:9"),
+        frame_rate: int = Form(24),
         image_file: UploadFile | None = File(None),
     ):
         prompt = prompt.strip()
@@ -75,6 +78,14 @@ def web():
             raise HTTPException(status_code=400, detail="unsupported video resolution")
         if not 5 <= int(duration_seconds) <= 30:
             raise HTTPException(status_code=400, detail="duration_seconds must be between 5 and 30")
+        ratio_match = re.fullmatch(r"(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)", str(aspect_ratio).strip())
+        if not ratio_match:
+            raise HTTPException(status_code=400, detail="aspect_ratio must be W:H")
+        ratio_value = float(ratio_match.group(1)) / float(ratio_match.group(2))
+        if not 0.4 <= ratio_value <= 2.5:
+            raise HTTPException(status_code=400, detail="aspect_ratio is outside the supported range")
+        if int(frame_rate) not in {24, 25, 30}:
+            raise HTTPException(status_code=400, detail="frame_rate must be 24, 25, or 30")
 
         image_bytes = None
         if image_file is not None:
@@ -94,6 +105,8 @@ def web():
                 resolution=resolution,
                 duration_seconds=int(duration_seconds),
                 audio_enabled=bool(audio_enabled),
+                aspect_ratio=str(aspect_ratio),
+                frame_rate=int(frame_rate),
                 source_image=image_bytes,
             )
             return {

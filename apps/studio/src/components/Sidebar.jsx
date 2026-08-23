@@ -1,7 +1,7 @@
 import React from 'react';
-import { Box, ChevronDown, ChevronLeft, Folder, Heart, History, LoaderCircle, Settings, Sparkles, WandSparkles, Workflow } from 'lucide-react';
+import { Box, ChevronDown, ChevronLeft, Folder, Heart, Images, LoaderCircle, Settings, Sparkles, WandSparkles, Workflow } from 'lucide-react';
 
-const primary = [[WandSparkles, 'Create'], [LoaderCircle, 'Jobs'], [History, 'History'], [Heart, 'Favorites'], [Folder, 'Collections']];
+const primary = [[WandSparkles, 'Create'], [LoaderCircle, 'Jobs'], [Images, 'Gallery'], [Heart, 'Favorites'], [Folder, 'Collections']];
 const secondary = [[Box, 'Models'], [Workflow, 'Workflows']];
 
 function NavItem({ icon: Icon, label, active, onClick }) {
