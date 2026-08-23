@@ -1,0 +1,104 @@
+name: Studio Iteration 6 Finalize
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/studio-iteration6-finalize.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+
+      - name: Finalize canonical checklist and handoff brief
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          checklist_path = Path('docs/studio-ui-polish-checklist.md')
+          checklist = checklist_path.read_text()
+          old_current = '''**Iteration 6 — lazy/deferred Gallery video previews**
+
+          - Status: `[~]` in progress
+          - Working item: **06**
+          - Rule: defer poster-backed video sources until eligible hover/keyboard-preview intent while visible; keep reduced-motion and touch layouts static; validate with GitHub CI/visual preview and professional screenshot review before completion.
+          '''
+          new_current = '''**Iteration 6 — lazy/deferred Gallery video previews**
+
+          - Status: `[x]` complete
+          - Completed item: **06**
+          - Next item: **07 — merge Auto + aspect ratio into one clear Aspect control**
+          - Rule: do not start Item 07 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+          '''
+          if old_current not in checklist:
+              raise SystemExit('Checklist current-iteration block did not match expected Iteration 6 state')
+          checklist = checklist.replace(old_current, new_current, 1)
+          old_item = '- [~] **06. Lazy-load Gallery hover video previews.** `preload="none"`/deferred `src`, attach/play on hover/focus/visibility, pause/detach appropriately, respect reduced motion and touch behavior. **Iteration 6 in progress.**\n'
+          new_item = '- [x] **06. Lazy-load Gallery hover video previews.** Poster-backed Gallery videos defer MP4 `src` until an in-view desktop fine-pointer hover or keyboard-focus preview is eligible; leaving intent pauses/detaches the source, reduced-motion and touch stay poster-only, and legacy thumbnail-less rows only attach their metadata fallback while visible. **Iteration 6 complete.**\n'
+          if old_item not in checklist:
+              raise SystemExit('Checklist Item 06 line did not match expected in-progress state')
+          checklist = checklist.replace(old_item, new_item, 1)
+          iteration6_log = '''
+          ### Iteration 6 — lazy/deferred Gallery video previews
+
+          - [x] Poster-backed Gallery videos render stored posters with no MP4 `src` on initial load.
+          - [x] In-view desktop fine-pointer hover and keyboard focus attach the source and start the muted looping preview; leaving hover/focus pauses and detaches it again.
+          - [x] `IntersectionObserver` gates preview activity to visible/near-visible cards with a small viewport margin.
+          - [x] Reduced-motion mode remains poster-only and never auto-attaches or plays the MP4.
+          - [x] True Playwright touch emulation (`hasTouch: true`, `isMobile: true`) remains poster-only even when a synthetic mouseenter is dispatched.
+          - [x] Legacy rows without stored posters retain the metadata/seek fallback, but only while visible.
+          - [x] The first validation run exposed a stale poster-contract assertion that still expected the old exact preload expression; the contract was updated to assert the new deferred-source behavior rather than weakening the product.
+          - [x] Professional source review rejected an initial `window.innerWidth > 640` hover gate because viewport width is not input modality. The final implementation uses `(hover: hover) and (pointer: fine)` directly and tests true touch emulation.
+          - [x] Final deterministic contract, build, and visual-preview suite passed in refinement run `32671818722`; artifact `9501593078` contains the final Gallery evidence with no Gallery page errors.
+          - [x] Final professional visual review found no sizing, clipping, action, focus, reduced-motion, or mobile regression.
+          - [x] Professional review result for Item 06: complete. No new checklist item required. **Item 07 is next and remains gated on user approval.**
+          '''
+          if '### Iteration 6 — lazy/deferred Gallery video previews' in checklist:
+              raise SystemExit('Checklist already contains an Iteration 6 completion log')
+          checklist = checklist.rstrip() + '\n\n' + iteration6_log.strip() + '\n'
+          checklist_path.write_text(checklist)
+
+          brief_path = Path('docs/studio-ui-polish-iteration-brief.md')
+          brief = brief_path.read_text()
+          brief = brief.replace('- Completed checklist items: **01–05**.\n- Next item: **06 — lazy-load Gallery hover video previews**.\n- Do not begin Item 06 until the user says **continue**.\n', '- Completed checklist items: **01–06**.\n- Next item: **07 — merge Auto + aspect ratio into one clear Aspect control**.\n- Do not begin Item 07 until the user says **continue**.\n', 1)
+          brief = brief.replace('- Latest completed item is Iteration 5. Its final product review passed Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility. The REDGraft Modal smoke is externally blocked because the configured Modal workspace is disabled.\n', '- Latest completed item is Iteration 6. Final refinement run `32671818722` passed the deferred-preview contract, build, and full visual suite; artifact `9501593078` was professionally reviewed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.\n', 1)
+          brief = brief.replace('Remaining high-value work includes true lazy/deferred video preview loading, clearer Auto/aspect controls, shared aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.', 'Remaining high-value work includes clearer Auto/aspect controls, shared aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.', 1)
+          iteration6_brief = '''
+          ### Iteration 6 — lazy/deferred Gallery video previews
+
+          **Status:** complete.
+
+          **Implementation:** poster-backed Gallery videos now render only their stored poster until an eligible preview is requested. The MP4 `src` is attached only for visible Gallery videos when desktop fine-pointer hover or keyboard focus expresses preview intent; the video is muted, inline, and looping, and is paused/detached when intent or visibility leaves. `IntersectionObserver` gates preview activity, reduced-motion users remain poster-only, and legacy rows without a stored poster only attach their metadata fallback while visible.
+
+          **Deterministic coverage:** Gallery Playwright verifies initial `src` absence, keyboard-focus attach/detach, hover activation, reduced-motion suppression, and true touch-emulated suppression (`hasTouch: true`, `isMobile: true`). `test:poster` also guards the deferred-source contract and the final input-modality implementation.
+
+          **Professional review cycle:** the first validation run exposed a stale poster-contract assertion that still expected the old preload expression; the contract was updated to match the new deferred behavior. The first professional source review then rejected a `window.innerWidth > 640` gate because narrow desktop windows are not touch devices. The final refinement uses only `(hover: hover) and (pointer: fine)` and validates a genuinely touch-emulated page. The refined visual suite passed and was inspected.
+
+          **Visual review:** static poster state, hover-preview state, reduced-motion state, and touch/mobile Gallery all preserve the established grid, action overlays, focus treatment, and mobile action geometry. No new Item 06 visual defect remains.
+
+          **Validation:** final refinement run `32671818722` passed source validation, `npm run test:poster`, Studio build, the full Playwright visual suite, and artifact upload (`9501593078`). Product refinement commit `c7ba940865eba1be07c23f2b09b6a78a051c2b92`. No Gallery page errors were recorded. Item 07 is next and remains gated on explicit user approval.
+          '''
+          if '### Iteration 6 — lazy/deferred Gallery video previews' in brief:
+              raise SystemExit('Brief already contains an Iteration 6 completion section')
+          brief = brief.rstrip() + '\n\n' + iteration6_brief.strip() + '\n'
+          brief_path.write_text(brief)
+          PY
+
+          git diff --check
+          git add docs/studio-ui-polish-checklist.md docs/studio-ui-polish-iteration-brief.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Document Iteration 6 lazy Gallery previews"
+          git push origin HEAD:studio/video-gallery-ux
+          echo "Iteration 6 documentation head: $(git rev-parse HEAD)"
