@@ -43,12 +43,13 @@ try {
   const extras = page.locator('.saga-video-extra-controls');
   await extras.waitFor({ state: 'visible', timeout: 3000 });
 
-  const auto = extras.locator('.saga-auto-toggle');
+  if (await extras.locator('.saga-auto-toggle').count()) throw new Error('Video still exposes a separate Auto aspect button');
   const pickers = extras.locator('.saga-control-pill');
+  if (await pickers.count() !== 2) throw new Error(`Video output controls should expose Aspect + FPS only, found ${await pickers.count()}`);
   const aspect = pickers.nth(0);
   const fps = pickers.nth(1);
-  if (await auto.getAttribute('aria-pressed') !== 'true') throw new Error('Video Auto aspect should default on');
-  if (!(await aspect.innerText()).includes('16:9')) throw new Error(`Default video aspect is not 16:9: ${await aspect.innerText()}`);
+  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Unified Aspect control does not show default Auto 16:9: ${await aspect.innerText()}`);
+  if (!/Follows an attached reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Default Aspect tooltip does not explain Auto behavior: ${await aspect.getAttribute('title')}`);
   if (!(await fps.innerText()).includes('24 fps')) throw new Error(`Default video frame rate is not 24 fps: ${await fps.innerText()}`);
 
   await page.screenshot({ path: path.join(outputDir, '05b-video-output-controls.png'), fullPage: true, animations: 'disabled' });
@@ -56,16 +57,18 @@ try {
 
   await aspect.focus();
   await page.keyboard.press('ArrowDown');
-  const aspectMenu = page.getByRole('menu', { name: 'Video aspect ratio' });
+  const aspectMenu = page.getByRole('menu', { name: 'Video aspect' });
   await aspectMenu.waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
   const aspectOptions = aspectMenu.getByRole('menuitemradio');
+  const autoOption = aspectMenu.getByRole('menuitemradio').first();
+  if (await autoOption.getAttribute('aria-checked') !== 'true') throw new Error('Unified Aspect menu does not mark Auto as selected by default');
   await page.keyboard.press('Home');
-  for (let step = 0; step < 4; step += 1) await page.keyboard.press('ArrowDown');
+  for (let step = 0; step < 5; step += 1) await page.keyboard.press('ArrowDown');
   if (!/9:16/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Video aspect keyboard navigation did not reach 9:16');
   await page.keyboard.press('Enter');
-  if (await auto.getAttribute('aria-pressed') !== 'false') throw new Error('Choosing a manual video aspect did not disable Auto');
-  if (!(await aspect.innerText()).includes('9:16')) throw new Error('Manual video aspect did not update to 9:16');
+  if (/Auto/.test(await aspect.innerText())) throw new Error(`Choosing a manual aspect did not leave Auto mode: ${await aspect.innerText()}`);
+  if (!/Aspect\s*·\s*9:16/.test(await aspect.innerText())) throw new Error(`Manual video aspect did not update to 9:16: ${await aspect.innerText()}`);
 
   await fps.focus();
   await page.keyboard.press('Space');
@@ -96,15 +99,37 @@ try {
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'reference-4x3.png', mimeType: 'image/png', buffer: referencePng });
   await page.locator('.saga-reference-chip').waitFor({ state: 'visible', timeout: 5000 });
-  await auto.click();
-  if (await auto.getAttribute('aria-pressed') !== 'true') throw new Error('Video Auto aspect did not re-enable');
-  if (!(await aspect.innerText()).includes('4:3')) throw new Error(`Auto aspect did not inherit the 800x600 reference ratio: ${await aspect.innerText()}`);
+  await aspect.focus();
+  await page.keyboard.press('Enter');
+  await aspectMenu.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
+  await page.keyboard.press('Home');
+  if (!/^Auto/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the Auto aspect option');
+  await page.keyboard.press('Enter');
+  if (!/Aspect\s*·\s*Auto\s+4:3\s*·\s*Ref/.test(await aspect.innerText())) throw new Error(`Auto aspect did not inherit the 800x600 reference ratio: ${await aspect.innerText()}`);
+  if (!/From reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Reference provenance is not exposed by the unified Aspect control: ${await aspect.getAttribute('title')}`);
   await page.screenshot({ path: path.join(outputDir, '05d-video-auto-reference-aspect.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05d-video-auto-reference-aspect.png');
 
   await page.locator('.saga-reference-chip .saga-reference-remove').click();
   await page.locator('.saga-reference-chip').waitFor({ state: 'detached', timeout: 3000 });
-  if (!(await aspect.innerText()).includes('16:9')) throw new Error('Auto aspect did not fall back to 16:9 after removing the reference');
+  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Auto aspect did not fall back to 16:9 after removing the reference: ${await aspect.innerText()}`);
+
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark', hasTouch: true, isMobile: true });
+  mobile.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
+  await mobile.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await mobile.locator('.saga-composer').waitFor({ state: 'visible', timeout: 20_000 });
+  await mobile.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
+  const mobileExtras = mobile.locator('.saga-video-extra-controls');
+  await mobileExtras.waitFor({ state: 'visible', timeout: 3000 });
+  if (await mobileExtras.locator('.saga-auto-toggle').count()) throw new Error('Mobile Video still exposes a separate Auto aspect button');
+  const mobileAspect = mobileExtras.locator('.saga-control-pill').first();
+  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await mobileAspect.innerText())) throw new Error(`Mobile unified Aspect state is unclear: ${await mobileAspect.innerText()}`);
+  const mobileAspectBox = await mobileAspect.boundingBox();
+  if (!mobileAspectBox || mobileAspectBox.x < 0 || mobileAspectBox.x + mobileAspectBox.width > 390) throw new Error(`Mobile Aspect control is clipped: ${JSON.stringify(mobileAspectBox)}`);
+  await mobile.screenshot({ path: path.join(outputDir, '05g-video-output-controls-mobile.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('05g-video-output-controls-mobile.png');
+  await mobile.close();
 
   const prompt = page.locator('.saga-prompt-shell textarea');
   await prompt.fill('A slow cinematic camera move through a sunlit coastal landscape');

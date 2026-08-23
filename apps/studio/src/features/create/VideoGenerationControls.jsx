@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, Gauge, LoaderCircle, Sparkles, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, Gauge, LoaderCircle, XCircle } from 'lucide-react';
 
 export const VIDEO_ASPECT_PRESETS = [
   { value: '1:1', label: 'Square' },
@@ -66,7 +66,7 @@ function useOutsideDismiss(open, rootRef, close, returnFocusRef = null) {
   }, [open, rootRef, close, returnFocusRef]);
 }
 
-function CompactPicker({ label, value, options, onChoose, leading }) {
+function CompactPicker({ label, value, displayValue = value, title, options, onChoose, leading }) {
   const [open, setOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const rootRef = useRef(null);
@@ -136,10 +136,11 @@ function CompactPicker({ label, value, options, onChoose, leading }) {
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
+        title={title}
         onKeyDown={openFromTrigger}
         onClick={() => setOpen((current) => !current)}
       >
-        {leading}<span>{value}</span><ChevronDown size={13} />
+        {leading}<span>{displayValue}</span><ChevronDown size={13} />
       </button>
       {open && (
         <div className="saga-video-option-menu" role="menu" aria-label={label} aria-orientation="vertical">
@@ -156,7 +157,7 @@ function CompactPicker({ label, value, options, onChoose, leading }) {
               onKeyDown={(event) => optionKeyDown(event, index)}
               onClick={() => choose(option)}
             >
-              <span><strong>{option.value}</strong>{option.label && <small>{option.label}</small>}</span>
+              <span><strong>{option.displayValue || option.value}</strong>{option.label && <small>{option.label}</small>}</span>
               {option.value === value && <Check size={14} />}
             </button>
           ))}
@@ -176,25 +177,42 @@ export function VideoOutputControls({
   frameRate,
   setFrameRate,
 }) {
+  const aspectSelection = autoAspect ? '__auto__' : manualAspect;
   const aspectValue = autoAspect ? effectiveAspect : manualAspect;
   const aspectIconRatio = aspectRatioValue(aspectValue, referenceInfo.ratio || 16 / 9);
+  const aspectDisplay = autoAspect
+    ? `Aspect · Auto ${aspectValue}${referenceInfo.fromReference ? ' · Ref' : ''}`
+    : `Aspect · ${manualAspect}`;
+  const aspectTitle = autoAspect
+    ? referenceInfo.fromReference
+      ? `Aspect · Auto ${aspectValue} · From reference`
+      : `Aspect · Auto ${aspectValue} · Follows an attached reference when available`
+    : `Aspect · Manual ${manualAspect}`;
+  const aspectOptions = [
+    {
+      value: '__auto__',
+      displayValue: 'Auto',
+      label: referenceInfo.fromReference
+        ? `${referenceInfo.value} · From reference`
+        : '16:9 default · Follows reference when attached',
+    },
+    ...VIDEO_ASPECT_PRESETS,
+  ];
+
   return (
     <div className="saga-video-extra-controls" aria-label="Video output controls">
-      <button
-        type="button"
-        className={`saga-auto-toggle ${autoAspect ? 'active' : ''}`}
-        aria-pressed={autoAspect}
-        title={referenceInfo.fromReference ? `Use reference aspect ratio (${referenceInfo.value})` : 'Use reference aspect ratio when an image is attached; otherwise 16:9'}
-        onClick={() => setAutoAspect((current) => !current)}
-      >
-        <Sparkles size={15} /><span>Auto</span>
-      </button>
       <CompactPicker
-        label="Video aspect ratio"
-        value={aspectValue}
+        label="Video aspect"
+        value={aspectSelection}
+        displayValue={aspectDisplay}
+        title={aspectTitle}
         leading={<span className="saga-aspect-icon" style={{ aspectRatio: String(aspectIconRatio) }} />}
-        options={VIDEO_ASPECT_PRESETS}
+        options={aspectOptions}
         onChoose={(value) => {
+          if (value === '__auto__') {
+            setAutoAspect(true);
+            return;
+          }
           setManualAspect(value);
           setAutoAspect(false);
         }}
