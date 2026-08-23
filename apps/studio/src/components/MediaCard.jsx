@@ -23,6 +23,7 @@ export default function MediaCard({
   const [moreOpen, setMoreOpen] = useState(false);
   const favorite = favorites.has(item.id);
   const videoSource = item.originalUrl || item.url || '';
+  const itemLabel = item.title || 'media';
   const openOrSelect = () => selectable ? onSelect?.(item) : onOpen(item);
   const action = (callback) => (event) => {
     event.stopPropagation();
@@ -60,6 +61,9 @@ export default function MediaCard({
 
   const favoriteLabel = favorite ? 'Remove from favorites' : 'Add to favorites';
   const collectionLabel = inCollection ? 'Remove from collection' : 'Add to collection';
+  const primaryLabel = selectable
+    ? `${selected ? 'Deselect' : 'Select'} ${itemLabel}`
+    : `Open ${itemLabel}`;
 
   const galleryActions = (
     <div className="card-actions media-actions-overlay" aria-label="Media actions">
@@ -121,13 +125,13 @@ export default function MediaCard({
 
   const standardActions = (
     <div className="card-actions">
-      <button title={favoriteLabel} aria-label={favoriteLabel} className={favorite ? 'favorite active' : 'favorite'} onClick={action(onToggleFavorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'}/></button>
-      <button title="Reuse settings" aria-label="Reuse settings" onClick={action(onReuseSettings)}><RefreshCcw size={16}/></button>
-      <button title="Edit this" aria-label="Edit this" onClick={action(onEdit)}><Pencil size={16}/></button>
-      <button title="Download original" aria-label="Download original" onClick={action(onDownload)}><Download size={16}/></button>
-      <button title="Open full media" aria-label="Open full media" onClick={action(onOpen)}><ArrowUpRight size={17}/></button>
-      <button title={collectionLabel} aria-label={collectionLabel} onClick={action(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={16}/></button>
-      <button title="Delete permanently" aria-label="Delete permanently" onClick={action(onDelete)}><Trash2 size={16}/></button>
+      <button type="button" title={favoriteLabel} aria-label={favoriteLabel} className={favorite ? 'favorite active' : 'favorite'} onClick={action(onToggleFavorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'}/></button>
+      <button type="button" title="Reuse settings" aria-label="Reuse settings" onClick={action(onReuseSettings)}><RefreshCcw size={16}/></button>
+      <button type="button" title="Edit this" aria-label="Edit this" onClick={action(onEdit)}><Pencil size={16}/></button>
+      <button type="button" title="Download original" aria-label="Download original" onClick={action(onDownload)}><Download size={16}/></button>
+      <button type="button" title="Open full media" aria-label="Open full media" onClick={action(onOpen)}><ArrowUpRight size={17}/></button>
+      <button type="button" title={collectionLabel} aria-label={collectionLabel} onClick={action(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={16}/></button>
+      <button type="button" title="Delete permanently" aria-label="Delete permanently" onClick={action(onDelete)}><Trash2 size={16}/></button>
     </div>
   );
 
@@ -136,22 +140,12 @@ export default function MediaCard({
       <div
         className={`media-frame ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}
         style={item.url && item.kind !== 'video' ? { backgroundImage: `url(${item.url})` } : undefined}
-        onClick={openOrSelect}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            openOrSelect();
-          }
-        }}
         onMouseEnter={() => {
           if (history && !selectable && videoRef.current) videoRef.current.play().catch(() => {});
         }}
         onMouseLeave={() => {
           if (videoRef.current) videoRef.current.pause();
         }}
-        role="button"
-        aria-label={selectable ? `${selected ? 'Deselect' : 'Select'} ${item.title || 'media'}` : `Open ${item.title || 'media'}`}
-        tabIndex={0}
       >
         {item.kind === 'video' && videoSource ? (
           <video
@@ -172,19 +166,27 @@ export default function MediaCard({
           />
         ) : null}
         {!item.url && !videoSource && <div className="media-placeholder"><Video size={28}/><span>Preview unavailable</span></div>}
+
+        <button
+          type="button"
+          className="media-frame-primary"
+          aria-label={primaryLabel}
+          aria-pressed={selectable ? selected : undefined}
+          onClick={openOrSelect}
+        >
+          <span className="sr-only">{primaryLabel}</span>
+        </button>
+
         <div className="size-badge">{item.kind === 'video' ? <Video size={12}/> : <Sparkles size={12}/>} {item.generated ? `${item.resolution || (item.kind === 'video' ? 'Video' : 'Image')}${history ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
         {selectable && (
-          <button
-            type="button"
+          <span
             className={`media-select-toggle ${selected ? 'selected' : ''}`}
-            aria-label={selected ? 'Deselect media' : 'Select media'}
-            aria-pressed={selected}
-            onClick={action(onSelect)}
+            aria-hidden="true"
           >
             {selected && <Check size={14}/>}<span className="sr-only">{selected ? 'Selected' : 'Not selected'}</span>
-          </button>
+          </span>
         )}
-        {!history && <div className="media-hover"><button aria-label="Open full media" onClick={action(onOpen)}><Maximize2 size={18}/></button></div>}
+        {!history && <div className="media-hover" aria-hidden="true"><span className="media-hover-icon"><Maximize2 size={18}/></span></div>}
         {history && !selectable && galleryActions}
       </div>
       {history && (
