@@ -1,0 +1,18 @@
+/* Keep transient picker mounts out of document flow before anchor coordinates are measured. */
+.workspace .saga-picker {
+  position: fixed;
+}
+
+/* Keep the reset glyph optically centered with its label. */
+.workspace .saga-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  line-height: 1;
+}
+
+.workspace .saga-reset svg {
+  display: block;
+  flex: 0 0 auto;
+}
