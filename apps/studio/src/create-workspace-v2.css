@@ -361,3 +361,5 @@
   .workspace .saga-output-slot-5{grid-row:span 15}
   .workspace .saga-output-wall .card-actions{opacity:1;transform:none;pointer-events:auto}
 }
+
+.workspace .media-video-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
