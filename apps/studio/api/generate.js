@@ -20,6 +20,14 @@ function parseNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseBoolean(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(text)) return true;
+  if (['0', 'false', 'no', 'off'].includes(text)) return false;
+  return fallback;
+}
+
 function stringArray(value, maxLength = 300) {
   return Array.isArray(value)
     ? value.map((item) => String(item || '').trim().slice(0, maxLength)).filter(Boolean)
@@ -60,11 +68,20 @@ export default async function handler(req, res) {
 
     const prompt = jsonMode ? String(body.prompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-prompt']).trim().slice(0, 2000);
     const negativePrompt = jsonMode ? String(body.negativePrompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-negative-prompt']).trim().slice(0, 2000);
-    const resolution = jsonMode ? String(body.resolution || '').trim().slice(0, 96) : decodeHeader(req.headers['x-saga-resolution']).trim().slice(0, 96);
+    const requestedResolution = jsonMode ? body.resolution : decodeHeader(req.headers['x-saga-resolution']);
+    const resolution = String(requestedResolution || workflow.defaults.resolution || '').trim().slice(0, 96);
     const seed = Number.parseInt(String(jsonMode ? body.seed ?? workflow.defaults.seed : req.headers['x-saga-seed'] || workflow.defaults.seed), 10);
     const steps = parseNumber(jsonMode ? body.steps : req.headers['x-saga-steps'], workflow.defaults.steps);
     const cfg = parseNumber(jsonMode ? body.cfg : req.headers['x-saga-cfg'], workflow.defaults.cfg);
     const megapixels = parseNumber(jsonMode ? body.megapixels : req.headers['x-saga-megapixels'], workflow.defaults.megapixels);
+    const durationSeconds = parseNumber(
+      jsonMode ? body.durationSeconds : req.headers['x-saga-duration-seconds'],
+      workflow.defaults.durationSeconds,
+    );
+    const audioEnabled = parseBoolean(
+      jsonMode ? body.audioEnabled : req.headers['x-saga-audio-enabled'],
+      workflow.defaults.audioEnabled,
+    );
 
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
@@ -112,10 +129,11 @@ export default async function handler(req, res) {
 
     if (workflow.requiresSourceImage && !sources.length) return res.status(400).json({ error: 'Source image is empty' });
 
-    const primary = sources[0] || { bytes: Buffer.alloc(0), contentType: requestContentType, filename: 'input.png', key: '' };
+    const primary = sources[0] || { bytes: Buffer.alloc(0), contentType: '', filename: '', key: '' };
     const normalizedPrompt = sources.length > 1
       ? `Reference images are numbered in upload order from Image 1 through Image ${sources.length}. Image 1 is the primary canvas that determines output shape.\n\n${prompt}`
       : prompt;
+    const inputTransport = sourceKeys.length ? 'r2' : sources.length ? 'inline' : 'none';
 
     job = await createGenerationJob({
       kind: workflow.kind,
@@ -128,17 +146,22 @@ export default async function handler(req, res) {
       workflowId: workflow.id,
       provider: workflow.provider,
       metadata: {
-        inputTransport: sourceKeys.length ? 'r2' : 'inline',
+        inputTransport,
         sourceR2Key: sourceKeys[0] || null,
         sourceR2Keys: sourceKeys,
         sourceContentType: primary.contentType || null,
         sourceContentTypes: sources.map((source) => source.contentType || null),
-        sourceFilename: primary.filename,
+        sourceFilename: primary.filename || null,
         sourceFilenames: sources.map((source) => source.filename),
         referenceCount: sources.length,
         primaryReferenceIndex: sources.length ? 0 : null,
         automaticOutputSize: Boolean(workflow.automaticOutputSize),
-        execution: { steps, cfg, megapixels },
+        execution: {
+          steps,
+          cfg,
+          megapixels,
+          ...(workflow.kind === 'video' ? { durationSeconds, audioEnabled, resolution } : {}),
+        },
       },
     });
     await transitionGenerationJob(job.id, 'running');
@@ -150,10 +173,13 @@ export default async function handler(req, res) {
       sourceFilename: primary.filename,
       prompt: normalizedPrompt,
       negativePrompt,
+      resolution,
       seed,
       steps,
       cfg,
       megapixels,
+      durationSeconds,
+      audioEnabled,
     });
     const updatedJob = await setProviderJobId(job.id, submitted.providerJobId);
 
@@ -162,7 +188,7 @@ export default async function handler(req, res) {
       status: 'running',
       workflow: workflow.id,
       provider: workflow.provider,
-      inputTransport: sourceKeys.length ? 'r2' : 'inline',
+      inputTransport,
       referenceCount: sources.length,
     });
   } catch (error) {
