@@ -29,11 +29,12 @@ jobs:
       - name: Apply iteration 4 source and test changes
         run: python apps/studio/scripts/iteration4_keyboard_patch.py
 
-      - name: Make focus restoration immediate
+      - name: Make picker focus deterministic
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+
           for relative in [
               'apps/studio/src/create-controls.jsx',
               'apps/studio/src/features/create/VideoGenerationControls.jsx',
@@ -43,7 +44,40 @@ jobs:
               text = text.replace('requestAnimationFrame(() => returnFocusRef?.current?.focus());', 'returnFocusRef?.current?.focus();')
               text = text.replace('requestAnimationFrame(() => triggerRef.current?.focus());', 'triggerRef.current?.focus();')
               text = text.replace('requestAnimationFrame(() => anchorRef.current?.focus());', 'anchorRef.current?.focus();')
+              if relative.endswith('create-controls.jsx'):
+                  text = text.replace(
+                      "const timer = window.setTimeout(() => refs.current[activeIndex]?.focus(), 40);\n    return () => window.clearTimeout(timer);",
+                      "const frame = requestAnimationFrame(() => refs.current[activeIndex]?.focus());\n    return () => cancelAnimationFrame(frame);",
+                  )
               path.write_text(text)
+
+          ui = Path('apps/studio/scripts/capture-ui-preview.mjs')
+          text = ui.read_text()
+          text = text.replace(
+              "await aspectPicker.waitFor({ state: 'visible' });\n  const aspectList = aspectPicker.locator('.saga-morph-list');",
+              "await aspectPicker.waitFor({ state: 'visible' });\n  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });\n  const aspectList = aspectPicker.locator('.saga-morph-list');",
+          )
+          text = text.replace(
+              "await outputOptions.first().waitFor({ state: 'visible' });\n  await desktop.keyboard.press('End');",
+              "await outputOptions.first().waitFor({ state: 'visible' });\n  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option', null, { timeout: 1000 });\n  await desktop.keyboard.press('End');",
+          )
+          text = text.replace(
+              "await videoResolutionPicker.waitFor({ state: 'visible' });\n  const expectedVideoRows",
+              "await videoResolutionPicker.waitFor({ state: 'visible' });\n  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });\n  const expectedVideoRows",
+          )
+          ui.write_text(text)
+
+          video = Path('apps/studio/scripts/capture-video-output-preview.mjs')
+          text = video.read_text()
+          text = text.replace(
+              "await aspectMenu.waitFor({ state: 'visible' });\n  const aspectOptions",
+              "await aspectMenu.waitFor({ state: 'visible' });\n  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });\n  const aspectOptions",
+          )
+          text = text.replace(
+              "await fpsMenu.waitFor({ state: 'visible' });\n  await page.keyboard.press('End');",
+              "await fpsMenu.waitFor({ state: 'visible' });\n  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });\n  await page.keyboard.press('End');",
+          )
+          video.write_text(text)
           PY
 
       - name: Validate patch formatting
