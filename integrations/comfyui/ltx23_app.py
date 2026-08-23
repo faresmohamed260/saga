@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -11,7 +13,7 @@ from typing import Any
 
 import modal
 
-APP_NAME = "saga-ltx23-video"
+APP_NAME = "saga-ltx25-video"
 COMFY_DIR = Path("/root/ComfyUI")
 CACHE_DIR = Path("/cache")
 MODEL_ROOT = CACHE_DIR / "studio-models"
@@ -19,25 +21,52 @@ OUTPUT_DIR = COMFY_DIR / "output"
 INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
 FPS = 24
+GPU_TYPE = os.environ.get("MODAL_LTX25_GPU", "A10")
 
-TRANSFORMER = "ltx-2.3-22b-distilled-1.1_transformer_only_mxfp8_block32.safetensors"
-GEMMA = "gemma-3-12b-it-IQ4_XS.gguf"
-CONNECTORS = "ltx-2.3-22b-distilled_embeddings_connectors.safetensors"
-VIDEO_VAE = "ltx-2.3-22b-distilled_video_vae.safetensors"
-AUDIO_VAE = "ltx-2.3-22b-distilled_audio_vae.safetensors"
+CHECKPOINT = "REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors"
+CHECKPOINT_URL = "https://civitai.red/api/download/models/3250230?fileId=3133376"
+CHECKPOINT_AUTOV2 = "AB59BB5E74"
 
+TEXT_ENCODER = "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"
+VIDEO_VAE = "ltx-2.5-video-vae-conv-bf16.safetensors"
+AUDIO_VAE = "ltx-2.5-audio-vae-bf16.safetensors"
+SPATIAL_UPSCALER = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+
+HF_REPO = "Lightricks/LTX-2.5"
+HF_BASE = f"https://huggingface.co/{HF_REPO}/resolve/main"
+TEXT_ENCODER_URL = f"{HF_BASE}/text_encoders/{TEXT_ENCODER}"
+VIDEO_VAE_URL = f"{HF_BASE}/vae/{VIDEO_VAE}"
+AUDIO_VAE_URL = f"{HF_BASE}/vae/{AUDIO_VAE}"
+SPATIAL_UPSCALER_URL = (
+    f"https://huggingface.co/Lightricks/LTX-2.3/resolve/main/{SPATIAL_UPSCALER}"
+)
+
+# Final two-stage delivery dimensions. All dimensions are divisible by 64 so the
+# low-resolution stage remains divisible by 32 after halving.
 RESOLUTIONS: dict[str, tuple[int, int]] = {
-    "480p": (864, 480),
+    "480p": (896, 512),
     "720p": (1280, 704),
-    # Full HD / higher delivery tiers are enabled after the two-stage upscaler smoke test.
-    "1080p": (1280, 704),
-    "2K": (1280, 704),
-    "4K": (1280, 704),
+    "1080p": (1920, 1088),
+    "2K": (2048, 1152),
+    "4K": (3840, 2176),
 }
+ENABLED_RESOLUTIONS = {"480p", "720p", "1080p", "2K"}
+
+LOW_STAGE_SIGMAS = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+HIGH_STAGE_SIGMAS = "0.85, 0.7250, 0.4219, 0.0"
+
+cache_volume = modal.Volume.from_name("graduation-comfyui-cache", create_if_missing=True)
+
+_runtime_secret_values: dict[str, str] = {}
+for _name in ("HF_TOKEN", "CIVITAI_API_TOKEN"):
+    _value = str(os.environ.get(_name) or "").strip()
+    if _value:
+        _runtime_secret_values[_name] = _value
+RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0")
+    .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0", "libsm6", "libxrender1", "libxext6")
     .pip_install(
         "aiohttp>=3.11,<4",
         "fastapi>=0.115,<1",
@@ -45,51 +74,220 @@ image = (
         "requests>=2.32,<3",
         "pillow>=11,<13",
     )
+    .env({"COMFYUI_DISABLE_TELEMETRY": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
     .run_commands(
         "git clone --depth 1 https://github.com/Comfy-Org/ComfyUI.git /root/ComfyUI",
         "pip install -r /root/ComfyUI/requirements.txt",
-        "git clone --depth 1 https://github.com/city96/ComfyUI-GGUF.git /root/ComfyUI/custom_nodes/ComfyUI-GGUF",
-        "pip install -r /root/ComfyUI/custom_nodes/ComfyUI-GGUF/requirements.txt",
     )
 )
 
-cache_volume = modal.Volume.from_name("graduation-comfyui-cache", create_if_missing=False)
 app = modal.App(APP_NAME, image=image)
 
 
-def _source(name: str, folder: str) -> Path:
-    path = MODEL_ROOT / folder / name
-    if not path.exists():
-        raise FileNotFoundError(f"Required cached model is missing: {path}")
-    return path
+def _log(event: str, **fields: Any) -> None:
+    print({"event": event, **fields}, flush=True)
 
 
-def _link(src: Path, dst: Path) -> None:
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    if dst.is_symlink() or dst.exists():
+def _safe_link(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_symlink() or destination.exists():
         try:
-            if dst.resolve() == src.resolve():
+            if destination.resolve() == source.resolve():
                 return
         except OSError:
             pass
-        dst.unlink()
-    dst.symlink_to(src)
+        destination.unlink()
+    destination.symlink_to(source)
 
 
-def _prepare_models() -> dict[str, str]:
+def _append_civitai_token(url: str, token: str) -> str:
+    if not token:
+        return url
+    parsed = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    if not any(key == "token" for key, _ in query):
+        query.append(("token", token))
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urllib.parse.urlencode(query), parsed.fragment)
+    )
+
+
+def _download_stream(
+    url: str,
+    destination: Path,
+    *,
+    token: str = "",
+    min_bytes: int = 1,
+    civitai: bool = False,
+) -> Path:
+    import requests
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_file() and destination.stat().st_size >= min_bytes:
+        return destination
+
+    partial = destination.with_suffix(destination.suffix + ".part")
+    resume_from = partial.stat().st_size if partial.exists() else 0
+    resolved_url = _append_civitai_token(url, token) if civitai else url
+    headers = {"User-Agent": "SAGA-Studio/1.0"}
+    if token and not civitai:
+        headers["Authorization"] = f"Bearer {token}"
+    if resume_from:
+        headers["Range"] = f"bytes={resume_from}-"
+
+    response = requests.get(
+        resolved_url,
+        headers=headers,
+        stream=True,
+        allow_redirects=True,
+        timeout=(30, 600),
+    )
+    if resume_from and response.status_code != 206:
+        response.close()
+        partial.unlink(missing_ok=True)
+        resume_from = 0
+        headers.pop("Range", None)
+        response = requests.get(
+            resolved_url,
+            headers=headers,
+            stream=True,
+            allow_redirects=True,
+            timeout=(30, 600),
+        )
+    response.raise_for_status()
+
+    mode = "ab" if resume_from and response.status_code == 206 else "wb"
+    with partial.open(mode) as handle:
+        for chunk in response.iter_content(chunk_size=32 * 1024 * 1024):
+            if chunk:
+                handle.write(chunk)
+    response.close()
+
+    if partial.stat().st_size < min_bytes:
+        size = partial.stat().st_size
+        raise RuntimeError(f"Downloaded asset is unexpectedly small: {destination.name} bytes={size}")
+
+    partial.replace(destination)
+    return destination
+
+
+def _asset_path(folder: str, name: str) -> Path:
+    return MODEL_ROOT / folder / name
+
+
+def _ensure_asset(
+    *,
+    folder: str,
+    name: str,
+    url: str,
+    min_bytes: int,
+    token_name: str = "",
+    civitai: bool = False,
+) -> Path:
+    destination = _asset_path(folder, name)
+    if destination.is_file() and destination.stat().st_size >= min_bytes:
+        return destination
+    token = str(os.environ.get(token_name) or "").strip() if token_name else ""
+    started = time.perf_counter()
+    result = _download_stream(
+        url,
+        destination,
+        token=token,
+        min_bytes=min_bytes,
+        civitai=civitai,
+    )
+    cache_volume.commit()
+    _log(
+        "ltx25_asset_downloaded",
+        name=name,
+        bytes=result.stat().st_size,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
+    return result
+
+
+def _verify_checkpoint(path: Path) -> str:
+    marker = path.with_suffix(path.suffix + f".autov2-{CHECKPOINT_AUTOV2.lower()}")
+    if marker.is_file():
+        return CHECKPOINT_AUTOV2
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(64 * 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    prefix = digest.hexdigest()[:10].upper()
+    if prefix != CHECKPOINT_AUTOV2:
+        raise RuntimeError(
+            f"Checkpoint hash mismatch for {CHECKPOINT}: expected {CHECKPOINT_AUTOV2}, got {prefix}"
+        )
+    marker.write_text(prefix + "\n", encoding="utf-8")
+    cache_volume.commit()
+    return prefix
+
+
+def _ensure_model_files(*, verify_checkpoint: bool = True) -> dict[str, Path]:
+    checkpoint = _ensure_asset(
+        folder="diffusion_models",
+        name=CHECKPOINT,
+        url=CHECKPOINT_URL,
+        min_bytes=15_000_000_000,
+        token_name="CIVITAI_API_TOKEN",
+        civitai=True,
+    )
+    if verify_checkpoint:
+        _verify_checkpoint(checkpoint)
+
+    text_encoder = _ensure_asset(
+        folder="text_encoders",
+        name=TEXT_ENCODER,
+        url=TEXT_ENCODER_URL,
+        min_bytes=14_000_000_000,
+        token_name="HF_TOKEN",
+    )
+    video_vae = _ensure_asset(
+        folder="vae",
+        name=VIDEO_VAE,
+        url=VIDEO_VAE_URL,
+        min_bytes=1_000_000_000,
+        token_name="HF_TOKEN",
+    )
+    audio_vae = _ensure_asset(
+        folder="vae",
+        name=AUDIO_VAE,
+        url=AUDIO_VAE_URL,
+        min_bytes=300_000_000,
+        token_name="HF_TOKEN",
+    )
+    upscaler = _ensure_asset(
+        folder="latent_upscale_models",
+        name=SPATIAL_UPSCALER,
+        url=SPATIAL_UPSCALER_URL,
+        min_bytes=800_000_000,
+        token_name="HF_TOKEN",
+    )
+    return {
+        "checkpoint": checkpoint,
+        "text_encoder": text_encoder,
+        "video_vae": video_vae,
+        "audio_vae": audio_vae,
+        "spatial_upscaler": upscaler,
+    }
+
+
+def _prepare_models(files: dict[str, Path]) -> dict[str, str]:
     targets = {
-        "transformer": (TRANSFORMER, "diffusion_models", COMFY_DIR / "models/diffusion_models" / TRANSFORMER),
-        "gemma": (GEMMA, "text_encoders", COMFY_DIR / "models/text_encoders" / GEMMA),
-        "connectors": (CONNECTORS, "text_encoders", COMFY_DIR / "models/text_encoders" / CONNECTORS),
-        "video_vae": (VIDEO_VAE, "vae", COMFY_DIR / "models/vae" / VIDEO_VAE),
-        # Core LTXVAudioVAELoader currently reads the checkpoints directory.
-        "audio_vae": (AUDIO_VAE, "vae", COMFY_DIR / "models/checkpoints" / AUDIO_VAE),
+        "checkpoint": COMFY_DIR / "models/diffusion_models" / CHECKPOINT,
+        "text_encoder": COMFY_DIR / "models/text_encoders" / TEXT_ENCODER,
+        "video_vae": COMFY_DIR / "models/vae" / VIDEO_VAE,
+        "audio_vae": COMFY_DIR / "models/vae" / AUDIO_VAE,
+        "spatial_upscaler": COMFY_DIR / "models/latent_upscale_models" / SPATIAL_UPSCALER,
     }
     result: dict[str, str] = {}
-    for key, (name, folder, target) in targets.items():
-        src = _source(name, folder)
-        _link(src, target)
-        result[key] = str(src)
+    for key, target in targets.items():
+        _safe_link(files[key], target)
+        result[key] = str(files[key])
     return result
 
 
@@ -103,15 +301,17 @@ def _request_json(path: str, payload: dict[str, Any] | None = None, timeout: int
         return json.loads(response.read().decode("utf-8"))
 
 
-def _wait_server(timeout: int = 150) -> None:
+def _wait_server(timeout: int = 240) -> None:
     deadline = time.time() + timeout
+    last_error: Exception | None = None
     while time.time() < deadline:
         try:
             _request_json("/system_stats", timeout=3)
             return
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
             time.sleep(1)
-    raise RuntimeError("ComfyUI did not become ready")
+    raise RuntimeError(f"ComfyUI did not become ready: {last_error}")
 
 
 def _upload_image(image_bytes: bytes, filename: str = "saga-video-reference.png") -> str:
@@ -119,9 +319,9 @@ def _upload_image(image_bytes: bytes, filename: str = "saga-video-reference.png"
 
     response = requests.post(
         f"http://{SERVER}/upload/image",
-        files={"image": (filename, image_bytes, "image/png")},
+        files={"image": (filename, image_bytes, "application/octet-stream")},
         data={"overwrite": "true", "type": "input"},
-        timeout=60,
+        timeout=120,
     )
     response.raise_for_status()
     payload = response.json()
@@ -129,104 +329,213 @@ def _upload_image(image_bytes: bytes, filename: str = "saga-video-reference.png"
 
 
 def _frame_count(duration_seconds: int) -> int:
-    # 24 fps gives an 8n+1 valid LTX sequence for every whole-second duration.
     return int(duration_seconds) * FPS + 1
 
 
 def _workflow(
     *,
     prompt: str,
-    negative_prompt: str,
     seed: int,
     resolution: str,
     duration_seconds: int,
     audio_enabled: bool,
     source_name: str | None,
 ) -> dict[str, Any]:
-    width, height = RESOLUTIONS[resolution]
+    target_width, target_height = RESOLUTIONS[resolution]
+    low_width, low_height = target_width // 2, target_height // 2
     frames = _frame_count(duration_seconds)
 
     graph: dict[str, Any] = {
-        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": TRANSFORMER, "weight_dtype": "default"}},
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": CHECKPOINT, "weight_dtype": "default"}},
         "2": {
-            "class_type": "DualCLIPLoaderGGUF",
-            "inputs": {"clip_name1": GEMMA, "clip_name2": CONNECTORS, "type": "ltxv"},
+            "class_type": "CLIPLoader",
+            "inputs": {"clip_name": TEXT_ENCODER, "type": "ltxv", "device": "default"},
         },
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": VIDEO_VAE}},
-        "4": {"class_type": "LTXVAudioVAELoader", "inputs": {"ckpt_name": AUDIO_VAE}},
-        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
-        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": negative_prompt, "clip": ["2", 0]}},
-        "7": {
-            "class_type": "LTXVConditioning",
-            "inputs": {"positive": ["5", 0], "negative": ["6", 0], "frame_rate": FPS},
-        },
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": AUDIO_VAE}},
+        "5": {"class_type": "LatentUpscaleModelLoader", "inputs": {"model_name": SPATIAL_UPSCALER}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "7": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}},
         "8": {
-            "class_type": "EmptyLTXVLatentVideo",
-            "inputs": {"width": width, "height": height, "length": frames, "batch_size": 1},
+            "class_type": "LTXVConditioning",
+            "inputs": {"positive": ["6", 0], "negative": ["7", 0], "frame_rate": FPS},
         },
         "9": {
+            "class_type": "EmptyLTXVLatentVideo",
+            "inputs": {"width": low_width, "height": low_height, "length": frames, "batch_size": 1},
+        },
+        "10": {
             "class_type": "LTXVEmptyLatentAudio",
             "inputs": {"audio_vae": ["4", 0], "frames_number": frames, "frame_rate": FPS, "batch_size": 1},
         },
-        "12": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed)}},
-        "13": {"class_type": "CFGGuider", "inputs": {"model": ["1", 0], "positive": ["7", 0], "negative": ["7", 1], "cfg": 1.0}},
-        "14": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
-        "15": {
-            "class_type": "ManualSigmas",
-            "inputs": {"sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"},
+        "12": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["9", 0], "audio_latent": ["10", 0]}},
+        "13": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed)}},
+        "14": {
+            "class_type": "CFGGuider",
+            "inputs": {"model": ["1", 0], "positive": ["8", 0], "negative": ["8", 1], "cfg": 1.0},
         },
-        "16": {
+        "15": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "16": {"class_type": "ManualSigmas", "inputs": {"sigmas": LOW_STAGE_SIGMAS}},
+        "17": {
             "class_type": "SamplerCustomAdvanced",
-            "inputs": {"noise": ["12", 0], "guider": ["13", 0], "sampler": ["14", 0], "sigmas": ["15", 0], "latent_image": ["11", 0]},
+            "inputs": {
+                "noise": ["13", 0],
+                "guider": ["14", 0],
+                "sampler": ["15", 0],
+                "sigmas": ["16", 0],
+                "latent_image": ["12", 0],
+            },
         },
-        "17": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["16", 0]}},
-        "18": {
+        "18": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["17", 0]}},
+        "19": {
+            "class_type": "LTXVCropGuides",
+            "inputs": {"positive": ["8", 0], "negative": ["8", 1], "latent": ["18", 0]},
+        },
+        "20": {
+            "class_type": "LTXVLatentUpsampler",
+            "inputs": {"samples": ["18", 0], "upscale_model": ["5", 0], "vae": ["3", 0]},
+        },
+        "21": {
+            "class_type": "LatentUpscaleBy",
+            "inputs": {"samples": ["20", 0], "upscale_method": "bicubic", "scale_by": 0.5},
+        },
+        "23": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["21", 0], "audio_latent": ["18", 1]}},
+        "24": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed) + 1}},
+        "25": {
+            "class_type": "CFGGuider",
+            "inputs": {"model": ["1", 0], "positive": ["19", 0], "negative": ["19", 1], "cfg": 1.0},
+        },
+        "26": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "27": {"class_type": "ManualSigmas", "inputs": {"sigmas": HIGH_STAGE_SIGMAS}},
+        "28": {
+            "class_type": "SamplerCustomAdvanced",
+            "inputs": {
+                "noise": ["24", 0],
+                "guider": ["25", 0],
+                "sampler": ["26", 0],
+                "sigmas": ["27", 0],
+                "latent_image": ["23", 0],
+            },
+        },
+        "29": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["28", 0]}},
+        "30": {
             "class_type": "VAEDecodeTiled",
-            "inputs": {"samples": ["17", 0], "vae": ["3", 0], "tile_size": 512, "overlap": 64, "temporal_size": 4096, "temporal_overlap": 4},
+            "inputs": {
+                "samples": ["29", 0],
+                "vae": ["3", 0],
+                "tile_size": 480,
+                "overlap": 96,
+                "temporal_size": 96,
+                "temporal_overlap": 24,
+            },
         },
-        "20": {"class_type": "CreateVideo", "inputs": {"images": ["18", 0], "fps": FPS, "bit_depth": 8}},
-        "21": {"class_type": "SaveVideo", "inputs": {"video": ["20", 0], "filename_prefix": "saga/ltx23", "format": "auto", "codec": "auto"}},
+        "32": {"class_type": "CreateVideo", "inputs": {"images": ["30", 0], "fps": FPS, "bit_depth": 8}},
+        "33": {
+            "class_type": "SaveVideo",
+            "inputs": {
+                "video": ["32", 0],
+                "filename_prefix": "saga/ltx25-redgraft",
+                "format": "auto",
+                "codec": "auto",
+            },
+        },
     }
 
-    video_latent: list[Any] = ["8", 0]
     if source_name:
-        graph["22"] = {"class_type": "LoadImage", "inputs": {"image": source_name}}
-        graph["23"] = {"class_type": "LTXVPreprocess", "inputs": {"image": ["22", 0], "img_compression": 18}}
-        graph["24"] = {
-            "class_type": "LTXVImgToVideoInplace",
-            "inputs": {"vae": ["3", 0], "image": ["23", 0], "latent": ["8", 0], "strength": 0.7, "bypass": False},
+        graph["40"] = {"class_type": "LoadImage", "inputs": {"image": source_name}}
+        graph["41"] = {
+            "class_type": "ImageScale",
+            "inputs": {
+                "image": ["40", 0],
+                "upscale_method": "lanczos",
+                "width": target_width,
+                "height": target_height,
+                "crop": "center",
+            },
         }
-        video_latent = ["24", 0]
-
-    graph["11"] = {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": video_latent, "audio_latent": ["9", 0]}}
+        graph["42"] = {"class_type": "LTXVPreprocess", "inputs": {"image": ["41", 0], "img_compression": 18}}
+        graph["43"] = {
+            "class_type": "LTXVImgToVideoInplace",
+            "inputs": {
+                "vae": ["3", 0],
+                "image": ["42", 0],
+                "latent": ["9", 0],
+                "strength": 0.7,
+                "bypass": False,
+            },
+        }
+        graph["12"]["inputs"]["video_latent"] = ["43", 0]
+        graph["44"] = {
+            "class_type": "LTXVImgToVideoInplace",
+            "inputs": {
+                "vae": ["3", 0],
+                "image": ["42", 0],
+                "latent": ["21", 0],
+                "strength": 1.0,
+                "bypass": False,
+            },
+        }
+        graph["23"]["inputs"]["video_latent"] = ["44", 0]
 
     if audio_enabled:
-        graph["19"] = {"class_type": "LTXVAudioVAEDecode", "inputs": {"samples": ["17", 1], "audio_vae": ["4", 0]}}
-        graph["20"]["inputs"]["audio"] = ["19", 0]
+        graph["31"] = {
+            "class_type": "LTXVAudioVAEDecode",
+            "inputs": {"samples": ["29", 1], "audio_vae": ["4", 0]},
+        }
+        graph["32"]["inputs"]["audio"] = ["31", 0]
 
     return graph
 
 
 def _find_new_video(started_at: float) -> Path:
-    candidates = [p for p in OUTPUT_DIR.rglob("*") if p.is_file() and p.stat().st_mtime >= started_at - 1]
-    video_files = [p for p in candidates if p.suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}]
+    candidates = [
+        path
+        for path in OUTPUT_DIR.rglob("*")
+        if path.is_file() and path.stat().st_mtime >= started_at - 1
+    ]
+    video_files = [
+        path for path in candidates if path.suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}
+    ]
     if not video_files:
-        raise RuntimeError(f"ComfyUI completed but no video output was found; files={[(str(p), p.stat().st_size) for p in candidates[-20:]]}")
-    return max(video_files, key=lambda p: p.stat().st_mtime)
+        summary = [(str(path), path.stat().st_size) for path in candidates[-20:]]
+        raise RuntimeError(f"ComfyUI completed but no video output was found; files={summary}")
+    return max(video_files, key=lambda path: path.stat().st_mtime)
+
+
+@app.function(
+    image=image,
+    timeout=7200,
+    volumes={str(CACHE_DIR): cache_volume},
+    secrets=RUNTIME_SECRETS,
+)
+def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
+    started = time.perf_counter()
+    files = _ensure_model_files(verify_checkpoint=verify_checkpoint)
+    return {
+        "ready": True,
+        "model": "redgraft-ltx25-sulphur2-int8-convrot",
+        "checkpoint": CHECKPOINT,
+        "checkpoint_autov2": CHECKPOINT_AUTOV2,
+        "files": {key: str(value) for key, value in files.items()},
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
+    }
 
 
 @app.cls(
     image=image,
-    gpu="A10",
-    timeout=3600,
+    gpu=GPU_TYPE,
+    timeout=4200,
     scaledown_window=300,
     volumes={str(CACHE_DIR): cache_volume},
+    secrets=RUNTIME_SECRETS,
 )
 @modal.concurrent(max_inputs=1)
-class LTX23Worker:
+class LTX25Worker:
     @modal.enter()
     def start(self) -> None:
-        self.models = _prepare_models()
+        started = time.perf_counter()
+        files = _ensure_model_files(verify_checkpoint=True)
+        self.models = _prepare_models(files)
         INPUT_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.process = subprocess.Popen(
@@ -241,36 +550,56 @@ class LTX23Worker:
                 "--reserve-vram",
                 "2",
                 "--disable-auto-launch",
+                "--preview-method",
+                "none",
             ],
             cwd=COMFY_DIR,
         )
         _wait_server()
+        self.started_seconds = round(time.perf_counter() - started, 3)
 
     @modal.method()
     def health(self) -> dict[str, Any]:
         return {
             "ready": True,
             "app": APP_NAME,
-            "gpu": "A10",
+            "gpu": GPU_TYPE,
             "fps": FPS,
+            "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
+            "checkpoint": CHECKPOINT,
+            "checkpoint_autov2": CHECKPOINT_AUTOV2,
             "resolutions": RESOLUTIONS,
+            "enabled_resolutions": sorted(ENABLED_RESOLUTIONS),
             "models": self.models,
+            "startup_seconds": self.started_seconds,
+            "recipe": {
+                "low_stage_sigmas": LOW_STAGE_SIGMAS,
+                "high_stage_sigmas": HIGH_STAGE_SIGMAS,
+                "cfg": 1.0,
+                "sampler": "euler",
+                "two_stage_latent_upscale": True,
+            },
         }
 
     @modal.method()
     def object_info(self) -> dict[str, Any]:
-        info = _request_json("/object_info", timeout=90)
+        info = _request_json("/object_info", timeout=120)
         wanted = {
             "UNETLoader",
-            "DualCLIPLoaderGGUF",
+            "CLIPLoader",
             "VAELoader",
-            "LTXVAudioVAELoader",
+            "LatentUpscaleModelLoader",
+            "ConditioningZeroOut",
             "LTXVEmptyLatentAudio",
             "LTXVConcatAVLatent",
             "LTXVSeparateAVLatent",
             "LTXVConditioning",
+            "LTXVCropGuides",
+            "LTXVLatentUpsampler",
             "LTXVImgToVideoInplace",
             "LTXVPreprocess",
+            "LatentUpscaleBy",
+            "ImageScale",
             "CreateVideo",
             "SaveVideo",
         }
@@ -280,28 +609,27 @@ class LTX23Worker:
     def generate(
         self,
         prompt: str,
-        negative_prompt: str = "pc game, console game, video game, cartoon, childish, ugly, watermark, subtitles, text overlay",
+        negative_prompt: str = "",
         seed: int = 42,
         resolution: str = "480p",
         duration_seconds: int = 5,
         audio_enabled: bool = True,
         source_image: bytes | None = None,
     ) -> bytes:
+        del negative_prompt  # REDGraft reference recipe uses zeroed negative conditioning.
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("prompt is required")
         if resolution not in RESOLUTIONS:
             raise ValueError(f"unsupported resolution: {resolution}")
+        if resolution not in ENABLED_RESOLUTIONS:
+            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 A10 runtime")
         if not 5 <= int(duration_seconds) <= 30:
             raise ValueError("duration_seconds must be between 5 and 30")
-        # Until the two-stage upscaler is validated, high tiers intentionally use the safe 720p generation envelope.
-        if resolution in {"1080p", "2K", "4K"}:
-            raise ValueError(f"{resolution} is not enabled until the LTX 2.3 two-stage upscaler smoke test passes")
 
         source_name = _upload_image(source_image) if source_image else None
         graph = _workflow(
             prompt=prompt,
-            negative_prompt=negative_prompt,
             seed=int(seed),
             resolution=resolution,
             duration_seconds=int(duration_seconds),
@@ -310,22 +638,26 @@ class LTX23Worker:
         )
         started_at = time.time()
         client_id = str(uuid.uuid4())
-        queued = _request_json("/prompt", {"prompt": graph, "client_id": client_id}, timeout=90)
+        queued = _request_json("/prompt", {"prompt": graph, "client_id": client_id}, timeout=120)
         prompt_id = queued.get("prompt_id")
         if not prompt_id:
-            raise RuntimeError(f"ComfyUI rejected LTX workflow: {queued}")
+            raise RuntimeError(f"ComfyUI rejected REDGraft LTX 2.5 workflow: {queued}")
 
-        deadline = time.time() + 3300
+        deadline = time.time() + 3900
         while time.time() < deadline:
-            history = _request_json(f"/history/{prompt_id}", timeout=30)
+            history = _request_json(f"/history/{prompt_id}", timeout=45)
             item = history.get(prompt_id)
             if item:
                 status = item.get("status") or {}
                 messages = status.get("messages") or []
-                if status.get("status_str") == "error" or any(message and message[0] == "execution_error" for message in messages):
-                    raise RuntimeError(f"ComfyUI LTX execution failed: {json.dumps(status)[:6000]}")
+                if status.get("status_str") == "error" or any(
+                    message and message[0] == "execution_error" for message in messages
+                ):
+                    raise RuntimeError(
+                        f"ComfyUI REDGraft LTX 2.5 execution failed: {json.dumps(status)[:7000]}"
+                    )
                 if status.get("completed") is True:
                     video_path = _find_new_video(started_at)
                     return video_path.read_bytes()
             time.sleep(2)
-        raise TimeoutError("LTX 2.3 generation timed out")
+        raise TimeoutError("REDGraft LTX 2.5 generation timed out")
