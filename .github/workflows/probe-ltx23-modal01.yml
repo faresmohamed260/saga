@@ -7,13 +7,19 @@ on:
     paths:
       - "integrations/comfyui/ltx23_probe.py"
       - ".github/workflows/probe-ltx23-modal01.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "integrations/comfyui/ltx23_probe.py"
+      - ".github/workflows/probe-ltx23-modal01.yml"
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: probe-ltx23-modal01
+  group: probe-ltx23-modal01-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -41,7 +47,7 @@ jobs:
           if not raw:
               raise SystemExit("SAGA_MODAL_TOKENS_JSON is not configured")
           payload = json.loads(raw)
-          accounts = payload.get("accounts") or payload.get("tokens") or payload.get("roster") or [] if isinstance(payload, dict) else payload
+          accounts = (payload.get("accounts") or payload.get("tokens") or payload.get("roster") or []) if isinstance(payload, dict) else payload
           if not isinstance(accounts, list) or not accounts:
               raise SystemExit("Modal roster is empty")
           selected = next((a for a in accounts if isinstance(a, dict) and str(a.get("label") or a.get("name") or a.get("account") or "").strip().lower() in {"modal-01", "modal01", "modal-1", "account-01", "account-1"}), accounts[0])
@@ -73,7 +79,7 @@ jobs:
           PY
 
       - name: Publish probe issue
-        if: always()
+        if: always() && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
