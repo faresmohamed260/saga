@@ -70,7 +70,13 @@ jobs:
           PY
 
       - name: Deploy REDGraft LTX 2.5 runtime
-        run: modal deploy integrations/comfyui/ltx23_app.py
+        shell: bash
+        run: |
+          # Lightricks/LTX-2.5 is license-gated. The exact same auxiliary files are
+          # mirrored publicly by comfyicu, while the requested REDGraft transformer
+          # still comes directly from the user's Civitai checkpoint URL.
+          sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+          modal deploy integrations/comfyui/ltx23_app.py
 
       - name: Prefetch exact REDGraft checkpoint and LTX 2.5 components
         shell: bash
