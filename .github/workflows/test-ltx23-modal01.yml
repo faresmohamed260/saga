@@ -1,0 +1,131 @@
+name: Test LTX 2.3 video on modal-01
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "integrations/comfyui/ltx23_app.py"
+      - ".github/workflows/test-ltx23-modal01.yml"
+  push:
+    branches: [studio/ltx23-video-backend]
+    paths:
+      - "integrations/comfyui/ltx23_app.py"
+      - ".github/workflows/test-ltx23-modal01.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: test-ltx23-modal01-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Modal
+        run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Select modal-01 credentials
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "").strip()
+          if not raw:
+              raise SystemExit("SAGA_MODAL_TOKENS_JSON is not configured")
+          payload = json.loads(raw)
+          accounts = (payload.get("accounts") or payload.get("tokens") or payload.get("roster") or []) if isinstance(payload, dict) else payload
+          if not isinstance(accounts, list) or not accounts:
+              raise SystemExit("Modal roster is empty")
+          selected = next((a for a in accounts if isinstance(a, dict) and str(a.get("label") or a.get("name") or a.get("account") or "").strip().lower() in {"modal-01", "modal01", "modal-1", "account-01", "account-1"}), accounts[0])
+          token_id = str(selected.get("token_id") or "").strip()
+          token_secret = str(selected.get("token_secret") or "").strip()
+          combined = str(selected.get("api_key") or selected.get("token") or "").strip()
+          if (not token_id or not token_secret) and "." in combined:
+              token_id, token_secret = combined.split(".", 1)
+          if not token_id or not token_secret:
+              raise SystemExit("modal-01 credentials are incomplete")
+          print(f"::add-mask::{token_id}")
+          print(f"::add-mask::{token_secret}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"MODAL_TOKEN_ID={token_id}\n")
+              handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
+          PY
+
+      - name: Deploy LTX 2.3 runtime
+        run: modal deploy integrations/comfyui/ltx23_app.py
+
+      - name: Validate runtime and Comfy nodes
+        shell: bash
+        run: |
+          python - <<'PY' | tee /tmp/ltx23-object-info.json
+          import json, modal
+          cls = modal.Cls.from_name("saga-ltx23-video", "LTX23Worker")
+          worker = cls()
+          health = worker.health.remote()
+          info = worker.object_info.remote()
+          print(json.dumps({"health": health, "object_info": info}, indent=2, default=str))
+          required = [
+              "UNETLoader", "DualCLIPLoaderGGUF", "VAELoader", "LTXVAudioVAELoader",
+              "LTXVEmptyLatentAudio", "LTXVConcatAVLatent", "LTXVSeparateAVLatent",
+              "LTXVConditioning", "LTXVImgToVideoInplace", "LTXVPreprocess",
+              "CreateVideo", "SaveVideo",
+          ]
+          missing = [name for name in required if not info.get(name)]
+          if missing:
+              raise SystemExit(f"Missing required Comfy nodes: {missing}")
+          PY
+
+      - name: Smoke text-to-video 480p 5s muted
+        shell: bash
+        run: |
+          python - <<'PY'
+          import modal
+          cls = modal.Cls.from_name("saga-ltx23-video", "LTX23Worker")
+          result = cls().generate.remote(
+              prompt="A cinematic sunrise over a calm ocean, subtle cloud movement, realistic natural light, locked camera",
+              seed=42,
+              resolution="480p",
+              duration_seconds=5,
+              audio_enabled=False,
+          )
+          if not isinstance(result, (bytes, bytearray)) or len(result) < 100_000:
+              raise SystemExit(f"Invalid video result: {type(result)} bytes={len(result) if hasattr(result, '__len__') else 'n/a'}")
+          open('/tmp/ltx23-smoke.mp4', 'wb').write(result)
+          print({"bytes": len(result)})
+          PY
+          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx23-smoke.mp4 | tee /tmp/ltx23-ffprobe.json
+
+      - name: Publish smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ltx23-video-smoke-${{ github.run_id }}
+          path: |
+            /tmp/ltx23-smoke.mp4
+            /tmp/ltx23-ffprobe.json
+            /tmp/ltx23-object-info.json
+          retention-days: 3
+
+      - name: Publish status issue
+        if: always() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TITLE="[automation] LTX 2.3 video smoke"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY=$(printf 'Status: **%s**\n\nTarget: modal-01 / A10\nSmoke: 480p / 5s / muted\n\nRun: %s\n' "${{ job.status }}" "$RUN_URL")
+          ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] LTX 2.3 video smoke" in:title' --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE" ]; then gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"; else gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"; fi
