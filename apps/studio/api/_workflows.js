@@ -22,18 +22,18 @@ const workflowRegistry = {
       maxMegapixels: 4.0,
     },
   },
-  'ltx23-video': {
-    id: 'ltx23-video',
+  'ltx25-redgraft-video': {
+    id: 'ltx25-redgraft-video',
     kind: 'video',
     mode: 'video',
-    model: 'LTX-Video 2.3 · 22B Distilled',
-    provider: 'modal-ltx23',
+    model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot',
+    provider: 'modal-ltx25-redgraft',
     requiresSourceImage: false,
     supportsMultipleReferences: false,
     automaticOutputSize: false,
     outputMimeType: 'video/mp4',
     defaults: {
-      negativePrompt: 'pc game, console game, video game, cartoon, childish, ugly, watermark, subtitles, text overlay',
+      negativePrompt: '',
       seed: 42,
       steps: 8,
       cfg: 1.0,
@@ -48,7 +48,7 @@ const workflowRegistry = {
       maxMegapixels: 4.0,
       minDurationSeconds: 5,
       maxDurationSeconds: 30,
-      resolutions: ['480p', '720p', '1080p', '2K', '4K'],
+      resolutions: ['480p', '720p', '1080p', '2K'],
     },
   },
 };
