@@ -284,11 +284,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/studio/package-lock.json
 
       - name: Require live Studio persistence credentials
         shell: bash
@@ -304,7 +302,7 @@ jobs:
 
       - name: Install Studio dependencies
         working-directory: apps/studio
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Download validated video artifact
         uses: actions/download-artifact@v4
