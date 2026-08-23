@@ -29,6 +29,23 @@ jobs:
       - name: Apply iteration 4 source and test changes
         run: python apps/studio/scripts/iteration4_keyboard_patch.py
 
+      - name: Make focus restoration immediate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for relative in [
+              'apps/studio/src/create-controls.jsx',
+              'apps/studio/src/features/create/VideoGenerationControls.jsx',
+          ]:
+              path = Path(relative)
+              text = path.read_text()
+              text = text.replace('requestAnimationFrame(() => returnFocusRef?.current?.focus());', 'returnFocusRef?.current?.focus();')
+              text = text.replace('requestAnimationFrame(() => triggerRef.current?.focus());', 'triggerRef.current?.focus();')
+              text = text.replace('requestAnimationFrame(() => anchorRef.current?.focus());', 'anchorRef.current?.focus();')
+              path.write_text(text)
+          PY
+
       - name: Validate patch formatting
         run: git diff --check
 
