@@ -1,9 +1,9 @@
 name: Studio Iteration 4 Keyboard Patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - studio/video-gallery-ux
+      - main
     paths:
       - ".github/workflows/studio-iteration4-keyboard-patch.yml"
       - "apps/studio/scripts/iteration4_keyboard_patch.py"
