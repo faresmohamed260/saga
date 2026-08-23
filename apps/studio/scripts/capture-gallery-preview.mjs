@@ -95,8 +95,6 @@ try {
   const firstBox = await cards.first().boundingBox();
   if (!firstBox || firstBox.width > 230 || firstBox.width < 175) throw new Error(`Gallery card density is outside the intended range: ${JSON.stringify(firstBox)}`);
 
-  // MediaCard semantics: the frame is structural, the primary action is a real button,
-  // and no interactive control is nested inside another interactive control.
   if (await page.locator('.history-card .media-frame[role="button"]').count()) throw new Error('Gallery media frame still uses button-like role semantics');
   if (await page.locator('.history-card button button').count()) throw new Error('Gallery contains nested button elements');
   const primaryButtons = page.locator('.history-card .media-frame-primary');
@@ -109,7 +107,6 @@ try {
   await page.screenshot({ path: path.join(outputDir, '10-gallery-grid.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('10-gallery-grid.png');
 
-  // Force keyboard modality, then inspect the dedicated primary action focus treatment.
   await page.keyboard.press('Tab');
   await primaryButtons.first().focus();
   if (!(await primaryButtons.first().evaluate((element) => element.matches(':focus-visible')))) throw new Error('Primary media action does not receive :focus-visible treatment');
@@ -125,9 +122,8 @@ try {
 
   const overlay = cards.first().locator('.media-actions-overlay');
   const beforeOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
-  // Keyboard focus intentionally reveals the action surface. Blur before measuring hover-only state.
   await page.locator('body').click({ position: { x: 2, y: 2 } });
-  await page.waitForTimeout(50);
+  await page.waitForTimeout(220);
   const resetOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
   if (beforeOpacity < 0.9) throw new Error(`Gallery actions should be exposed while the card has keyboard focus, opacity=${beforeOpacity}`);
   if (resetOpacity > 0.05) throw new Error(`Gallery actions should hide after keyboard focus leaves the card, opacity=${resetOpacity}`);
