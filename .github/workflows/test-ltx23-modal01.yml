@@ -6,12 +6,14 @@ on:
     paths:
       - "integrations/comfyui/ltx23_app.py"
       - "integrations/comfyui/ltx23_gateway.py"
+      - "apps/studio/api/_result-persistence.js"
       - ".github/workflows/test-ltx23-modal01.yml"
   push:
     branches: [studio/ltx23-video-backend]
     paths:
       - "integrations/comfyui/ltx23_app.py"
       - "integrations/comfyui/ltx23_gateway.py"
+      - "apps/studio/api/_result-persistence.js"
       - ".github/workflows/test-ltx23-modal01.yml"
 
 permissions:
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -113,7 +115,8 @@ jobs:
               "ConditioningZeroOut", "LTXVEmptyLatentAudio", "LTXVConcatAVLatent",
               "LTXVSeparateAVLatent", "LTXVConditioning", "LTXVCropGuides",
               "LTXVLatentUpsampler", "LTXVImgToVideoInplace", "LTXVPreprocess",
-              "LatentUpscaleBy", "ImageScale", "CreateVideo", "SaveVideo",
+              "LTXVAudioVAEDecode", "LoadImage", "LatentUpscaleBy", "ImageScale",
+              "CreateVideo", "SaveVideo",
           ]
           missing = [name for name in required if not info.get(name)]
           if missing:
@@ -142,6 +145,35 @@ jobs:
           PY
           ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-smoke.mp4 | tee /tmp/ltx25-ffprobe.json
 
+      - name: Smoke text-to-video with generated audio
+        shell: bash
+        run: |
+          python - <<'PY'
+          import modal
+          cls = modal.Cls.from_name("saga-ltx25-video", "LTX25Worker")
+          result = cls().generate.remote(
+              prompt="A gentle forest stream under light rain, leaves moving softly, natural ambience, locked camera",
+              seed=314,
+              resolution="480p",
+              duration_seconds=5,
+              audio_enabled=True,
+          )
+          if not isinstance(result, (bytes, bytearray)) or len(result) < 100_000:
+              raise SystemExit(f"Invalid audio video result: {type(result)} bytes={len(result) if hasattr(result, '__len__') else 'n/a'}")
+          open('/tmp/ltx25-audio.mp4', 'wb').write(result)
+          print({"bytes": len(result)})
+          PY
+          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-audio.mp4 | tee /tmp/ltx25-audio-ffprobe.json
+          python - <<'PY'
+          import json
+          payload = json.load(open('/tmp/ltx25-audio-ffprobe.json', encoding='utf-8'))
+          streams = payload.get('streams') or []
+          if not any(stream.get('codec_type') == 'video' for stream in streams):
+              raise SystemExit('Audio smoke output has no video stream')
+          if not any(stream.get('codec_type') == 'audio' for stream in streams):
+              raise SystemExit('Audio smoke output has no audio stream')
+          PY
+
       - name: Check gateway health
         shell: bash
         run: |
@@ -155,6 +187,59 @@ jobs:
               raise SystemExit("LTX 2.5 gateway did not report ready=true")
           PY
 
+      - name: Prepare image-to-video reference
+        run: |
+          ffmpeg -y -f lavfi -i "testsrc2=size=896x512:rate=1" -frames:v 1 /tmp/ltx25-reference.png
+
+      - name: Smoke gateway image-to-video 480p 5s muted
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, time
+          import requests
+
+          base = "https://faresmohamed260--saga-ltx25-gateway-web.modal.run"
+          with open('/tmp/ltx25-reference.png', 'rb') as handle:
+              response = requests.post(
+                  f"{base}/jobs/video",
+                  data={
+                      "prompt": "Animate this reference into a cinematic moving shot with gentle camera drift and natural motion",
+                      "negative_prompt": "",
+                      "seed": "2718",
+                      "resolution": "480p",
+                      "duration_seconds": "5",
+                      "audio_enabled": "false",
+                  },
+                  files={"image_file": ("reference.png", handle, "image/png")},
+                  timeout=180,
+              )
+          response.raise_for_status()
+          submitted = response.json()
+          print(json.dumps(submitted, indent=2))
+          if submitted.get("mode") != "image-to-video" or not submitted.get("call_id"):
+              raise SystemExit(f"Gateway did not accept image-to-video job: {submitted}")
+
+          call_id = submitted["call_id"]
+          deadline = time.time() + 1800
+          while time.time() < deadline:
+              polled = requests.get(f"{base}/jobs/{call_id}", timeout=180)
+              if polled.status_code == 202:
+                  time.sleep(5)
+                  continue
+              polled.raise_for_status()
+              if not polled.headers.get("content-type", "").startswith("video/"):
+                  raise SystemExit(f"Gateway result is not video: {polled.headers.get('content-type')}")
+              if len(polled.content) < 100_000:
+                  raise SystemExit(f"Gateway image-to-video result is unexpectedly small: {len(polled.content)}")
+              open('/tmp/ltx25-i2v.mp4', 'wb').write(polled.content)
+              open('/tmp/ltx25-i2v-submit.json', 'w', encoding='utf-8').write(json.dumps(submitted, indent=2))
+              print({"bytes": len(polled.content), "call_id": call_id})
+              break
+          else:
+              raise SystemExit("Gateway image-to-video smoke timed out")
+          PY
+          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-i2v.mp4 | tee /tmp/ltx25-i2v-ffprobe.json
+
       - name: Publish smoke artifact
         uses: actions/upload-artifact@v4
         with:
@@ -162,6 +247,12 @@ jobs:
           path: |
             /tmp/ltx25-smoke.mp4
             /tmp/ltx25-ffprobe.json
+            /tmp/ltx25-audio.mp4
+            /tmp/ltx25-audio-ffprobe.json
+            /tmp/ltx25-i2v.mp4
+            /tmp/ltx25-i2v-ffprobe.json
+            /tmp/ltx25-i2v-submit.json
+            /tmp/ltx25-reference.png
             /tmp/ltx25-object-info.json
             /tmp/ltx25-prefetch.json
             /tmp/ltx25-gateway-health.json
@@ -175,6 +266,128 @@ jobs:
         run: |
           TITLE="[automation] REDGraft LTX 2.5 video smoke"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY=$(printf 'Status: **%s**\n\nTarget: modal-01 / A10\nCheckpoint: REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors\nAutoV2: AB59BB5E74\nSmoke: two-stage 480p / 5s / muted\n\nRun: %s\n' "${{ job.status }}" "$RUN_URL")
+          BODY=$(printf 'Status: **%s**\n\nTarget: modal-01 / A10\nCheckpoint: REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors\nAutoV2: AB59BB5E74\nCoverage: T2V muted + T2V audio + gateway I2V\n\nRun: %s\n' "${{ job.status }}" "$RUN_URL")
           ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] REDGraft LTX 2.5 video smoke" in:title' --json number --jq '.[0].number // empty')
           if [ -n "$ISSUE" ]; then gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"; else gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"; fi
+
+  persistence:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.SAGA_SUPABASE_API_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SAGA_SUPABASE_SERVICE_ROLE_KEY }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/studio/package-lock.json
+
+      - name: Require live Studio persistence credentials
+        shell: bash
+        run: |
+          missing=0
+          for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not configured as a GitHub Actions secret"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm ci
+
+      - name: Download validated video artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ltx25-redgraft-video-smoke-${{ github.run_id }}
+          path: /tmp/ltx25-artifact
+
+      - name: Persist video through Studio R2 and Supabase path
+        working-directory: apps/studio
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE' | tee /tmp/ltx25-persistence.json
+          import fs from 'node:fs';
+          import { DeleteObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+          import { createGenerationJob, transitionGenerationJob } from './api/_generation-jobs.js';
+          import { persistVideoJobResult } from './api/_result-persistence.js';
+          import { supabaseRequest } from './api/_supabase.js';
+
+          const bytes = fs.readFileSync('/tmp/ltx25-artifact/ltx25-smoke.mp4');
+          const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
+          const client = new S3Client({
+            region: 'auto',
+            endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+            credentials: {
+              accessKeyId: process.env.R2_ACCESS_KEY_ID,
+              secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+            },
+            requestChecksumCalculation: 'WHEN_REQUIRED',
+            responseChecksumValidation: 'WHEN_REQUIRED',
+          });
+
+          let job = null;
+          let key = null;
+          try {
+            job = await createGenerationJob({
+              kind: 'video',
+              mode: 'validation',
+              model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot',
+              prompt: '[validation] R2 video persistence smoke',
+              resolution: '480p',
+              seed: 42,
+              workflowId: 'ltx25-video-validation',
+              provider: 'modal-ltx25',
+              metadata: { validation: true, video: { durationSeconds: 5, audioEnabled: false } },
+            });
+            job = await transitionGenerationJob(job.id, 'running');
+            const completed = await persistVideoJobResult(job, bytes, 'video/mp4');
+            key = completed.r2_key;
+            if (completed.status !== 'completed') throw new Error(`Unexpected persisted status: ${completed.status}`);
+            if (completed.mime_type !== 'video/mp4') throw new Error(`Unexpected persisted MIME type: ${completed.mime_type}`);
+            if (!key || !key.endsWith('.mp4')) throw new Error(`Unexpected R2 key: ${key}`);
+            if (!completed.media_url?.includes(encodeURIComponent(key))) throw new Error(`Unexpected media URL: ${completed.media_url}`);
+            if (completed.metadata?.storage !== 'cloudflare-r2') throw new Error('Completed row is missing Cloudflare R2 storage metadata');
+            if (Number(completed.metadata?.video?.byteLength) !== bytes.length) throw new Error('Persisted byteLength metadata does not match video bytes');
+
+            const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+            if (head.ContentType !== 'video/mp4') throw new Error(`R2 object has wrong content type: ${head.ContentType}`);
+            if (Number(head.ContentLength) !== bytes.length) throw new Error(`R2 object length mismatch: ${head.ContentLength} != ${bytes.length}`);
+
+            console.log(JSON.stringify({
+              ready: true,
+              jobId: completed.id,
+              status: completed.status,
+              r2Key: key,
+              mediaUrl: completed.media_url,
+              contentType: head.ContentType,
+              contentLength: head.ContentLength,
+              storage: completed.metadata?.storage,
+            }, null, 2));
+          } finally {
+            if (job?.id) {
+              const created = new Date(job.created_at || Date.now());
+              const inferred = `generations/${created.getUTCFullYear()}/${String(created.getUTCMonth() + 1).padStart(2, '0')}/${job.id}.mp4`;
+              try { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key || inferred })); } catch (error) { console.error('R2 validation cleanup failed', error); }
+              try { await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(job.id)}`, { method: 'DELETE' }); } catch (error) { console.error('Supabase validation cleanup failed', error); }
+            }
+          }
+          NODE
+
+      - name: Publish persistence result
+        uses: actions/upload-artifact@v4
+        with:
+          name: ltx25-r2-persistence-${{ github.run_id }}
+          path: /tmp/ltx25-persistence.json
+          retention-days: 3
