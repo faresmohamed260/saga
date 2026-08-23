@@ -1,0 +1,49 @@
+/* Final visual-polish layer for reusable Create and Gallery components. */
+
+.workspace .saga-video-option-menu {
+  top: calc(100% + 8px);
+  bottom: auto;
+  max-height: min(420px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 760px) {
+  .gallery-toolbar-actions {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .gallery-toolbar-actions .history-model-filter {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gallery-toolbar-actions .history-model-filter > span {
+    display: none;
+  }
+
+  .gallery-toolbar-actions .history-model-filter select {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .gallery-toolbar-actions .gallery-manage-trigger {
+    min-width: 0;
+    flex: 0 0 auto;
+  }
+
+  .gallery-manager {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    box-sizing: border-box;
+  }
+}
