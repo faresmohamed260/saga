@@ -1,0 +1,43 @@
+name: Apply Studio component refactor
+
+on:
+  push:
+    branches:
+      - studio/component-architecture
+    paths:
+      - "apps/studio/scripts/refactor-component-architecture.mjs"
+      - ".github/workflows/apply-studio-component-refactor.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/component-architecture
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Generate component architecture
+        run: node apps/studio/scripts/refactor-component-architecture.mjs
+
+      - name: Validate generated diff
+        run: git diff --check
+
+      - name: Commit generated architecture
+        shell: bash
+        run: |
+          if git diff --quiet -- apps/studio/src; then
+            echo "No generated source changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src
+          git commit -m "Refactor Studio into feature components"
+          git push origin HEAD:studio/component-architecture
