@@ -8,12 +8,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 4 — custom-picker keyboard behavior**
+**Iteration 5 — stored video poster thumbnails**
 
-- Status: `[x]` complete
-- Working item: **04 complete**
-- Next item: **05 — stored video poster thumbnails**
-- Gate: stop for user approval before starting Item 05.
+- Status: `[~]` in progress
+- Working item: **05**
 - Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
@@ -25,7 +23,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## P1 — core UX and architecture
 
-- [ ] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Extract and persist a poster frame after generation; Gallery loads posters first and video only on demand.
+- [~] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Extract and persist a poster frame after generation; Gallery loads posters first and video only on demand. **Iteration 5 in progress.**
 - [ ] **06. Lazy-load Gallery hover video previews.** `preload="none"`/deferred `src`, attach/play on hover/focus/visibility, pause/detach appropriately, respect reduced motion and touch behavior.
 - [ ] **07. Merge Auto + aspect ratio into one clear Aspect control.** Example states: `Aspect · Auto 16:9`, `Aspect · Auto 4:3 · From reference`, or manual ratio.
 - [ ] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator.
