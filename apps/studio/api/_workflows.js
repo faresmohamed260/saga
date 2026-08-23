@@ -53,8 +53,14 @@ const workflowRegistry = {
   },
 };
 
+const workflowAliases = {
+  'ltx23-video': 'ltx25-redgraft-video',
+};
+
 export function getWorkflow(workflowId) {
-  return workflowRegistry[String(workflowId || '')] || null;
+  const requestedId = String(workflowId || '');
+  const resolvedId = workflowAliases[requestedId] || requestedId;
+  return workflowRegistry[resolvedId] || null;
 }
 
 export function listWorkflows() {
