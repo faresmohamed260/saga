@@ -53,10 +53,7 @@ const rows = [
   },
 ];
 
-const browser = await chromium.launch({ headless: true });
-try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
-  page.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
+async function mockHistory(page) {
   await page.route('**/api/history?**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -68,6 +65,13 @@ try {
       }),
     });
   });
+}
+
+const browser = await chromium.launch({ headless: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  page.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'desktop', text: error?.stack || error?.message || String(error) }));
+  await mockHistory(page);
 
   await page.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
@@ -97,6 +101,7 @@ try {
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const manager = page.locator('.gallery-manager');
   await manager.waitFor({ state: 'visible' });
+  if (await cards.first().locator('.media-actions-overlay').count()) throw new Error('Per-card hover actions remain mounted during Manage mode');
   await cards.nth(0).locator('.media-select-toggle').click();
   await cards.nth(2).locator('.media-select-toggle').click();
   if (!(await manager.locator('strong').innerText()).includes('2 selected')) throw new Error('Gallery manager did not track two selected items');
@@ -107,7 +112,32 @@ try {
   await page.screenshot({ path: path.join(outputDir, '12-gallery-manager.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('12-gallery-manager.png');
 
-  if (diagnostics.pageErrors.length) throw new Error(`Gallery page errors: ${diagnostics.pageErrors.join(' | ')}`);
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  mobile.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'mobile', text: error?.stack || error?.message || String(error) }));
+  await mockHistory(mobile);
+  await mobile.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await mobile.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
+  const mobileCards = mobile.locator('.gallery-grid .history-card');
+  await mobileCards.nth(1).waitFor({ state: 'visible', timeout: 10_000 });
+  const mobileFirst = await mobileCards.nth(0).boundingBox();
+  const mobileSecond = await mobileCards.nth(1).boundingBox();
+  if (!mobileFirst || !mobileSecond || Math.abs(mobileFirst.width - mobileSecond.width) > 3 || Math.abs(mobileFirst.x - mobileSecond.x) < mobileFirst.width * .7) {
+    throw new Error(`Mobile Gallery is not a stable two-column grid: ${JSON.stringify({ mobileFirst, mobileSecond })}`);
+  }
+  await mobile.screenshot({ path: path.join(outputDir, '13-gallery-mobile.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('13-gallery-mobile.png');
+
+  await mobile.getByRole('button', { name: 'Manage', exact: true }).click();
+  const mobileManager = mobile.locator('.gallery-manager');
+  await mobileManager.waitFor({ state: 'visible' });
+  await mobileCards.first().locator('.media-select-toggle').click();
+  if (!(await mobileManager.locator('strong').innerText()).includes('1 selected')) throw new Error('Mobile Gallery manager did not track selection');
+  const managerBox = await mobileManager.boundingBox();
+  if (!managerBox || managerBox.x < 0 || managerBox.x + managerBox.width > 390) throw new Error(`Mobile Gallery manager overflows viewport: ${JSON.stringify(managerBox)}`);
+  await mobile.screenshot({ path: path.join(outputDir, '14-gallery-mobile-manager.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('14-gallery-mobile-manager.png');
+
+  if (diagnostics.pageErrors.length) throw new Error(`Gallery page errors: ${diagnostics.pageErrors.map((entry) => `${entry.label}: ${entry.text}`).join(' | ')}`);
 } finally {
   await writeFile(path.join(outputDir, 'gallery-diagnostics.json'), JSON.stringify(diagnostics, null, 2));
   await browser.close();
