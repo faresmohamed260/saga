@@ -44,14 +44,18 @@ export function referenceAspect(reference) {
   };
 }
 
-function useOutsideDismiss(open, rootRef, close) {
+function useOutsideDismiss(open, rootRef, close, returnFocusRef = null) {
   useEffect(() => {
     if (!open) return undefined;
     const pointer = (event) => {
       if (!rootRef.current?.contains(event.target)) close();
     };
     const key = (event) => {
-      if (event.key === 'Escape') close();
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      returnFocusRef?.current?.focus();
     };
     document.addEventListener('pointerdown', pointer);
     document.addEventListener('keydown', key);
@@ -59,39 +63,98 @@ function useOutsideDismiss(open, rootRef, close) {
       document.removeEventListener('pointerdown', pointer);
       document.removeEventListener('keydown', key);
     };
-  }, [open, rootRef, close]);
+  }, [open, rootRef, close, returnFocusRef]);
 }
 
 function CompactPicker({ label, value, options, onChoose, leading }) {
   const [open, setOpen] = useState(false);
+  const [focusIndex, setFocusIndex] = useState(0);
   const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const optionRefs = useRef([]);
+  const matchedIndex = options.findIndex((option) => option.value === value);
+  const selectedIndex = matchedIndex >= 0 ? matchedIndex : 0;
   const close = useCallback(() => setOpen(false), []);
-  useOutsideDismiss(open, rootRef, close);
+  useOutsideDismiss(open, rootRef, close, triggerRef);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setFocusIndex(selectedIndex);
+    const frame = requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, selectedIndex, options.length]);
+
+  const focusOption = (index) => {
+    const normalized = (index + options.length) % options.length;
+    setFocusIndex(normalized);
+    optionRefs.current[normalized]?.focus();
+  };
+
+  const choose = (option) => {
+    onChoose(option.value);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const optionKeyDown = (event, index) => {
+    let next = null;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = index + 1;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = index - 1;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = options.length - 1;
+    if (next != null) {
+      event.preventDefault();
+      focusOption(next);
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      choose(options[index]);
+    }
+  };
+
+  const openFromTrigger = (event) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    setFocusIndex(selectedIndex);
+    setOpen(true);
+  };
+
   return (
-    <div className="saga-video-inline-picker" ref={rootRef}>
+    <div
+      className="saga-video-inline-picker"
+      ref={rootRef}
+      onBlurCapture={(event) => {
+        if (!open || rootRef.current?.contains(event.relatedTarget)) return;
+        setOpen(false);
+      }}
+    >
       <button
+        ref={triggerRef}
         type="button"
         className={`saga-control-pill ${open ? 'active' : ''}`}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
+        onKeyDown={openFromTrigger}
         onClick={() => setOpen((current) => !current)}
       >
         {leading}<span>{value}</span><ChevronDown size={13} />
       </button>
       {open && (
-        <div className="saga-video-option-menu" role="menu" aria-label={label}>
-          {options.map((option) => (
+        <div className="saga-video-option-menu" role="menu" aria-label={label} aria-orientation="vertical">
+          {options.map((option, index) => (
             <button
+              ref={(node) => { optionRefs.current[index] = node; }}
               type="button"
               role="menuitemradio"
               aria-checked={option.value === value}
+              tabIndex={index === focusIndex ? 0 : -1}
               className={option.value === value ? 'selected' : ''}
               key={option.value}
-              onClick={() => {
-                onChoose(option.value);
-                setOpen(false);
-              }}
+              onFocus={() => setFocusIndex(index)}
+              onKeyDown={(event) => optionKeyDown(event, index)}
+              onClick={() => choose(option)}
             >
               <span><strong>{option.value}</strong>{option.label && <small>{option.label}</small>}</span>
               {option.value === value && <Check size={14} />}

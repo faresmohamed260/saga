@@ -34,6 +34,25 @@ async function expectText(locator, expected, label) {
   if (!text.includes(expected)) throw new Error(`${label}: expected ${expected}, got ${text}`);
 }
 
+async function expectFocused(locator, label) {
+  await locator.waitFor({ state: 'attached' });
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (await locator.evaluate((element) => document.activeElement === element)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`${label} did not receive focus`);
+}
+
+async function expectStrongFocus(locator, label) {
+  const result = await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { visible: element.matches(':focus-visible'), outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+  });
+  if (!result.visible || result.outlineStyle === 'none' || Number.parseFloat(result.outlineWidth) < 2) {
+    throw new Error(`${label} focus indicator is not strong enough: ${JSON.stringify(result)}`);
+  }
+}
+
 const browser = await chromium.launch({ headless: true });
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -53,7 +72,8 @@ try {
 
   // Image picker keyboard, morphing and outside dismissal.
   const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
-  await resolutionTrigger.click();
+  await resolutionTrigger.focus();
+  await desktop.keyboard.press('Enter');
   const resolutionPicker = desktop.locator('.saga-resolution-picker');
   await resolutionPicker.waitFor({ state: 'visible' });
   await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
@@ -76,25 +96,41 @@ try {
   const resolutionLabelAfter = (await resolutionPicker.locator('.saga-picker-preview strong').innerText()).trim();
   if (resolutionPreviewBefore === resolutionPreviewAfter) throw new Error('Resolution preview did not morph with keyboard focus');
   if (resolutionLabelBefore === resolutionLabelAfter || resolutionLabelAfter !== '2K') throw new Error(`Resolution label did not morph with preview: ${resolutionLabelBefore} -> ${resolutionLabelAfter}`);
+  await desktop.keyboard.press('End');
+  if (!/4K/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('End did not focus the last resolution option');
+  await expectStrongFocus(resolutionPicker.getByRole('menuitemradio').last(), 'Resolution End option');
   await shot(desktop, '02-image-resolution-picker.png');
+  await desktop.keyboard.press('Home');
+  if (!/SD/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the first resolution option');
   await desktop.keyboard.press('Escape');
   await expectHidden(resolutionPicker, 'Resolution picker');
+  await expectFocused(resolutionTrigger, 'Resolution trigger after Escape');
+  await expectStrongFocus(resolutionTrigger, 'Resolution trigger');
 
   const aspectTrigger = desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') });
-  await aspectTrigger.click();
+  await aspectTrigger.focus();
+  await desktop.keyboard.press('Space');
   const aspectPicker = desktop.locator('.saga-aspect-picker');
   await aspectPicker.waitFor({ state: 'visible' });
+  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
   const aspectList = aspectPicker.locator('.saga-morph-list');
   const aspectScroll = await aspectList.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
   if (aspectScroll.scrollHeight > aspectScroll.clientHeight + 1) throw new Error(`Aspect picker still scrolls: ${JSON.stringify(aspectScroll)}`);
+  await desktop.keyboard.press('End');
+  if (!/21:9/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('End did not focus the last aspect option');
+  await expectStrongFocus(aspectPicker.getByRole('menuitemradio').last(), 'Aspect End option');
+  await shot(desktop, '02b-image-picker-keyboard-focus.png');
+  await desktop.keyboard.press('Home');
+  if (!/1:1/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the first aspect option');
   const aspectPreviewBefore = await aspectPicker.locator('.saga-preview-shape').boundingBox();
   await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).hover();
   await desktop.waitForTimeout(200);
   const aspectPreviewAfter = await aspectPicker.locator('.saga-preview-shape').boundingBox();
   if (!aspectPreviewBefore || !aspectPreviewAfter || (Math.abs(aspectPreviewBefore.width - aspectPreviewAfter.width) < 3 && Math.abs(aspectPreviewBefore.height - aspectPreviewAfter.height) < 3)) throw new Error('Aspect preview did not morph on hover');
   await shot(desktop, '02-image-aspect-picker.png');
-  await desktop.locator('.saga-stage-heading').click();
+  await desktop.keyboard.press('Escape');
   await expectHidden(aspectPicker, 'Aspect picker');
+  await expectFocused(aspectTrigger, 'Aspect trigger after Escape');
 
   // Set image resolution/aspect for persistence verification.
   await resolutionTrigger.click();
@@ -115,11 +151,29 @@ try {
   await advanced.locator('input[aria-label="CFG value"]').fill('2.7');
   await advanced.locator('input[aria-label="Seed"]').fill('12345');
   const outputSelect = advanced.locator('.saga-advanced-top .saga-fancy-select').nth(1);
-  await outputSelect.locator(':scope > button').click();
-  await outputSelect.getByRole('option', { name: '2 outputs' }).click();
-  await outputSelect.locator(':scope > button').click();
+  const outputTrigger = outputSelect.locator(':scope > button');
+  await outputTrigger.focus();
+  await desktop.keyboard.press('Enter');
+  const outputOptions = outputSelect.getByRole('option');
+  await outputOptions.first().waitFor({ state: 'visible' });
+  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option', null, { timeout: 1500 });
+  await desktop.keyboard.press('End');
+  if (!/4 outputs/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('End did not focus the last advanced select option');
+  await desktop.keyboard.press('Home');
+  if (!/1 output/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the first advanced select option');
+  await desktop.keyboard.press('ArrowDown');
+  if (!/2 outputs/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('ArrowDown did not move advanced select focus');
+  await expectStrongFocus(outputOptions.nth(1), 'Advanced output option');
+  await shot(desktop, '03b-advanced-picker-keyboard-focus.png');
+  await desktop.keyboard.press('Enter');
+  await expectText(outputTrigger, '2 outputs', 'Advanced keyboard selection');
+  await expectFocused(outputTrigger, 'Advanced select trigger after selection');
+  await desktop.keyboard.press('Space');
+  await outputOptions.first().waitFor({ state: 'visible' });
   await shot(desktop, '03-advanced-custom-dropdown.png');
-  await outputSelect.locator(':scope > button').click();
+  await desktop.keyboard.press('Escape');
+  await advanced.waitFor({ state: 'visible' });
+  await expectFocused(outputTrigger, 'Advanced select trigger after Escape');
   await settingsButton.click();
   await expectHidden(advanced, 'Advanced settings');
 
@@ -131,9 +185,11 @@ try {
   if ((await videoControls.nth(0).innerText()).includes('1080p')) throw new Error('Video resolution trigger still exposes the raw resolution value');
   const videoResolutionTrigger = videoControls.nth(0);
   const durationTrigger = videoControls.nth(1);
-  await videoResolutionTrigger.click();
+  await videoResolutionTrigger.focus();
+  await desktop.keyboard.press('ArrowDown');
   const videoResolutionPicker = desktop.locator('.saga-picker').filter({ has: desktop.getByRole('menu', { name: 'Video resolution' }) });
   await videoResolutionPicker.waitFor({ state: 'visible' });
+  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
   const expectedVideoRows = [['SD', '480p'], ['HD', '720p'], ['Full HD', '1080p'], ['2K', '2048 px'], ['4K', '3840 px']];
   const videoRows = videoResolutionPicker.getByRole('menuitemradio');
   if (await videoRows.count() !== expectedVideoRows.length) throw new Error('Video resolution picker row count is wrong');
@@ -155,15 +211,18 @@ try {
   if (videoPreviewLabelBefore === videoPreviewLabelAfter || videoPreviewLabelAfter !== '2K') throw new Error(`Video resolution preview did not morph: ${videoPreviewLabelBefore} -> ${videoPreviewLabelAfter}`);
   await shot(desktop, '04-video-resolution-picker.png');
   await videoResolutionPicker.getByRole('menuitemradio', { name: /4K.*3840 px/i }).click();
+  await expectFocused(videoResolutionTrigger, 'Video resolution trigger after selection');
 
-  await durationTrigger.click();
+  await durationTrigger.focus();
+  await desktop.keyboard.press('Enter');
   const durationPicker = desktop.locator('.saga-duration-picker');
   await durationPicker.waitFor({ state: 'visible' });
   const durationRange = durationPicker.locator('input[aria-label="Video duration"]');
   if (await durationRange.getAttribute('min') !== '5' || await durationRange.getAttribute('max') !== '30') throw new Error('Video duration is not constrained to 5–30 seconds');
   await durationRange.fill('23');
-  await desktop.locator('.saga-stage-heading').click();
+  await desktop.keyboard.press('Escape');
   await expectHidden(durationPicker, 'Duration picker');
+  await expectFocused(durationTrigger, 'Duration trigger after Escape');
 
   const audioToggle = desktop.locator('.saga-audio-toggle');
   if (!(await audioToggle.getAttribute('aria-pressed') === 'true')) throw new Error('Video audio should default on');

@@ -265,7 +265,7 @@ function useAnchoredPosition(open, anchorRef, desiredWidth, desiredHeight) {
   return position;
 }
 
-function useOutsideDismiss(open, refs, close) {
+function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNestedEscape = false) {
   useEffect(() => {
     if (!open) return undefined;
     const onPointer = (event) => {
@@ -273,7 +273,12 @@ function useOutsideDismiss(open, refs, close) {
       close();
     };
     const onKey = (event) => {
-      if (event.key === 'Escape') close();
+      if (event.key !== 'Escape') return;
+      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\"true\"]'))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      returnFocusRef?.current?.focus();
     };
     document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
@@ -281,7 +286,7 @@ function useOutsideDismiss(open, refs, close) {
       document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, refs, close]);
+  }, [open, refs, close, returnFocusRef, protectNestedEscape]);
 }
 
 function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = false, onPreview }) {
@@ -354,10 +359,19 @@ function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = fa
 function PickerShell({ open, anchorRef, width, height, className = '', children, onClose }) {
   const popoverRef = useRef(null);
   const position = useAnchoredPosition(open, anchorRef, width, height);
-  useOutsideDismiss(open, [anchorRef, popoverRef], onClose);
+  useOutsideDismiss(open, [anchorRef, popoverRef], onClose, anchorRef);
   if (!open) return null;
   return (
-    <div ref={popoverRef} className={`saga-picker ${className}`} style={position || { visibility: 'hidden' }}>
+    <div
+      ref={popoverRef}
+      className={`saga-picker ${className}`}
+      style={position || { visibility: 'hidden' }}
+      onBlurCapture={(event) => {
+        const next = event.relatedTarget;
+        if (!next || popoverRef.current?.contains(next) || anchorRef.current?.contains(next)) return;
+        onClose();
+      }}
+    >
       {children}
     </div>
   );
@@ -392,6 +406,7 @@ function AspectPicker({ open, setOpen, anchorRef, aspect, setAspect, editAuto, s
           setEditAuto(false);
           setAspect(option.value);
           setOpen(false);
+          anchorRef.current?.focus();
         }}
         render={(option) => (
           <>
@@ -432,6 +447,7 @@ function ResolutionPicker({
           setEditAuto(false);
           setImageResolution(option.value);
           setOpen(false);
+          anchorRef.current?.focus();
         }}
         render={(option) => (
           <>
@@ -466,6 +482,7 @@ function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
         onChoose={(option) => {
           setValue(option.value);
           setOpen(false);
+          anchorRef.current?.focus();
         }}
         render={(option) => (
           <>
@@ -481,7 +498,7 @@ function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
 function DurationPicker({ open, setOpen, anchorRef, value, setValue }) {
   const popoverRef = useRef(null);
   const position = useAnchoredPosition(open, anchorRef, 330, 196);
-  useOutsideDismiss(open, [anchorRef, popoverRef], () => setOpen(false));
+  useOutsideDismiss(open, [anchorRef, popoverRef], () => setOpen(false), anchorRef);
   if (!open) return null;
   const commit = (next) => setValue(Math.max(5, Math.min(30, Math.round(Number(next) || 5))));
   return (
@@ -512,26 +529,85 @@ function DurationPicker({ open, setOpen, anchorRef, value, setValue }) {
 function FancySelect({ label, value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  useOutsideDismiss(open, [rootRef], () => setOpen(false));
-  const selected = options.find((item) => String(item.value) === String(value)) || options[0];
+  const triggerRef = useRef(null);
+  const optionRefs = useRef([]);
+  const selectedIndex = Math.max(0, options.findIndex((item) => String(item.value) === String(value)));
+  const [focusIndex, setFocusIndex] = useState(selectedIndex);
+  const selected = options[selectedIndex] || options[0];
+  useOutsideDismiss(open, [rootRef], () => setOpen(false), triggerRef);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setFocusIndex(selectedIndex);
+    const frame = requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, selectedIndex, options.length]);
+
+  const focusOption = (index) => {
+    const normalized = (index + options.length) % options.length;
+    setFocusIndex(normalized);
+    optionRefs.current[normalized]?.focus();
+  };
+
+  const choose = (option) => {
+    onChange(option.value);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const optionKeyDown = (event, index) => {
+    let next = null;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = index + 1;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = index - 1;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = options.length - 1;
+    if (next != null) {
+      event.preventDefault();
+      focusOption(next);
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      choose(options[index]);
+    }
+  };
 
   return (
-    <div className={`saga-fancy-select ${open ? 'open' : ''}`} ref={rootRef}>
-      <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+    <div
+      className={`saga-fancy-select ${open ? 'open' : ''}`}
+      ref={rootRef}
+      onBlurCapture={(event) => {
+        if (!open || rootRef.current?.contains(event.relatedTarget)) return;
+        setOpen(false);
+      }}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+          event.preventDefault();
+          setOpen(true);
+        }}
+        onClick={() => setOpen((current) => !current)}
+      >
         <span>{selected?.label}</span><ChevronDown size={15} />
       </button>
       {open && (
-        <div className="saga-fancy-options" role="listbox" aria-label={label}>
-          {options.map((option) => (
+        <div className="saga-fancy-options" role="listbox" aria-label={label} aria-orientation="vertical">
+          {options.map((option, index) => (
             <button
+              ref={(node) => { optionRefs.current[index] = node; }}
               type="button"
               role="option"
               aria-selected={String(option.value) === String(value)}
+              tabIndex={index === focusIndex ? 0 : -1}
               key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
+              onFocus={() => setFocusIndex(index)}
+              onKeyDown={(event) => optionKeyDown(event, index)}
+              onClick={() => choose(option)}
             >
               <span>{option.label}</span>
               {String(option.value) === String(value) && <Check size={14} />}
@@ -567,7 +643,7 @@ function AdvancedSettings({
 }) {
   const panelRef = useRef(null);
   const position = useAnchoredPosition(open, anchorRef, 430, 610);
-  useOutsideDismiss(open, [anchorRef, panelRef], onClose);
+  useOutsideDismiss(open, [anchorRef, panelRef], onClose, anchorRef, true);
   if (!open) return null;
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -865,6 +941,13 @@ export default function CreateWorkspace({
                     className={`saga-control-pill saga-resolution-trigger ${resolutionOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={resolutionOpen}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                      event.preventDefault();
+                      setResolutionOpen(true);
+                      setAspectOpen(false);
+                      setSettingsOpen(false);
+                    }}
                     onClick={() => {
                       setResolutionOpen((current) => !current);
                       setAspectOpen(false);
@@ -882,6 +965,13 @@ export default function CreateWorkspace({
                     className={`saga-control-pill ${aspectOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={aspectOpen}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                      event.preventDefault();
+                      setAspectOpen(true);
+                      setResolutionOpen(false);
+                      setSettingsOpen(false);
+                    }}
                     onClick={() => {
                       setAspectOpen((current) => !current);
                       setResolutionOpen(false);
@@ -900,6 +990,13 @@ export default function CreateWorkspace({
                     className={`saga-control-pill ${videoResolutionOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={videoResolutionOpen}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                      event.preventDefault();
+                      setVideoResolutionOpen(true);
+                      setDurationOpen(false);
+                      setSettingsOpen(false);
+                    }}
                     onClick={() => {
                       setVideoResolutionOpen((current) => !current);
                       setDurationOpen(false);

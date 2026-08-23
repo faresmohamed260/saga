@@ -185,6 +185,7 @@
   height:34px;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 11px;border:1px solid #272d37;border-radius:11px;background:#151920;color:#d5d9e0;font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;transition:.18s ease;
 }
 .workspace .saga-control-pill:hover,.workspace .saga-control-pill.active{background:#1d222b;border-color:#3b4350;color:#fff}
+.workspace .saga-control-pill:focus-visible,.workspace .saga-fancy-select>button:focus-visible{outline:2px solid #9f8cff;outline-offset:2px}
 .workspace .saga-auto-toggle.active{background:#261f42;border-color:#5844a8;color:#f1edff;box-shadow:inset 0 0 0 1px rgba(156,137,255,.12)}
 .workspace .saga-auto-toggle:not(.active){color:#7d8695;background:#14181e}
 .workspace .saga-audio-toggle{
@@ -229,7 +230,7 @@
 .workspace .saga-morph-list button{
   position:relative;z-index:1;width:100%;height:32px;display:grid;grid-template-columns:minmax(62px,1fr) minmax(68px,96px) 18px;align-items:center;gap:6px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:#c3c8d0;text-align:left;cursor:pointer;box-sizing:border-box;
 }
-.workspace .saga-morph-list button:focus-visible{outline:1px solid #7665ce;outline-offset:-2px}
+.workspace .saga-morph-list button:focus-visible{outline:2px solid #9f8cff;outline-offset:-2px}
 .workspace .saga-option-key,.workspace .saga-option-label{font-size:10px;font-weight:700;color:#e2e5ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .workspace .saga-option-detail{font-size:9px;color:#778292;text-align:right;white-space:nowrap;overflow:visible}
 .workspace .saga-option-check{justify-self:end;color:#e9e6ff}
@@ -275,6 +276,7 @@
 }
 .workspace .saga-fancy-options button{width:100%;height:34px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 9px;border:0;border-radius:8px;background:transparent;color:#bdc4cf;font-size:10px;text-align:left;cursor:pointer}
 .workspace .saga-fancy-options button:hover,.workspace .saga-fancy-options button[aria-selected=true]{background:#252a34;color:#fff}
+.workspace .saga-fancy-options button:focus-visible{outline:2px solid #9f8cff;outline-offset:-2px;background:#252a34;color:#fff}
 .workspace .saga-advanced-card{margin-top:9px;padding:12px;border:1px solid #292f39;border-radius:13px;background:#11161c}
 .workspace .saga-card-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:11px}
 .workspace .saga-card-title strong{font-size:11px;color:#edf0f4}
@@ -374,6 +376,7 @@
   width:100%;min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 9px;border:0;border-radius:8px;background:transparent;color:#cbd0d8;text-align:left;cursor:pointer
 }
 .workspace .saga-video-option-menu button:hover,.workspace .saga-video-option-menu button.selected{background:#252a33;color:#fff}
+.workspace .saga-video-option-menu button:focus-visible{outline:2px solid #9f8cff;outline-offset:-2px;background:#252a33;color:#fff}
 .workspace .saga-video-option-menu button>span{display:flex;align-items:baseline;gap:7px;min-width:0}
 .workspace .saga-video-option-menu strong{font-size:10px;white-space:nowrap}
 .workspace .saga-video-option-menu small{font-size:9px;color:#778292;white-space:nowrap}

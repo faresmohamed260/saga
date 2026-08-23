@@ -54,24 +54,42 @@ try {
   await page.screenshot({ path: path.join(outputDir, '05b-video-output-controls.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05b-video-output-controls.png');
 
-  await aspect.click();
+  await aspect.focus();
+  await page.keyboard.press('ArrowDown');
   const aspectMenu = page.getByRole('menu', { name: 'Video aspect ratio' });
   await aspectMenu.waitFor({ state: 'visible' });
-  await aspectMenu.getByRole('menuitemradio', { name: /9:16/ }).click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
+  const aspectOptions = aspectMenu.getByRole('menuitemradio');
+  await page.keyboard.press('Home');
+  for (let step = 0; step < 4; step += 1) await page.keyboard.press('ArrowDown');
+  if (!/9:16/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Video aspect keyboard navigation did not reach 9:16');
+  await page.keyboard.press('Enter');
   if (await auto.getAttribute('aria-pressed') !== 'false') throw new Error('Choosing a manual video aspect did not disable Auto');
   if (!(await aspect.innerText()).includes('9:16')) throw new Error('Manual video aspect did not update to 9:16');
 
-  await fps.click();
+  await fps.focus();
+  await page.keyboard.press('Space');
   const fpsMenu = page.getByRole('menu', { name: 'Video frame rate' });
   await fpsMenu.waitFor({ state: 'visible' });
-  await fpsMenu.getByRole('menuitemradio', { name: '30 fps', exact: true }).click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
+  await page.keyboard.press('End');
+  const focusedFps = fpsMenu.getByRole('menuitemradio', { name: '30 fps', exact: true });
+  if (!(await focusedFps.evaluate((element) => element === document.activeElement && element.matches(':focus-visible')))) throw new Error('Video FPS End navigation/focus-visible failed');
+  const fpsOutline = await focusedFps.evaluate((element) => Number.parseFloat(getComputedStyle(element).outlineWidth));
+  if (fpsOutline < 2) throw new Error(`Video FPS focus indicator is too weak: ${fpsOutline}`);
+  await page.screenshot({ path: path.join(outputDir, '05f-video-picker-keyboard-focus.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('05f-video-picker-keyboard-focus.png');
+  await page.keyboard.press('Enter');
   if (!(await fps.innerText()).includes('30 fps')) throw new Error('Video frame-rate picker did not update to 30 fps');
+  if (!(await fps.evaluate((element) => document.activeElement === element))) throw new Error('Video FPS trigger did not regain focus after selection');
 
-  await aspect.click();
+  await aspect.focus();
+  await page.keyboard.press('Enter');
   await aspectMenu.waitFor({ state: 'visible' });
   await page.screenshot({ path: path.join(outputDir, '05c-video-aspect-picker.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05c-video-aspect-picker.png');
   await page.keyboard.press('Escape');
+  if (!(await aspect.evaluate((element) => document.activeElement === element))) throw new Error('Video aspect trigger did not regain focus after Escape');
 
   const chooserPromise = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Upload reference images', exact: true }).click();
