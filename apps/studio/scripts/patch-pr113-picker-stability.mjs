@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
+// One-shot remote patch for picker opening stability and reset icon alignment.
 function replaceOnce(source, from, to, label) {
   if (source.includes(to)) return source;
   if (!source.includes(from)) throw new Error(`Missing ${label}`);
