@@ -1,6 +1,11 @@
 name: Manual Studio I2V dance test
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/manual-studio-i2v-dance-test.yml
+      - apps/studio/scripts/manual-i2v-reference.b64
   push:
     branches:
       - studio/fix-video-workflow-id
