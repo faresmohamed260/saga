@@ -10,9 +10,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 5 — stored video poster thumbnails**
 
-- Status: `[~]` in progress
-- Working item: **05**
-- Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[x]` complete
+- Completed item: **05**
+- Next item: **06 — lazy-load Gallery hover video previews**
+- Rule: do not start Item 06 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -23,7 +24,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## P1 — core UX and architecture
 
-- [~] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Extract and persist a poster frame after generation; Gallery loads posters first and video only on demand. **Iteration 5 in progress.**
+- [x] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Completed videos now expose a server-side poster through the Modal gateway; Studio converts it to the standard 512px WebP thumbnail, persists it in R2/Supabase, and Gallery displays the stored poster first with `preload="none"`. **Iteration 5 complete.**
 - [ ] **06. Lazy-load Gallery hover video previews.** `preload="none"`/deferred `src`, attach/play on hover/focus/visibility, pause/detach appropriately, respect reduced motion and touch behavior.
 - [ ] **07. Merge Auto + aspect ratio into one clear Aspect control.** Example states: `Aspect · Auto 16:9`, `Aspect · Auto 4:3 · From reference`, or manual ratio.
 - [ ] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator.
@@ -109,4 +110,20 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Dedicated visual evidence: `02b-image-picker-keyboard-focus.png`, `03b-advanced-picker-keyboard-focus.png`, and `05f-video-picker-keyboard-focus.png`.
 - [x] Professional visual review confirmed the focus boundary is strong and consistent, selected state remains separately legible, menus stay within their established visual system, and no Iteration 4 layout regression was found.
 - [x] Validated product implementation commit: `9a09522d1c7dac4eed1fd4d6f4d5f4db78582a0f`.
-- [x] Professional review result for item 04: complete. Item 05 remains gated on user approval.
+- [x] Professional review result for item 04: complete.
+
+### Iteration 5 — stored video poster thumbnails
+
+- [x] Added a server-side poster endpoint at `GET /jobs/{call_id}/poster` in the Modal LTX gateway and installed ffmpeg in the gateway image for poster extraction.
+- [x] Preserved the established `LTX25Worker.generate() -> bytes` contract. The first implementation returned a `{video, poster}` object; professional review rejected that compatibility break and moved poster extraction to the gateway instead.
+- [x] Studio provider polling now retrieves the completed MP4 and then the poster JPEG. Poster retrieval is opportunistic/non-fatal so an otherwise valid completed video is not discarded if thumbnail extraction fails.
+- [x] Video persistence now converts the source poster to the shared 512px WebP thumbnail format, stores it in R2 under the standard thumbnail key, and persists `thumbnail_r2_key`, `thumbnail_url`, source dimensions, thumbnail dimensions, `thumbnailFormat`, and poster source MIME metadata in Supabase.
+- [x] Gallery poster-backed video cards now use the persisted poster and `preload="none"`; the prior metadata-load/seek fallback remains only for legacy rows without a thumbnail. Full deferred-`src` hover loading remains Item 06.
+- [x] Added `test:poster`, a deterministic non-GPU contract test. It verifies 1920×1080 JPEG → 512×288 WebP conversion, video + poster provider retrieval, gateway/runtime source contracts, result plumbing, persistence fields, and Gallery poster-first preload behavior.
+- [x] Studio CI now runs `npm run test:poster` on every relevant PR build.
+- [x] Visual-preview tests assert that mocked video Gallery rows have poster URLs and use `preload="none"`; dedicated evidence is `10c-gallery-video-posters.png`.
+- [x] Professional visual review confirmed stored posters render cleanly in the existing dense Gallery grid on desktop and mobile without introducing sizing, clipping, or control regressions. The pre-existing synthetic blank image-card artifact remains unrelated to Item 05.
+- [x] Final product compatibility refinement commit: `3b6bf01433a55bcea9cd7560b47b33cb80fb626e`; final reviewed branch head before checklist documentation: `44e6f5df0e5e8d97a021078f0d31e21d431a8a81`.
+- [x] Required Check Compatibility, Studio CI (including poster contract), Studio Visual Preview, and Backend Architecture CI all passed on the final reviewed product head.
+- [x] REDGraft live Modal smoke could not execute past prefetch because the configured Modal workspace is externally disabled (`modal.exception.ConflictError: workspace ... is disabled`). Runtime deployment succeeded before that rejection. This is recorded as an external validation blocker, not a product-code failure; live poster/R2 verification should be rerun when the workspace is re-enabled.
+- [x] Professional review result for item 05: complete. No remaining Item 05 comments. **Item 06 is next and remains gated on user approval.**
