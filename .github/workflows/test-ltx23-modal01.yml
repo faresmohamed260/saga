@@ -124,7 +124,7 @@ jobs:
               raise SystemExit(f"Wrong checkpoint active: {health.get('checkpoint')}")
           PY
 
-      - name: Smoke text-to-video 480p 5s muted
+      - name: Smoke text-to-video 480p 5s muted at 24 fps
         shell: bash
         run: |
           python - <<'PY'
@@ -136,15 +136,24 @@ jobs:
               resolution="480p",
               duration_seconds=5,
               audio_enabled=False,
+              frame_rate=24,
           )
           if not isinstance(result, (bytes, bytearray)) or len(result) < 100_000:
               raise SystemExit(f"Invalid video result: {type(result)} bytes={len(result) if hasattr(result, '__len__') else 'n/a'}")
           open('/tmp/ltx25-smoke.mp4', 'wb').write(result)
           print({"bytes": len(result)})
           PY
-          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-smoke.mp4 | tee /tmp/ltx25-ffprobe.json
+          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height,avg_frame_rate -of json /tmp/ltx25-smoke.mp4 | tee /tmp/ltx25-ffprobe.json
+          python - <<'PY'
+          import json
+          payload = json.load(open('/tmp/ltx25-ffprobe.json', encoding='utf-8'))
+          actual = float((payload.get('format') or {}).get('duration') or 0)
+          if abs(actual - 5.0) > 0.08:
+              raise SystemExit(f'24fps delivery duration must be 5.00s ±0.08s, got {actual:.4f}s')
+          print({"frame_rate": 24, "duration_seconds": actual})
+          PY
 
-      - name: Smoke text-to-video with generated audio
+      - name: Smoke text-to-video with generated audio at 25 fps
         shell: bash
         run: |
           python - <<'PY'
@@ -156,21 +165,26 @@ jobs:
               resolution="480p",
               duration_seconds=5,
               audio_enabled=True,
+              frame_rate=25,
           )
           if not isinstance(result, (bytes, bytearray)) or len(result) < 100_000:
               raise SystemExit(f"Invalid audio video result: {type(result)} bytes={len(result) if hasattr(result, '__len__') else 'n/a'}")
           open('/tmp/ltx25-audio.mp4', 'wb').write(result)
           print({"bytes": len(result)})
           PY
-          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-audio.mp4 | tee /tmp/ltx25-audio-ffprobe.json
+          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height,avg_frame_rate -of json /tmp/ltx25-audio.mp4 | tee /tmp/ltx25-audio-ffprobe.json
           python - <<'PY'
           import json
           payload = json.load(open('/tmp/ltx25-audio-ffprobe.json', encoding='utf-8'))
           streams = payload.get('streams') or []
+          actual = float((payload.get('format') or {}).get('duration') or 0)
+          if abs(actual - 5.0) > 0.08:
+              raise SystemExit(f'25fps delivery duration must be 5.00s ±0.08s, got {actual:.4f}s')
           if not any(stream.get('codec_type') == 'video' for stream in streams):
               raise SystemExit('Audio smoke output has no video stream')
           if not any(stream.get('codec_type') == 'audio' for stream in streams):
               raise SystemExit('Audio smoke output has no audio stream')
+          print({"frame_rate": 25, "duration_seconds": actual})
           PY
 
       - name: Check gateway health
@@ -190,7 +204,7 @@ jobs:
         run: |
           ffmpeg -y -f lavfi -i "testsrc2=size=896x512:rate=1" -frames:v 1 /tmp/ltx25-reference.png
 
-      - name: Smoke gateway image-to-video 480p 5s muted
+      - name: Smoke gateway image-to-video 480p 5s muted at 30 fps
         shell: bash
         run: |
           python - <<'PY'
@@ -208,6 +222,7 @@ jobs:
                       "resolution": "480p",
                       "duration_seconds": "5",
                       "audio_enabled": "false",
+                      "frame_rate": "30",
                   },
                   files={"image_file": ("reference.png", handle, "image/png")},
                   timeout=180,
@@ -237,7 +252,15 @@ jobs:
           else:
               raise SystemExit("Gateway image-to-video smoke timed out")
           PY
-          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-i2v.mp4 | tee /tmp/ltx25-i2v-ffprobe.json
+          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height,avg_frame_rate -of json /tmp/ltx25-i2v.mp4 | tee /tmp/ltx25-i2v-ffprobe.json
+          python - <<'PY'
+          import json
+          payload = json.load(open('/tmp/ltx25-i2v-ffprobe.json', encoding='utf-8'))
+          actual = float((payload.get('format') or {}).get('duration') or 0)
+          if abs(actual - 5.0) > 0.08:
+              raise SystemExit(f'30fps delivery duration must be 5.00s ±0.08s, got {actual:.4f}s')
+          print({"frame_rate": 30, "duration_seconds": actual})
+          PY
 
       - name: Publish smoke artifact
         uses: actions/upload-artifact@v4
@@ -265,7 +288,7 @@ jobs:
         run: |
           TITLE="[automation] REDGraft LTX 2.5 video smoke"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY=$(printf 'Status: **%s**\n\nTarget: modal-01 / A10\nCheckpoint: REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors\nAutoV2: AB59BB5E74\nCoverage: T2V muted + T2V audio + gateway I2V\n\nRun: %s\n' "${{ job.status }}" "$RUN_URL")
+          BODY=$(printf 'Status: **%s**\n\nTarget: modal-01 / A10\nCheckpoint: REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors\nAutoV2: AB59BB5E74\nCoverage: T2V muted 24fps + T2V audio 25fps + gateway I2V 30fps, all exact-duration checked\n\nRun: %s\n' "${{ job.status }}" "$RUN_URL")
           ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] REDGraft LTX 2.5 video smoke" in:title' --json number --jq '.[0].number // empty')
           if [ -n "$ISSUE" ]; then gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"; else gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"; fi
 
