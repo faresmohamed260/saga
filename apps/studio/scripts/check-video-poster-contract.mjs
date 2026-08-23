@@ -61,7 +61,9 @@ assert.match(gatewaySource, /def _extract_poster\(video: bytes\)/);
 assert.match(gatewaySource, /\/jobs\/\{call_id\}\/poster/);
 assert.match(resultSource, /result\.posterBytes, result\.posterContentType/);
 assert.match(persistenceSource, /thumbnail_r2_key: thumbnailUrl \? keys\.thumbnail : null/);
-assert.match(cardSource, /preload=\{item\.thumbnailUrl \? 'none' : 'metadata'\}/);
+assert.match(cardSource, /src=\{attachedVideoSource \|\| undefined\}/);
+assert.match(cardSource, /data-preview-state=\{previewActive \? 'active'/);
+assert.match(cardSource, /preload=\{history \? \(item\.thumbnailUrl \? 'none'/);
 
 console.log(JSON.stringify({
   ready: true,
