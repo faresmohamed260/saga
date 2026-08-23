@@ -23,22 +23,22 @@ export const ASPECT_PRESETS = [
 ];
 
 export const IMAGE_RESOLUTIONS = [
-  { value: 512, label: 'Draft', detail: '512 px' },
-  { value: 768, label: 'Standard', detail: '768 px' },
-  { value: 1024, label: 'HD', detail: '1024 px' },
-  { value: 1536, label: 'High', detail: '1536 px' },
-  { value: 2048, label: 'Max', detail: '2048 px' },
+  { value: 480, label: 'SD', detail: '480 px' },
+  { value: 720, label: 'HD', detail: '720 px' },
+  { value: 1080, label: 'Full HD', detail: '1080 px' },
+  { value: 2048, label: '2K', detail: '2048 px' },
+  { value: 3840, label: '4K', detail: '3840 px' },
 ];
 
 const VIDEO_RESOLUTIONS = [
-  { value: '480p', label: 'SD', detail: '480p' },
-  { value: '720p', label: 'HD', detail: '720p' },
-  { value: '1080p', label: 'Full HD', detail: '1080p' },
-  { value: '2K', label: '2K', detail: '2048 px' },
-  { value: '4K', label: '4K', detail: '3840 px' },
+  { value: '480p', label: 'SD', detail: '480p', preview: '480', dimensions: '896×512' },
+  { value: '720p', label: 'HD', detail: '720p', preview: '720', dimensions: '1280×704' },
+  { value: '1080p', label: 'Full HD', detail: '1080p', preview: '1080', dimensions: '1920×1088' },
+  { value: '2K', label: '2K', detail: '2048 px', preview: '2048', dimensions: '2048×1152' },
+  { value: '4K', label: '4K', detail: '3840 px', preview: '3840', dimensions: '3840×2176' },
 ];
 
-const STORAGE_KEY = 'saga-studio:create-settings:v4';
+const STORAGE_KEY = 'saga-studio:create-settings:v5';
 
 function round64(value) {
   return Math.max(64, Math.round(value / 64) * 64);
@@ -409,20 +409,22 @@ function ResolutionPicker({
   editAuto, setEditAuto, autoInfo,
 }) {
   const autoDimensions = parseAutoDimensions(autoInfo?.detail);
-  const [previewValue, setPreviewValue] = useState(Number(imageResolution));
-  useEffect(() => setPreviewValue(Number(imageResolution)), [imageResolution, open]);
+  const selectedOption = IMAGE_RESOLUTIONS.find((item) => item.value === Number(imageResolution)) || IMAGE_RESOLUTIONS[2];
+  const [previewValue, setPreviewValue] = useState(Number(selectedOption.value));
+  useEffect(() => setPreviewValue(Number(selectedOption.value)), [selectedOption.value, open]);
+  const previewOption = IMAGE_RESOLUTIONS.find((item) => item.value === Number(previewValue)) || selectedOption;
   const dimensions = editAuto ? autoDimensions : dimensionsForPreset(aspect, previewValue);
 
   return (
     <PickerShell open={open} anchorRef={anchorRef} width={390} height={220} className="saga-resolution-picker" onClose={() => setOpen(false)}>
       <div className="saga-picker-preview saga-resolution-preview">
         <div className="saga-resolution-cube">{editAuto ? <Sparkles size={20} /> : previewValue}</div>
-        <strong>{editAuto ? 'Auto' : IMAGE_RESOLUTIONS.find((item) => item.value === Number(imageResolution))?.label}</strong>
+        <strong>{editAuto ? 'Auto' : previewOption.label}</strong>
         <small>{editAuto ? autoInfo?.detail : dimensions ? `${dimensions.width}×${dimensions.height}` : ''}</small>
       </div>
       <MorphList
         focusWhen={open}
-        onPreview={(option) => setPreviewValue(option ? Number(option.value) : Number(imageResolution))}
+        onPreview={(option) => setPreviewValue(option ? Number(option.value) : Number(selectedOption.value))}
         ariaLabel="Resolution"
         options={IMAGE_RESOLUTIONS}
         value={editAuto ? '__none__' : Number(imageResolution)}
@@ -443,10 +445,21 @@ function ResolutionPicker({
 }
 
 function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
+  const selectedOption = VIDEO_RESOLUTIONS.find((item) => item.value === value) || VIDEO_RESOLUTIONS[2];
+  const [previewValue, setPreviewValue] = useState(selectedOption.value);
+  useEffect(() => setPreviewValue(selectedOption.value), [selectedOption.value, open]);
+  const previewOption = VIDEO_RESOLUTIONS.find((item) => item.value === previewValue) || selectedOption;
+
   return (
-    <PickerShell open={open} anchorRef={anchorRef} width={300} height={176} className="saga-video-resolution-picker" onClose={() => setOpen(false)}>
+    <PickerShell open={open} anchorRef={anchorRef} width={390} height={220} className="saga-video-resolution-picker saga-resolution-picker" onClose={() => setOpen(false)}>
+      <div className="saga-picker-preview saga-resolution-preview">
+        <div className="saga-resolution-cube">{previewOption.preview}</div>
+        <strong>{previewOption.label}</strong>
+        <small>{previewOption.dimensions}</small>
+      </div>
       <MorphList
         focusWhen={open}
+        onPreview={(option) => setPreviewValue(option?.value ?? selectedOption.value)}
         ariaLabel="Video resolution"
         options={VIDEO_RESOLUTIONS}
         value={value}
@@ -681,6 +694,7 @@ export default function CreateWorkspace({
   const autoBaselineRef = useRef(null);
 
   const imageOption = IMAGE_RESOLUTIONS.find((item) => item.value === Number(imageResolution)) || IMAGE_RESOLUTIONS[2];
+  const videoOption = VIDEO_RESOLUTIONS.find((item) => item.value === videoResolution) || VIDEO_RESOLUTIONS[2];
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
   const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'More creation tools' : 'Imagine worlds';
@@ -857,7 +871,7 @@ export default function CreateWorkspace({
                       setSettingsOpen(false);
                     }}
                   >
-                    <span className="saga-resolution-badge">{isEdit && editAuto ? 'A' : Number(imageResolution)}</span>
+                    {isEdit && editAuto ? <Sparkles size={15} /> : <ImageIcon size={15} />}
                     <span>{isEdit && editAuto ? 'Auto' : imageOption.label}</span>
                     <ChevronDown size={13} />
                   </button>
@@ -892,7 +906,7 @@ export default function CreateWorkspace({
                       setSettingsOpen(false);
                     }}
                   >
-                    <Video size={15} /><span>{videoResolution}</span><ChevronDown size={13} />
+                    <Video size={15} /><span>{videoOption.label}</span><ChevronDown size={13} />
                   </button>
 
                   <button

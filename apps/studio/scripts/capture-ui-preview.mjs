@@ -59,11 +59,24 @@ try {
   await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
   const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));
   if (focusedRole !== 'menuitemradio') throw new Error(`Resolution picker did not focus selected option: ${focusedRole}`);
+  const expectedImageRows = [['SD', '480 px'], ['HD', '720 px'], ['Full HD', '1080 px'], ['2K', '2048 px'], ['4K', '3840 px']];
+  const imageRows = resolutionPicker.getByRole('menuitemradio');
+  if (await imageRows.count() !== expectedImageRows.length) throw new Error('Image resolution picker row count is wrong');
+  for (let index = 0; index < expectedImageRows.length; index += 1) {
+    const [label, detail] = expectedImageRows[index];
+    const row = imageRows.nth(index);
+    if ((await row.locator('.saga-option-label').innerText()).trim() !== label) throw new Error(`Image label mismatch at ${index}`);
+    if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Image pixel detail mismatch at ${index}`);
+  }
   const resolutionPreviewBefore = (await resolutionPicker.locator('.saga-resolution-cube').innerText()).trim();
+  const resolutionLabelBefore = (await resolutionPicker.locator('.saga-picker-preview strong').innerText()).trim();
   await desktop.keyboard.press('ArrowDown');
   await desktop.waitForTimeout(180);
   const resolutionPreviewAfter = (await resolutionPicker.locator('.saga-resolution-cube').innerText()).trim();
+  const resolutionLabelAfter = (await resolutionPicker.locator('.saga-picker-preview strong').innerText()).trim();
   if (resolutionPreviewBefore === resolutionPreviewAfter) throw new Error('Resolution preview did not morph with keyboard focus');
+  if (resolutionLabelBefore === resolutionLabelAfter || resolutionLabelAfter !== '2K') throw new Error(`Resolution label did not morph with preview: ${resolutionLabelBefore} -> ${resolutionLabelAfter}`);
+  await shot(desktop, '02-image-resolution-picker.png');
   await desktop.keyboard.press('Escape');
   await expectHidden(resolutionPicker, 'Resolution picker');
 
@@ -85,7 +98,7 @@ try {
 
   // Set image resolution/aspect for persistence verification.
   await resolutionTrigger.click();
-  await resolutionPicker.getByRole('menuitemradio', { name: /High.*1536 px/i }).click();
+  await resolutionPicker.getByRole('menuitemradio', { name: /2K.*2048 px/i }).click();
   await aspectTrigger.click();
   await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
 
@@ -114,6 +127,8 @@ try {
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
   await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
   const videoControls = desktop.locator('.saga-toolbar-left .saga-control-pill');
+  await expectText(videoControls.nth(0), 'Full HD', 'Video resolution trigger label');
+  if ((await videoControls.nth(0).innerText()).includes('1080p')) throw new Error('Video resolution trigger still exposes the raw resolution value');
   const videoResolutionTrigger = videoControls.nth(0);
   const durationTrigger = videoControls.nth(1);
   await videoResolutionTrigger.click();
@@ -131,6 +146,13 @@ try {
   const videoList = videoResolutionPicker.locator('.saga-morph-list');
   const videoScroll = await videoList.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
   if (videoScroll.scrollHeight > videoScroll.clientHeight + 1) throw new Error(`Video resolution picker scrolls: ${JSON.stringify(videoScroll)}`);
+  const videoPreview = videoResolutionPicker.locator('.saga-picker-preview');
+  if (await videoPreview.count() !== 1) throw new Error('Video resolution picker is missing the shared preview panel');
+  const videoPreviewLabelBefore = (await videoPreview.locator('strong').innerText()).trim();
+  await videoResolutionPicker.getByRole('menuitemradio', { name: /2K.*2048 px/i }).hover();
+  await desktop.waitForTimeout(180);
+  const videoPreviewLabelAfter = (await videoPreview.locator('strong').innerText()).trim();
+  if (videoPreviewLabelBefore === videoPreviewLabelAfter || videoPreviewLabelAfter !== '2K') throw new Error(`Video resolution preview did not morph: ${videoPreviewLabelBefore} -> ${videoPreviewLabelAfter}`);
   await shot(desktop, '04-video-resolution-picker.png');
   await videoResolutionPicker.getByRole('menuitemradio', { name: /4K.*3840 px/i }).click();
 
@@ -164,8 +186,8 @@ try {
 
   // Switch back to Image and verify image + advanced values also persisted.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
-  await expectText(desktop.locator('.saga-resolution-trigger'), 'High', 'Persisted image resolution');
-  if ((await desktop.locator('.saga-resolution-badge').innerText()).trim() !== '1536') throw new Error('Persisted resolution badge is truncated');
+  await expectText(desktop.locator('.saga-resolution-trigger'), '2K', 'Persisted image resolution');
+  if ((await desktop.locator('.saga-resolution-trigger').innerText()).includes('2048')) throw new Error('Image resolution trigger still exposes the raw resolution value');
   await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });
@@ -183,17 +205,23 @@ try {
   await upload.click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
-  const refChip = desktop.locator('.saga-reference-chip').first();
-  await refChip.waitFor({ state: 'visible', timeout: 5000 });
+  const secondChooserPromise = desktop.waitForEvent('filechooser');
+  await upload.click();
+  const secondChooser = await secondChooserPromise;
+  await secondChooser.setFiles({ name: 'reference-2.png', mimeType: 'image/png', buffer: referencePng });
+  const refChips = desktop.locator('.saga-reference-chip');
+  await refChips.nth(1).waitFor({ state: 'visible', timeout: 5000 });
   const richPrompt = desktop.locator('.saga-rich-prompt');
   await richPrompt.click();
   await richPrompt.pressSequentially('Put ');
-  await refChip.locator('.saga-reference-main').click();
+  await refChips.nth(0).locator('.saga-reference-main').click();
+  await richPrompt.pressSequentially(' beside ');
+  await refChips.nth(1).locator('.saga-reference-main').click();
   await richPrompt.pressSequentially(' behind the subject');
-  const mention = richPrompt.locator('.mention-token');
-  if (await mention.count() !== 1) throw new Error('Reference click did not insert an inline prompt tag');
+  const mentions = richPrompt.locator('.mention-token');
+  if (await mentions.count() !== 2) throw new Error('Reference clicks did not insert both inline prompt tags');
   const promptText = (await richPrompt.innerText()).replace(/\s+/g, ' ').trim();
-  if (!/Put\s+Image 1\s+behind the subject/i.test(promptText)) throw new Error(`Reference tag was not inserted at the caret: ${promptText}`);
+  if (!/Put\s+Image 1\s+beside\s+Image 2\s+behind the subject/i.test(promptText)) throw new Error(`Reference tags were not inserted at the caret: ${promptText}`);
   const autoToggle = desktop.locator('.saga-auto-toggle');
   if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not start enabled');
   await autoToggle.click();
@@ -201,6 +229,22 @@ try {
   await autoToggle.click();
   if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');
   await shot(desktop, '06-edit-inline-reference-and-auto.png');
+
+  // Removing references cleans prompt tags, renumbers survivors, and exits Edit when the last reference is gone.
+  await refChips.nth(0).locator('.saga-reference-remove').click();
+  await desktop.waitForTimeout(120);
+  if (await desktop.locator('.saga-reference-chip').count() !== 1) throw new Error('Removing one reference did not update the reference strip');
+  const remainingMentions = richPrompt.locator('.mention-token');
+  if (await remainingMentions.count() !== 1) throw new Error('Removed reference tag was not cleaned from the prompt');
+  if (await remainingMentions.first().getAttribute('data-mention') !== '@Image 1') throw new Error('Remaining reference tag was not renumbered to Image 1');
+  await desktop.locator('.saga-reference-chip .saga-reference-remove').click();
+  await desktop.locator('.saga-composer:not(.is-edit)').waitFor({ state: 'visible', timeout: 2500 });
+  const imageModeButton = desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' });
+  if (await imageModeButton.getAttribute('aria-pressed') !== 'true') throw new Error('Removing the final reference did not return Studio to Image mode');
+  if (await desktop.locator('.saga-reference-chip').count() !== 0) throw new Error('Final reference was not removed');
+  const cleanedPrompt = await desktop.locator('.saga-prompt-shell textarea').inputValue();
+  if (/@Image\s+\d+/i.test(cleanedPrompt)) throw new Error(`Stale reference tag remains after removing all references: ${cleanedPrompt}`);
+  await shot(desktop, '06b-reference-removal-cleanup.png');
 
   // More is a sidebar destination, and Create returns to the compact image composer.
   await desktop.getByRole('button', { name: 'More', exact: true }).click();
