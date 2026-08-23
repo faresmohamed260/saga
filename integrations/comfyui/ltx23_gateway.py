@@ -23,7 +23,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.2.0")
+    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.3.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -97,6 +97,8 @@ def web():
             if len(image_bytes) > 25 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail="image_file must be 25 MB or smaller")
 
+        normalized_aspect = str(aspect_ratio).strip()
+        normalized_frame_rate = int(frame_rate)
         try:
             call = _worker().generate.spawn(
                 prompt=prompt,
@@ -105,8 +107,8 @@ def web():
                 resolution=resolution,
                 duration_seconds=int(duration_seconds),
                 audio_enabled=bool(audio_enabled),
-                aspect_ratio=str(aspect_ratio),
-                frame_rate=int(frame_rate),
+                aspect_ratio=normalized_aspect,
+                frame_rate=normalized_frame_rate,
                 source_image=image_bytes,
             )
             return {
@@ -115,6 +117,9 @@ def web():
                 "kind": "video",
                 "mode": "image-to-video" if image_bytes else "text-to-video",
                 "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
+                "resolution": resolution,
+                "aspect_ratio": normalized_aspect,
+                "frame_rate": normalized_frame_rate,
             }
         except Exception as exc:  # noqa: BLE001
             print({"event": "ltx25_gateway_spawn_failed", "error": repr(exc)}, flush=True)
