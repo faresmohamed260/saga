@@ -81,12 +81,28 @@ function autoReferenceSizing(reference) {
   };
 }
 
+function promptAfterReferenceRemoval(value, removedIndex) {
+  const next = String(value || '').replace(/@Image\s+(\d+)/gi, (match, rawNumber) => {
+    const mentionNumber = Number(rawNumber);
+    const mentionIndex = mentionNumber - 1;
+    if (!Number.isFinite(mentionIndex)) return match;
+    if (mentionIndex === removedIndex) return '';
+    if (mentionIndex > removedIndex) return `@Image ${mentionNumber - 1}`;
+    return `@Image ${mentionNumber}`;
+  });
+  return next
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/ *\n */g, '\n')
+    .trim();
+}
+
 export default function App() {
   const [section, setSection] = useState(sectionFromLocation);
   const [mode, setMode] = useState('Image');
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
-  const [imageResolution, setImageResolution] = useState(1024);
+  const [imageResolution, setImageResolution] = useState(1080);
   const [outputs, setOutputs] = useState(4);
   const [advanced, setAdvanced] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
@@ -281,11 +297,18 @@ export default function App() {
   };
 
   const removeReference = (index) => {
-    setReferences((current) => {
-      const target = current[index];
-      if (target?.preview) URL.revokeObjectURL(target.preview);
-      return current.filter((_, itemIndex) => itemIndex !== index);
-    });
+    const target = references[index];
+    if (!target) return;
+    if (target.preview) URL.revokeObjectURL(target.preview);
+    const nextReferences = references.filter((_, itemIndex) => itemIndex !== index);
+    setReferences(nextReferences);
+    setPrompt((current) => promptAfterReferenceRemoval(current, index));
+    if (mode === 'Edit' && nextReferences.length === 0) {
+      setMode('Image');
+      setWorkflowId('default-image');
+      setModelId('saga-image-auto');
+      setError('');
+    }
   };
 
   const runFluxEdit = async () => {
