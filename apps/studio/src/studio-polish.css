@@ -9,6 +9,12 @@
   scrollbar-width: thin;
 }
 
+@media (min-width: 761px) {
+  .workspace .saga-video-option-menu.saga-video-aspect-menu {
+    max-height: min(456px, calc(100vh - 24px));
+  }
+}
+
 @media (max-width: 760px) {
   .gallery-toolbar-actions {
     width: 100%;

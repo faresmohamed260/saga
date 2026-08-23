@@ -89,6 +89,8 @@ try {
   await aspect.focus();
   await page.keyboard.press('Enter');
   await aspectMenu.waitFor({ state: 'visible' });
+  const desktopMenuSize = await aspectMenu.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }));
+  if (desktopMenuSize.scrollHeight > desktopMenuSize.clientHeight + 1) throw new Error(`Desktop Video Aspect menu should expose all options without scrolling: ${JSON.stringify(desktopMenuSize)}`);
   await page.screenshot({ path: path.join(outputDir, '05c-video-aspect-picker.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05c-video-aspect-picker.png');
   await page.keyboard.press('Escape');
@@ -106,7 +108,7 @@ try {
   await page.keyboard.press('Home');
   if (!/^Auto/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the Auto aspect option');
   await page.keyboard.press('Enter');
-  if (!/Aspect\s*·\s*Auto\s+4:3\s*·\s*Ref/.test(await aspect.innerText())) throw new Error(`Auto aspect did not inherit the 800x600 reference ratio: ${await aspect.innerText()}`);
+  if (!/Aspect\s*·\s*Auto\s+4:3\s*·\s*From reference/.test(await aspect.innerText())) throw new Error(`Auto aspect did not visibly expose reference provenance: ${await aspect.innerText()}`);
   if (!/From reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Reference provenance is not exposed by the unified Aspect control: ${await aspect.getAttribute('title')}`);
   await page.screenshot({ path: path.join(outputDir, '05d-video-auto-reference-aspect.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05d-video-auto-reference-aspect.png');
@@ -127,6 +129,12 @@ try {
   if (!/Aspect\s*·\s*Auto\s+16:9/.test(await mobileAspect.innerText())) throw new Error(`Mobile unified Aspect state is unclear: ${await mobileAspect.innerText()}`);
   const mobileAspectBox = await mobileAspect.boundingBox();
   if (!mobileAspectBox || mobileAspectBox.x < 0 || mobileAspectBox.x + mobileAspectBox.width > 390) throw new Error(`Mobile Aspect control is clipped: ${JSON.stringify(mobileAspectBox)}`);
+  await mobileAspect.click();
+  const mobileAspectMenu = mobile.getByRole('menu', { name: 'Video aspect' });
+  await mobileAspectMenu.waitFor({ state: 'visible' });
+  const mobileMenuBox = await mobileAspectMenu.boundingBox();
+  if (!mobileMenuBox || mobileMenuBox.y < 0 || mobileMenuBox.y + mobileMenuBox.height > 844) throw new Error(`Mobile Aspect menu leaves the viewport: ${JSON.stringify(mobileMenuBox)}`);
+  await mobile.keyboard.press('Escape');
   await mobile.screenshot({ path: path.join(outputDir, '05g-video-output-controls-mobile.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05g-video-output-controls-mobile.png');
   await mobile.close();

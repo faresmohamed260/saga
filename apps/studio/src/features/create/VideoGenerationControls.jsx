@@ -66,7 +66,7 @@ function useOutsideDismiss(open, rootRef, close, returnFocusRef = null) {
   }, [open, rootRef, close, returnFocusRef]);
 }
 
-function CompactPicker({ label, value, displayValue = value, title, options, onChoose, leading }) {
+function CompactPicker({ label, value, displayValue = value, title, options, onChoose, leading, menuClassName = '' }) {
   const [open, setOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const rootRef = useRef(null);
@@ -143,7 +143,7 @@ function CompactPicker({ label, value, displayValue = value, title, options, onC
         {leading}<span>{displayValue}</span><ChevronDown size={13} />
       </button>
       {open && (
-        <div className="saga-video-option-menu" role="menu" aria-label={label} aria-orientation="vertical">
+        <div className={`saga-video-option-menu ${menuClassName}`.trim()} role="menu" aria-label={label} aria-orientation="vertical">
           {options.map((option, index) => (
             <button
               ref={(node) => { optionRefs.current[index] = node; }}
@@ -181,7 +181,7 @@ export function VideoOutputControls({
   const aspectValue = autoAspect ? effectiveAspect : manualAspect;
   const aspectIconRatio = aspectRatioValue(aspectValue, referenceInfo.ratio || 16 / 9);
   const aspectDisplay = autoAspect
-    ? `Aspect · Auto ${aspectValue}${referenceInfo.fromReference ? ' · Ref' : ''}`
+    ? `Aspect · Auto ${aspectValue}${referenceInfo.fromReference ? ' · From reference' : ''}`
     : `Aspect · ${manualAspect}`;
   const aspectTitle = autoAspect
     ? referenceInfo.fromReference
@@ -208,6 +208,7 @@ export function VideoOutputControls({
         title={aspectTitle}
         leading={<span className="saga-aspect-icon" style={{ aspectRatio: String(aspectIconRatio) }} />}
         options={aspectOptions}
+        menuClassName="saga-video-aspect-menu"
         onChoose={(value) => {
           if (value === '__auto__') {
             setAutoAspect(true);
