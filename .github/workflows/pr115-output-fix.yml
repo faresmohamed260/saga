@@ -1,0 +1,67 @@
+name: PR115 LTX output fix
+
+on:
+  push:
+    branches: [studio/ltx23-video-backend]
+    paths:
+      - ".github/workflows/pr115-output-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/ltx23-video-backend
+      - name: Patch LTX output handling
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('integrations/comfyui/ltx23_app.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''def _workflow(\n    *,\n    prompt: str,\n    seed: int,\n    resolution: str,\n    duration_seconds: int,\n    audio_enabled: bool,\n    source_name: str | None,\n) -> dict[str, Any]:'''
+          new = '''def _workflow(\n    *,\n    prompt: str,\n    seed: int,\n    resolution: str,\n    duration_seconds: int,\n    audio_enabled: bool,\n    source_name: str | None,\n    output_token: str,\n) -> dict[str, Any]:'''
+          if old not in text:
+              raise SystemExit('workflow signature target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''                "filename_prefix": "saga/ltx25-redgraft",'''
+          new = '''                "filename_prefix": f"saga/ltx25-redgraft-{output_token}",'''
+          if old not in text:
+              raise SystemExit('filename prefix target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''def _find_new_video(started_at: float) -> Path:\n    candidates = [\n        path\n        for path in OUTPUT_DIR.rglob("*")\n        if path.is_file() and path.stat().st_mtime >= started_at - 1\n    ]\n    video_files = [\n        path for path in candidates if path.suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}\n    ]\n    if not video_files:\n        summary = [(str(path), path.stat().st_size) for path in candidates[-20:]]\n        raise RuntimeError(f"ComfyUI completed but no video output was found; files={summary}")\n    return max(video_files, key=lambda path: path.stat().st_mtime)\n'''
+          new = '''def _history_video_paths(history_item: dict[str, Any] | None) -> list[Path]:\n    video_suffixes = {".mp4", ".webm", ".mov", ".mkv"}\n    found: list[Path] = []\n\n    def visit(value: Any) -> None:\n        if isinstance(value, dict):\n            filename = value.get("filename")\n            if isinstance(filename, str) and Path(filename).suffix.lower() in video_suffixes:\n                subfolder = value.get("subfolder") or ""\n                folder_type = str(value.get("type") or value.get("folder_type") or "output").lower()\n                if folder_type in {"output", "temp"}:\n                    root = OUTPUT_DIR if folder_type == "output" else COMFY_DIR / "temp"\n                    found.append(root / str(subfolder) / filename)\n            for child in value.values():\n                visit(child)\n        elif isinstance(value, (list, tuple)):\n            for child in value:\n                visit(child)\n\n    if history_item:\n        visit(history_item.get("outputs") or {})\n    return found\n\n\ndef _find_new_video(started_at: float, history_item: dict[str, Any] | None = None, timeout: int = 30) -> Path:\n    video_suffixes = {".mp4", ".webm", ".mov", ".mkv"}\n    deadline = time.time() + timeout\n    history_paths = _history_video_paths(history_item)\n\n    while time.time() < deadline:\n        for path in history_paths:\n            if path.is_file() and path.stat().st_size > 0:\n                return path\n\n        candidates = [\n            path\n            for path in OUTPUT_DIR.rglob("*")\n            if path.is_file()\n            and path.suffix.lower() in video_suffixes\n            and path.stat().st_mtime >= started_at - 2\n        ]\n        if candidates:\n            return max(candidates, key=lambda path: path.stat().st_mtime)\n        time.sleep(0.5)\n\n    summary = [\n        (str(path), path.stat().st_size, path.stat().st_mtime)\n        for path in OUTPUT_DIR.rglob("*")\n        if path.is_file()\n    ][-20:]\n    raise RuntimeError(\n        f"ComfyUI completed but no video output was found; history_paths={[str(path) for path in history_paths]}; files={summary}"\n    )\n'''
+          if old not in text:
+              raise SystemExit('output finder target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        source_name = _upload_image(source_image) if source_image else None\n        graph = _workflow(\n            prompt=prompt,\n            seed=int(seed),\n            resolution=resolution,\n            duration_seconds=int(duration_seconds),\n            audio_enabled=bool(audio_enabled),\n            source_name=source_name,\n        )'''
+          new = '''        source_name = _upload_image(source_image) if source_image else None\n        output_token = uuid.uuid4().hex[:12]\n        graph = _workflow(\n            prompt=prompt,\n            seed=int(seed),\n            resolution=resolution,\n            duration_seconds=int(duration_seconds),\n            audio_enabled=bool(audio_enabled),\n            source_name=source_name,\n            output_token=output_token,\n        )'''
+          if old not in text:
+              raise SystemExit('workflow call target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''                    video_path = _find_new_video(started_at)'''
+          new = '''                    video_path = _find_new_video(started_at, item)'''
+          if old not in text:
+              raise SystemExit('completed output target not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          python -m py_compile integrations/comfyui/ltx23_app.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/comfyui/ltx23_app.py
+          git rm .github/workflows/pr115-output-fix.yml
+          git commit -m "Stabilize LTX video output discovery"
+          git push origin HEAD:studio/ltx23-video-backend
