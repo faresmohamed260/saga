@@ -8,18 +8,17 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 2 — Gallery action density and mobile touch safety**
+**Iteration 3 — MediaCard interaction semantics and accessibility**
 
-- Status: `[x]` complete
-- Completed item: **02**
-- Next item: **03 — MediaCard interaction semantics/accessibility**
+- Status: `[~]` in progress
+- Working item: **03**
 - Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
 - [x] **01. Exact requested video duration after LTX 8n+1 padding.** Preserve model-required 8n+1 generation frames while clamping delivered video frames and trimming audio to the requested duration; validate 24/25/30 FPS with ffprobe. **Iteration 1 complete.**
 - [x] **02. Reduce per-card immediate actions, especially on mobile.** Desktop now exposes Favorite, Download, Open, and More; secondary actions live in More. Mobile exposes three touch-safe actions (Favorite, Open, More) and moves Download into the More surface. Delete is separated in the overflow surface. **Iteration 2 complete.**
-- [ ] **03. Refactor MediaCard interaction semantics/accessibility.** Remove nested button-like semantics; use a dedicated primary preview button or explicit checkbox/select interaction, correct focus order, and accessible labels.
+- [~] **03. Refactor MediaCard interaction semantics/accessibility.** Remove nested button-like semantics; use a dedicated primary preview button or explicit checkbox/select interaction, correct focus order, and accessible labels. **Iteration 3 in progress.**
 - [ ] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states.
 
 ## P1 — core UX and architecture
