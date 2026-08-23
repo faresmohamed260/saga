@@ -588,8 +588,14 @@ def _find_new_video(started_at: float, history_item: dict[str, Any] | None = Non
     )
 
 
-
-def _finalize_video(video_path: Path, *, width: int, height: int, frame_rate: int) -> Path:
+def _finalize_video(
+    video_path: Path,
+    *,
+    width: int,
+    height: int,
+    frame_rate: int,
+    duration_seconds: int,
+) -> Path:
     final_path = video_path.with_name(f"{video_path.stem}-delivery.mp4")
     video_filter = (
         f"scale={int(width)}:{int(height)}:force_original_aspect_ratio=increase,"
@@ -600,6 +606,7 @@ def _finalize_video(video_path: Path, *, width: int, height: int, frame_rate: in
         "-i", str(video_path),
         "-map", "0:v:0", "-map", "0:a?",
         "-vf", video_filter,
+        "-t", f"{float(duration_seconds):.3f}",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
@@ -783,12 +790,14 @@ class LTX25Worker:
                         width=delivery_width,
                         height=delivery_height,
                         frame_rate=int(frame_rate),
+                        duration_seconds=int(duration_seconds),
                     )
                     _log(
                         "ltx25_delivery_ready",
                         resolution=resolution,
                         aspect_ratio=aspect_ratio,
                         frame_rate=int(frame_rate),
+                        duration_seconds=int(duration_seconds),
                         width=delivery_width,
                         height=delivery_height,
                         bytes=final_path.stat().st_size,
