@@ -597,16 +597,20 @@ def _finalize_video(
     duration_seconds: int,
 ) -> Path:
     final_path = video_path.with_name(f"{video_path.stem}-delivery.mp4")
+    target_frames = int(duration_seconds) * int(frame_rate)
     video_filter = (
         f"scale={int(width)}:{int(height)}:force_original_aspect_ratio=increase,"
-        f"crop={int(width)}:{int(height)},fps={int(frame_rate)},setsar=1"
+        f"crop={int(width)}:{int(height)},setsar=1"
     )
+    audio_filter = f"atrim=duration={float(duration_seconds):.3f},asetpts=PTS-STARTPTS"
     command = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-i", str(video_path),
         "-map", "0:v:0", "-map", "0:a?",
         "-vf", video_filter,
-        "-t", f"{float(duration_seconds):.3f}",
+        "-af", audio_filter,
+        "-frames:v", str(target_frames),
+        "-r", str(int(frame_rate)),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
