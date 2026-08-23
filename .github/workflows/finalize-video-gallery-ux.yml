@@ -1,0 +1,98 @@
+name: Finalize Video Gallery UX
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - ".github/workflows/finalize-video-gallery-ux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Apply final runtime and copy fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('integrations/comfyui/ltx23_app.py')
+          text = runtime.read_text(encoding='utf-8')
+          old = '''def _frame_count(duration_seconds: int, frame_rate: int) -> int:\n    return int(duration_seconds) * int(frame_rate) + 1\n'''
+          new = '''def _frame_count(duration_seconds: int, frame_rate: int) -> int:\n    requested = int(duration_seconds) * int(frame_rate) + 1\n    # LTX temporal latents require 8n+1 frames. Pad upward so selectable\n    # frame rates keep the requested duration as closely as possible.\n    return ((requested - 2) // 8 + 1) * 8 + 1\n'''
+          if old not in text:
+              raise SystemExit('frame-count patch anchor missing')
+          text = text.replace(old, new, 1)
+          runtime.write_text(text, encoding='utf-8')
+
+          app = Path('apps/studio/src/app/App.jsx')
+          text = app.read_text(encoding='utf-8')
+          old = 'The media itself will stay in History.'
+          if old not in text:
+              raise SystemExit('Gallery copy patch anchor missing')
+          app.write_text(text.replace(old, 'The media itself will stay in Gallery.', 1), encoding='utf-8')
+          PY
+
+      - name: Validate frame-count invariants
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          source = Path('integrations/comfyui/ltx23_app.py').read_text(encoding='utf-8')
+          tree = ast.parse(source)
+          fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_frame_count')
+          module = ast.Module(body=[fn], type_ignores=[])
+          scope = {}
+          exec(compile(module, '<frame-count-test>', 'exec'), scope)
+          frame_count = scope['_frame_count']
+          for fps in (24, 25, 30):
+              for seconds in (5, 10, 23, 30):
+                  frames = frame_count(seconds, fps)
+                  assert (frames - 1) % 8 == 0, (fps, seconds, frames)
+                  assert frames >= seconds * fps + 1, (fps, seconds, frames)
+                  assert frames - (seconds * fps + 1) < 8, (fps, seconds, frames)
+          assert frame_count(5, 24) == 121
+          assert frame_count(5, 25) == 129
+          assert frame_count(5, 30) == 153
+          print('LTX frame-count invariants OK')
+          PY
+
+      - name: Validate Python sources
+        run: python -m py_compile integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+
+      - name: Remove one-shot workflow
+        run: rm -f .github/workflows/finalize-video-gallery-ux.yml
+
+      - name: Commit finalized product files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "saga-studio-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Finalize video frame timing and Gallery copy"
+          git push origin HEAD:studio/video-gallery-ux
