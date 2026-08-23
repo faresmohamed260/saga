@@ -1,0 +1,61 @@
+name: Apply Video Gallery UX
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - ".github/scripts/apply-video-gallery-ux.py"
+      - ".github/workflows/apply-video-gallery-ux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-video-gallery-ux
+  cancel-in-progress: true
+
+jobs:
+  patch-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Apply reusable UX and video contract patch
+        run: python .github/scripts/apply-video-gallery-ux.py
+
+      - name: Validate Python runtime sources
+        run: python -m py_compile integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+
+      - name: Remove one-shot patch machinery
+        run: rm -f .github/scripts/apply-video-gallery-ux.py .github/workflows/apply-video-gallery-ux.yml
+
+      - name: Commit patched product files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "saga-studio-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No product changes to commit."
+            exit 0
+          fi
+          git commit -m "Improve video output controls and Gallery management"
+          git push origin HEAD:studio/video-gallery-ux
