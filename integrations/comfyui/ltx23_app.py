@@ -369,7 +369,10 @@ def _internal_dimensions(resolution: str, aspect_ratio: str) -> tuple[int, int]:
 
 
 def _frame_count(duration_seconds: int, frame_rate: int) -> int:
-    return int(duration_seconds) * int(frame_rate) + 1
+    requested = int(duration_seconds) * int(frame_rate) + 1
+    # LTX temporal latents require 8n+1 frames. Pad upward so selectable
+    # frame rates keep the requested duration as closely as possible.
+    return ((requested - 2) // 8 + 1) * 8 + 1
 
 
 def _workflow(

@@ -447,7 +447,7 @@ export default function App() {
   };
 
   const deleteCollection = async (collection) => {
-    if (!window.confirm(`Delete “${collection.name}”? The media itself will stay in History.`)) return;
+    if (!window.confirm(`Delete “${collection.name}”? The media itself will stay in Gallery.`)) return;
     try {
       const response = await fetch(`/api/collections?id=${encodeURIComponent(collection.id)}`, { method: 'DELETE' });
       if (!response.ok && response.status !== 204) throw new Error('Delete failed');
