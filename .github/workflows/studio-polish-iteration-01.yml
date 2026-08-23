@@ -1,0 +1,102 @@
+name: Studio polish iteration 01 patch
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - ".github/workflows/studio-polish-iteration-01.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+
+      - name: Apply exact-duration delivery fix and smoke assertions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app_path = Path('integrations/comfyui/ltx23_app.py')
+          text = app_path.read_text(encoding='utf-8')
+
+          old = 'def _finalize_video(video_path: Path, *, width: int, height: int, frame_rate: int) -> Path:\n'
+          new = 'def _finalize_video(video_path: Path, *, width: int, height: int, frame_rate: int, duration_seconds: int) -> Path:\n'
+          if old not in text:
+              raise SystemExit('finalize signature target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        "-vf", video_filter,\n        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",\n'''
+          new = '''        "-vf", video_filter,\n        "-t", f"{float(duration_seconds):.3f}",\n        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",\n'''
+          if old not in text:
+              raise SystemExit('ffmpeg output-options target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''                        height=delivery_height,\n                        frame_rate=int(frame_rate),\n                    )\n'''
+          new = '''                        height=delivery_height,\n                        frame_rate=int(frame_rate),\n                        duration_seconds=int(duration_seconds),\n                    )\n'''
+          if old not in text:
+              raise SystemExit('finalize call target not found')
+          text = text.replace(old, new, 1)
+
+          old = '''                        frame_rate=int(frame_rate),\n                        width=delivery_width,\n'''
+          new = '''                        frame_rate=int(frame_rate),\n                        duration_seconds=int(duration_seconds),\n                        width=delivery_width,\n'''
+          if old not in text:
+              raise SystemExit('delivery log target not found')
+          text = text.replace(old, new, 1)
+          app_path.write_text(text, encoding='utf-8')
+
+          wf_path = Path('.github/workflows/test-ltx23-modal01.yml')
+          wf = wf_path.read_text(encoding='utf-8')
+
+          old = '''              duration_seconds=5,\n              audio_enabled=True,\n          )\n'''
+          new = '''              duration_seconds=5,\n              audio_enabled=True,\n              frame_rate=25,\n          )\n'''
+          if old not in wf:
+              raise SystemExit('25fps audio smoke target not found')
+          wf = wf.replace(old, new, 1)
+
+          old = '''                      "duration_seconds": "5",\n                      "audio_enabled": "false",\n'''
+          new = '''                      "duration_seconds": "5",\n                      "audio_enabled": "false",\n                      "frame_rate": "30",\n'''
+          if old not in wf:
+              raise SystemExit('30fps gateway smoke target not found')
+          wf = wf.replace(old, new, 1)
+
+          duration_check = '''          python - <<'PY'\n          import json\n          payload = json.load(open('{path}', encoding='utf-8'))\n          actual = float((payload.get('format') or {{}}).get('duration') or 0)\n          if abs(actual - 5.0) > 0.08:\n              raise SystemExit(f'Expected 5.00s delivery duration, got {{actual:.4f}}s')\n          print({{"duration_seconds": actual, "target_seconds": 5.0, "tolerance_seconds": 0.08}})\n          PY\n'''
+
+          targets = [
+              ('          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-smoke.mp4 | tee /tmp/ltx25-ffprobe.json\n', '/tmp/ltx25-ffprobe.json'),
+              ('          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-audio.mp4 | tee /tmp/ltx25-audio-ffprobe.json\n', '/tmp/ltx25-audio-ffprobe.json'),
+              ('          ffprobe -v error -show_entries format=duration,format_name -show_entries stream=codec_type,codec_name,width,height -of json /tmp/ltx25-i2v.mp4 | tee /tmp/ltx25-i2v-ffprobe.json\n', '/tmp/ltx25-i2v-ffprobe.json'),
+          ]
+          for probe_line, path in targets:
+              if probe_line not in wf:
+                  raise SystemExit(f'ffprobe target not found: {path}')
+              wf = wf.replace(probe_line, probe_line + duration_check.format(path=path), 1)
+
+          wf_path.write_text(wf, encoding='utf-8')
+          PY
+
+      - name: Validate Python syntax and changed contract markers
+        shell: bash
+        run: |
+          python -m py_compile integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
+          grep -q 'duration_seconds=int(duration_seconds)' integrations/comfyui/ltx23_app.py
+          grep -q 'frame_rate=25' .github/workflows/test-ltx23-modal01.yml
+          grep -q '"frame_rate": "30"' .github/workflows/test-ltx23-modal01.yml
+          grep -q 'Expected 5.00s delivery duration' .github/workflows/test-ltx23-modal01.yml
+
+      - name: Commit product changes and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/studio-polish-iteration-01.yml
+          git add integrations/comfyui/ltx23_app.py .github/workflows/test-ltx23-modal01.yml
+          git commit -m "fix(video): deliver exact requested duration"
+          git push origin HEAD:studio/video-gallery-ux
