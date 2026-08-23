@@ -34,6 +34,20 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Repair one-shot patch script
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/apply-video-gallery-ux.py')
+          text = p.read_text(encoding='utf-8')
+          old = "text = text.replace('\\\"fps\\\": FPS', '\\\"fps\\\": frame_rate')"
+          new = "text = text.replace('\\\"class_type\\\": \\\"CreateVideo\\\", \\\"inputs\\\": {\\\"images\\\": [\\\"30\\\", 0], \\\"fps\\\": FPS, \\\"bit_depth\\\": 8}', '\\\"class_type\\\": \\\"CreateVideo\\\", \\\"inputs\\\": {\\\"images\\\": [\\\"30\\\", 0], \\\"fps\\\": frame_rate, \\\"bit_depth\\\": 8}')"
+          if old not in text:
+              raise SystemExit('fps repair anchor missing')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply reusable UX and video contract patch
         run: python .github/scripts/apply-video-gallery-ux.py
 
