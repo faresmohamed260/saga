@@ -22,10 +22,10 @@ function getModalGatewayUrl() {
   ).replace(/\/$/, '');
 }
 
-function getLtx23GatewayUrl() {
+function getLtx25GatewayUrl() {
   return String(
-    process.env.LTX23_GATEWAY_URL ||
-    'https://faresmohamed260--saga-ltx23-gateway-web.modal.run',
+    process.env.LTX25_GATEWAY_URL ||
+    'https://faresmohamed260--saga-ltx25-gateway-web.modal.run',
   ).replace(/\/$/, '');
 }
 
@@ -47,7 +47,7 @@ function buildFluxForm(workflow, input) {
   return form;
 }
 
-function buildLtx23Form(workflow, input) {
+function buildLtx25Form(workflow, input) {
   const form = new FormData();
   const source = input.sources[0];
   if (source) {
@@ -180,20 +180,20 @@ async function submitModalFlux2Klein(workflow, input) {
   return { providerJobId: payload.call_id, provider: workflow.provider, status: payload.status || 'queued' };
 }
 
-async function submitModalLtx23(workflow, input) {
-  const response = await fetch(`${getLtx23GatewayUrl()}/jobs/video`, {
+async function submitModalLtx25(workflow, input) {
+  const response = await fetch(`${getLtx25GatewayUrl()}/jobs/video`, {
     method: 'POST',
-    body: buildLtx23Form(workflow, input),
+    body: buildLtx25Form(workflow, input),
   });
   if (!response.ok) {
     const detail = await parseProviderError(response);
-    const error = new Error(`LTX 2.3 provider submit failed (${response.status})${detail}`);
+    const error = new Error(`REDGraft LTX 2.5 provider submit failed (${response.status})${detail}`);
     error.statusCode = response.status >= 500 ? 502 : response.status;
     throw error;
   }
   const payload = await response.json();
   if (!payload?.call_id) {
-    const error = new Error('LTX 2.3 provider did not return a call id');
+    const error = new Error('REDGraft LTX 2.5 provider did not return a call id');
     error.statusCode = 502;
     throw error;
   }
@@ -226,15 +226,15 @@ async function pollModalFlux2Klein(workflow, providerJobId) {
   };
 }
 
-async function pollModalLtx23(workflow, providerJobId) {
-  const response = await fetch(`${getLtx23GatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
+async function pollModalLtx25(workflow, providerJobId) {
+  const response = await fetch(`${getLtx25GatewayUrl()}/jobs/${encodeURIComponent(providerJobId)}`, {
     method: 'GET',
     headers: { Accept: 'video/*, application/json' },
   });
   if (response.status === 202) return { status: 'running', provider: workflow.provider };
   if (!response.ok) {
     const detail = await parseProviderError(response);
-    const error = new Error(`LTX 2.3 provider poll failed (${response.status})${detail}`);
+    const error = new Error(`REDGraft LTX 2.5 provider poll failed (${response.status})${detail}`);
     error.statusCode = response.status >= 500 ? 502 : response.status;
     throw error;
   }
@@ -269,7 +269,7 @@ async function cancelProviderJob(gatewayUrl, providerLabel, workflow, providerJo
 export async function submitWorkflow(workflow, rawInput) {
   const normalized = normalizeInput(workflow, rawInput);
   if (workflow.provider === 'modal-flux2-klein') return submitModalFlux2Klein(workflow, normalized);
-  if (workflow.provider === 'modal-ltx23') return submitModalLtx23(workflow, normalized);
+  if (workflow.provider === 'modal-ltx25-redgraft') return submitModalLtx25(workflow, normalized);
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
@@ -287,7 +287,7 @@ export async function pollWorkflow(workflow, providerJobId) {
     throw error;
   }
   if (workflow.provider === 'modal-flux2-klein') return pollModalFlux2Klein(workflow, providerJobId);
-  if (workflow.provider === 'modal-ltx23') return pollModalLtx23(workflow, providerJobId);
+  if (workflow.provider === 'modal-ltx25-redgraft') return pollModalLtx25(workflow, providerJobId);
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
   throw error;
@@ -303,8 +303,8 @@ export async function cancelWorkflow(workflow, providerJobId) {
   if (workflow.provider === 'modal-flux2-klein') {
     return cancelProviderJob(getModalGatewayUrl(), 'FLUX.2', workflow, providerJobId);
   }
-  if (workflow.provider === 'modal-ltx23') {
-    return cancelProviderJob(getLtx23GatewayUrl(), 'LTX 2.3', workflow, providerJobId);
+  if (workflow.provider === 'modal-ltx25-redgraft') {
+    return cancelProviderJob(getLtx25GatewayUrl(), 'REDGraft LTX 2.5', workflow, providerJobId);
   }
   const error = new Error(`Unsupported provider: ${workflow.provider}`);
   error.statusCode = 501;
