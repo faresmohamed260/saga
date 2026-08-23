@@ -1,0 +1,102 @@
+name: Studio Iteration 4 Keyboard Patch
+
+on:
+  push:
+    branches:
+      - studio/video-gallery-ux
+    paths:
+      - ".github/workflows/studio-iteration4-keyboard-patch.yml"
+      - "apps/studio/scripts/iteration4_keyboard_patch.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Apply iteration 4 source and test changes
+        run: python apps/studio/scripts/iteration4_keyboard_patch.py
+
+      - name: Validate patch formatting
+        run: git diff --check
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        working-directory: apps/studio
+        run: npx playwright install --with-deps chromium
+
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+
+      - name: Start remote runner preview
+        working-directory: apps/studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          echo $! > /tmp/saga-studio-preview.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+
+      - name: Capture iteration 4 visual evidence
+        working-directory: apps/studio
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:preview
+
+      - name: Publish iteration 4 visual artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-iteration4-keyboard-${{ github.run_id }}
+          path: |
+            apps/studio/visual-preview/*.png
+            apps/studio/visual-preview/*.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit validated iteration 4 changes and remove temporary patch machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f apps/studio/scripts/iteration4_keyboard_patch.py
+          rm -f .github/workflows/studio-iteration4-keyboard-patch.yml
+          git add apps/studio/src/create-controls.jsx \
+                  apps/studio/src/features/create/VideoGenerationControls.jsx \
+                  apps/studio/src/create-workspace-v2.css \
+                  apps/studio/scripts/capture-ui-preview.mjs \
+                  apps/studio/scripts/capture-video-output-preview.mjs \
+                  apps/studio/scripts/iteration4_keyboard_patch.py \
+                  .github/workflows/studio-iteration4-keyboard-patch.yml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Improve custom picker keyboard accessibility"
+          git push origin HEAD:studio/video-gallery-ux
+          echo "Committed product head: $(git rev-parse HEAD)"
