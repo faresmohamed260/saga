@@ -196,6 +196,49 @@ export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sour
   return payload.job;
 }
 
+export async function submitVideoGeneration({
+  sourceFile = null,
+  sourceKey = '',
+  prompt,
+  negativePrompt = '',
+  resolution = '480p',
+  durationSeconds = 5,
+  audioEnabled = true,
+  seed = 42,
+}) {
+  let uploaded = null;
+  if (sourceKey) {
+    uploaded = {
+      key: sourceKey,
+      contentType: sourceFile?.type || 'image/png',
+      filename: sourceFile?.name || 'input.png',
+    };
+  } else if (sourceFile) {
+    uploaded = await uploadSourceFile(sourceFile);
+  }
+
+  const response = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      workflowId: 'ltx23-video',
+      sourceKeys: uploaded ? [uploaded.key] : [],
+      sourceFilenames: uploaded ? [uploaded.filename] : [],
+      sourceContentTypes: uploaded ? [uploaded.contentType] : [],
+      prompt,
+      negativePrompt,
+      resolution,
+      durationSeconds,
+      audioEnabled,
+      seed,
+    }),
+  });
+  if (response.status !== 202) throw new Error(await responseError(response, 'Could not submit video generation'));
+  const payload = await response.json();
+  if (!payload?.job?.id) throw new Error('Video generation submit did not return a job id.');
+  return payload.job;
+}
+
 export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -227,5 +270,16 @@ export async function runImageEdit(input, options = {}) {
   const job = await submitImageEdit(effectiveInput);
   if (options.onStatus) options.onStatus('running');
   const result = await waitForGeneration(job.id, options);
+  return { job, result };
+}
+
+export async function runVideoGeneration(input, options = {}) {
+  if (options.onStatus) options.onStatus(input?.sourceFile ? 'uploading' : 'submitting');
+  const job = await submitVideoGeneration(input);
+  if (options.onStatus) options.onStatus('running');
+  const result = await waitForGeneration(job.id, {
+    timeoutMs: 55 * 60 * 1000,
+    ...options,
+  });
   return { job, result };
 }
