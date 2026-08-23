@@ -40,7 +40,7 @@ export default function MediaCard({
   );
 
   return (
-    <article className={`media-card ${history ? 'history-card' : ''} ${selected ? 'selected' : ''}`}>
+    <article className={`media-card ${history ? 'history-card' : ''} ${selected ? 'selected' : ''} ${selectable ? 'selectable' : ''}`}>
       <div
         className={`media-frame ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}
         style={item.url && item.kind !== 'video' ? { backgroundImage: `url(${item.url})` } : undefined}
@@ -52,7 +52,7 @@ export default function MediaCard({
           }
         }}
         onMouseEnter={() => {
-          if (history && videoRef.current) videoRef.current.play().catch(() => {});
+          if (history && !selectable && videoRef.current) videoRef.current.play().catch(() => {});
         }}
         onMouseLeave={() => {
           if (videoRef.current) videoRef.current.pause();
@@ -93,7 +93,7 @@ export default function MediaCard({
           </button>
         )}
         {!history && <div className="media-hover"><button aria-label="Open full media" onClick={action(onOpen)}><Maximize2 size={18}/></button></div>}
-        {history && actions}
+        {history && !selectable && actions}
       </div>
       {history && (
         <div className="history-copy">
