@@ -10,14 +10,15 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 2 — Gallery action density and mobile touch safety**
 
-- Status: `[~]` in progress
-- Working item: **02**
+- Status: `[x]` complete
+- Completed item: **02**
+- Next item: **03 — MediaCard interaction semantics/accessibility**
 - Rule: implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
 - [x] **01. Exact requested video duration after LTX 8n+1 padding.** Preserve model-required 8n+1 generation frames while clamping delivered video frames and trimming audio to the requested duration; validate 24/25/30 FPS with ffprobe. **Iteration 1 complete.**
-- [~] **02. Reduce per-card immediate actions, especially on mobile.** Desktop should expose only high-frequency actions plus an overflow menu; mobile should use touch-safe primary actions and a `More` menu/sheet. Delete must not sit beside routine actions. **Iteration 2 in progress.**
+- [x] **02. Reduce per-card immediate actions, especially on mobile.** Desktop now exposes Favorite, Download, Open, and More; secondary actions live in More. Mobile exposes three touch-safe actions (Favorite, Open, More) and moves Download into the More surface. Delete is separated in the overflow surface. **Iteration 2 complete.**
 - [ ] **03. Refactor MediaCard interaction semantics/accessibility.** Remove nested button-like semantics; use a dedicated primary preview button or explicit checkbox/select interaction, correct focus order, and accessible labels.
 - [ ] **04. Complete keyboard behavior for custom pickers.** Enter/Space open, Arrow navigation, Home/End, Enter select, Escape close, focus return, clear `:focus-visible` states.
 
@@ -65,3 +66,18 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Live 30 FPS gateway I2V: 5.000000 s.
 - [x] Studio CI, visual preview, architecture CI, compatibility, Modal smoke, and persistence checks passed on the validated product head.
 - [x] Visual regression inspection found no Iteration 1 UI regression.
+
+### Iteration 2 — Gallery action density and mobile touch safety
+
+- [x] Reduced desktop immediate Gallery actions from seven to four: Favorite, Download, Open, More.
+- [x] Moved Reuse, Edit, Add/Remove collection, and Delete into the desktop More menu.
+- [x] Removed Delete from the routine immediate-action row and visually separated it as the destructive overflow action.
+- [x] Mobile exposes only Favorite, Open, and More as immediate controls; Download moves into More.
+- [x] Mobile primary controls use a 46px action bar and deterministic tests require at least 44px touch targets.
+- [x] Mobile actions are visible without hover.
+- [x] Added deterministic visual-preview assertions for desktop immediate-action count, overflow contents, destructive-action separation, mobile immediate-action count, and mobile touch-target size.
+- [x] First professional visual review caught a real issue: the initial mobile More implementation was clipped by the card/overlay containing block and showed only the bottom overflow actions.
+- [x] Fixed the clipping by removing the mobile overlay backdrop-filter containing block so the fixed More surface can span the viewport.
+- [x] Second professional visual review confirmed the mobile More surface now spans the viewport width, sits at the bottom with safe margins, exposes all secondary actions, and keeps Delete separated.
+- [x] Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on the final Iteration 2 product head (`2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`).
+- [x] Professional review result for item 02: no remaining action-density or touch-safety comments. Accessibility semantics remain intentionally tracked as item 03 rather than being folded into this iteration.
