@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-video-gallery-ux
+  group: apply-video-gallery-ux-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
