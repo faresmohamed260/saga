@@ -1,1 +1,0 @@
-FAIL: stage=read-existing-cors; type=ClientError
