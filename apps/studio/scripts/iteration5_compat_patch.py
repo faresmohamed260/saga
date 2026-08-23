@@ -51,8 +51,8 @@ replace_once(
 
 replace_once(
     "apps/studio/scripts/check-video-poster-contract.mjs",
-    'assert.match(runtimeSource, /\\"poster_content_type\\": \\"image\\/jpeg\\"/);\nassert.match(runtimeSource, /_create_video_poster\\(final_path\\)/);\nassert.match(gatewaySource, /\\/jobs\\/\\{call_id\\}\\/poster/);\n',
-    "assert.match(runtimeSource, /\\) -> bytes:/);\nassert.doesNotMatch(runtimeSource, /_create_video_poster/);\nassert.match(gatewaySource, /apt_install\\(\"ffmpeg\"\\)/);\nassert.match(gatewaySource, /def _extract_poster\\(video: bytes\\)/);\nassert.match(gatewaySource, /\\/jobs\\/\\{call_id\\}\\/poster/);\n",
+    '''assert.match(runtimeSource, /"poster_content_type": "image\\/jpeg"/);\nassert.match(runtimeSource, /_create_video_poster\\(final_path\\)/);\nassert.match(gatewaySource, /\\/jobs\\/\\{call_id\\}\\/poster/);\n''',
+    '''assert.match(runtimeSource, /\\) -> bytes:/);\nassert.doesNotMatch(runtimeSource, /_create_video_poster/);\nassert.match(gatewaySource, /apt_install\\("ffmpeg"\\)/);\nassert.match(gatewaySource, /def _extract_poster\\(video: bytes\\)/);\nassert.match(gatewaySource, /\\/jobs\\/\\{call_id\\}\\/poster/);\n''',
 )
 
 print("Iteration 5 compatibility refinement applied")
