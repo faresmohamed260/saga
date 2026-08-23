@@ -67,6 +67,16 @@ async function mockHistory(page) {
   });
 }
 
+async function assertTouchTargets(locator, minimum = 44) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const box = await locator.nth(index).boundingBox();
+    if (!box || box.width < minimum || box.height < minimum) {
+      throw new Error(`Touch target ${index} is below ${minimum}px: ${JSON.stringify(box)}`);
+    }
+  }
+}
+
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -95,8 +105,27 @@ try {
   await page.waitForTimeout(180);
   const afterOpacity = Number(await overlay.evaluate((element) => getComputedStyle(element).opacity));
   if (afterOpacity < 0.9) throw new Error(`Gallery actions did not appear over media on hover, opacity=${afterOpacity}`);
+
+  const desktopPrimary = overlay.locator('.media-action-primary:visible');
+  if (await desktopPrimary.count() !== 4) throw new Error(`Desktop Gallery should expose exactly 4 immediate actions, found ${await desktopPrimary.count()}`);
+  if (await overlay.getByRole('button', { name: 'Delete permanently', exact: true }).count()) throw new Error('Delete is still exposed as an immediate desktop action');
+
   await page.screenshot({ path: path.join(outputDir, '11-gallery-hover-actions.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('11-gallery-hover-actions.png');
+
+  await overlay.getByRole('button', { name: 'More actions', exact: true }).click();
+  const desktopMore = cards.first().locator('.media-actions-popover');
+  await desktopMore.waitFor({ state: 'visible' });
+  for (const label of ['Reuse settings', 'Edit', 'Add to collection', 'Delete permanently']) {
+    await desktopMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });
+  }
+  if (await desktopMore.getByRole('menuitem', { name: 'Download original', exact: true }).isVisible()) {
+    throw new Error('Desktop More menu duplicates the already-visible Download action');
+  }
+  await page.screenshot({ path: path.join(outputDir, '11b-gallery-more-actions.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('11b-gallery-more-actions.png');
+  await page.keyboard.press('Escape');
+  await desktopMore.waitFor({ state: 'detached' });
 
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const manager = page.locator('.gallery-manager');
@@ -124,8 +153,33 @@ try {
   if (!mobileFirst || !mobileSecond || Math.abs(mobileFirst.width - mobileSecond.width) > 3 || Math.abs(mobileFirst.x - mobileSecond.x) < mobileFirst.width * .7) {
     throw new Error(`Mobile Gallery is not a stable two-column grid: ${JSON.stringify({ mobileFirst, mobileSecond })}`);
   }
+
+  const mobileOverlay = mobileCards.first().locator('.media-actions-overlay');
+  const mobileOpacity = Number(await mobileOverlay.evaluate((element) => getComputedStyle(element).opacity));
+  if (mobileOpacity < 0.9) throw new Error(`Mobile actions must be visible without hover, opacity=${mobileOpacity}`);
+  const mobilePrimary = mobileOverlay.locator('.media-action-primary:visible');
+  if (await mobilePrimary.count() !== 3) throw new Error(`Mobile Gallery should expose exactly 3 immediate actions, found ${await mobilePrimary.count()}`);
+  await assertTouchTargets(mobilePrimary, 44);
+  if (await mobileOverlay.getByRole('button', { name: 'Delete permanently', exact: true }).count()) throw new Error('Delete is still exposed as an immediate mobile action');
+
   await mobile.screenshot({ path: path.join(outputDir, '13-gallery-mobile.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('13-gallery-mobile.png');
+
+  await mobileOverlay.getByRole('button', { name: 'More actions', exact: true }).click();
+  const mobileMore = mobileCards.first().locator('.media-actions-popover');
+  await mobileMore.waitFor({ state: 'visible' });
+  for (const label of ['Reuse settings', 'Edit', 'Download original', 'Add to collection', 'Delete permanently']) {
+    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });
+  }
+  await assertTouchTargets(mobileMore.getByRole('menuitem'), 44);
+  const moreBox = await mobileMore.boundingBox();
+  if (!moreBox || moreBox.x < 0 || moreBox.x + moreBox.width > 390 || moreBox.y < 0 || moreBox.y + moreBox.height > 844) {
+    throw new Error(`Mobile More surface overflows viewport: ${JSON.stringify(moreBox)}`);
+  }
+  await mobile.screenshot({ path: path.join(outputDir, '13b-gallery-mobile-more-actions.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('13b-gallery-mobile-more-actions.png');
+  await mobile.keyboard.press('Escape');
+  await mobileMore.waitFor({ state: 'detached' });
 
   await mobile.getByRole('button', { name: 'Manage', exact: true }).click();
   const mobileManager = mobile.locator('.gallery-manager');
