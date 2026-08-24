@@ -8,12 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Platform blocker — Modal ecosystem worker fleet**
+**P1 core UX and architecture — complete**
 
-- Status: `[~]` in progress
-- Completed checklist items remain **01–11**.
-- Blocker: replace the single-account Modal runtime assumption with ecosystem-affine workers, scale-to-zero compute, persistent model caches, credit/unavailable failover, clean worker provisioning, and production worker-state feedback.
-- Item **12 — improve generation lifecycle feedback** remains pending and must not start until this blocker is implemented and end-to-end generation is validated.
+- Status: `[x]` Items **01–20** complete.
+- Modal ecosystem worker-fleet migration and real worker-state feedback are implemented and validated.
+- Next planned polish scope begins at **Item 21** in P2.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -39,7 +38,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **17. Replace repeated multi-file downloads with a scalable ZIP/download-batch flow.** Gallery bulk Download now makes one POST to `/api/download-batch`, which builds a single ZIP from persisted R2 originals (up to 100 items / 1 GB) and triggers one browser download instead of many independent downloads. Final artifact `9528710037` from Studio Visual Preview `32750178415` was manually inspected at desktop and 390px mobile Manage states: the Download ZIP action is readable and contained with no layout regression. Validated by Studio CI `32750178504`, Studio Visual Preview `32750178415`, Backend Architecture CI `32750178571`, Modal Worker Inventory `32750178430`, Worker Fleet Live Smoke `32750178518`, and Required Check Compatibility `32750178524`. **Iteration 17 complete.**
 - [x] **18. Replace CreateWorkspace portal/querySelector integration with explicit component slots/composition.** Legacy composer exposes explicit `videoToolbarSlot` and `composerStatusSlot` React slots; the feature wrapper passes VideoOutputControls and VideoGenerationProgress directly, with `createPortal` and CSS-class `document.querySelector` host discovery removed. Validation also hardened duration-control accessibility/test targeting after slot insertion changed sibling order. Final artifact `9529378543` from Studio Visual Preview `32751942189` was manually inspected across desktop video controls, 390px mobile controls, and generation-progress states: controls remain contained, ordered, readable, and progress placement is preserved with no visual regression. Validated by Studio CI `32751942243`, Studio Visual Preview `32751942189`, Backend Architecture CI `32751942113`, Modal Worker Inventory `32751942205`, Worker Fleet Live Smoke `32751942214`, and Required Check Compatibility `32751942236`. **Iteration 18 complete.**
 - [x] **19. Rename History internals to Gallery.** `GalleryView`, `galleryItems`, `loadGallery`, `gallery-*` CSS hooks, and `gallery-controls.css` now match the product terminology. The existing `/api/history` endpoint and legacy `#/history` route alias are intentionally retained as compatibility surfaces to avoid unnecessary migration risk. Final artifact `9529741150` from Studio Visual Preview `32752854888` was manually inspected at desktop, 390px mobile, and mobile Manage states: Gallery layout, filters, cards, and the bottom manager remain visually unchanged and contained. Validated by Studio CI `32752855009`, Studio Visual Preview `32752854888`, Backend Architecture CI `32752854626`, Modal Worker Inventory `32752854616`, Worker Fleet Live Smoke `32752854778`, and Required Check Compatibility `32752854618`. **Iteration 19 complete.**
-- [~] **20. Split App.jsx responsibilities.** Implementation in validation: generation lifecycle moved to `useGenerationController`, Gallery/Favorites/Collections state/loading moved to `useLibraryController`, Gallery selection moved to `useGallerySelection`, item/bulk/collection mutations moved to `useMediaActions`, and browser API calls are consolidated in `api/studioApi.js`.
+- [x] **20. Split App.jsx responsibilities.** Generation lifecycle now lives in `useGenerationController`; Gallery/Favorites/Collections state/loading in `useLibraryController`; Gallery selection in `useGallerySelection`; item, bulk, and collection mutations in `useMediaActions`; browser API operations are consolidated in `api/studioApi.js`. Worker/lifecycle contract tests were updated to follow the new ownership rather than requiring implementation inside `App.jsx`. Final artifact `9530241337` from Studio Visual Preview `32754253022` was manually inspected across desktop Gallery, 390px mobile Manage, and active generation-progress states with no visual regression. Validated by Studio CI `32754253028`, Studio Visual Preview `32754253022`, Backend Architecture CI `32754253027`, Modal Worker Inventory `32754253032`, Worker Fleet Live Smoke `32754253050`, and Required Check Compatibility `32754253049`. **Iteration 20 complete; P1 complete.**
 
 ## P2 — product polish and scale
 
