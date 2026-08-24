@@ -65,10 +65,14 @@ const [runtimeSource, gatewaySource, resultSource, persistenceSource, cardSource
   readFile('src/components/MediaCard.jsx', 'utf8'),
   readFile('api/_providers.js', 'utf8'),
 ]);
-assert.match(runtimeSource, /\) -> bytes:/);
+assert.match(runtimeSource, /\) -> dict\[str, bytes\]:/);
+assert.match(runtimeSource, /return \{"video": result, "poster": bytes\(poster_process\.stdout\)\}/);
+assert.match(runtimeSource, /MODAL_LTX25_LOWVRAM/);
 assert.doesNotMatch(runtimeSource, /_create_video_poster/);
 assert.match(gatewaySource, /apt_install\("ffmpeg"\)/);
 assert.match(gatewaySource, /def _extract_poster\(video: bytes\)/);
+assert.match(gatewaySource, /NamedTemporaryFile\(suffix="\.mp4"\)/);
+assert.match(gatewaySource, /result\.get\("poster"\)/);
 assert.match(gatewaySource, /\/jobs\/\{call_id\}\/poster/);
 assert.match(resultSource, /result\.posterBytes, result\.posterContentType/);
 assert.match(persistenceSource, /thumbnail_r2_key: thumbnailUrl \? keys\.thumbnail : null/);
