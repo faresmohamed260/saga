@@ -1,0 +1,36 @@
+name: Studio Release Poster Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/release-poster-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe completed LTX call endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://dreadcipher67--saga-ltx25-gateway-web.modal.run'
+          call_id='fc-01M0TRJX4TCB5VS0YVVWF0QB6J'
+
+          video_status=$(curl -sS -o /tmp/video.bin -D /tmp/video.headers -w '%{http_code}' "$base/jobs/$call_id" || true)
+          echo "video_status=$video_status"
+          cat /tmp/video.headers || true
+          if [ -f /tmp/video.bin ]; then wc -c /tmp/video.bin; fi
+
+          poster_status=$(curl -sS -o /tmp/poster.body -D /tmp/poster.headers -w '%{http_code}' "$base/jobs/$call_id/poster" || true)
+          echo "poster_status=$poster_status"
+          cat /tmp/poster.headers || true
+          echo '--- poster body ---'
+          cat /tmp/poster.body || true
+
+          if [ "$poster_status" != "200" ]; then
+            exit 1
+          fi
