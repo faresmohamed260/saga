@@ -17,8 +17,9 @@ jobs:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
-      MODAL_LTX25_GPU: "L40S,A100-40GB"
+      MODAL_LTX25_GPU: "A10"
       MODAL_LTX25_MAX_CONTAINERS: "2"
+      MODAL_LTX25_LOWVRAM: "0"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,18 +46,48 @@ jobs:
           set -euo pipefail
           python scripts/modal_worker_maintenance.py modal-46 ltx25-redgraft ltx-primary-01 | tee /tmp/primary-deploy.json
           python scripts/modal_worker_maintenance.py modal-47 ltx25-redgraft ltx-standby-01 | tee /tmp/standby-deploy.json
+      - name: Verify exact deployed build
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=$(jq -r '.gatewayUrl' /tmp/primary-deploy.json)
+          expected="$LTX_ACCEPTANCE_BUILD"
+          gateway_ready=0
+          for attempt in $(seq 1 60); do
+            code=$(curl --max-time 20 -sS -o /tmp/gateway-health.json -w '%{http_code}' "$base/health" || true)
+            build=$(jq -r '.build // empty' /tmp/gateway-health.json 2>/dev/null || true)
+            echo "gateway_build_attempt=$attempt http=$code build=${build:-missing} expected=$expected"
+            if [ "$code" = "200" ] && [ "$build" = "$expected" ]; then
+              gateway_ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$gateway_ready" = "1"
+          cp /tmp/gateway-health.json /tmp/health-before.json
+
+          runtime_ready=0
+          for attempt in $(seq 1 20); do
+            code=$(curl --max-time 240 -sS -o /tmp/runtime-health.json -w '%{http_code}' "$base/runtime-health" || true)
+            build=$(jq -r '.runtime_build // empty' /tmp/runtime-health.json 2>/dev/null || true)
+            gpu=$(jq -r '.gpu_name // .gpu // empty' /tmp/runtime-health.json 2>/dev/null || true)
+            echo "runtime_build_attempt=$attempt http=$code build=${build:-missing} gpu=${gpu:-missing} expected=$expected"
+            if [ "$code" = "200" ] && [ "$build" = "$expected" ]; then
+              runtime_ready=1
+              break
+            fi
+            cat /tmp/runtime-health.json || true
+            sleep 3
+          done
+          test "$runtime_ready" = "1"
+          cat /tmp/health-before.json
+          cat /tmp/runtime-health.json
       - name: Generate and validate production 1080p video
         shell: bash
         run: |
           set -euo pipefail
           base=$(jq -r '.gatewayUrl' /tmp/primary-deploy.json)
-          test -n "$base" && test "$base" != "null"
-          for attempt in $(seq 1 30); do
-            if curl -fsS "$base/health" > /tmp/health-before.json; then break; fi
-            sleep 3
-          done
-          cat /tmp/health-before.json
-
+          expected="$LTX_ACCEPTANCE_BUILD"
           started=$(date +%s)
           submit=$(curl -fsS -X POST "$base/jobs/video" \
             -F 'prompt=Production latency acceptance: calm ocean horizon at sunrise, subtle natural motion, locked camera' \
@@ -101,7 +132,7 @@ jobs:
           cat /tmp/ffprobe.json
           cat /tmp/health-after.json
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
           p = json.loads(Path('/tmp/ffprobe.json').read_text())
           health = json.loads(Path('/tmp/health-after.json').read_text())
@@ -110,6 +141,9 @@ jobs:
           duration = float(p['format']['duration'])
           poster = Path('/tmp/ltx-benchmark.jpg').read_bytes()
           worker = health.get('worker') or {}
+          expected = os.environ['LTX_ACCEPTANCE_BUILD']
+          assert health.get('build') == expected, health
+          assert worker.get('runtime_build') == expected, worker
           assert (video['width'], video['height']) == (1920, 1080), video
           assert video['avg_frame_rate'] == '25/1', video
           assert abs(duration - 5.0) <= 0.05, duration
@@ -118,12 +152,13 @@ jobs:
           assert worker.get('state') == 'ready', worker
           assert worker.get('gpu_name'), worker
           assert worker.get('total_seconds') is not None, worker
-          print(json.dumps({'validated': True, 'gpu_name': worker.get('gpu_name'), 'runtime_total_seconds': worker.get('total_seconds'), 'compute_seconds': worker.get('compute_seconds'), 'finalize_seconds': worker.get('finalize_seconds'), 'poster_bytes': len(poster)}))
+          print(json.dumps({'validated': True, 'gateway_build': health.get('build'), 'runtime_build': worker.get('runtime_build'), 'gpu_name': worker.get('gpu_name'), 'runtime_total_seconds': worker.get('total_seconds'), 'compute_seconds': worker.get('compute_seconds'), 'finalize_seconds': worker.get('finalize_seconds'), 'poster_bytes': len(poster)}))
           PY
 
           total=$(( $(date +%s) - started ))
           jq -n \
             --arg call_id "$call_id" \
+            --arg build "$expected" \
             --arg gpu_name "$(jq -r '.worker.gpu_name' /tmp/health-after.json)" \
             --argjson generation_seconds "$generation_seconds" \
             --argjson poster_seconds "$poster_seconds" \
@@ -131,7 +166,7 @@ jobs:
             --argjson runtime_total_seconds "$(jq -r '.worker.total_seconds' /tmp/health-after.json)" \
             --argjson compute_seconds "$(jq -r '.worker.compute_seconds' /tmp/health-after.json)" \
             --argjson finalize_seconds "$(jq -r '.worker.finalize_seconds' /tmp/health-after.json)" \
-            '{call_id:$call_id,gpu_name:$gpu_name,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,runtime:{total_seconds:$runtime_total_seconds,compute_seconds:$compute_seconds,finalize_seconds:$finalize_seconds},request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
+            '{call_id:$call_id,build:$build,gpu_name:$gpu_name,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,runtime:{total_seconds:$runtime_total_seconds,compute_seconds:$compute_seconds,finalize_seconds:$finalize_seconds},request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
             > /tmp/benchmark-summary.json
           cat /tmp/benchmark-summary.json
       - name: Commit validated production fixes
@@ -145,7 +180,7 @@ jobs:
             echo "Product files already current"
             exit 0
           fi
-          git commit -m "fix(video): harden LTX poster delivery and telemetry"
+          git commit -m "fix(video): optimize A10 runtime and harden poster delivery"
           git push origin HEAD:studio/video-gallery-ux
       - uses: actions/upload-artifact@v4
         if: always()
@@ -157,6 +192,7 @@ jobs:
             /tmp/benchmark-summary.json
             /tmp/ffprobe.json
             /tmp/health-before.json
+            /tmp/runtime-health.json
             /tmp/health-after.json
             /tmp/ltx-benchmark.mp4
             /tmp/ltx-benchmark.jpg
