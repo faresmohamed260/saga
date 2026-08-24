@@ -2,6 +2,7 @@ import React from 'react';
 import useGallerySelection from '../../hooks/useGallerySelection.js';
 import { Check, Download, FolderPlus, Heart, LoaderCircle, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
+import { modelDisplayName } from '../../model-labels.js';
 
 export default function GalleryView({
   items,
@@ -37,7 +38,7 @@ export default function GalleryView({
           {[['all', 'All'], ['image', 'Images'], ['video', 'Videos']].map(([value, label]) => <button key={value} className={kind === value ? 'selected' : ''} onClick={() => onKindChange(value)}>{label}</button>)}
         </div>
         <div className="gallery-toolbar-actions">
-          <label className="gallery-model-filter"><span>Model</span><select value={model} onChange={(event) => onModelChange(event.target.value)}><option value="all">All models</option>{models.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label>
+          <label className="gallery-model-filter"><span>Model</span><select value={model} onChange={(event) => onModelChange(event.target.value)}><option value="all">All models</option>{models.map((modelName) => <option key={modelName} value={modelName}>{modelDisplayName(modelName)}</option>)}</select></label>
           <button className={`secondary-button gallery-manage-trigger ${managing ? 'active' : ''}`} onClick={() => managing ? finishManaging() : setManaging(true)}>{managing ? <X size={17}/> : <Check size={17}/>} {managing ? 'Done' : 'Manage'}</button>
         </div>
       </div>
