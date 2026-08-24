@@ -97,7 +97,7 @@ export default function GalleryView({
         <div className="gallery-state">No media matches these filters.</div>
       ) : (
         <>
-          <section className="gallery-grid gallery-grid">
+          <section className="gallery-grid">
             {items.map((item) => React.cloneElement(renderCard(item, true), {
               selectable: managing,
               selected: selected.has(item.id),
