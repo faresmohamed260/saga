@@ -38,8 +38,8 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git rm scripts/worker_fleet_refine.py
-            git add apps/studio/api/_worker-registry.js integrations/comfyui/flux2_klein_app.py apps/studio/scripts/check-worker-registry-contract.mjs scripts/modal_worker_fleet.py
-            git commit -m "fix: harden worker fleet failover and model secrets"
+            git add apps/studio/api/_worker-registry.js integrations/comfyui/flux2_klein_app.py integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py apps/studio/src/generation-client.js apps/studio/src/app/App.jsx apps/studio/src/features/create/VideoGenerationControls.jsx apps/studio/scripts/capture-video-output-preview.mjs apps/studio/scripts/check-worker-registry-contract.mjs scripts/modal_worker_fleet.py
+            git commit -m "feat: refine worker lifecycle and credit feedback"
             git push origin HEAD:studio/video-gallery-ux
             exit 0
           fi
