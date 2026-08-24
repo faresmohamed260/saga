@@ -614,6 +614,60 @@ export default function App() {
     }
   };
 
+  const bulkAddToCollection = async (selectedItems) => {
+    const candidates = selectedItems.filter((item) => item?.persisted && isUuid(item.id));
+    if (!candidates.length) {
+      window.alert('Only persisted generations can be added to a collection.');
+      return false;
+    }
+
+    let availableCollections = collections;
+    if (!availableCollections.length) {
+      try {
+        const response = await fetch('/api/collections');
+        if (!response.ok) throw new Error(`Collections request failed (${response.status})`);
+        const payload = await response.json();
+        availableCollections = Array.isArray(payload?.collections) ? payload.collections : [];
+        setCollections(availableCollections);
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : 'Unable to load collections.');
+        return false;
+      }
+    }
+
+    if (!availableCollections.length) {
+      window.alert('No collections yet. Create one from the Collections page first.');
+      return false;
+    }
+
+    const hint = availableCollections.map((collection, index) => `${index + 1}. ${collection.name}`).join('\n');
+    const answer = window.prompt(`Add ${candidates.length} selected item${candidates.length === 1 ? '' : 's'} to collection:\n${hint}\n\nEnter collection number or exact name:`);
+    if (!answer) return false;
+
+    const index = Number.parseInt(answer, 10) - 1;
+    const collection = availableCollections[index] || availableCollections.find((entry) => entry.name.toLowerCase() === answer.trim().toLowerCase());
+    if (!collection) {
+      window.alert('Collection not found.');
+      return false;
+    }
+
+    try {
+      await Promise.all(candidates.map(async (item) => {
+        const response = await fetch('/api/collection-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ collectionId: collection.id, generationId: item.id }),
+        });
+        if (!response.ok && response.status !== 204) throw new Error(`Collection update failed (${response.status})`);
+      }));
+      await loadCollections();
+      return true;
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not add selected media to collection.');
+      return false;
+    }
+  };
+
   const bulkDownload = async (selectedItems) => {
     selectedItems.forEach((item) => downloadItem(item));
     return true;
@@ -683,7 +737,7 @@ export default function App() {
         <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => setSettingsOpen(true)} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
-          : section === 'Gallery' ? <HistoryView items={historyItems} kind={historyKind} model={historyModel} models={historyModels} page={historyPage} loading={historyLoading} appending={historyAppending} error={historyError} onKindChange={setHistoryKind} onModelChange={setHistoryModel} onRefresh={() => loadHistory({ append: false })} onLoadMore={() => loadHistory({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
+          : section === 'Gallery' ? <HistoryView items={historyItems} kind={historyKind} model={historyModel} models={historyModels} page={historyPage} loading={historyLoading} appending={historyAppending} error={historyError} onKindChange={setHistoryKind} onModelChange={setHistoryModel} onRefresh={() => loadHistory({ append: false })} onLoadMore={() => loadHistory({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
           : section === 'Models' ? <ModelsView />
