@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/check-workflow-contract.mjs && node scripts/check-resolution-contract.mjs && vite build",
+    "build": "node scripts/check-workflow-contract.mjs && node scripts/check-resolution-contract.mjs && node scripts/check-generate-action-contract.mjs && vite build",
     "test:poster": "node scripts/check-video-poster-contract.mjs",
     "preview": "vite preview",
     "visual:preview": "node scripts/capture-ui-preview.mjs && node scripts/capture-video-output-preview.mjs && node scripts/capture-gallery-preview.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "latest",
     "@aws-sdk/client-s3": "latest",
     "@aws-sdk/s3-request-presigner": "latest",
     "@vitejs/plugin-react": "latest",
