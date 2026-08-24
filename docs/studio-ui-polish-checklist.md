@@ -8,11 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**P1 core UX and architecture — complete**
+**P2 product polish — Item 29 complete**
 
-- Status: `[x]` Items **01–20** complete.
+- Status: `[x]` Items **01–29** complete.
 - Modal ecosystem worker-fleet migration and real worker-state feedback are implemented and validated.
-- P2 polish is active; next planned scope begins at **Item 29**.
+- P2 polish is active; Items **21–29** are complete and **Item 30** is next.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -50,10 +50,20 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **26. Consolidate CSS into a small design-token system.** `design-tokens.css` is now the canonical role-based layer for surfaces/text/borders/accent/danger/success, spacing, radii, control heights, type scale, focus rings, and transitions. High-churn Studio CSS consumes those tokens without changing rendered values; legacy root aliases point to the shared roles; one obsolete `!important` specificity patch was removed; and the Generate contract was updated to validate the shared focus-ring token rather than a duplicated literal. The visual harness asserts the token contract is loaded before rendering. Final artifact `9533868281` from Studio Visual Preview `32764269574` was manually inspected across desktop Create, Video resolution picker, desktop Gallery, and 390px mobile Gallery with no layout or interaction regression. Validated by Studio CI `32764269513`, Studio Visual Preview `32764269574`, Backend Architecture CI `32764269509`, Modal Worker Inventory `32764269487`, Worker Fleet Live Smoke `32764269612`, and Required Check Compatibility `32764269512`. **Iteration 26 complete.**
 - [x] **27. Dedicated typography/contrast accessibility pass.** Dense 9/10/11px token tiers were raised to a 10/11/12px minimum scale, muted/subtle text roles were brightened, a shared focus halo supplements the 2px focus ring, Gallery filter/Manage states expose `aria-pressed`, and selected states add weight/shape cues so they do not depend on color alone. A deterministic accessibility-polish contract now runs in the normal Studio build. Final artifact `9534555187` from Studio Visual Preview `32766234976` was manually inspected across desktop Create, picker keyboard focus, desktop Gallery, and 390px mobile Manage; the readability gains do not introduce crowding or clipping and focus/state cues remain clear. Validated by Studio CI `32766235138`, Studio Visual Preview `32766234976`, Backend Architecture CI `32766235176`, Modal Worker Inventory `32766235289`, Worker Fleet Live Smoke `32766235212`, and Required Check Compatibility `32766235093`. **Iteration 27 complete.**
 - [x] **28. Convert screenshot capture into true visual regression.** Studio Visual Preview now compares eight deterministic, versioned approved surfaces against PNG baselines using per-surface changed-pixel tolerances, fails on meaningful drift, emits a JSON comparison report plus highlighted PNG diffs, and publishes that evidence in the existing GitHub artifact. A separate manual `Studio Visual Baseline Update` workflow refreshes baseline candidates only when explicitly dispatched; normal PR runs never rewrite baselines. The first real gate correctly rejected the animated Image Aspect morph capture at `0.845%` drift while every other surface was pixel-identical; professional review identified the morph transition as nondeterministic rather than loosening the tolerance, so that animated evidence remains capture-only and was removed from the pixel gate. Final Studio Visual Preview `32768394649` then passed all eight gated surfaces with `0` changed pixels; artifact `9535309218` and its report were downloaded and inspected. Validated by Studio CI `32768394643`, Studio Visual Preview `32768394649`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739`. **Iteration 28 complete.**
-- [ ] **29. Expand responsive visual coverage.** At minimum 320, 390, 768, 1024, 1440, and 1920 widths, focusing especially on the 768–1100 transition range.
+- [x] **29. Expand responsive visual coverage.** A deterministic Playwright matrix now captures Create/Video and Gallery at 320, 390, 768, 900, 1024, 1100, 1440, and 1920px, with Gallery Manage additionally covered at 768/900/1024/1100. The harness fails on horizontal overflow, viewport escape, collapsed cards, Search/Sort overlap, and unusably narrow mobile Search/Model controls. It caught and drove fixes for a real 20px Create overflow at 1024px plus a 320px Gallery control collision/intrinsic-grid squeeze. The reviewed responsive fix intentionally changed the 390px Gallery Manage baseline; the manual baseline-update path was used without loosening tolerances, then restored to manual-only. Final Studio Visual Preview `32771622937` passed the full responsive matrix and all eight approved regression surfaces with `0` changed pixels; artifact `9536443571` was downloaded and manually inspected across mobile, 768–1100 transition, Manage, and wide layouts. Validated by Studio CI `32771622957`, Studio Visual Preview `32771622937`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922`. **Iteration 29 complete.**
 - [ ] **30. Expand deterministic video delivery-contract tests.** Cover all supported aspects/resolutions/FPS, odd reference ratios, even delivery dimensions, 64-aligned internal dimensions, exact aspect tolerance, exact duration, and canonical 1080p landscape/portrait dimensions without requiring GPU generation.
 
 ## Completed iteration log
+
+### Iteration 29 — responsive visual coverage
+
+- [x] Added deterministic Create/Video and Gallery coverage at 320, 390, 768, 900, 1024, 1100, 1440, and 1920px, with Gallery Manage coverage at 768/900/1024/1100.
+- [x] Added hard assertions for horizontal overflow, viewport containment, card collapse, Search/Sort overlap, and minimum usable mobile Search/Model widths.
+- [x] The matrix exposed a real 20px Create overflow at 1024px; Create stage sizing was corrected to use its actual workspace instead of double-counting sidebar/workspace width.
+- [x] Artifact review then exposed a 320px Gallery Search/Sort collision and density-control intrinsic sizing squeeze; the narrow-mobile toolbar was reflowed into readable compact rows instead of weakening the assertion.
+- [x] The intentional responsive toolbar change was reviewed, the affected 390px Gallery Manage baseline was refreshed through the explicit baseline-update mechanism, and that mechanism was restored to manual-only afterward.
+- [x] Final Studio Visual Preview `32771622937` / artifact `9536443571` passed 20 responsive screenshots plus all eight approved regression surfaces with zero changed pixels. Manual review found no remaining Item-29-specific actionable issue.
+- [x] Final standard gates passed: Studio CI `32771622957`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922`.
 
 ### Iteration 1 — exact video delivery duration
 

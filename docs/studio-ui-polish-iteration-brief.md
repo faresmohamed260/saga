@@ -11,11 +11,11 @@ The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-u
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–28**.
-- Next item: **29 — expand responsive visual coverage**.
-- Do not begin Item 29 until the user says **continue**.
+- Completed checklist items: **01–29**.
+- Next item: **30 — expand deterministic video delivery-contract tests**.
+- Do not begin Item 30 until the user says **continue**.
 - Development/review previews remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 28. Studio Visual Preview is now a real regression gate: eight deterministic approved surfaces are versioned under `apps/studio/visual-baselines`, `scripts/check-visual-regression.mjs` compares changed pixels with explicit per-surface tolerances and emits diff/report evidence, and a manual baseline-update workflow exists for intentional reviewed changes. Final Studio Visual Preview `32768394649` passed all eight gated surfaces with zero changed pixels; artifact `9535309218` was downloaded and inspected. Standard validation also passed: Studio CI `32768394643`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739`.
+- Latest completed item is Iteration 29. The GitHub-only visual harness now covers Create/Video and Gallery at 320, 390, 768, 900, 1024, 1100, 1440, and 1920px, with Manage coverage through the 768–1100 transition range and hard assertions for overflow, containment, overlap, card collapse, and minimum mobile control widths. It caught and drove fixes for a real 1024px Create overflow and 320px Gallery filter collision. Final Studio Visual Preview `32771622937` passed the responsive matrix and all eight approved visual-regression surfaces with zero changed pixels; artifact `9536443571` was downloaded and inspected. Standard validation also passed: Studio CI `32771622957`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922`.
 
 ## Non-negotiable process
 
@@ -41,9 +41,21 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is a coherent product direction rather than a prototype. Items 01–28 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, and a true screenshot-baseline regression gate. Remaining accepted work is responsive visual coverage across the full width matrix (Item 29) and expanded deterministic video delivery-contract testing (Item 30).
+The implementation is a coherent product direction rather than a prototype. Items 01–29 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, a true screenshot-baseline regression gate, and responsive visual coverage across the full width matrix. Remaining accepted work is expanded deterministic video delivery-contract testing (Item 30).
 
 ## Recent iteration log
+
+### Iteration 29 — responsive visual coverage
+
+**Status:** complete.
+
+**Implementation:** added `apps/studio/scripts/capture-responsive-preview.mjs` to the GitHub visual pipeline with required widths 320/390/768/1024/1440/1920 plus transition probes at 900/1100. Create/Video and Gallery are captured at every width; Gallery Manage is captured at 768/900/1024/1100. Assertions reject horizontal overflow, viewport escape, collapsed cards, overlapping Search/Sort controls, and unusably narrow mobile Search/Model controls. `visual:responsive` is available as a direct npm command as well as part of `visual:preview`.
+
+**Professional review cycle:** the first responsive run exposed 20px document overflow in Create/Video at 1024px. The product was fixed by sizing the Create stage to its actual workspace rather than subtracting the sidebar from `100vw`. Artifact inspection then exposed a 320px Gallery Search/Sort collision that overflow assertions alone did not catch, so explicit overlap/minimum-width assertions were added. Those assertions subsequently exposed intrinsic sizing pressure from the density control; the 320px toolbar was reflowed into readable compact rows rather than weakening the test. The intentional 390px toolbar change was reviewed, its approved Gallery Manage baseline was refreshed explicitly, and the temporary connector-only refresh trigger was removed with the baseline workflow restored to manual-only.
+
+**Validation:** final product/visual head before documentation `c2b95923686a338b93eb6aade3b8cfe1cf08a6ca`. Studio Visual Preview `32771622937` passed 20 responsive captures and all eight approved visual-regression surfaces with `0` changed pixels; artifact `9536443571` and `responsive-diagnostics.json` were downloaded and inspected. The final diagnostics recorded no horizontal overflow or page errors; mobile Search widths were 168px at 320 and 174px at 390, both above the 140px contract. Studio CI `32771622957`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922` all passed.
+
+**Professional review:** Item 29 is complete with no remaining item-specific actionable comment. **Item 30 — expand deterministic video delivery-contract tests — is next and remains gated on explicit user approval.**
 
 ### Iteration 27 — typography/contrast accessibility
 
@@ -61,4 +73,4 @@ Raised the dense text tiers to a 10/11/12px minimum, strengthened muted/subtle c
 
 **Validation:** final product/visual head before documentation `b390aea21f46225d2a2a8b0a209ac8154a03633b`. Studio Visual Preview `32768394649` passed the regression comparison with `0` changed pixels on all eight gated surfaces; artifact `9535309218` was downloaded and its JSON report inspected. Studio CI `32768394643`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739` all passed.
 
-**Professional review:** Item 28 is complete with no remaining item-specific actionable comment. **Item 29 — expand responsive visual coverage — is next and remains gated on explicit user approval.**
+**Professional review:** Item 29 is complete with no remaining item-specific actionable comment. **Item 30 — expand deterministic video delivery-contract tests — is next and remains gated on explicit user approval.**
