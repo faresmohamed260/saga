@@ -6,21 +6,8 @@ import {
   RotateCcw, SlidersHorizontal, Sparkles, Video, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { setEditSizingPreference } from './generation-client.js';
+import { AspectPicker, ASPECT_PRESETS } from './features/create/AspectPicker.jsx';
 import './create-workspace-v2.css';
-
-export const ASPECT_PRESETS = [
-  { value: '1:1', label: 'Square', ratio: 1 },
-  { value: '4:5', label: 'Portrait', ratio: 4 / 5 },
-  { value: '3:4', label: 'Portrait', ratio: 3 / 4 },
-  { value: '2:3', label: 'Tall', ratio: 2 / 3 },
-  { value: '9:16', label: 'Vertical', ratio: 9 / 16 },
-  { value: '5:4', label: 'Classic', ratio: 5 / 4 },
-  { value: '4:3', label: 'Classic', ratio: 4 / 3 },
-  { value: '3:2', label: 'Photo', ratio: 3 / 2 },
-  { value: '16:10', label: 'Wide', ratio: 16 / 10 },
-  { value: '16:9', label: 'Widescreen', ratio: 16 / 9 },
-  { value: '21:9', label: 'Cinematic', ratio: 21 / 9 },
-];
 
 export const IMAGE_RESOLUTIONS = [
   { value: 480, label: 'SD', detail: '480 px' },
@@ -374,48 +361,6 @@ function PickerShell({ open, anchorRef, width, height, className = '', children,
     >
       {children}
     </div>
-  );
-}
-
-function AspectPicker({ open, setOpen, anchorRef, aspect, setAspect, editAuto, setEditAuto, autoRatio, autoInfo }) {
-  const displayRatio = editAuto ? autoRatio : (ASPECT_PRESETS.find((item) => item.value === aspect)?.ratio || 1);
-  const [preview, setPreview] = useState(displayRatio);
-  useEffect(() => setPreview(displayRatio), [displayRatio, open]);
-
-  const previewSize = useMemo(() => {
-    const max = 84;
-    return preview >= 1 ? { width: max, height: max / preview } : { width: max * preview, height: max };
-  }, [preview]);
-
-  return (
-    <PickerShell open={open} anchorRef={anchorRef} width={390} height={370} className="saga-aspect-picker" onClose={() => setOpen(false)}>
-      <div className="saga-picker-preview">
-        <div className="saga-preview-grid">
-          <span className="saga-preview-shape" style={previewSize} />
-        </div>
-        <strong>{editAuto ? 'Auto' : aspect}</strong>
-        <small>{editAuto ? (autoInfo?.ratioLabel || 'Primary reference canvas') : ASPECT_PRESETS.find((item) => item.value === aspect)?.label}</small>
-      </div>
-      <MorphList
-        focusWhen={open}
-        onPreview={(option) => setPreview(option?.ratio ?? displayRatio)}
-        ariaLabel="Aspect ratio"
-        options={ASPECT_PRESETS}
-        value={editAuto ? '__none__' : aspect}
-        onChoose={(option) => {
-          setEditAuto(false);
-          setAspect(option.value);
-          setOpen(false);
-          anchorRef.current?.focus();
-        }}
-        render={(option) => (
-          <>
-            <span className="saga-option-key">{option.value}</span>
-            <span className="saga-option-label">{option.label}</span>
-          </>
-        )}
-      />
-    </PickerShell>
   );
 }
 
@@ -959,28 +904,27 @@ export default function CreateWorkspace({
                     <ChevronDown size={13} />
                   </button>
 
-                  <button
-                    ref={aspectButtonRef}
-                    type="button"
-                    className={`saga-control-pill ${aspectOpen ? 'active' : ''}`}
-                    aria-haspopup="menu"
-                    aria-expanded={aspectOpen}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-                      event.preventDefault();
-                      setAspectOpen(true);
-                      setResolutionOpen(false);
-                      setSettingsOpen(false);
+                  <AspectPicker
+                    triggerRef={aspectButtonRef}
+                    open={aspectOpen}
+                    onOpenChange={(next) => {
+                      setAspectOpen(next);
+                      if (next) {
+                        setResolutionOpen(false);
+                        setSettingsOpen(false);
+                      }
                     }}
-                    onClick={() => {
-                      setAspectOpen((current) => !current);
-                      setResolutionOpen(false);
-                      setSettingsOpen(false);
+                    ariaLabel="Aspect ratio"
+                    value={aspect}
+                    onValueChange={(value) => {
+                      if (isEdit) setEditAuto(false);
+                      setAspect(value);
                     }}
-                  >
-                    <span className="saga-aspect-icon" style={{ aspectRatio: String(isEdit && editAuto ? primaryRatio : (ASPECT_PRESETS.find((item) => item.value === aspect)?.ratio || 1)) }} />
-                    <span>{isEdit && editAuto ? 'Auto' : aspect}</span>
-                  </button>
+                    autoSelected={isEdit && editAuto}
+                    effectiveRatio={primaryRatio}
+                    autoDetail={autoEditInfo?.ratioLabel || 'Primary reference canvas'}
+                    fromReference={isEdit && editAuto && references.length > 0}
+                  />
                 </>
               ) : (
                 <>
@@ -1083,17 +1027,6 @@ export default function CreateWorkspace({
           aspect={aspect}
           editAuto={isEdit && editAuto}
           setEditAuto={isEdit ? setEditAuto : () => {}}
-          autoInfo={autoEditInfo}
-        />
-        <AspectPicker
-          open={aspectOpen}
-          setOpen={setAspectOpen}
-          anchorRef={aspectButtonRef}
-          aspect={aspect}
-          setAspect={setAspect}
-          editAuto={isEdit && editAuto}
-          setEditAuto={isEdit ? setEditAuto : () => {}}
-          autoRatio={primaryRatio}
           autoInfo={autoEditInfo}
         />
         <VideoResolutionPicker

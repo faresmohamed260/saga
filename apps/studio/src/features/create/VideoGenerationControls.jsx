@@ -1,19 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, CheckCircle2, ChevronDown, Gauge, LoaderCircle, XCircle } from 'lucide-react';
-
-export const VIDEO_ASPECT_PRESETS = [
-  { value: '1:1', label: 'Square' },
-  { value: '4:5', label: 'Portrait' },
-  { value: '3:4', label: 'Portrait' },
-  { value: '2:3', label: 'Tall' },
-  { value: '9:16', label: 'Vertical' },
-  { value: '5:4', label: 'Classic' },
-  { value: '4:3', label: 'Classic' },
-  { value: '3:2', label: 'Photo' },
-  { value: '16:10', label: 'Wide' },
-  { value: '16:9', label: 'Widescreen' },
-  { value: '21:9', label: 'Cinematic' },
-];
+import { AspectPicker } from './AspectPicker.jsx';
 
 export const VIDEO_FRAME_RATES = [24, 25, 30];
 
@@ -22,14 +9,6 @@ function gcd(a, b) {
   let right = Math.abs(Math.round(Number(b) || 0));
   while (right) [left, right] = [right, left % right];
   return left || 1;
-}
-
-function aspectRatioValue(value, fallback = 16 / 9) {
-  const match = String(value || '').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
-  if (!match) return fallback;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  return width > 0 && height > 0 ? width / height : fallback;
 }
 
 export function referenceAspect(reference) {
@@ -177,46 +156,23 @@ export function VideoOutputControls({
   frameRate,
   setFrameRate,
 }) {
-  const aspectSelection = autoAspect ? '__auto__' : manualAspect;
-  const aspectValue = autoAspect ? effectiveAspect : manualAspect;
-  const aspectIconRatio = aspectRatioValue(aspectValue, referenceInfo.ratio || 16 / 9);
-  const aspectDisplay = autoAspect
-    ? `Aspect · Auto ${aspectValue}${referenceInfo.fromReference ? ' · From reference' : ''}`
-    : `Aspect · ${manualAspect}`;
-  const aspectTitle = autoAspect
-    ? referenceInfo.fromReference
-      ? `Aspect · Auto ${aspectValue} · From reference`
-      : `Aspect · Auto ${aspectValue} · Follows an attached reference when available`
-    : `Aspect · Manual ${manualAspect}`;
-  const aspectOptions = [
-    {
-      value: '__auto__',
-      displayValue: 'Auto',
-      label: referenceInfo.fromReference
-        ? `${referenceInfo.value} · From reference`
-        : '16:9 default · Follows reference when attached',
-    },
-    ...VIDEO_ASPECT_PRESETS,
-  ];
-
   return (
     <div className="saga-video-extra-controls" aria-label="Video output controls">
-      <CompactPicker
-        label="Video aspect"
-        value={aspectSelection}
-        displayValue={aspectDisplay}
-        title={aspectTitle}
-        leading={<span className="saga-aspect-icon" style={{ aspectRatio: String(aspectIconRatio) }} />}
-        options={aspectOptions}
-        menuClassName="saga-video-aspect-menu"
-        onChoose={(value) => {
-          if (value === '__auto__') {
-            setAutoAspect(true);
-            return;
-          }
+      <AspectPicker
+        ariaLabel="Video aspect"
+        value={manualAspect}
+        onValueChange={(value) => {
           setManualAspect(value);
           setAutoAspect(false);
         }}
+        autoSelected={autoAspect}
+        onAutoChoose={() => setAutoAspect(true)}
+        effectiveValue={effectiveAspect}
+        effectiveRatio={referenceInfo.ratio || undefined}
+        autoDetail={referenceInfo.fromReference
+          ? `${referenceInfo.value} · From reference`
+          : '16:9 default · Follows reference when attached'}
+        fromReference={autoAspect && referenceInfo.fromReference}
       />
       <CompactPicker
         label="Video frame rate"

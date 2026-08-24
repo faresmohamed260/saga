@@ -9,6 +9,26 @@
   scrollbar-width: thin;
 }
 
+.workspace .saga-shared-aspect-root {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.workspace .saga-shared-aspect-trigger {
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.workspace .saga-shared-aspect-trigger .saga-aspect-value {
+  min-width: 0;
+}
+
+.workspace .saga-shared-aspect-picker .saga-morph-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 @media (min-width: 761px) {
   .workspace .saga-video-option-menu.saga-video-aspect-menu {
     max-height: min(456px, calc(100vh - 24px));

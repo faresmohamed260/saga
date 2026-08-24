@@ -48,6 +48,7 @@ try {
   if (await pickers.count() !== 2) throw new Error(`Video output controls should expose Aspect + FPS only, found ${await pickers.count()}`);
   const aspect = pickers.nth(0);
   const fps = pickers.nth(1);
+  if (await aspect.getAttribute('data-shared-aspect-picker') !== 'true') throw new Error('Video mode is not using the shared AspectPicker trigger');
   if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Unified Aspect control does not show default Auto 16:9: ${await aspect.innerText()}`);
   if (!/Follows an attached reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Default Aspect tooltip does not explain Auto behavior: ${await aspect.getAttribute('title')}`);
   if (!(await fps.innerText()).includes('24 fps')) throw new Error(`Default video frame rate is not 24 fps: ${await fps.innerText()}`);
@@ -59,6 +60,9 @@ try {
   await page.keyboard.press('ArrowDown');
   const aspectMenu = page.getByRole('menu', { name: 'Video aspect' });
   await aspectMenu.waitFor({ state: 'visible' });
+  const sharedAspectSurface = page.locator('.saga-shared-aspect-picker');
+  if (await sharedAspectSurface.getAttribute('data-aspect-picker-surface') !== 'shared') throw new Error('Video aspect menu is not the shared AspectPicker surface');
+  if (await sharedAspectSurface.locator('.saga-picker-preview').count() !== 1) throw new Error('Video shared AspectPicker is missing the ratio preview panel');
   await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
   const aspectOptions = aspectMenu.getByRole('menuitemradio');
   const autoOption = aspectMenu.getByRole('menuitemradio').first();

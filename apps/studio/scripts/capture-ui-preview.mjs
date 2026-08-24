@@ -108,10 +108,12 @@ try {
   await expectStrongFocus(resolutionTrigger, 'Resolution trigger');
 
   const aspectTrigger = desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') });
+  if (await aspectTrigger.getAttribute('data-shared-aspect-picker') !== 'true') throw new Error('Image mode is not using the shared AspectPicker trigger');
   await aspectTrigger.focus();
   await desktop.keyboard.press('Space');
   const aspectPicker = desktop.locator('.saga-aspect-picker');
   await aspectPicker.waitFor({ state: 'visible' });
+  if (await aspectPicker.getAttribute('data-aspect-picker-surface') !== 'shared') throw new Error('Image aspect menu is not the shared AspectPicker surface');
   await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
   const aspectList = aspectPicker.locator('.saga-morph-list');
   const aspectScroll = await aspectList.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
