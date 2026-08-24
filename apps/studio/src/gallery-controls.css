@@ -197,3 +197,12 @@
   .gallery-card .media-actions-popover button{min-height:44px;padding:0 12px;font-size:12px}
   .media-actions-menu-divider{margin:6px 4px}
 }
+
+/* Gallery search + sorting. */
+.gallery-search input,.gallery-sort select{height:42px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#11151c;color:#eef1f5;outline:none}
+.gallery-search input{width:210px;padding:0 12px}
+.gallery-search input::placeholder{color:#737d8c}
+.gallery-search input:focus,.gallery-sort select:focus{border-color:#745cff}
+.gallery-sort{display:flex;align-items:center;gap:8px;color:#8f98a8;font-size:11px}
+.gallery-sort select{padding:0 30px 0 10px}
+@media (max-width:760px){.gallery-toolbar-actions{width:100%;display:grid;grid-template-columns:1fr auto;align-items:end}.gallery-search{grid-column:1/-1}.gallery-search input{width:100%}.gallery-sort{justify-content:flex-start}.gallery-model-filter{grid-column:1/-1}.gallery-manage-trigger{grid-column:2;grid-row:2}}
