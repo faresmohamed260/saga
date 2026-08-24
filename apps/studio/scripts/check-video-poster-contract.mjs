@@ -18,12 +18,20 @@ assert.equal(thumbnailMeta.format, 'webp');
 const expectedVideo = Buffer.from('poster-contract-video');
 const expectedPoster = Buffer.from('poster-contract-jpeg');
 const requests = [];
+let posterAttempts = 0;
 const originalFetch = globalThis.fetch;
 try {
   globalThis.fetch = async (url, options = {}) => {
     const value = String(url);
     requests.push({ url: value, accept: options?.headers?.Accept || '' });
     if (value.endsWith('/jobs/test-call/poster')) {
+      posterAttempts += 1;
+      if (posterAttempts === 1) {
+        return new Response(JSON.stringify({ detail: 'poster temporarily unavailable' }), {
+          status: 502,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       return new Response(expectedPoster, { status: 200, headers: { 'content-type': 'image/jpeg' } });
     }
     if (value.endsWith('/jobs/test-call')) {
@@ -41,18 +49,21 @@ try {
   assert.equal(result.contentType, 'video/mp4');
   assert.deepEqual(result.posterBytes, expectedPoster);
   assert.equal(result.posterContentType, 'image/jpeg');
-  assert.equal(requests.length, 2);
+  assert.equal(posterAttempts, 2);
+  assert.equal(requests.length, 3);
   assert.match(requests[1].url, /\/jobs\/test-call\/poster$/);
+  assert.match(requests[2].url, /\/jobs\/test-call\/poster$/);
 } finally {
   globalThis.fetch = originalFetch;
 }
 
-const [runtimeSource, gatewaySource, resultSource, persistenceSource, cardSource] = await Promise.all([
+const [runtimeSource, gatewaySource, resultSource, persistenceSource, cardSource, providerSource] = await Promise.all([
   readFile('../../integrations/comfyui/ltx23_app.py', 'utf8'),
   readFile('../../integrations/comfyui/ltx23_gateway.py', 'utf8'),
   readFile('api/generate/result.js', 'utf8'),
   readFile('api/_result-persistence.js', 'utf8'),
   readFile('src/components/MediaCard.jsx', 'utf8'),
+  readFile('api/_providers.js', 'utf8'),
 ]);
 assert.match(runtimeSource, /\) -> bytes:/);
 assert.doesNotMatch(runtimeSource, /_create_video_poster/);
@@ -61,6 +72,8 @@ assert.match(gatewaySource, /def _extract_poster\(video: bytes\)/);
 assert.match(gatewaySource, /\/jobs\/\{call_id\}\/poster/);
 assert.match(resultSource, /result\.posterBytes, result\.posterContentType/);
 assert.match(persistenceSource, /thumbnail_r2_key: thumbnailUrl \? keys\.thumbnail : null/);
+assert.match(providerSource, /LTX_POSTER_RETRY_DELAYS_MS/);
+assert.match(providerSource, /status: 'running'[\s\S]*publicWorkerStatus\(worker, 'finalizing'\)/);
 assert.match(cardSource, /src=\{attachedVideoSource \|\| undefined\}/);
 assert.match(cardSource, /data-preview-state=\{previewActive \? 'active'/);
 assert.match(cardSource, /preload=\{history \? \(item\.thumbnailUrl \? 'none'/);
@@ -70,5 +83,6 @@ assert.doesNotMatch(cardSource, /innerWidth > 640/);
 console.log(JSON.stringify({
   ready: true,
   thumbnail: { format: thumbnailMeta.format, width: thumbnail.width, height: thumbnail.height },
+  posterAttempts,
   providerRequests: requests.map((entry) => entry.url.replace(/^https?:\/\/[^/]+/, 'gateway')),
 }, null, 2));
