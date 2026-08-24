@@ -1,0 +1,33 @@
+name: Studio Iteration 20 Media Patch
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - "scripts/studio_iteration20_media_patch.py"
+      - ".github/workflows/studio-iteration20-media-patch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python scripts/studio_iteration20_media_patch.py
+      - name: Commit media action extraction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src/app/App.jsx apps/studio/src/hooks/useMediaActions.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "refactor: extract Studio media actions"
+          git push origin HEAD:studio/video-gallery-ux
