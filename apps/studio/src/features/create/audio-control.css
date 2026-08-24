@@ -32,6 +32,7 @@
   line-height: 1;
   white-space: nowrap;
   box-sizing: border-box;
+  transform: translateY(-50%);
 }
 
 .workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::after {
