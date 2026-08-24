@@ -23,15 +23,18 @@ export default async function handler(req, res) {
     const offset = clampOffset(req.query?.offset);
     const kind = typeof req.query?.kind === 'string' ? req.query.kind : '';
     const model = typeof req.query?.model === 'string' ? req.query.model : '';
+    const search = typeof req.query?.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
+    const sort = req.query?.sort === 'oldest' ? 'oldest' : 'newest';
 
     const params = new URLSearchParams();
     params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,thumbnail_r2_key,thumbnail_url,mime_type,resolution,width,height,thumbnail_width,thumbnail_height,duration_ms,seed,workflow_id,provider,error_message,metadata,is_favorite,created_at,started_at,completed_at');
-    params.set('order', 'created_at.desc,id.desc');
+    params.set('order', sort === 'oldest' ? 'created_at.asc,id.asc' : 'created_at.desc,id.desc');
     params.set('limit', String(limit + 1));
     params.set('offset', String(offset));
     params.set('status', 'eq.completed');
     if (kind === 'image' || kind === 'video') params.set('kind', `eq.${kind}`);
     if (model) params.set('model', `eq.${model}`);
+    if (search) params.set('prompt', `ilike.*${search.replace(/[*,]/g, ' ')}*`);
 
     const [rows, modelRows] = await Promise.all([
       supabaseRequest(`studio_generations?${params.toString()}`, { method: 'GET' }),
