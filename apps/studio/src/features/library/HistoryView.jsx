@@ -76,7 +76,7 @@ export default function HistoryView({
       {managing && (
         <div className="gallery-manager" role="toolbar" aria-label="Selected media actions">
           <strong>{selected.size} selected</strong>
-          <button onClick={() => setSelected(new Set(items.map((item) => item.id)))} disabled={!items.length}>Select all</button>
+          <button onClick={() => setSelected(new Set(items.map((item) => item.id)))} disabled={!items.length} title="Select every media item currently loaded in Gallery">Select visible</button>
           <button onClick={() => setSelected(new Set())} disabled={!selected.size}>Clear</button>
           <span className="gallery-manager-spacer" />
           <button onClick={() => runBulk('favorite', onBulkFavorite)} disabled={!selected.size || Boolean(actionBusy)}><Heart size={15}/> Favorite</button>
