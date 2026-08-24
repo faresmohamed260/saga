@@ -12,7 +12,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 - Status: `[x]` Items **01–20** complete.
 - Modal ecosystem worker-fleet migration and real worker-state feedback are implemented and validated.
-- P2 polish is active; next planned scope begins at **Item 28**.
+- P2 polish is active; **Item 28 — true visual regression — is in progress**.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -49,7 +49,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **25. Simplify persistent sidebar/product status information.** The ambiguous `More` destination is consistently user-facing as `Tools` / `Creation tools` / `Additional tools`; the persistent footer no longer claims `FLUX.2 online` and instead directs operational status to Jobs & Models. The visual contract rejects provider-status leakage in the sidebar and rejects ambiguous `More tools` terminology on the Tools destination. Final artifact `9533301055` from Studio Visual Preview `32762690020` was manually inspected: sidebar hierarchy, Tools destination, and neutral workspace footer are clear and contained with no visual regression. Validated by Studio CI `32762689935`, Studio Visual Preview `32762690020`, Backend Architecture CI `32762689969`, Modal Worker Inventory `32762690023`, Worker Fleet Live Smoke `32762689991`, and Required Check Compatibility `32762689972`. **Iteration 25 complete.**
 - [x] **26. Consolidate CSS into a small design-token system.** `design-tokens.css` is now the canonical role-based layer for surfaces/text/borders/accent/danger/success, spacing, radii, control heights, type scale, focus rings, and transitions. High-churn Studio CSS consumes those tokens without changing rendered values; legacy root aliases point to the shared roles; one obsolete `!important` specificity patch was removed; and the Generate contract was updated to validate the shared focus-ring token rather than a duplicated literal. The visual harness asserts the token contract is loaded before rendering. Final artifact `9533868281` from Studio Visual Preview `32764269574` was manually inspected across desktop Create, Video resolution picker, desktop Gallery, and 390px mobile Gallery with no layout or interaction regression. Validated by Studio CI `32764269513`, Studio Visual Preview `32764269574`, Backend Architecture CI `32764269509`, Modal Worker Inventory `32764269487`, Worker Fleet Live Smoke `32764269612`, and Required Check Compatibility `32764269512`. **Iteration 26 complete.**
 - [x] **27. Dedicated typography/contrast accessibility pass.** Dense 9/10/11px token tiers were raised to a 10/11/12px minimum scale, muted/subtle text roles were brightened, a shared focus halo supplements the 2px focus ring, Gallery filter/Manage states expose `aria-pressed`, and selected states add weight/shape cues so they do not depend on color alone. A deterministic accessibility-polish contract now runs in the normal Studio build. Final artifact `9534555187` from Studio Visual Preview `32766234976` was manually inspected across desktop Create, picker keyboard focus, desktop Gallery, and 390px mobile Manage; the readability gains do not introduce crowding or clipping and focus/state cues remain clear. Validated by Studio CI `32766235138`, Studio Visual Preview `32766234976`, Backend Architecture CI `32766235176`, Modal Worker Inventory `32766235289`, Worker Fleet Live Smoke `32766235212`, and Required Check Compatibility `32766235093`. **Iteration 27 complete.**
-- [ ] **28. Convert screenshot capture into true visual regression.** Approved screenshot baselines/diffs with sensible tolerances rather than capture-only assertions.
+- [~] **28. Convert screenshot capture into true visual regression.** Establish an explicit approved baseline manifest from reviewed screenshots, compare deterministic current captures against those baselines in CI with documented per-surface tolerances, fail on meaningful visual drift, and publish diff evidence alongside the ordinary preview artifact.
 - [ ] **29. Expand responsive visual coverage.** At minimum 320, 390, 768, 1024, 1440, and 1920 widths, focusing especially on the 768–1100 transition range.
 - [ ] **30. Expand deterministic video delivery-contract tests.** Cover all supported aspects/resolutions/FPS, odd reference ratios, even delivery dimensions, 64-aligned internal dimensions, exact aspect tolerance, exact duration, and canonical 1080p landscape/portrait dimensions without requiring GPU generation.
 
@@ -67,59 +67,3 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Mobile uses three immediate controls with >=44px touch targets.
 - [x] First visual review caught a clipped mobile More surface; containing-block behavior was fixed and revalidated.
 - [x] Final reviewed product head: `2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`.
-
-### Iteration 3 — MediaCard interaction semantics and accessibility
-
-- [x] Replaced fake frame-button semantics with one native full-frame primary action and decorative selection indicator.
-- [x] Added visible 2px focus treatment and deterministic keyboard/ARIA coverage on desktop and mobile.
-- [x] Final reviewed product head: `1503d40a1421a81e4c7b169edbfda0affc6e42d9`.
-
-### Iteration 4 — custom-picker keyboard behavior
-
-- [x] Added keyboard opening, roving navigation, Home/End, selection, Escape dismissal, focus return, nested Advanced Escape protection, and 2px focus-visible treatment across custom pickers.
-- [x] Fixed asynchronous focus races rather than weakening tests.
-- [x] Dedicated successful validation run `32669033886`; product implementation commit `9a09522d1c7dac4eed1fd4d6f4d5f4db78582a0f`.
-
-### Iteration 5 — stored video poster thumbnails
-
-- [x] Modal gateway exposes a poster endpoint; Studio converts/persists the poster as a 512px WebP thumbnail in R2/Supabase and Gallery loads it first.
-- [x] Preserved `LTX25Worker.generate() -> bytes`; an initial object-return compatibility break was rejected and poster extraction moved to the gateway.
-- [x] Added deterministic `test:poster` coverage and Gallery poster-first visual assertions.
-- [x] Final reviewed product head before docs: `44e6f5df0e5e8d97a021078f0d31e21d431a8a81`.
-- [x] Modal live verification remained externally blocked because the configured workspace was disabled.
-
-### Iteration 6 — lazy/deferred Gallery video previews
-
-- [x] Poster-backed videos attach MP4 only for eligible in-view desktop fine-pointer hover or keyboard focus, then pause/detach when intent leaves.
-- [x] Reduced-motion and true touch emulation remain poster-only; legacy thumbnail-less rows retain a visible-only fallback.
-- [x] Source review rejected viewport width as a modality proxy; final implementation uses `(hover: hover) and (pointer: fine)`.
-- [x] Final validation run `32671818722`, artifact `9501593078`.
-
-### Iteration 7 — unified Video Aspect control
-
-- [x] Removed the separate Video Auto button; one Aspect picker now owns Auto/manual selection, effective ratio, and explicit `From reference` provenance.
-- [x] First visual review caught abbreviated provenance and a partially hidden 21:9 option; both were refined.
-- [x] Final refinement run `32673600494`, artifact `9502051993`, product head `93c4f7005ee651778775fb217892558487c1ede3`.
-
-### Iteration 8 — shared Image/Video AspectPicker
-
-- [x] Added reusable `features/create/AspectPicker.jsx`; Image, Edit, and Video now share one component/preset source.
-- [x] Fixed focus handoff, a 2px menu overflow, and truncated default Auto provenance found during review.
-- [x] Final standard Visual Preview `32676390654`, artifact `9502799506`, reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`.
-- [x] Modal prefetch remained externally blocked because the configured workspace was disabled.
-
-### Iteration 9 — resolution terminology and delivery dimensions
-
-- [x] Replaced Video `Full HD` wording with explicit `1080p`; enabled Video presets are `480p`, `720p`, `1080p`, and `2K`.
-- [x] Added shared `ResolutionPresets.js` helpers so Create UI and deterministic contracts derive dimensions from the same preset data.
-- [x] Video picker rows, preview copy, trigger title, and accessible label expose aspect-aware delivered dimensions, including `1920×1080 at 16:9`, `1080×1920 at 9:16`, and `1440×1080 at 4:3` for 1080p.
-- [x] Effective shared Aspect state—including Auto/reference-derived ratios—drives the displayed Video dimensions.
-- [x] Image resolution uses explicit pixel terminology and shows computed output dimensions for the active aspect.
-- [x] Removed Video 4K because the production workflow/runtime enables only `480p`, `720p`, `1080p`, and `2K`; professional source review rejected advertising a disabled capability.
-- [x] Added `check-resolution-contract.mjs` to the normal Studio build, guarding canonical dimensions, runtime/workflow parity, `Full HD` regression, and disabled Video 4K.
-- [x] First Item 09 validation run `32678010842` exposed a stale visual-test text expectation after terminology changed. The test was corrected without weakening keyboard End/Home/focus coverage.
-- [x] Dedicated refinement run `32678135023` passed the full deterministic and Playwright visual suite; artifact `9503328418` was inspected.
-- [x] Validation-generated screenshots and `package-lock.json` were removed from the product branch before final standard validation.
-- [x] Final standard Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed on reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`.
-- [x] Final visual artifact `9503419570` was downloaded and all 31 screenshots were inspected across Image, Video, Edit, desktop/mobile Create, and Gallery states. No Item-09-specific visual or responsive regression remained.
-- [x] Accepted evidence: `02-image-resolution-picker.png`, `04-video-resolution-picker.png`, `05h-video-resolution-portrait.png`...
