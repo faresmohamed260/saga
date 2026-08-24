@@ -90,6 +90,10 @@ try {
 
   if (await page.getByRole('button', { name: 'History', exact: true }).count()) throw new Error('Legacy History navigation is still visible');
   if (await cards.count() !== rows.length) throw new Error(`Gallery rendered ${await cards.count()} cards instead of ${rows.length}`);
+  const modelFilter = page.locator('.gallery-model-filter select');
+  const optionLabels = await modelFilter.locator('option').allTextContents();
+  if (!optionLabels.includes('LTX Video 2.5') || !optionLabels.includes('FLUX.2 Klein 9B')) throw new Error(`Gallery model filter is missing friendly model names: ${JSON.stringify(optionLabels)}`);
+  if (optionLabels.some((label) => /DarkBeast|Sulphur2|INT8|ConvRot|REDGraft/i.test(label))) throw new Error(`Technical model strings leaked into Gallery filter: ${JSON.stringify(optionLabels)}`);
   const videoPreviews = page.locator('.gallery-card video');
   if (await videoPreviews.count() !== 3) throw new Error('Video cards did not render inline video previews');
   for (let index = 0; index < 3; index += 1) {
@@ -167,17 +171,20 @@ try {
   if (await desktopMore.getByRole('menuitem', { name: 'Download original', exact: true }).isVisible()) {
     throw new Error('Desktop More menu duplicates the already-visible Download action');
   }
-  await page.screenshot({ path: path.join(outputDir, '11b-gallery-more-actions.png'), fullPage: true, animations: 'disabled' });
-  diagnostics.screenshots.push('11b-gallery-more-actions.png');
+  await page.screenshot({ path: path.join(outputDir, '11-gallery-hover-actions.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('11-gallery-hover-actions.png');
   await page.keyboard.press('Escape');
   await desktopMore.waitFor({ state: 'detached' });
 
   await primaryButtons.nth(1).click();
   const mediaModal = page.locator('.media-modal');
   await mediaModal.waitFor({ state: 'visible' });
+  if (!(await mediaModal.innerText()).includes('FLUX.2 Klein 9B')) throw new Error('Media viewer does not expose the friendly model name');
   const details = mediaModal.locator('.media-modal-details');
   await details.locator('summary').click();
   await details.getByText('Model', { exact: true }).waitFor({ state: 'visible' });
+  await details.getByText('Implementation', { exact: true }).waitFor({ state: 'visible' });
+  await details.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
   await details.getByText('Seed', { exact: true }).waitFor({ state: 'visible' });
   if (await cards.nth(1).getByText(/Seed /).count()) throw new Error('Seed leaked back into Gallery card metadata');
   await page.screenshot({ path: path.join(outputDir, '11d-gallery-media-details.png'), fullPage: true, animations: 'disabled' });
