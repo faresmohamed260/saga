@@ -174,6 +174,7 @@ try {
   await page.getByRole('button', { name: /Generate/i }).click();
   const progress = page.locator('.saga-generation-progress');
   await progress.waitFor({ state: 'visible', timeout: 3000 });
+  await page.waitForFunction(() => /Switching worker/i.test(document.querySelector('.saga-generation-progress')?.innerText || ''), null, { timeout: 5000 });
   const progressText = await progress.innerText();
   if (!/Switching worker/i.test(progressText) || !/reached its credit limit/i.test(progressText) || !/Standby/.test(progressText)) throw new Error(`Worker credit failover feedback is incomplete: ${progressText}`);
   await page.screenshot({ path: path.join(outputDir, '05e-video-generation-progress.png'), fullPage: true, animations: 'disabled' });
