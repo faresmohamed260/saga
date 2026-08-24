@@ -122,6 +122,12 @@ export default function MediaCard({
 
   const favoriteLabel = favorite ? 'Remove from favorites' : 'Add to favorites';
   const collectionLabel = inCollection ? 'Remove from collection' : 'Add to collection';
+  const conciseMeta = [
+    item.resolution || null,
+    item.aspectRatio || null,
+    item.frameRate ? `${item.frameRate}fps` : null,
+  ].filter(Boolean).join(' · ');
+
   const primaryLabel = selectable
     ? `${selected ? 'Deselect' : 'Select'} ${itemLabel}`
     : `Open ${itemLabel}`;
@@ -265,12 +271,7 @@ export default function MediaCard({
         <div className="history-copy">
           <div className="history-prompt">{item.title}</div>
           <div className="history-meta">
-            <span>{item.model || 'Unknown model'}</span>
-            <span>{[
-              item.aspectRatio,
-              item.frameRate ? `${item.frameRate} fps` : null,
-              item.seed != null ? `Seed ${item.seed}` : null,
-            ].filter(Boolean).join(' · ')}</span>
+            <span>{conciseMeta || (item.kind === 'video' ? 'Video' : 'Image')}</span>
           </div>
         </div>
       )}
