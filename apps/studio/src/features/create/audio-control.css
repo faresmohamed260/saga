@@ -1,0 +1,106 @@
+.workspace .saga-toolbar .saga-audio-toggle {
+  position: relative;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin-right: 68px;
+  border-radius: 50%;
+}
+
+.workspace .saga-toolbar .saga-audio-toggle::after {
+  content: 'Audio On';
+  position: absolute;
+  left: 42px;
+  top: 50%;
+  min-width: 62px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid #303743;
+  border-radius: 9px;
+  background: #151920;
+  color: #dfe3ea;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .01em;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transform: translateY(-50%);
+}
+
+.workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::after {
+  content: 'Audio Off';
+  color: #aeb6c2;
+  background: #12161c;
+}
+
+.workspace .saga-toolbar .saga-audio-toggle::before {
+  content: 'Audio on · Generate with sound';
+  position: absolute;
+  left: calc(50% + 34px);
+  bottom: calc(100% + 8px);
+  z-index: 2200;
+  padding: 6px 8px;
+  border: 1px solid #303743;
+  border-radius: 8px;
+  background: rgba(11, 14, 19, .98);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .38);
+  color: #dfe3ea;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition: opacity .14s ease, transform .14s ease;
+}
+
+.workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::before {
+  content: 'Audio off · Generate without sound';
+}
+
+.workspace .saga-toolbar .saga-audio-toggle:hover::before,
+.workspace .saga-toolbar .saga-audio-toggle:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.workspace .saga-toolbar .saga-audio-toggle:focus-visible {
+  outline: 2px solid #9f8cff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .workspace .saga-toolbar .saga-audio-toggle {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+    margin-right: 32px;
+  }
+
+  .workspace .saga-toolbar .saga-audio-toggle::after {
+    content: 'On';
+    left: 36px;
+    min-width: 27px;
+    height: 24px;
+    padding: 0 6px;
+    font-size: 9px;
+  }
+
+  .workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::after {
+    content: 'Off';
+  }
+
+  .workspace .saga-toolbar .saga-audio-toggle::before {
+    display: none;
+  }
+}

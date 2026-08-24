@@ -1,0 +1,204 @@
+name: Worker Fleet Live Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/studio/api/_worker-registry.generated.js"
+      - "apps/studio/api/_worker-registry.js"
+      - "apps/studio/api/_providers.js"
+      - "apps/studio/scripts/check-worker-registry-contract.mjs"
+      - ".github/workflows/worker-fleet-live-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-fleet-live-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install smoke dependencies
+        run: python -m pip install --upgrade "requests>=2.32,<3"
+
+      - name: Verify routing and failover contract
+        working-directory: apps/studio
+        run: node scripts/check-worker-registry-contract.mjs
+
+      - name: Health-check all published workers
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, requests
+
+          source = pathlib.Path('apps/studio/api/_worker-registry.generated.js').read_text(encoding='utf-8')
+          match = re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[.*\])\s*;', source, re.S)
+          if not match:
+              raise SystemExit('Could not parse generated worker registry')
+          workers = json.loads(match.group(1))
+          if len(workers) != 4:
+              raise SystemExit(f'Expected 4 workers, found {len(workers)}')
+
+          for worker in workers:
+              response = requests.get(worker['gatewayUrl'].rstrip('/') + '/health', timeout=60)
+              response.raise_for_status()
+              payload = response.json()
+              if payload.get('ready') is not True:
+                  raise SystemExit(f"{worker['id']} health ready=false: {payload}")
+              live_worker = payload.get('worker') or {}
+              if live_worker.get('worker_id') != worker['id']:
+                  raise SystemExit(f"{worker['id']} reports wrong worker_id: {live_worker}")
+              if live_worker.get('ecosystem') != worker['ecosystem']:
+                  raise SystemExit(f"{worker['id']} reports wrong ecosystem: {live_worker}")
+              print({'worker': worker['id'], 'role': worker['role'], 'state': live_worker.get('state'), 'ready': True})
+          PY
+
+      - name: Real FLUX primary generation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, struct, time, zlib
+          import requests
+
+          source = pathlib.Path('apps/studio/api/_worker-registry.generated.js').read_text(encoding='utf-8')
+          workers = json.loads(re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[.*\])\s*;', source, re.S).group(1))
+          worker = next(w for w in workers if w['id'] == 'flux-primary-01')
+          base = worker['gatewayUrl'].rstrip('/')
+
+          width = height = 64
+          raw = b''.join(b'\x00' + bytes([36, 72, 128]) * width for _ in range(height))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+
+          response = requests.post(
+              base + '/jobs/edit',
+              files=[('image_files', ('fleet-smoke.png', png, 'image/png'))],
+              data={'prompt': 'Keep the simple blue reference composition, clean studio test image', 'seed': '42', 'steps': '1', 'cfg': '1.0', 'megapixels': '0.25'},
+              timeout=120,
+          )
+          response.raise_for_status()
+          queued = response.json()
+          if queued.get('worker_id') != worker['id'] or not queued.get('call_id'):
+              raise SystemExit(f'Unexpected FLUX submit response: {queued}')
+          call_id = queued['call_id']
+          deadline = time.time() + 1500
+          while time.time() < deadline:
+              polled = requests.get(f'{base}/jobs/{call_id}', timeout=120)
+              if polled.status_code == 202:
+                  time.sleep(10)
+                  continue
+              polled.raise_for_status()
+              if 'image/png' not in polled.headers.get('content-type', '') or len(polled.content) < 10_000:
+                  raise SystemExit(f'Invalid FLUX output: type={polled.headers.get("content-type")} bytes={len(polled.content)}')
+              print({'worker': worker['id'], 'call_id': call_id, 'bytes': len(polled.content), 'result': 'success'})
+              break
+          else:
+              requests.delete(f'{base}/jobs/{call_id}', timeout=60)
+              raise SystemExit('FLUX primary smoke timed out')
+          PY
+
+      - name: Real LTX primary generation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, time
+          import requests
+
+          source = pathlib.Path('apps/studio/api/_worker-registry.generated.js').read_text(encoding='utf-8')
+          workers = json.loads(re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[.*\])\s*;', source, re.S).group(1))
+          worker = next(w for w in workers if w['id'] == 'ltx-primary-01')
+          base = worker['gatewayUrl'].rstrip('/')
+          response = requests.post(
+              base + '/jobs/video',
+              data={
+                  'prompt': 'A calm ocean horizon at sunrise, gentle natural motion, locked camera',
+                  'negative_prompt': '',
+                  'seed': '42',
+                  'resolution': '480p',
+                  'duration_seconds': '5',
+                  'audio_enabled': 'false',
+                  'aspect_ratio': '16:9',
+                  'frame_rate': '24',
+              },
+              timeout=120,
+          )
+          response.raise_for_status()
+          queued = response.json()
+          if queued.get('worker_id') != worker['id'] or not queued.get('call_id'):
+              raise SystemExit(f'Unexpected LTX submit response: {queued}')
+          call_id = queued['call_id']
+          deadline = time.time() + 3000
+          while time.time() < deadline:
+              polled = requests.get(f'{base}/jobs/{call_id}', timeout=120)
+              if polled.status_code == 202:
+                  time.sleep(15)
+                  continue
+              polled.raise_for_status()
+              if 'video/mp4' not in polled.headers.get('content-type', '') or len(polled.content) < 100_000:
+                  raise SystemExit(f'Invalid LTX output: type={polled.headers.get("content-type")} bytes={len(polled.content)}')
+              pathlib.Path('/tmp/fleet-ltx-smoke.mp4').write_bytes(polled.content)
+              print({'worker': worker['id'], 'call_id': call_id, 'bytes': len(polled.content), 'result': 'success'})
+              break
+          else:
+              requests.delete(f'{base}/jobs/{call_id}', timeout=60)
+              raise SystemExit('LTX primary smoke timed out')
+          PY
+
+      - name: Verify standby workers accept and cancel jobs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, struct, zlib
+          import requests
+
+          source = pathlib.Path('apps/studio/api/_worker-registry.generated.js').read_text(encoding='utf-8')
+          workers = json.loads(re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[.*\])\s*;', source, re.S).group(1))
+
+          width = height = 64
+          raw = b''.join(b'\x00' + bytes([72, 48, 96]) * width for _ in range(height))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+
+          flux = next(w for w in workers if w['id'] == 'flux-standby-01')
+          base = flux['gatewayUrl'].rstrip('/')
+          response = requests.post(base + '/jobs/edit', files=[('image_files', ('standby-smoke.png', png, 'image/png'))], data={'prompt': 'standby routing smoke', 'steps': '1', 'megapixels': '0.25'}, timeout=120)
+          response.raise_for_status()
+          payload = response.json()
+          if payload.get('worker_id') != flux['id'] or not payload.get('call_id'):
+              raise SystemExit(f'Unexpected FLUX standby response: {payload}')
+          cancelled = requests.delete(f"{base}/jobs/{payload['call_id']}", timeout=60)
+          cancelled.raise_for_status()
+          print({'worker': flux['id'], 'submit_cancel': 'success'})
+
+          ltx = next(w for w in workers if w['id'] == 'ltx-standby-01')
+          base = ltx['gatewayUrl'].rstrip('/')
+          response = requests.post(base + '/jobs/video', data={'prompt': 'standby routing smoke', 'resolution': '480p', 'duration_seconds': '5', 'audio_enabled': 'false', 'aspect_ratio': '16:9', 'frame_rate': '24'}, timeout=120)
+          response.raise_for_status()
+          payload = response.json()
+          if payload.get('worker_id') != ltx['id'] or not payload.get('call_id'):
+              raise SystemExit(f'Unexpected LTX standby response: {payload}')
+          cancelled = requests.delete(f"{base}/jobs/{payload['call_id']}", timeout=60)
+          cancelled.raise_for_status()
+          print({'worker': ltx['id'], 'submit_cancel': 'success'})
+          PY
+
+      - name: Publish LTX smoke artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-fleet-ltx-live-smoke
+          path: /tmp/fleet-ltx-smoke.mp4
+          retention-days: 3

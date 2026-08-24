@@ -1,21 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { runImageEdit, runVideoGeneration } from '../generation-client.js';
 import CreateWorkspace from '../features/create/CreateWorkspace.jsx';
 import Sidebar from '../components/Sidebar.jsx';
 import MobileTopbar from '../components/MobileTopbar.jsx';
 import MediaCard from '../components/MediaCard.jsx';
 import MediaModal from '../components/MediaModal.jsx';
 import JobsView from '../features/jobs/JobsView.jsx';
-import HistoryView from '../features/library/HistoryView.jsx';
+import GalleryView from '../features/library/GalleryView.jsx';
 import FavoritesView from '../features/library/FavoritesView.jsx';
 import CollectionsView from '../features/library/CollectionsView.jsx';
 import ModelsView from '../features/catalog/ModelsView.jsx';
 import WorkflowsView from '../features/catalog/WorkflowsView.jsx';
 import SettingsView from '../features/settings/SettingsView.jsx';
+import useLibraryController from '../hooks/useLibraryController.js';
+import useGenerationController from '../hooks/useGenerationController.js';
+import useMediaActions from '../hooks/useMediaActions.js';
 
-const HISTORY_PAGE_SIZE = 24;
-const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', History: 'history', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
-const HASH_SECTIONS = Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section]));
+const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
+const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
 
 function sectionFromLocation() {
   if (typeof window === 'undefined') return 'Create';
@@ -31,8 +32,8 @@ const samples = [
 ];
 
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
-function toHistoryItem(row) {
-  const previewUrl = row.thumbnail_url || (row.kind === 'image' ? row.media_url : '');
+function toGalleryItem(row) {
+  const previewUrl = row.thumbnail_url || row.media_url || '';
   return {
     id: row.id,
     title: row.prompt || 'Untitled generation',
@@ -50,6 +51,8 @@ function toHistoryItem(row) {
     width: row.width,
     height: row.height,
     createdAt: row.created_at,
+    aspectRatio: row.metadata?.execution?.aspectRatio || null,
+    frameRate: row.metadata?.execution?.frameRate || null,
   };
 }
 
@@ -107,8 +110,6 @@ export default function App() {
   const [advanced, setAdvanced] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [jobStatus, setJobStatus] = useState('');
   const [jobs, setJobs] = useState([]);
   const [jobsFilter, setJobsFilter] = useState('active');
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -120,28 +121,25 @@ export default function App() {
   const [workflowId, setWorkflowId] = useState('default-image');
   const [modelId, setModelId] = useState('saga-image-auto');
   const [references, setReferences] = useState([]);
-  const [favorites, setFavorites] = useState(new Set());
-  const [favoriteItems, setFavoriteItems] = useState([]);
   const [items, setItems] = useState(samples);
-  const [historyItems, setHistoryItems] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyAppending, setHistoryAppending] = useState(false);
-  const [historyError, setHistoryError] = useState('');
-  const [historyKind, setHistoryKind] = useState('all');
-  const [historyModel, setHistoryModel] = useState('all');
-  const [historyModels, setHistoryModels] = useState([]);
-  const [historyPage, setHistoryPage] = useState({ nextOffset: null, hasMore: false });
-  const [libraryLoading, setLibraryLoading] = useState(false);
-  const [libraryError, setLibraryError] = useState('');
-  const [collections, setCollections] = useState([]);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [collectionItems, setCollectionItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [error, setError] = useState('');
 
   const visibleItems = useMemo(() => items.slice(0, mode === 'Edit' ? 4 : outputs), [items, outputs, mode]);
   const isEdit = mode === 'Edit';
   const autoEditInfo = useMemo(() => autoReferenceSizing(references[0]), [references]);
+
+  const library = useLibraryController({ section, toGalleryItem });
+  const { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, gallerySearch, setGallerySearch, gallerySort, setGallerySort, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems } = library;
+  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
+  const mediaActions = useMediaActions({
+    section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
+    references, setReferences, setError, setItems, selectedMedia, setSelectedMedia,
+    favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems,
+    collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems,
+    setLibraryError, loadGallery, loadFavorites, loadCollections, loadCollectionItems,
+  });
+  const { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete } = mediaActions;
 
   React.useEffect(() => {
     const expectedHash = `#/${SECTION_HASHES[section] || 'create'}`;
@@ -198,79 +196,6 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [section, jobsFilter]);
 
-  const loadHistory = async ({ append = false, kind = historyKind, model = historyModel } = {}) => {
-    if (append && historyPage.nextOffset == null) return;
-    append ? setHistoryAppending(true) : setHistoryLoading(true);
-    setHistoryError('');
-    try {
-      const params = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE), offset: String(append ? historyPage.nextOffset : 0) });
-      if (kind === 'image' || kind === 'video') params.set('kind', kind);
-      if (model !== 'all') params.set('model', model);
-      const response = await fetch(`/api/history?${params.toString()}`, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`History request failed (${response.status})`);
-      const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
-      setHistoryItems((current) => append ? [...current, ...nextItems] : nextItems);
-      setFavorites((current) => {
-        const next = new Set(current);
-        nextItems.forEach((item) => item.favorite ? next.add(item.id) : next.delete(item.id));
-        return next;
-      });
-      setHistoryPage({ nextOffset: payload?.page?.nextOffset ?? null, hasMore: Boolean(payload?.page?.hasMore) });
-      if (Array.isArray(payload?.facets?.models)) setHistoryModels(payload.facets.models);
-    } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Unable to load generation history.');
-    } finally {
-      append ? setHistoryAppending(false) : setHistoryLoading(false);
-    }
-  };
-
-  const loadFavorites = async () => {
-    setLibraryLoading(true); setLibraryError('');
-    try {
-      const response = await fetch('/api/favorites');
-      if (!response.ok) throw new Error(`Favorites request failed (${response.status})`);
-      const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
-      setFavoriteItems(nextItems);
-      setFavorites(new Set(nextItems.map((item) => item.id)));
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load favorites.'); }
-    finally { setLibraryLoading(false); }
-  };
-
-  const loadCollections = async () => {
-    setLibraryLoading(true); setLibraryError('');
-    try {
-      const response = await fetch('/api/collections');
-      if (!response.ok) throw new Error(`Collections request failed (${response.status})`);
-      const payload = await response.json();
-      setCollections(Array.isArray(payload?.collections) ? payload.collections : []);
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load collections.'); }
-    finally { setLibraryLoading(false); }
-  };
-
-  const loadCollectionItems = async (collection) => {
-    setSelectedCollection(collection); setLibraryLoading(true); setLibraryError('');
-    try {
-      const response = await fetch(`/api/collection-items?collectionId=${encodeURIComponent(collection.id)}`);
-      if (!response.ok) throw new Error(`Collection request failed (${response.status})`);
-      const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
-      setCollectionItems(nextItems);
-      setFavorites((current) => {
-        const next = new Set(current);
-        nextItems.forEach((item) => item.favorite ? next.add(item.id) : next.delete(item.id));
-        return next;
-      });
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load collection.'); }
-    finally { setLibraryLoading(false); }
-  };
-
-  React.useEffect(() => {
-    if (section === 'History') loadHistory({ append: false, kind: historyKind, model: historyModel });
-    if (section === 'Favorites') loadFavorites();
-    if (section === 'Collections') { setSelectedCollection(null); setCollectionItems([]); loadCollections(); }
-  }, [section, historyKind, historyModel]);
 
   const addReferences = async (files) => {
     const valid = [];
@@ -311,230 +236,9 @@ export default function App() {
     }
   };
 
-  const runFluxEdit = async () => {
-    if (!references.length) throw new Error('Add at least one reference image before running an edit.');
-    if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
-    const effectiveSeed = Number(seed) || 42;
-    const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
-    setJobStatus('queued');
 
-    const { job, result } = await runImageEdit({
-      sourceFiles: references.map((reference) => reference.file),
-      prompt: prompt.trim(),
-      negativePrompt: '',
-      resolution: autoEditInfo.detail,
-      seed: effectiveSeed,
-      steps,
-      cfg,
-      megapixels: autoEditInfo.megapixels,
-    }, { onStatus: setJobStatus });
 
-    setJobStatus('completed');
-    const item = {
-      id: result.generationId || job.id,
-      title: prompt.trim(),
-      url: result.thumbnailUrl || result.mediaUrl,
-      originalUrl: result.mediaUrl,
-      thumbnailUrl: result.thumbnailUrl || null,
-      generated: true,
-      model,
-      resolution: autoEditInfo.detail,
-      seed: effectiveSeed,
-      kind: 'image',
-      mode: 'edit',
-      persisted: true,
-    };
-    setItems((current) => [item, ...current]);
-    if (section === 'History') loadHistory({ append: false });
-  };
 
-  const runLtxVideo = async (videoOptions = {}) => {
-    if (!prompt.trim()) throw new Error('Describe the video you want to generate.');
-    const effectiveSeed = Number(seed) || 42;
-    const videoResolution = String(videoOptions.videoResolution || '480p');
-    const videoDuration = Math.max(5, Math.min(30, Math.round(Number(videoOptions.videoDuration) || 5)));
-    const videoAudio = videoOptions.videoAudio !== false;
-    const sourceFile = references[0]?.file || null;
-    setJobStatus(sourceFile ? 'uploading' : 'queued');
-
-    const { job, result } = await runVideoGeneration({
-      sourceFile,
-      prompt: prompt.trim(),
-      resolution: videoResolution,
-      durationSeconds: videoDuration,
-      audioEnabled: videoAudio,
-      seed: effectiveSeed,
-    }, { onStatus: setJobStatus });
-
-    setJobStatus('completed');
-    const item = {
-      id: result.generationId || job.id,
-      title: prompt.trim(),
-      url: result.thumbnailUrl || result.mediaUrl,
-      originalUrl: result.mediaUrl,
-      thumbnailUrl: result.thumbnailUrl || null,
-      generated: true,
-      model: 'LTX-Video 2.3 · 22B Distilled',
-      resolution: videoResolution,
-      seed: effectiveSeed,
-      kind: 'video',
-      mode: sourceFile ? 'image-to-video' : 'video',
-      persisted: true,
-      durationSeconds: videoDuration,
-      audioEnabled: videoAudio,
-    };
-    setItems((current) => [item, ...current]);
-    if (section === 'History') loadHistory({ append: false });
-  };
-
-  const generate = async (generationOptions = {}) => {
-    if (busy) return;
-    setBusy(true); setError(''); setJobStatus('');
-    try {
-      if (isEdit) await runFluxEdit();
-      else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
-      else if (mode === 'Video') await runLtxVideo(generationOptions);
-      else throw new Error('Choose Image, Video, or Edit to generate media.');
-    } catch (err) {
-      setJobStatus('failed');
-      setError(err instanceof Error ? err.message : 'Generation failed.');
-    } finally { setBusy(false); }
-  };
-
-  const toggleFavorite = async (item) => {
-    const id = item.id;
-    const nextValue = !favorites.has(id);
-    setFavorites((current) => { const next = new Set(current); nextValue ? next.add(id) : next.delete(id); return next; });
-    if (!item.persisted || !isUuid(id)) return;
-    try {
-      const response = await fetch('/api/favorites', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, isFavorite: nextValue }) });
-      if (!response.ok) throw new Error('Favorite update failed');
-      if (section === 'Favorites') loadFavorites();
-      setHistoryItems((current) => current.map((entry) => entry.id === id ? { ...entry, favorite: nextValue } : entry));
-    } catch {
-      setFavorites((current) => { const next = new Set(current); nextValue ? next.delete(id) : next.add(id); return next; });
-    }
-  };
-
-  const createCollection = async () => {
-    const name = window.prompt('Collection name');
-    if (!name?.trim()) return;
-    setLibraryError('');
-    try {
-      const response = await fetch('/api/collections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) });
-      if (!response.ok) throw new Error(`Create collection failed (${response.status})`);
-      await loadCollections();
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to create collection.'); }
-  };
-
-  const renameCollection = async (collection) => {
-    const name = window.prompt('Rename collection', collection.name);
-    if (!name?.trim() || name.trim() === collection.name) return;
-    try {
-      const response = await fetch('/api/collections', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: collection.id, name: name.trim() }) });
-      if (!response.ok) throw new Error('Rename failed');
-      await loadCollections();
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to rename collection.'); }
-  };
-
-  const deleteCollection = async (collection) => {
-    if (!window.confirm(`Delete “${collection.name}”? The media itself will stay in History.`)) return;
-    try {
-      const response = await fetch(`/api/collections?id=${encodeURIComponent(collection.id)}`, { method: 'DELETE' });
-      if (!response.ok && response.status !== 204) throw new Error('Delete failed');
-      setSelectedCollection(null); setCollectionItems([]); await loadCollections();
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to delete collection.'); }
-  };
-
-  const addToCollection = async (item) => {
-    if (!item.persisted || !isUuid(item.id)) return;
-    if (!collections.length) await loadCollections();
-    const currentCollections = collections.length ? collections : [];
-    const hint = currentCollections.length ? currentCollections.map((c, index) => `${index + 1}. ${c.name}`).join('\n') : 'No collections yet. Create one from the Collections page first.';
-    const answer = window.prompt(`Add to collection:\n${hint}\n\nEnter collection number or exact name:`);
-    if (!answer) return;
-    const index = Number.parseInt(answer, 10) - 1;
-    const collection = currentCollections[index] || currentCollections.find((c) => c.name.toLowerCase() === answer.trim().toLowerCase());
-    if (!collection) return window.alert('Collection not found.');
-    const response = await fetch('/api/collection-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collectionId: collection.id, generationId: item.id }) });
-    if (!response.ok && response.status !== 204) return window.alert('Could not add item to collection.');
-    await loadCollections();
-  };
-
-  const removeFromCollection = async (item) => {
-    if (!selectedCollection) return;
-    const response = await fetch('/api/collection-items', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collectionId: selectedCollection.id, generationId: item.id }) });
-    if (response.ok || response.status === 204) { await loadCollectionItems(selectedCollection); await loadCollections(); }
-  };
-
-  const reuseSettings = (item) => {
-    setPrompt(item.title || '');
-    if (item.seed != null) setSeed(String(item.seed));
-    if (item.kind === 'video') setMode('Video');
-    else if (item.mode === 'edit') { setMode('Edit'); setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); }
-    else setMode('Image');
-    setSection('Create');
-    setError('');
-  };
-
-  const editThis = async (item) => {
-    if (item.kind === 'video') return window.alert('Video editing will be connected with the video workflow phase.');
-    const mediaUrl = item.originalUrl || item.url;
-    if (!mediaUrl) return;
-    try {
-      const response = await fetch(mediaUrl);
-      if (!response.ok) throw new Error(`Media request failed (${response.status})`);
-      const blob = await response.blob();
-      if (!blob.type.startsWith('image/')) throw new Error('Selected media is not an image.');
-      const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
-      const file = new File([blob], `saga-edit-${item.id}.${extension}`, { type: blob.type || 'image/png' });
-      const dimensions = await imageDimensions(file);
-      references.forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
-      setReferences([{ id: `history-${item.id}-${Date.now()}`, file, preview: URL.createObjectURL(blob), ...dimensions }]);
-      setPrompt('');
-      if (item.seed != null) setSeed(String(item.seed));
-      setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b');
-      setMode('Edit');
-      setSection('Create');
-      setError('');
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Could not prepare this image for editing.');
-    }
-  };
-
-  const downloadItem = (item) => {
-    const mediaUrl = item.originalUrl || item.url;
-    if (!mediaUrl) return;
-    const separator = mediaUrl.includes('?') ? '&' : '?';
-    const link = document.createElement('a');
-    link.href = `${mediaUrl}${separator}download=1`;
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  const deleteGeneration = async (item) => {
-    if (!item.persisted || !isUuid(item.id)) return window.alert('Only persisted generations can be deleted.');
-    if (!window.confirm('Permanently delete this generation? This removes the original, thumbnail, favorites, collection memberships, and retained source references.')) return;
-    try {
-      const response = await fetch(`/api/generations?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
-      if (!response.ok) {
-        let detail = '';
-        try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
-        throw new Error(`Delete failed (${response.status})${detail}`);
-      }
-      setSelectedMedia((current) => current?.id === item.id ? null : current);
-      setHistoryItems((current) => current.filter((entry) => entry.id !== item.id));
-      setFavoriteItems((current) => current.filter((entry) => entry.id !== item.id));
-      setCollectionItems((current) => current.filter((entry) => entry.id !== item.id));
-      setItems((current) => current.filter((entry) => entry.id !== item.id));
-      setFavorites((current) => { const next = new Set(current); next.delete(item.id); return next; });
-      await loadCollections();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Could not delete generation.');
-    }
-  };
 
   const openMedia = (item) => setSelectedMedia(item);
   const renderCard = (item, history = false, inCollection = false) => (
@@ -571,7 +275,7 @@ export default function App() {
         <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => setSettingsOpen(true)} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
-          : section === 'History' ? <HistoryView items={historyItems} kind={historyKind} model={historyModel} models={historyModels} page={historyPage} loading={historyLoading} appending={historyAppending} error={historyError} onKindChange={setHistoryKind} onModelChange={setHistoryModel} onRefresh={() => loadHistory({ append: false })} onLoadMore={() => loadHistory({ append: true })} renderCard={renderCard} />
+          : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
           : section === 'Models' ? <ModelsView />
@@ -580,7 +284,7 @@ export default function App() {
           : <CreateWorkspace
               mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else if (nextMode === 'Video') { setWorkflowId('video-planned'); setModelId('saga-video-auto'); } else if (nextMode === 'Image') { setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
-              error={error} jobStatus={jobStatus} busy={busy} onGenerate={generate} items={visibleItems} renderCard={renderCard}
+              error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
               outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
               seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}

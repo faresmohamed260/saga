@@ -163,9 +163,16 @@ export default async function handler(req, res) {
     const allowed = key.startsWith('generations/') || key.startsWith('thumbnails/');
     if (!key || !allowed) return res.status(400).json({ error: 'Invalid media key' });
     try {
-      const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      const rawRange = String(req.headers.range || '').trim();
+      const range = /^bytes=\d*-\d*$/.test(rawRange) && rawRange !== 'bytes=-' ? rawRange : '';
+      const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, ...(range ? { Range: range } : {}) }));
       res.setHeader('Content-Type', object.ContentType || 'application/octet-stream');
       res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.setHeader('Accept-Ranges', 'bytes');
+      if (range && object.ContentRange) {
+        res.statusCode = 206;
+        res.setHeader('Content-Range', object.ContentRange);
+      }
       if (req.query?.download === '1') {
         const filename = key.split('/').pop() || 'saga-media';
         res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/["\\]/g, '_')}"`);

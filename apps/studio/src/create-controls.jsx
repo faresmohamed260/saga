@@ -6,50 +6,15 @@ import {
   RotateCcw, SlidersHorizontal, Sparkles, Video, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { setEditSizingPreference } from './generation-client.js';
+import { AspectPicker, ASPECT_PRESETS } from './features/create/AspectPicker.jsx';
+import {
+  IMAGE_RESOLUTIONS, VIDEO_RESOLUTIONS, dimensionsForPreset, formatDimensions, videoDeliveryDimensions,
+} from './features/create/ResolutionPresets.js';
 import './create-workspace-v2.css';
 
-export const ASPECT_PRESETS = [
-  { value: '1:1', label: 'Square', ratio: 1 },
-  { value: '4:5', label: 'Portrait', ratio: 4 / 5 },
-  { value: '3:4', label: 'Portrait', ratio: 3 / 4 },
-  { value: '2:3', label: 'Tall', ratio: 2 / 3 },
-  { value: '9:16', label: 'Vertical', ratio: 9 / 16 },
-  { value: '5:4', label: 'Classic', ratio: 5 / 4 },
-  { value: '4:3', label: 'Classic', ratio: 4 / 3 },
-  { value: '3:2', label: 'Photo', ratio: 3 / 2 },
-  { value: '16:10', label: 'Wide', ratio: 16 / 10 },
-  { value: '16:9', label: 'Widescreen', ratio: 16 / 9 },
-  { value: '21:9', label: 'Cinematic', ratio: 21 / 9 },
-];
-
-export const IMAGE_RESOLUTIONS = [
-  { value: 480, label: 'SD', detail: '480 px' },
-  { value: 720, label: 'HD', detail: '720 px' },
-  { value: 1080, label: 'Full HD', detail: '1080 px' },
-  { value: 2048, label: '2K', detail: '2048 px' },
-  { value: 3840, label: '4K', detail: '3840 px' },
-];
-
-const VIDEO_RESOLUTIONS = [
-  { value: '480p', label: 'SD', detail: '480p', preview: '480', dimensions: '896×512' },
-  { value: '720p', label: 'HD', detail: '720p', preview: '720', dimensions: '1280×704' },
-  { value: '1080p', label: 'Full HD', detail: '1080p', preview: '1080', dimensions: '1920×1088' },
-  { value: '2K', label: '2K', detail: '2048 px', preview: '2048', dimensions: '2048×1152' },
-  { value: '4K', label: '4K', detail: '3840 px', preview: '3840', dimensions: '3840×2176' },
-];
+export { IMAGE_RESOLUTIONS, dimensionsForPreset };
 
 const STORAGE_KEY = 'saga-studio:create-settings:v5';
-
-function round64(value) {
-  return Math.max(64, Math.round(value / 64) * 64);
-}
-
-export function dimensionsForPreset(aspect, longEdge) {
-  const preset = ASPECT_PRESETS.find((item) => item.value === aspect) || ASPECT_PRESETS[0];
-  const ratio = preset.ratio;
-  if (ratio >= 1) return { width: round64(longEdge), height: round64(longEdge / ratio) };
-  return { width: round64(longEdge * ratio), height: round64(longEdge) };
-}
 
 function parseAutoDimensions(detail) {
   const match = String(detail || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
@@ -265,7 +230,7 @@ function useAnchoredPosition(open, anchorRef, desiredWidth, desiredHeight) {
   return position;
 }
 
-function useOutsideDismiss(open, refs, close) {
+function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNestedEscape = false) {
   useEffect(() => {
     if (!open) return undefined;
     const onPointer = (event) => {
@@ -273,7 +238,12 @@ function useOutsideDismiss(open, refs, close) {
       close();
     };
     const onKey = (event) => {
-      if (event.key === 'Escape') close();
+      if (event.key !== 'Escape') return;
+      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\"true\"]'))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      returnFocusRef?.current?.focus();
     };
     document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
@@ -281,7 +251,7 @@ function useOutsideDismiss(open, refs, close) {
       document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, refs, close]);
+  }, [open, refs, close, returnFocusRef, protectNestedEscape]);
 }
 
 function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = false, onPreview }) {
@@ -354,53 +324,21 @@ function MorphList({ options, value, onChoose, render, ariaLabel, focusWhen = fa
 function PickerShell({ open, anchorRef, width, height, className = '', children, onClose }) {
   const popoverRef = useRef(null);
   const position = useAnchoredPosition(open, anchorRef, width, height);
-  useOutsideDismiss(open, [anchorRef, popoverRef], onClose);
+  useOutsideDismiss(open, [anchorRef, popoverRef], onClose, anchorRef);
   if (!open) return null;
   return (
-    <div ref={popoverRef} className={`saga-picker ${className}`} style={position || { visibility: 'hidden' }}>
+    <div
+      ref={popoverRef}
+      className={`saga-picker ${className}`}
+      style={position || { visibility: 'hidden' }}
+      onBlurCapture={(event) => {
+        const next = event.relatedTarget;
+        if (!next || popoverRef.current?.contains(next) || anchorRef.current?.contains(next)) return;
+        onClose();
+      }}
+    >
       {children}
     </div>
-  );
-}
-
-function AspectPicker({ open, setOpen, anchorRef, aspect, setAspect, editAuto, setEditAuto, autoRatio, autoInfo }) {
-  const displayRatio = editAuto ? autoRatio : (ASPECT_PRESETS.find((item) => item.value === aspect)?.ratio || 1);
-  const [preview, setPreview] = useState(displayRatio);
-  useEffect(() => setPreview(displayRatio), [displayRatio, open]);
-
-  const previewSize = useMemo(() => {
-    const max = 84;
-    return preview >= 1 ? { width: max, height: max / preview } : { width: max * preview, height: max };
-  }, [preview]);
-
-  return (
-    <PickerShell open={open} anchorRef={anchorRef} width={390} height={370} className="saga-aspect-picker" onClose={() => setOpen(false)}>
-      <div className="saga-picker-preview">
-        <div className="saga-preview-grid">
-          <span className="saga-preview-shape" style={previewSize} />
-        </div>
-        <strong>{editAuto ? 'Auto' : aspect}</strong>
-        <small>{editAuto ? (autoInfo?.ratioLabel || 'Primary reference canvas') : ASPECT_PRESETS.find((item) => item.value === aspect)?.label}</small>
-      </div>
-      <MorphList
-        focusWhen={open}
-        onPreview={(option) => setPreview(option?.ratio ?? displayRatio)}
-        ariaLabel="Aspect ratio"
-        options={ASPECT_PRESETS}
-        value={editAuto ? '__none__' : aspect}
-        onChoose={(option) => {
-          setEditAuto(false);
-          setAspect(option.value);
-          setOpen(false);
-        }}
-        render={(option) => (
-          <>
-            <span className="saga-option-key">{option.value}</span>
-            <span className="saga-option-label">{option.label}</span>
-          </>
-        )}
-      />
-    </PickerShell>
   );
 }
 
@@ -420,7 +358,7 @@ function ResolutionPicker({
       <div className="saga-picker-preview saga-resolution-preview">
         <div className="saga-resolution-cube">{editAuto ? <Sparkles size={20} /> : previewValue}</div>
         <strong>{editAuto ? 'Auto' : previewOption.label}</strong>
-        <small>{editAuto ? autoInfo?.detail : dimensions ? `${dimensions.width}×${dimensions.height}` : ''}</small>
+        <small>{editAuto ? autoInfo?.detail : dimensions ? `${formatDimensions(dimensions)} at ${aspect}` : ''}</small>
       </div>
       <MorphList
         focusWhen={open}
@@ -432,30 +370,35 @@ function ResolutionPicker({
           setEditAuto(false);
           setImageResolution(option.value);
           setOpen(false);
+          anchorRef.current?.focus();
         }}
-        render={(option) => (
-          <>
-            <span className="saga-option-label">{option.label}</span>
-            <span className="saga-option-detail">{option.detail}</span>
-          </>
-        )}
+        render={(option) => {
+          const optionDimensions = dimensionsForPreset(aspect, Number(option.value));
+          return (
+            <>
+              <span className="saga-option-label">{option.label}</span>
+              <span className="saga-option-detail">{formatDimensions(optionDimensions)}</span>
+            </>
+          );
+        }}
       />
     </PickerShell>
   );
 }
 
-function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
+function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue, aspect }) {
   const selectedOption = VIDEO_RESOLUTIONS.find((item) => item.value === value) || VIDEO_RESOLUTIONS[2];
   const [previewValue, setPreviewValue] = useState(selectedOption.value);
   useEffect(() => setPreviewValue(selectedOption.value), [selectedOption.value, open]);
   const previewOption = VIDEO_RESOLUTIONS.find((item) => item.value === previewValue) || selectedOption;
+  const previewDimensions = videoDeliveryDimensions(previewOption.value, aspect);
 
   return (
     <PickerShell open={open} anchorRef={anchorRef} width={390} height={220} className="saga-video-resolution-picker saga-resolution-picker" onClose={() => setOpen(false)}>
       <div className="saga-picker-preview saga-resolution-preview">
-        <div className="saga-resolution-cube">{previewOption.preview}</div>
+        <div className="saga-resolution-cube">{previewOption.label}</div>
         <strong>{previewOption.label}</strong>
-        <small>{previewOption.dimensions}</small>
+        <small>{formatDimensions(previewDimensions)} at {aspect}</small>
       </div>
       <MorphList
         focusWhen={open}
@@ -466,13 +409,17 @@ function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
         onChoose={(option) => {
           setValue(option.value);
           setOpen(false);
+          anchorRef.current?.focus();
         }}
-        render={(option) => (
-          <>
-            <span className="saga-option-label">{option.label}</span>
-            <span className="saga-option-detail">{option.detail}</span>
-          </>
-        )}
+        render={(option) => {
+          const optionDimensions = videoDeliveryDimensions(option.value, aspect);
+          return (
+            <>
+              <span className="saga-option-label">{option.label}</span>
+              <span className="saga-option-detail">{formatDimensions(optionDimensions)}</span>
+            </>
+          );
+        }}
       />
     </PickerShell>
   );
@@ -481,7 +428,7 @@ function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
 function DurationPicker({ open, setOpen, anchorRef, value, setValue }) {
   const popoverRef = useRef(null);
   const position = useAnchoredPosition(open, anchorRef, 330, 196);
-  useOutsideDismiss(open, [anchorRef, popoverRef], () => setOpen(false));
+  useOutsideDismiss(open, [anchorRef, popoverRef], () => setOpen(false), anchorRef);
   if (!open) return null;
   const commit = (next) => setValue(Math.max(5, Math.min(30, Math.round(Number(next) || 5))));
   return (
@@ -512,26 +459,85 @@ function DurationPicker({ open, setOpen, anchorRef, value, setValue }) {
 function FancySelect({ label, value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  useOutsideDismiss(open, [rootRef], () => setOpen(false));
-  const selected = options.find((item) => String(item.value) === String(value)) || options[0];
+  const triggerRef = useRef(null);
+  const optionRefs = useRef([]);
+  const selectedIndex = Math.max(0, options.findIndex((item) => String(item.value) === String(value)));
+  const [focusIndex, setFocusIndex] = useState(selectedIndex);
+  const selected = options[selectedIndex] || options[0];
+  useOutsideDismiss(open, [rootRef], () => setOpen(false), triggerRef);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setFocusIndex(selectedIndex);
+    const frame = requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, selectedIndex, options.length]);
+
+  const focusOption = (index) => {
+    const normalized = (index + options.length) % options.length;
+    setFocusIndex(normalized);
+    optionRefs.current[normalized]?.focus();
+  };
+
+  const choose = (option) => {
+    onChange(option.value);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const optionKeyDown = (event, index) => {
+    let next = null;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = index + 1;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = index - 1;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = options.length - 1;
+    if (next != null) {
+      event.preventDefault();
+      focusOption(next);
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      choose(options[index]);
+    }
+  };
 
   return (
-    <div className={`saga-fancy-select ${open ? 'open' : ''}`} ref={rootRef}>
-      <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+    <div
+      className={`saga-fancy-select ${open ? 'open' : ''}`}
+      ref={rootRef}
+      onBlurCapture={(event) => {
+        if (!open || rootRef.current?.contains(event.relatedTarget)) return;
+        setOpen(false);
+      }}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+          event.preventDefault();
+          setOpen(true);
+        }}
+        onClick={() => setOpen((current) => !current)}
+      >
         <span>{selected?.label}</span><ChevronDown size={15} />
       </button>
       {open && (
-        <div className="saga-fancy-options" role="listbox" aria-label={label}>
-          {options.map((option) => (
+        <div className="saga-fancy-options" role="listbox" aria-label={label} aria-orientation="vertical">
+          {options.map((option, index) => (
             <button
+              ref={(node) => { optionRefs.current[index] = node; }}
               type="button"
               role="option"
               aria-selected={String(option.value) === String(value)}
+              tabIndex={index === focusIndex ? 0 : -1}
               key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
+              onFocus={() => setFocusIndex(index)}
+              onKeyDown={(event) => optionKeyDown(event, index)}
+              onClick={() => choose(option)}
             >
               <span>{option.label}</span>
               {String(option.value) === String(value) && <Check size={14} />}
@@ -567,7 +573,7 @@ function AdvancedSettings({
 }) {
   const panelRef = useRef(null);
   const position = useAnchoredPosition(open, anchorRef, 430, 610);
-  useOutsideDismiss(open, [anchorRef, panelRef], onClose);
+  useOutsideDismiss(open, [anchorRef, panelRef], onClose, anchorRef, true);
   if (!open) return null;
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -671,6 +677,7 @@ export default function CreateWorkspace({
   aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
   seed, setSeed, steps, setSteps, cfg, setCfg,
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
+  videoAspect = '16:9', videoToolbarSlot = null, composerStatusSlot = null,
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -697,7 +704,8 @@ export default function CreateWorkspace({
   const videoOption = VIDEO_RESOLUTIONS.find((item) => item.value === videoResolution) || VIDEO_RESOLUTIONS[2];
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
-  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'More creation tools' : 'Imagine worlds';
+  const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
+  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'Creation tools' : 'Imagine worlds';
 
   useEffect(() => {
     if (autoEditInfo) autoBaselineRef.current = { ...autoEditInfo };
@@ -789,7 +797,7 @@ export default function CreateWorkspace({
     return (
       <div className="saga-create-stage">
         <div className="saga-stage-heading"><span>STUDIO</span><h1>{heading}</h1><p>Additional creation workflows will live here without crowding the core Image and Video composer.</p></div>
-        <section className="saga-more-panel"><Sparkles size={24} /><div><strong>More tools</strong><p>Choose Create in the sidebar to return to the Image composer.</p></div></section>
+        <section className="saga-more-panel"><Sparkles size={24} /><div><strong>Additional tools</strong><p>Choose Create in the sidebar to return to the Image composer.</p></div></section>
       </div>
     );
   }
@@ -846,6 +854,8 @@ export default function CreateWorkspace({
 
               <MediaModeToggle mode={mode} setMode={setMode} />
 
+              {isVideo && videoToolbarSlot}
+
               {isEdit && (
                 <button
                   type="button"
@@ -865,6 +875,15 @@ export default function CreateWorkspace({
                     className={`saga-control-pill saga-resolution-trigger ${resolutionOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={resolutionOpen}
+                    aria-label={isEdit && editAuto ? `Image resolution Auto, ${autoEditInfo?.detail || 'from reference'}` : `Image resolution ${imageOption.label}, ${formatDimensions(imageDimensions)} at ${aspect}`}
+                    title={isEdit && editAuto ? `Image resolution · Auto · ${autoEditInfo?.detail || 'from reference'}` : `Image resolution · ${imageOption.label} · ${formatDimensions(imageDimensions)} at ${aspect}`}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                      event.preventDefault();
+                      setResolutionOpen(true);
+                      setAspectOpen(false);
+                      setSettingsOpen(false);
+                    }}
                     onClick={() => {
                       setResolutionOpen((current) => !current);
                       setAspectOpen(false);
@@ -876,30 +895,45 @@ export default function CreateWorkspace({
                     <ChevronDown size={13} />
                   </button>
 
-                  <button
-                    ref={aspectButtonRef}
-                    type="button"
-                    className={`saga-control-pill ${aspectOpen ? 'active' : ''}`}
-                    aria-haspopup="menu"
-                    aria-expanded={aspectOpen}
-                    onClick={() => {
-                      setAspectOpen((current) => !current);
-                      setResolutionOpen(false);
-                      setSettingsOpen(false);
+                  <AspectPicker
+                    triggerRef={aspectButtonRef}
+                    open={aspectOpen}
+                    onOpenChange={(next) => {
+                      setAspectOpen(next);
+                      if (next) {
+                        setResolutionOpen(false);
+                        setSettingsOpen(false);
+                      }
                     }}
-                  >
-                    <span className="saga-aspect-icon" style={{ aspectRatio: String(isEdit && editAuto ? primaryRatio : (ASPECT_PRESETS.find((item) => item.value === aspect)?.ratio || 1)) }} />
-                    <span>{isEdit && editAuto ? 'Auto' : aspect}</span>
-                  </button>
+                    ariaLabel="Aspect ratio"
+                    value={aspect}
+                    onValueChange={(value) => {
+                      if (isEdit) setEditAuto(false);
+                      setAspect(value);
+                    }}
+                    autoSelected={isEdit && editAuto}
+                    effectiveRatio={primaryRatio}
+                    autoDetail={autoEditInfo?.ratioLabel || 'Primary reference canvas'}
+                    fromReference={isEdit && editAuto && references.length > 0}
+                  />
                 </>
               ) : (
                 <>
                   <button
                     ref={videoResolutionButtonRef}
                     type="button"
-                    className={`saga-control-pill ${videoResolutionOpen ? 'active' : ''}`}
+                    className={`saga-control-pill saga-video-resolution-trigger ${videoResolutionOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={videoResolutionOpen}
+                    aria-label={`Video resolution ${videoOption.label}, ${formatDimensions(videoDimensions)} at ${videoAspect}`}
+                    title={`Video resolution · ${videoOption.label} · ${formatDimensions(videoDimensions)} at ${videoAspect}`}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                      event.preventDefault();
+                      setVideoResolutionOpen(true);
+                      setDurationOpen(false);
+                      setSettingsOpen(false);
+                    }}
                     onClick={() => {
                       setVideoResolutionOpen((current) => !current);
                       setDurationOpen(false);
@@ -915,6 +949,7 @@ export default function CreateWorkspace({
                     className={`saga-control-pill ${durationOpen ? 'active' : ''}`}
                     aria-haspopup="dialog"
                     aria-expanded={durationOpen}
+                    aria-label={`Video duration ${videoDuration} seconds`}
                     onClick={() => {
                       setDurationOpen((current) => !current);
                       setVideoResolutionOpen(false);
@@ -964,10 +999,12 @@ export default function CreateWorkspace({
                 onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
                 disabled={busy || (isEdit && references.length === 0)}
               >
-                <ArrowUp size={21} />
+                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
+                <ArrowUp size={18} aria-hidden="true" />
               </button>
             </div>
           </div>
+          {composerStatusSlot}
         </section>
 
         {error && <div className="saga-composer-error">{error}</div>}
@@ -988,23 +1025,13 @@ export default function CreateWorkspace({
           setEditAuto={isEdit ? setEditAuto : () => {}}
           autoInfo={autoEditInfo}
         />
-        <AspectPicker
-          open={aspectOpen}
-          setOpen={setAspectOpen}
-          anchorRef={aspectButtonRef}
-          aspect={aspect}
-          setAspect={setAspect}
-          editAuto={isEdit && editAuto}
-          setEditAuto={isEdit ? setEditAuto : () => {}}
-          autoRatio={primaryRatio}
-          autoInfo={autoEditInfo}
-        />
         <VideoResolutionPicker
           open={videoResolutionOpen}
           setOpen={setVideoResolutionOpen}
           anchorRef={videoResolutionButtonRef}
           value={videoResolution}
           setValue={setVideoResolution}
+          aspect={videoAspect}
         />
         <DurationPicker
           open={durationOpen}

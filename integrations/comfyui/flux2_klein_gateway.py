@@ -6,10 +6,35 @@ APP_NAME = "saga-flux2-klein-gateway"
 RUNTIME_APP_NAME = "saga-flux2-klein-9b"
 RUNTIME_CLASS_NAME = "Flux2KleinWorker"
 MODAL_VERSION = "1.4.2"
+ECOSYSTEM_ID = "flux2-klein-9b"
+WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
+STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-flux2-klein-9b-worker-state")
+worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
 
-image = modal.Image.debian_slim(python_version="3.11").pip_install(
-    f"modal=={MODAL_VERSION}",
-    "fastapi[standard]==0.121.0",
+
+CREDIT_PATTERNS = ("credit", "credits", "quota", "budget", "billing", "payment", "insufficient", "spending limit", "workspace budget")
+UNAVAILABLE_PATTERNS = ("workspace is disabled", "workspace disabled", "unavailable", "not found", "stopped")
+
+
+def _failure_payload(exc):
+    text = f"{type(exc).__name__}: {exc}"
+    lowered = text.lower()
+    if any(pattern in lowered for pattern in CREDIT_PATTERNS):
+        return 402, "WORKER_CREDIT_EXHAUSTED", "credit_exhausted", text
+    if any(pattern in lowered for pattern in UNAVAILABLE_PATTERNS):
+        return 503, "WORKER_UNAVAILABLE", "unavailable", text
+    return 502, "WORKER_RUNTIME_FAILED", "failed", text
+
+image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        f"modal=={MODAL_VERSION}",
+        "fastapi[standard]==0.121.0",
+    )
+    .env({
+        "SAGA_MODAL_WORKER_ID": WORKER_ID,
+        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,
+    })
 )
 app = modal.App(APP_NAME, image=image)
 
@@ -61,6 +86,24 @@ def web():
             megapixels=max(0.25, min(float(megapixels), 4.0)),
         )
 
+    def _state():
+        try:
+            return worker_state.get("worker") or {"state": "sleeping", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+        except Exception:
+            return {"state": "unknown", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+
+    def _submit_state():
+        state = str(_state().get("state") or "").strip()
+        return "waking" if state in {"", "sleeping", "unknown"} else state
+
+    def _submit_state():
+        state = str(_state().get("state") or "").strip()
+        if state in {"", "sleeping", "unknown"}:
+            return "waking"
+        if state in {"generating", "finalizing"}:
+            return "queued"
+        return state
+
     @api.get("/health")
     async def health():
         return {
@@ -71,6 +114,7 @@ def web():
             "async_jobs": True,
             "cancel_jobs": True,
             "multiple_references": True,
+            "worker": _state(),
         }
 
     @api.post("/jobs/edit")
@@ -98,10 +142,11 @@ def web():
             )
         try:
             call = _worker_call(images, prompt, negative_prompt, seed, steps, cfg, megapixels)
-            return {"status": "queued", "call_id": call.object_id, "reference_count": len(images)}
+            return {"status": "queued", "call_id": call.object_id, "reference_count": len(images), "worker_state": _submit_state(), "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
         except Exception as exc:  # noqa: BLE001
             print({"event": "flux2_gateway_spawn_failed", "error": repr(exc)}, flush=True)
-            raise HTTPException(status_code=502, detail=f"FLUX.2 runtime submit failed: {type(exc).__name__}: {exc}") from exc
+            status_code, error_code, state, detail = _failure_payload(exc)
+            return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID})
 
     @api.get("/jobs/{call_id}")
     async def poll_edit(call_id: str):
@@ -109,12 +154,14 @@ def web():
             call = modal.FunctionCall.from_id(call_id)
             result = call.get(timeout=0)
         except TimeoutError:
-            return JSONResponse(status_code=202, content={"status": "running", "call_id": call_id})
+            current = _state()
+            return JSONResponse(status_code=202, content={"status": "running", "call_id": call_id, "worker_state": current.get("state") or "generating", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID})
         except modal.exception.OutputExpiredError as exc:
             raise HTTPException(status_code=410, detail="FLUX.2 job result expired") from exc
         except Exception as exc:  # noqa: BLE001
             print({"event": "flux2_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
-            raise HTTPException(status_code=502, detail=f"FLUX.2 runtime failed: {type(exc).__name__}: {exc}") from exc
+            status_code, error_code, state, detail = _failure_payload(exc)
+            return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID})
         return Response(content=result, media_type="image/png")
 
     @api.delete("/jobs/{call_id}")

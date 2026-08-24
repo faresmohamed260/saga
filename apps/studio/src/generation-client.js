@@ -125,6 +125,18 @@ async function responseError(response, fallback) {
   return `${fallback} (${response.status})`;
 }
 
+async function responseException(response, fallback) {
+  let body = {};
+  try { body = await response.json(); } catch {}
+  const detail = body?.error || body?.detail;
+  const error = new Error(detail ? `${fallback} (${response.status}): ${detail}` : `${fallback} (${response.status})`);
+  error.statusCode = response.status;
+  error.errorCode = body?.errorCode || body?.code || null;
+  error.workerState = body?.workerState || body?.worker_state || null;
+  error.worker = body?.worker || null;
+  return error;
+}
+
 export async function uploadSourceFile(sourceFile) {
   const ticketResponse = await fetch('/api/uploads', {
     method: 'POST',
@@ -190,10 +202,10 @@ export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sour
       megapixels,
     }),
   });
-  if (response.status !== 202) throw new Error(await responseError(response, 'Could not submit generation'));
+  if (response.status !== 202) throw await responseException(response, 'Could not submit generation');
   const payload = await response.json();
   if (!payload?.job?.id) throw new Error('Generation submit did not return a job id.');
-  return payload.job;
+  return { job: payload.job, worker: payload.worker || null };
 }
 
 export async function submitVideoGeneration({
@@ -204,6 +216,8 @@ export async function submitVideoGeneration({
   resolution = '480p',
   durationSeconds = 5,
   audioEnabled = true,
+  aspectRatio = '16:9',
+  frameRate = 24,
   seed = 42,
 }) {
   let uploaded = null;
@@ -230,29 +244,35 @@ export async function submitVideoGeneration({
       resolution,
       durationSeconds,
       audioEnabled,
+      aspectRatio,
+      frameRate,
       seed,
     }),
   });
-  if (response.status !== 202) throw new Error(await responseError(response, 'Could not submit video generation'));
+  if (response.status !== 202) throw await responseException(response, 'Could not submit video generation');
   const payload = await response.json();
   if (!payload?.job?.id) throw new Error('Video generation submit did not return a job id.');
-  return payload.job;
+  return { job: payload.job, worker: payload.worker || null };
 }
 
-export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus } = {}) {
+export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus, onWorkerStatus, signal } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
     if (onStatus) onStatus('running');
     const response = await fetch(`/api/generate/result?jobId=${encodeURIComponent(jobId)}`, {
       method: 'GET',
       headers: { Accept: 'application/json' },
       cache: 'no-store',
+      signal,
     });
     if (response.status === 202) {
+      const pending = await response.json().catch(() => ({}));
+      if (onWorkerStatus) onWorkerStatus(pending.worker || { state: pending.workerState || 'queued', ecosystem: pending.ecosystem || '' });
       await sleep(intervalMs);
       continue;
     }
-    if (!response.ok) throw new Error(await responseError(response, 'Generation failed'));
+    if (!response.ok) throw await responseException(response, 'Generation failed');
     const payload = await response.json();
     if (payload?.status !== 'completed' || !payload?.persisted || !payload?.mediaUrl) {
       throw new Error('Generation completed without persisted media.');
@@ -267,19 +287,23 @@ export async function runImageEdit(input, options = {}) {
   if (options.onStatus) options.onStatus(editSizingPreference.mode === 'manual' ? 'preparing' : 'uploading');
   const effectiveInput = await applyEditSizing(input);
   if (options.onStatus) options.onStatus('uploading');
-  const job = await submitImageEdit(effectiveInput);
+  const submitted = await submitImageEdit(effectiveInput);
+  if (options.onJob) options.onJob(submitted.job);
+  if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
   if (options.onStatus) options.onStatus('running');
-  const result = await waitForGeneration(job.id, options);
-  return { job, result };
+  const result = await waitForGeneration(submitted.job.id, options);
+  return { job: submitted.job, result };
 }
 
 export async function runVideoGeneration(input, options = {}) {
   if (options.onStatus) options.onStatus(input?.sourceFile ? 'uploading' : 'submitting');
-  const job = await submitVideoGeneration(input);
+  const submitted = await submitVideoGeneration(input);
+  if (options.onJob) options.onJob(submitted.job);
+  if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
   if (options.onStatus) options.onStatus('running');
-  const result = await waitForGeneration(job.id, {
+  const result = await waitForGeneration(submitted.job.id, {
     timeoutMs: 55 * 60 * 1000,
     ...options,
   });
-  return { job, result };
+  return { job: submitted.job, result };
 }

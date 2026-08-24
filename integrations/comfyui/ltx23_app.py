@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import time
@@ -14,14 +15,25 @@ from typing import Any
 import modal
 
 APP_NAME = "saga-ltx25-video"
+RUNTIME_BUILD = "a10-normalvram-poster-v2"
 COMFY_DIR = Path("/root/ComfyUI")
 CACHE_DIR = Path("/cache")
 MODEL_ROOT = CACHE_DIR / "studio-models"
 OUTPUT_DIR = COMFY_DIR / "output"
 INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
-FPS = 24
-GPU_TYPE = os.environ.get("MODAL_LTX25_GPU", "A10")
+DEFAULT_FPS = 24
+FRAME_RATES = {24, 25, 30}
+GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "A10").split(",") if x.strip()]
+GPU_REQUEST: str | list[str] = GPU_CHOICES[0] if len(GPU_CHOICES) == 1 else GPU_CHOICES
+GPU_LABEL = ",".join(GPU_CHOICES)
+CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_LTX25_IDLE_SECONDS", "180"))
+WORKER_MIN_CONTAINERS = 0
+WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_LTX25_MAX_CONTAINERS", "2"))
+ECOSYSTEM_ID = "ltx25-redgraft"
+WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
+STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-ltx25-redgraft-worker-state")
+CACHE_VOLUME_NAME = os.environ.get("SAGA_MODAL_WORKER_VOLUME", "saga-ltx25-redgraft-cache")
 
 CHECKPOINT = "REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors"
 CHECKPOINT_URL = "https://civitai.red/api/download/models/3250230?fileId=3133376"
@@ -51,11 +63,13 @@ RESOLUTIONS: dict[str, tuple[int, int]] = {
     "4K": (3840, 2176),
 }
 ENABLED_RESOLUTIONS = {"480p", "720p", "1080p", "2K"}
+RESOLUTION_SHORT_EDGES = {"480p": 480, "720p": 720, "1080p": 1080, "2K": 1152, "4K": 2160}
 
 LOW_STAGE_SIGMAS = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 HIGH_STAGE_SIGMAS = "0.85, 0.7250, 0.4219, 0.0"
 
-cache_volume = modal.Volume.from_name("graduation-comfyui-cache", create_if_missing=True)
+cache_volume = modal.Volume.from_name(CACHE_VOLUME_NAME, create_if_missing=True)
+worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
 
 _runtime_secret_values: dict[str, str] = {}
 for _name in ("HF_TOKEN", "CIVITAI_API_TOKEN"):
@@ -74,7 +88,14 @@ image = (
         "requests>=2.32,<3",
         "pillow>=11,<13",
     )
-    .env({"COMFYUI_DISABLE_TELEMETRY": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    .env({
+        "COMFYUI_DISABLE_TELEMETRY": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "SAGA_MODAL_WORKER_ID": WORKER_ID,
+        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,
+        "SAGA_MODAL_WORKER_VOLUME": CACHE_VOLUME_NAME,
+    })
     .run_commands(
         "git clone --depth 1 https://github.com/Comfy-Org/ComfyUI.git /root/ComfyUI",
         "pip install -r /root/ComfyUI/requirements.txt",
@@ -86,6 +107,12 @@ app = modal.App(APP_NAME, image=image)
 
 def _log(event: str, **fields: Any) -> None:
     print({"event": event, **fields}, flush=True)
+
+
+def _set_worker_state(state: str, **fields: Any) -> None:
+    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "runtime_build": RUNTIME_BUILD, "updated_at": int(time.time()), **fields}
+    worker_state["worker"] = payload
+    _log("worker_state", **payload)
 
 
 def _safe_link(source: Path, destination: Path) -> None:
@@ -328,8 +355,51 @@ def _upload_image(image_bytes: bytes, filename: str = "saga-video-reference.png"
     return payload.get("name") or filename
 
 
-def _frame_count(duration_seconds: int) -> int:
-    return int(duration_seconds) * FPS + 1
+def _parse_aspect_ratio(value: str) -> float:
+    left, separator, right = str(value or "16:9").strip().partition(":")
+    if not separator:
+        raise ValueError("aspect_ratio must be W:H")
+    width = float(left)
+    height = float(right)
+    ratio = width / height
+    if not math.isfinite(ratio) or ratio < 0.4 or ratio > 2.5:
+        raise ValueError("aspect_ratio is outside the supported range")
+    return ratio
+
+
+def _even(value: float) -> int:
+    # Delivery dimensions are positive. Use explicit half-up rounding so exact
+    # odd-pixel ties match JavaScript Math.round in Studio instead of Python's
+    # bankers rounding (for example 481px -> 482px, not 480px).
+    return max(2, int(math.floor(float(value) / 2.0 + 0.5)) * 2)
+
+
+def _align64(value: int) -> int:
+    return max(64, int(math.ceil(int(value) / 64.0)) * 64)
+
+
+def _delivery_dimensions(resolution: str, aspect_ratio: str) -> tuple[int, int]:
+    ratio = _parse_aspect_ratio(aspect_ratio)
+    short_edge = RESOLUTION_SHORT_EDGES[resolution]
+    if ratio >= 1:
+        height = short_edge
+        width = _even(height * ratio)
+    else:
+        width = short_edge
+        height = _even(width / ratio)
+    return width, height
+
+
+def _internal_dimensions(resolution: str, aspect_ratio: str) -> tuple[int, int]:
+    width, height = _delivery_dimensions(resolution, aspect_ratio)
+    return _align64(width), _align64(height)
+
+
+def _frame_count(duration_seconds: int, frame_rate: int) -> int:
+    requested = int(duration_seconds) * int(frame_rate) + 1
+    # LTX temporal latents require 8n+1 frames. Pad upward so selectable
+    # frame rates keep the requested duration as closely as possible.
+    return ((requested - 2) // 8 + 1) * 8 + 1
 
 
 def _workflow(
@@ -339,12 +409,14 @@ def _workflow(
     resolution: str,
     duration_seconds: int,
     audio_enabled: bool,
+    aspect_ratio: str,
+    frame_rate: int,
     source_name: str | None,
     output_token: str,
 ) -> dict[str, Any]:
-    target_width, target_height = RESOLUTIONS[resolution]
+    target_width, target_height = _internal_dimensions(resolution, aspect_ratio)
     low_width, low_height = target_width // 2, target_height // 2
-    frames = _frame_count(duration_seconds)
+    frames = _frame_count(duration_seconds, frame_rate)
 
     graph: dict[str, Any] = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": CHECKPOINT, "weight_dtype": "default"}},
@@ -359,7 +431,7 @@ def _workflow(
         "7": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}},
         "8": {
             "class_type": "LTXVConditioning",
-            "inputs": {"positive": ["6", 0], "negative": ["7", 0], "frame_rate": FPS},
+            "inputs": {"positive": ["6", 0], "negative": ["7", 0], "frame_rate": frame_rate},
         },
         "9": {
             "class_type": "EmptyLTXVLatentVideo",
@@ -367,7 +439,7 @@ def _workflow(
         },
         "10": {
             "class_type": "LTXVEmptyLatentAudio",
-            "inputs": {"audio_vae": ["4", 0], "frames_number": frames, "frame_rate": FPS, "batch_size": 1},
+            "inputs": {"audio_vae": ["4", 0], "frames_number": frames, "frame_rate": frame_rate, "batch_size": 1},
         },
         "12": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["9", 0], "audio_latent": ["10", 0]}},
         "13": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed)}},
@@ -398,7 +470,7 @@ def _workflow(
         },
         "21": {
             "class_type": "LatentUpscaleBy",
-            "inputs": {"samples": ["20", 0], "upscale_method": "bicubic", "scale_by": 0.5},
+            "inputs": {"samples": ["20", 0], "upscale_method": "bicubic", "scale_by": 1.0},
         },
         "23": {"class_type": "LTXVConcatAVLatent", "inputs": {"video_latent": ["21", 0], "audio_latent": ["18", 1]}},
         "24": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed) + 1}},
@@ -430,7 +502,7 @@ def _workflow(
                 "temporal_overlap": 24,
             },
         },
-        "32": {"class_type": "CreateVideo", "inputs": {"images": ["30", 0], "fps": FPS, "bit_depth": 8}},
+        "32": {"class_type": "CreateVideo", "inputs": {"images": ["30", 0], "fps": frame_rate, "bit_depth": 8}},
         "33": {
             "class_type": "SaveVideo",
             "inputs": {
@@ -543,6 +615,40 @@ def _find_new_video(started_at: float, history_item: dict[str, Any] | None = Non
     )
 
 
+def _finalize_video(
+    video_path: Path,
+    *,
+    width: int,
+    height: int,
+    frame_rate: int,
+    duration_seconds: int,
+) -> Path:
+    final_path = video_path.with_name(f"{video_path.stem}-delivery.mp4")
+    target_frames = int(duration_seconds) * int(frame_rate)
+    video_filter = (
+        f"scale={int(width)}:{int(height)}:force_original_aspect_ratio=increase,"
+        f"crop={int(width)}:{int(height)},setsar=1"
+    )
+    audio_filter = f"atrim=duration={float(duration_seconds):.3f},asetpts=PTS-STARTPTS"
+    command = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(video_path),
+        "-map", "0:v:0", "-map", "0:a?",
+        "-vf", video_filter,
+        "-af", audio_filter,
+        "-frames:v", str(target_frames),
+        "-r", str(int(frame_rate)),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(final_path),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0 or not final_path.is_file() or final_path.stat().st_size <= 0:
+        raise RuntimeError(f"ffmpeg delivery encode failed: {result.stderr[-3000:]}")
+    return final_path
+
+
 @app.function(
     image=image,
     timeout=7200,
@@ -552,6 +658,7 @@ def _find_new_video(started_at: float, history_item: dict[str, Any] | None = Non
 def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
     started = time.perf_counter()
     files = _ensure_model_files(verify_checkpoint=verify_checkpoint)
+    _set_worker_state("sleeping", assets_cached=True)
     return {
         "ready": True,
         "model": "redgraft-ltx25-sulphur2-int8-convrot",
@@ -564,9 +671,11 @@ def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
 
 @app.cls(
     image=image,
-    gpu=GPU_TYPE,
+    gpu=GPU_REQUEST,
     timeout=4200,
-    scaledown_window=300,
+    scaledown_window=CONTAINER_IDLE_SECONDS,
+    min_containers=WORKER_MIN_CONTAINERS,
+    max_containers=WORKER_MAX_CONTAINERS,
     volumes={str(CACHE_DIR): cache_volume},
     secrets=RUNTIME_SECRETS,
 )
@@ -574,38 +683,38 @@ def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
 class LTX25Worker:
     @modal.enter()
     def start(self) -> None:
+        _set_worker_state("loading")
         started = time.perf_counter()
         files = _ensure_model_files(verify_checkpoint=True)
         self.models = _prepare_models(files)
         INPUT_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        self.process = subprocess.Popen(
-            [
-                "python",
-                "main.py",
-                "--listen",
-                "127.0.0.1",
-                "--port",
-                "8188",
-                "--lowvram",
-                "--reserve-vram",
-                "2",
-                "--disable-auto-launch",
-                "--preview-method",
-                "none",
-            ],
-            cwd=COMFY_DIR,
-        )
+        launch_command = [
+            "python", "main.py", "--listen", "127.0.0.1", "--port", "8188",
+            "--reserve-vram", "0.5", "--disable-auto-launch", "--preview-method", "none",
+        ]
+        if str(os.environ.get("MODAL_LTX25_LOWVRAM") or "").strip().lower() in {"1", "true", "yes"}:
+            launch_command.append("--lowvram")
+        self.process = subprocess.Popen(launch_command, cwd=COMFY_DIR)
         _wait_server()
         self.started_seconds = round(time.perf_counter() - started, 3)
+        try:
+            import torch
+            self.gpu_name = torch.cuda.get_device_name(0)
+        except Exception:
+            self.gpu_name = GPU_LABEL
+        _set_worker_state("ready", startup_seconds=self.started_seconds, gpu_name=self.gpu_name)
 
     @modal.method()
     def health(self) -> dict[str, Any]:
         return {
             "ready": True,
             "app": APP_NAME,
-            "gpu": GPU_TYPE,
-            "fps": FPS,
+            "runtime_build": RUNTIME_BUILD,
+            "gpu": GPU_LABEL,
+            "gpu_name": getattr(self, "gpu_name", GPU_LABEL),
+            "default_fps": DEFAULT_FPS,
+            "frame_rates": sorted(FRAME_RATES),
             "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
             "checkpoint": CHECKPOINT,
             "checkpoint_autov2": CHECKPOINT_AUTOV2,
@@ -646,8 +755,7 @@ class LTX25Worker:
         }
         return {name: info.get(name) for name in sorted(wanted)}
 
-    @modal.method()
-    def generate(
+    def _generate_impl(
         self,
         prompt: str,
         negative_prompt: str = "",
@@ -655,8 +763,10 @@ class LTX25Worker:
         resolution: str = "480p",
         duration_seconds: int = 5,
         audio_enabled: bool = True,
+        aspect_ratio: str = "16:9",
+        frame_rate: int = DEFAULT_FPS,
         source_image: bytes | None = None,
-    ) -> bytes:
+    ) -> dict[str, bytes]:
         del negative_prompt  # REDGraft reference recipe uses zeroed negative conditioning.
         prompt = (prompt or "").strip()
         if not prompt:
@@ -664,10 +774,15 @@ class LTX25Worker:
         if resolution not in RESOLUTIONS:
             raise ValueError(f"unsupported resolution: {resolution}")
         if resolution not in ENABLED_RESOLUTIONS:
-            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 A10 runtime")
+            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 runtime")
         if not 5 <= int(duration_seconds) <= 30:
             raise ValueError("duration_seconds must be between 5 and 30")
+        _parse_aspect_ratio(aspect_ratio)
+        if int(frame_rate) not in FRAME_RATES:
+            raise ValueError("frame_rate must be 24, 25, or 30")
 
+        generation_started = time.perf_counter()
+        _set_worker_state("generating", gpu_name=getattr(self, "gpu_name", GPU_LABEL))
         source_name = _upload_image(source_image) if source_image else None
         output_token = uuid.uuid4().hex[:12]
         graph = _workflow(
@@ -676,6 +791,8 @@ class LTX25Worker:
             resolution=resolution,
             duration_seconds=int(duration_seconds),
             audio_enabled=bool(audio_enabled),
+            aspect_ratio=str(aspect_ratio),
+            frame_rate=int(frame_rate),
             source_name=source_name,
             output_token=output_token,
         )
@@ -701,6 +818,89 @@ class LTX25Worker:
                     )
                 if status.get("completed") is True:
                     video_path = _find_new_video(started_at, item)
-                    return video_path.read_bytes()
+                    delivery_width, delivery_height = _delivery_dimensions(resolution, aspect_ratio)
+                    compute_seconds = round(time.perf_counter() - generation_started, 3)
+                    finalize_started = time.perf_counter()
+                    _set_worker_state(
+                        "finalizing",
+                        gpu_name=getattr(self, "gpu_name", GPU_LABEL),
+                        compute_seconds=compute_seconds,
+                    )
+                    final_path = _finalize_video(
+                        video_path,
+                        width=delivery_width,
+                        height=delivery_height,
+                        frame_rate=int(frame_rate),
+                        duration_seconds=int(duration_seconds),
+                    )
+                    _log(
+                        "ltx25_delivery_ready",
+                        resolution=resolution,
+                        aspect_ratio=aspect_ratio,
+                        frame_rate=int(frame_rate),
+                        duration_seconds=int(duration_seconds),
+                        width=delivery_width,
+                        height=delivery_height,
+                        bytes=final_path.stat().st_size,
+                    )
+                    result = final_path.read_bytes()
+                    poster_process = subprocess.run(
+                        [
+                            "ffmpeg", "-hide_banner", "-loglevel", "error",
+                            "-ss", "0.08", "-i", str(final_path),
+                            "-frames:v", "1", "-f", "image2pipe",
+                            "-vcodec", "mjpeg", "-q:v", "3", "pipe:1",
+                        ],
+                        capture_output=True,
+                        check=False,
+                    )
+                    if poster_process.returncode != 0 or not poster_process.stdout:
+                        detail = poster_process.stderr.decode("utf-8", errors="replace")[-3000:]
+                        raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")
+                    finalize_seconds = round(time.perf_counter() - finalize_started, 3)
+                    total_seconds = round(time.perf_counter() - generation_started, 3)
+                    _set_worker_state(
+                        "ready",
+                        gpu_name=getattr(self, "gpu_name", GPU_LABEL),
+                        compute_seconds=compute_seconds,
+                        finalize_seconds=finalize_seconds,
+                        total_seconds=total_seconds,
+                    )
+                    return {"video": result, "poster": bytes(poster_process.stdout)}
             time.sleep(2)
+        _set_worker_state("failed")
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")
+
+
+    @modal.method()
+    def generate(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        seed: int = 42,
+        resolution: str = "480p",
+        duration_seconds: int = 5,
+        audio_enabled: bool = True,
+        aspect_ratio: str = "16:9",
+        frame_rate: int = DEFAULT_FPS,
+        source_image: bytes | None = None,
+    ) -> dict[str, bytes]:
+        try:
+            return self._generate_impl(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                seed=seed,
+                resolution=resolution,
+                duration_seconds=duration_seconds,
+                audio_enabled=audio_enabled,
+                aspect_ratio=aspect_ratio,
+                frame_rate=frame_rate,
+                source_image=source_image,
+            )
+        except Exception:
+            _set_worker_state("failed")
+            raise
+
+    @modal.exit()
+    def stop(self) -> None:
+        _set_worker_state("sleeping")

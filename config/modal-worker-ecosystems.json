@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "deploymentRevision": "worker-identity-v2",
+  "ecosystems": [
+    {
+      "id": "flux2-klein-9b",
+      "displayName": "FLUX.2 Klein 9B",
+      "workflowIds": [
+        "flux2-klein-image-edit"
+      ],
+      "runtimeEntrypoint": "integrations/comfyui/flux2_klein_app.py",
+      "runtimeApp": "saga-flux2-klein-9b",
+      "runtimeClass": "Flux2KleinWorker",
+      "gatewayEntrypoint": "integrations/comfyui/flux2_klein_gateway.py",
+      "gatewayApp": "saga-flux2-klein-gateway",
+      "gatewayFunction": "web",
+      "volume": "saga-flux2-klein-9b-cache",
+      "stateDict": "saga-flux2-klein-9b-worker-state",
+      "idleSeconds": 180,
+      "maxConcurrency": 1
+    },
+    {
+      "id": "ltx25-redgraft",
+      "displayName": "REDGraft LTX 2.5",
+      "workflowIds": [
+        "ltx25-redgraft-video"
+      ],
+      "runtimeEntrypoint": "integrations/comfyui/ltx23_app.py",
+      "runtimeApp": "saga-ltx25-video",
+      "runtimeClass": "LTX25Worker",
+      "gatewayEntrypoint": "integrations/comfyui/ltx23_gateway.py",
+      "gatewayApp": "saga-ltx25-gateway",
+      "gatewayFunction": "web",
+      "volume": "saga-ltx25-redgraft-cache",
+      "stateDict": "saga-ltx25-redgraft-worker-state",
+      "idleSeconds": 180,
+      "maxConcurrency": 1
+    }
+  ]
+}

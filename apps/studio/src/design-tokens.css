@@ -1,0 +1,61 @@
+:root {
+  /* Color roles */
+  --saga-color-bg: #080a0f;
+  --saga-color-surface-1: #0d1017;
+  --saga-color-surface-2: #11151d;
+  --saga-color-surface-2-alt: #11151c;
+  --saga-color-surface-control: #151920;
+  --saga-color-surface-control-hover: #1d222b;
+  --saga-color-text: #f6f7fb;
+  --saga-color-text-muted: #a9b0bd;
+  --saga-color-text-subtle: #8993a3;
+  --saga-color-accent: #7a5cff;
+  --saga-color-accent-soft: #b1a3ff;
+  --saga-color-accent-secondary: #4b9cff;
+  --saga-color-danger: #ff7f91;
+  --saga-color-success: #65d5a2;
+  --saga-border: rgba(255, 255, 255, .11);
+  --saga-border-strong: rgba(255, 255, 255, .18);
+  --saga-border-subtle: rgba(255, 255, 255, .08);
+
+  /* Spacing */
+  --saga-space-1: 4px;
+  --saga-space-2: 8px;
+  --saga-space-3: 12px;
+  --saga-space-4: 16px;
+  --saga-space-5: 20px;
+  --saga-space-6: 24px;
+  --saga-space-8: 32px;
+
+  /* Shape */
+  --saga-radius-xs: 7px;
+  --saga-radius-sm: 9px;
+  --saga-radius-md: 10px;
+  --saga-radius-lg: 12px;
+  --saga-radius-xl: 14px;
+  --saga-radius-2xl: 17px;
+  --saga-radius-3xl: 22px;
+  --saga-radius-pill: 999px;
+
+  /* Controls */
+  --saga-control-xs: 30px;
+  --saga-control-sm: 34px;
+  --saga-control-md: 36px;
+  --saga-control-lg: 42px;
+  --saga-control-xl: 48px;
+  --saga-touch-target: 44px;
+
+  /* Readable product type scale. Keep dense utility text at 10px minimum. */
+  --saga-text-2xs: 10px;
+  --saga-text-xs: 11px;
+  --saga-text-sm: 12px;
+  --saga-text-md: 12px;
+  --saga-text-lg: 13px;
+  --saga-text-base: 14px;
+
+  /* Interaction */
+  --saga-focus-ring: 2px solid var(--saga-color-accent-soft);
+  --saga-focus-shadow: 0 0 0 4px rgba(177, 163, 255, .16);
+  --saga-transition-fast: .16s ease;
+  --saga-transition-base: .18s ease;
+}

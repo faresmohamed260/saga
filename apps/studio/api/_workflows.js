@@ -5,6 +5,7 @@ const workflowRegistry = {
     mode: 'edit',
     model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
     provider: 'modal-flux2-klein',
+    ecosystem: 'flux2-klein-9b',
     requiresSourceImage: true,
     supportsMultipleReferences: true,
     automaticOutputSize: true,
@@ -28,6 +29,7 @@ const workflowRegistry = {
     mode: 'video',
     model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot',
     provider: 'modal-ltx25-redgraft',
+    ecosystem: 'ltx25-redgraft',
     requiresSourceImage: false,
     supportsMultipleReferences: false,
     automaticOutputSize: false,
@@ -41,6 +43,8 @@ const workflowRegistry = {
       resolution: '480p',
       durationSeconds: 5,
       audioEnabled: true,
+      aspectRatio: '16:9',
+      frameRate: 24,
     },
     limits: {
       maxSourceBytes: 25 * 1024 * 1024,
@@ -49,6 +53,7 @@ const workflowRegistry = {
       minDurationSeconds: 5,
       maxDurationSeconds: 30,
       resolutions: ['480p', '720p', '1080p', '2K'],
+      frameRates: [24, 25, 30],
     },
   },
 };
@@ -64,6 +69,7 @@ export function listWorkflows() {
     mode: workflow.mode,
     model: workflow.model,
     provider: workflow.provider,
+    ecosystem: workflow.ecosystem,
     requiresSourceImage: workflow.requiresSourceImage,
     supportsMultipleReferences: Boolean(workflow.supportsMultipleReferences),
     automaticOutputSize: Boolean(workflow.automaticOutputSize),
@@ -74,6 +80,9 @@ export function listWorkflows() {
       maxDurationSeconds: workflow.limits.maxDurationSeconds,
       audio: true,
       imageToVideo: true,
+      aspectRatios: ['1:1', '4:5', '3:4', '2:3', '9:16', '5:4', '4:3', '3:2', '16:10', '16:9', '21:9'],
+      frameRates: workflow.limits.frameRates,
+      autoReferenceAspect: true,
     } : undefined,
   }));
 }

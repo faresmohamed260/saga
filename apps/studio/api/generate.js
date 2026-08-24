@@ -1,7 +1,7 @@
 import {
   createGenerationJob,
-  setProviderJobId,
   transitionGenerationJob,
+  updateGenerationWorkerAssignment,
 } from './_generation-jobs.js';
 import { submitWorkflow } from './_providers.js';
 import { readSourceObject, isSourceKey } from './_r2.js';
@@ -82,6 +82,13 @@ export default async function handler(req, res) {
       jsonMode ? body.audioEnabled : req.headers['x-saga-audio-enabled'],
       workflow.defaults.audioEnabled,
     );
+    const aspectRatio = String(
+      jsonMode ? body.aspectRatio ?? workflow.defaults.aspectRatio : decodeHeader(req.headers['x-saga-aspect-ratio']) || workflow.defaults.aspectRatio || '16:9',
+    ).trim().slice(0, 32);
+    const frameRate = parseNumber(
+      jsonMode ? body.frameRate : req.headers['x-saga-frame-rate'],
+      workflow.defaults.frameRate || 24,
+    );
 
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
@@ -147,6 +154,7 @@ export default async function handler(req, res) {
       provider: workflow.provider,
       metadata: {
         inputTransport,
+        ecosystem: workflow.ecosystem || null,
         sourceR2Key: sourceKeys[0] || null,
         sourceR2Keys: sourceKeys,
         sourceContentType: primary.contentType || null,
@@ -160,7 +168,7 @@ export default async function handler(req, res) {
           steps,
           cfg,
           megapixels,
-          ...(workflow.kind === 'video' ? { durationSeconds, audioEnabled, resolution } : {}),
+          ...(workflow.kind === 'video' ? { durationSeconds, audioEnabled, resolution, aspectRatio, frameRate } : {}),
         },
       },
     });
@@ -180,14 +188,28 @@ export default async function handler(req, res) {
       megapixels,
       durationSeconds,
       audioEnabled,
+      aspectRatio,
+      frameRate,
     });
-    const updatedJob = await setProviderJobId(job.id, submitted.providerJobId);
+    const submissionFailures = Array.isArray(submitted.worker?.failedWorkers) ? submitted.worker.failedWorkers : [];
+    const submittedAt = new Date().toISOString();
+    const updatedJob = await updateGenerationWorkerAssignment(job.id, submitted.providerJobId, {
+      assignedWorkerId: submitted.worker?.workerId || null,
+      workerFailoverHistory: submissionFailures.map((failure) => ({
+        fromWorkerId: failure.workerId || null,
+        reason: failure.kind || 'unavailable',
+        errorCode: failure.code || null,
+        at: submittedAt,
+      })),
+    });
 
     return res.status(202).json({
       job: updatedJob,
       status: 'running',
       workflow: workflow.id,
       provider: workflow.provider,
+      ecosystem: workflow.ecosystem || null,
+      worker: submitted.worker || null,
       inputTransport,
       referenceCount: sources.length,
     });
@@ -200,6 +222,6 @@ export default async function handler(req, res) {
       }
     }
     console.error('Generation orchestration submit failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation submit failed' });
+    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation submit failed', errorCode: error?.errorCode || null, workerState: error?.workerState || null });
   }
 }

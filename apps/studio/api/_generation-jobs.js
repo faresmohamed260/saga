@@ -4,6 +4,10 @@ function safeText(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
 }
 
+function safeMetadata(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 export function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
@@ -37,7 +41,7 @@ export async function createGenerationJob(input) {
   const workflowId = safeText(input.workflowId, 160);
   const provider = safeText(input.provider || 'modal', 80);
   const seed = parseSeed(input.seed);
-  const extraMetadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata) ? input.metadata : {};
+  const extraMetadata = safeMetadata(input.metadata);
 
   if (!model) {
     const error = new Error('Model is required');
@@ -86,6 +90,42 @@ export async function setProviderJobId(id, providerJobId) {
     method: 'PATCH',
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ provider_job_id: value }),
+  });
+  const job = Array.isArray(rows) ? rows[0] : rows;
+  if (!job) {
+    const error = new Error('Active job not found');
+    error.statusCode = 409;
+    throw error;
+  }
+  return job;
+}
+
+export async function updateGenerationWorkerAssignment(id, providerJobId, metadataPatch = {}) {
+  if (!isUuid(id)) {
+    const error = new Error('Invalid job id');
+    error.statusCode = 400;
+    throw error;
+  }
+  const value = safeText(providerJobId, 240);
+  if (!value) {
+    const error = new Error('Provider job id is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const current = await getGenerationJob(id);
+  if (!current || !['queued', 'running'].includes(current.status)) {
+    const error = new Error('Active job not found');
+    error.statusCode = 409;
+    throw error;
+  }
+  const metadata = {
+    ...safeMetadata(current.metadata),
+    ...safeMetadata(metadataPatch),
+  };
+  const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(id)}&status=in.(queued,running)&select=*`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ provider_job_id: value, metadata }),
   });
   const job = Array.isArray(rows) ? rows[0] : rows;
   if (!job) {
