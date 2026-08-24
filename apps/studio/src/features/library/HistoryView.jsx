@@ -49,7 +49,7 @@ export default function HistoryView({
     setActionBusy(name);
     try {
       const result = await callback?.(selectedItems);
-      if (name === 'delete' && result !== false) setSelected(new Set());
+      if ((name === 'delete' || name === 'collection') && result !== false) setSelected(new Set());
     } finally {
       setActionBusy('');
     }
