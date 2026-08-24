@@ -197,7 +197,7 @@ export default function MediaCard({
   );
 
   return (
-    <article className={`media-card ${history ? 'history-card' : ''} ${selected ? 'selected' : ''} ${selectable ? 'selectable' : ''}`}>
+    <article className={`media-card ${history ? 'gallery-card' : ''} ${selected ? 'selected' : ''} ${selectable ? 'selectable' : ''}`}>
       <div
         ref={frameRef}
         className={`media-frame ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}

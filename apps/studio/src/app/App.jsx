@@ -6,14 +6,14 @@ import MobileTopbar from '../components/MobileTopbar.jsx';
 import MediaCard from '../components/MediaCard.jsx';
 import MediaModal from '../components/MediaModal.jsx';
 import JobsView from '../features/jobs/JobsView.jsx';
-import HistoryView from '../features/library/HistoryView.jsx';
+import GalleryView from '../features/library/GalleryView.jsx';
 import FavoritesView from '../features/library/FavoritesView.jsx';
 import CollectionsView from '../features/library/CollectionsView.jsx';
 import ModelsView from '../features/catalog/ModelsView.jsx';
 import WorkflowsView from '../features/catalog/WorkflowsView.jsx';
 import SettingsView from '../features/settings/SettingsView.jsx';
 
-const HISTORY_PAGE_SIZE = 24;
+const GALLERY_PAGE_SIZE = 24;
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
 
@@ -31,7 +31,7 @@ const samples = [
 ];
 
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
-function toHistoryItem(row) {
+function toGalleryItem(row) {
   const previewUrl = row.thumbnail_url || row.media_url || '';
   return {
     id: row.id,
@@ -129,14 +129,14 @@ export default function App() {
   const [favorites, setFavorites] = useState(new Set());
   const [favoriteItems, setFavoriteItems] = useState([]);
   const [items, setItems] = useState(samples);
-  const [historyItems, setHistoryItems] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyAppending, setHistoryAppending] = useState(false);
-  const [historyError, setHistoryError] = useState('');
-  const [historyKind, setHistoryKind] = useState('all');
-  const [historyModel, setHistoryModel] = useState('all');
-  const [historyModels, setHistoryModels] = useState([]);
-  const [historyPage, setHistoryPage] = useState({ nextOffset: null, hasMore: false });
+  const [galleryItems, setGalleryItems] = useState([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryAppending, setGalleryAppending] = useState(false);
+  const [galleryError, setGalleryError] = useState('');
+  const [galleryKind, setGalleryKind] = useState('all');
+  const [galleryModel, setGalleryModel] = useState('all');
+  const [galleryModels, setGalleryModels] = useState([]);
+  const [galleryPage, setGalleryPage] = useState({ nextOffset: null, hasMore: false });
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
   const [collections, setCollections] = useState([]);
@@ -204,30 +204,30 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [section, jobsFilter]);
 
-  const loadHistory = async ({ append = false, kind = historyKind, model = historyModel } = {}) => {
-    if (append && historyPage.nextOffset == null) return;
-    append ? setHistoryAppending(true) : setHistoryLoading(true);
-    setHistoryError('');
+  const loadGallery = async ({ append = false, kind = galleryKind, model = galleryModel } = {}) => {
+    if (append && galleryPage.nextOffset == null) return;
+    append ? setGalleryAppending(true) : setGalleryLoading(true);
+    setGalleryError('');
     try {
-      const params = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE), offset: String(append ? historyPage.nextOffset : 0) });
+      const params = new URLSearchParams({ limit: String(GALLERY_PAGE_SIZE), offset: String(append ? galleryPage.nextOffset : 0) });
       if (kind === 'image' || kind === 'video') params.set('kind', kind);
       if (model !== 'all') params.set('model', model);
       const response = await fetch(`/api/history?${params.toString()}`, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`History request failed (${response.status})`);
+      if (!response.ok) throw new Error(`Gallery request failed (${response.status})`);
       const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
-      setHistoryItems((current) => append ? [...current, ...nextItems] : nextItems);
+      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
+      setGalleryItems((current) => append ? [...current, ...nextItems] : nextItems);
       setFavorites((current) => {
         const next = new Set(current);
         nextItems.forEach((item) => item.favorite ? next.add(item.id) : next.delete(item.id));
         return next;
       });
-      setHistoryPage({ nextOffset: payload?.page?.nextOffset ?? null, hasMore: Boolean(payload?.page?.hasMore) });
-      if (Array.isArray(payload?.facets?.models)) setHistoryModels(payload.facets.models);
+      setGalleryPage({ nextOffset: payload?.page?.nextOffset ?? null, hasMore: Boolean(payload?.page?.hasMore) });
+      if (Array.isArray(payload?.facets?.models)) setGalleryModels(payload.facets.models);
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Unable to load Gallery.');
+      setGalleryError(err instanceof Error ? err.message : 'Unable to load Gallery.');
     } finally {
-      append ? setHistoryAppending(false) : setHistoryLoading(false);
+      append ? setGalleryAppending(false) : setGalleryLoading(false);
     }
   };
 
@@ -237,7 +237,7 @@ export default function App() {
       const response = await fetch('/api/favorites');
       if (!response.ok) throw new Error(`Favorites request failed (${response.status})`);
       const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
+      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
       setFavoriteItems(nextItems);
       setFavorites(new Set(nextItems.map((item) => item.id)));
     } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load favorites.'); }
@@ -261,7 +261,7 @@ export default function App() {
       const response = await fetch(`/api/collection-items?collectionId=${encodeURIComponent(collection.id)}`);
       if (!response.ok) throw new Error(`Collection request failed (${response.status})`);
       const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toHistoryItem);
+      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
       setCollectionItems(nextItems);
       setFavorites((current) => {
         const next = new Set(current);
@@ -273,10 +273,10 @@ export default function App() {
   };
 
   React.useEffect(() => {
-    if (section === 'Gallery') loadHistory({ append: false, kind: historyKind, model: historyModel });
+    if (section === 'Gallery') loadGallery({ append: false, kind: galleryKind, model: galleryModel });
     if (section === 'Favorites') loadFavorites();
     if (section === 'Collections') { setSelectedCollection(null); setCollectionItems([]); loadCollections(); }
-  }, [section, historyKind, historyModel]);
+  }, [section, galleryKind, galleryModel]);
 
   const addReferences = async (files) => {
     const valid = [];
@@ -351,7 +351,7 @@ export default function App() {
       persisted: true,
     };
     setItems((current) => [item, ...current]);
-    if (section === 'Gallery') loadHistory({ append: false });
+    if (section === 'Gallery') loadGallery({ append: false });
   };
 
   const runLtxVideo = async (videoOptions = {}) => {
@@ -397,7 +397,7 @@ export default function App() {
       frameRate: videoFrameRate,
     };
     setItems((current) => [item, ...current]);
-    if (section === 'Gallery') loadHistory({ append: false });
+    if (section === 'Gallery') loadGallery({ append: false });
   };
 
   const generate = async (generationOptions = {}) => {
@@ -465,7 +465,7 @@ export default function App() {
       const response = await fetch('/api/favorites', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, isFavorite: nextValue }) });
       if (!response.ok) throw new Error('Favorite update failed');
       if (section === 'Favorites') loadFavorites();
-      setHistoryItems((current) => current.map((entry) => entry.id === id ? { ...entry, favorite: nextValue } : entry));
+      setGalleryItems((current) => current.map((entry) => entry.id === id ? { ...entry, favorite: nextValue } : entry));
     } catch {
       setFavorites((current) => { const next = new Set(current); nextValue ? next.delete(id) : next.add(id); return next; });
     }
@@ -580,7 +580,7 @@ export default function App() {
         throw new Error(`Delete failed (${response.status})${detail}`);
       }
       setSelectedMedia((current) => current?.id === item.id ? null : current);
-      setHistoryItems((current) => current.filter((entry) => entry.id !== item.id));
+      setGalleryItems((current) => current.filter((entry) => entry.id !== item.id));
       setFavoriteItems((current) => current.filter((entry) => entry.id !== item.id));
       setCollectionItems((current) => current.filter((entry) => entry.id !== item.id));
       setItems((current) => current.filter((entry) => entry.id !== item.id));
@@ -605,11 +605,11 @@ export default function App() {
         const response = await fetch('/api/favorites', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, isFavorite: true }) });
         if (!response.ok) throw new Error(`Favorite update failed (${response.status})`);
       }));
-      setHistoryItems((current) => current.map((entry) => candidates.some((item) => item.id === entry.id) ? { ...entry, favorite: true } : entry));
+      setGalleryItems((current) => current.map((entry) => candidates.some((item) => item.id === entry.id) ? { ...entry, favorite: true } : entry));
       return true;
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Could not favorite selected media.');
-      await loadHistory({ append: false });
+      await loadGallery({ append: false });
       return false;
     }
   };
@@ -729,7 +729,7 @@ export default function App() {
 
     if (succeededIds.size) {
       setSelectedMedia((current) => current && succeededIds.has(current.id) ? null : current);
-      setHistoryItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
+      setGalleryItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
       setFavoriteItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
       setCollectionItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
       setItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
@@ -785,7 +785,7 @@ export default function App() {
         <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => setSettingsOpen(true)} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
-          : section === 'Gallery' ? <HistoryView items={historyItems} kind={historyKind} model={historyModel} models={historyModels} page={historyPage} loading={historyLoading} appending={historyAppending} error={historyError} onKindChange={setHistoryKind} onModelChange={setHistoryModel} onRefresh={() => loadHistory({ append: false })} onLoadMore={() => loadHistory({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
+          : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
           : section === 'Models' ? <ModelsView />

@@ -85,12 +85,12 @@ try {
 
   await page.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
-  const cards = page.locator('.gallery-grid .history-card');
+  const cards = page.locator('.gallery-grid .gallery-card');
   await cards.nth(5).waitFor({ state: 'visible', timeout: 10_000 });
 
   if (await page.getByRole('button', { name: 'History', exact: true }).count()) throw new Error('Legacy History navigation is still visible');
   if (await cards.count() !== rows.length) throw new Error(`Gallery rendered ${await cards.count()} cards instead of ${rows.length}`);
-  const videoPreviews = page.locator('.history-card video');
+  const videoPreviews = page.locator('.gallery-card video');
   if (await videoPreviews.count() !== 3) throw new Error('Video cards did not render inline video previews');
   for (let index = 0; index < 3; index += 1) {
     const preview = videoPreviews.nth(index);
@@ -103,9 +103,9 @@ try {
   const firstBox = await cards.first().boundingBox();
   if (!firstBox || firstBox.width > 230 || firstBox.width < 175) throw new Error(`Gallery card density is outside the intended range: ${JSON.stringify(firstBox)}`);
 
-  if (await page.locator('.history-card .media-frame[role="button"]').count()) throw new Error('Gallery media frame still uses button-like role semantics');
-  if (await page.locator('.history-card button button').count()) throw new Error('Gallery contains nested button elements');
-  const primaryButtons = page.locator('.history-card .media-frame-primary');
+  if (await page.locator('.gallery-card .media-frame[role="button"]').count()) throw new Error('Gallery media frame still uses button-like role semantics');
+  if (await page.locator('.gallery-card button button').count()) throw new Error('Gallery contains nested button elements');
+  const primaryButtons = page.locator('.gallery-card .media-frame-primary');
   if (await primaryButtons.count() !== rows.length) throw new Error(`Expected one primary media button per card, found ${await primaryButtons.count()}`);
   if ((await primaryButtons.first().evaluate((element) => element.tagName)) !== 'BUTTON') throw new Error('Primary media action is not a native button');
   if (await primaryButtons.first().getAttribute('aria-pressed') !== null) throw new Error('Browse-mode primary media button should not expose selection state');
@@ -176,7 +176,7 @@ try {
   const manager = page.locator('.gallery-manager');
   await manager.waitFor({ state: 'visible' });
   if (await cards.first().locator('.media-actions-overlay').count()) throw new Error('Per-card hover actions remain mounted during Manage mode');
-  const selectionIndicators = page.locator('.history-card .media-select-toggle');
+  const selectionIndicators = page.locator('.gallery-card .media-select-toggle');
   if (await selectionIndicators.count() !== rows.length) throw new Error('Manage mode did not render a selection indicator for every card');
   if (await selectionIndicators.first().evaluate((element) => element.tagName) === 'BUTTON') throw new Error('Selection indicator remains a duplicate interactive button');
   if (await selectionIndicators.first().getAttribute('aria-hidden') !== 'true') throw new Error('Visual selection indicator should be hidden from assistive technology');
@@ -202,7 +202,7 @@ try {
   await mockHistory(reduced);
   await reduced.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await reduced.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
-  const reducedCard = reduced.locator('.gallery-grid .history-card').first();
+  const reducedCard = reduced.locator('.gallery-grid .gallery-card').first();
   const reducedVideo = reducedCard.locator('video');
   await reducedCard.locator('.media-frame').hover();
   await reduced.waitForTimeout(180);
@@ -217,7 +217,7 @@ try {
   await mockHistory(mobile);
   await mobile.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await mobile.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
-  const mobileCards = mobile.locator('.gallery-grid .history-card');
+  const mobileCards = mobile.locator('.gallery-grid .gallery-card');
   await mobileCards.nth(1).waitFor({ state: 'visible', timeout: 10_000 });
   const mobileFirst = await mobileCards.nth(0).boundingBox();
   const mobileSecond = await mobileCards.nth(1).boundingBox();

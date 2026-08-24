@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Download, FolderPlus, Heart, LoaderCircle, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 
-export default function HistoryView({
+export default function GalleryView({
   items,
   kind,
   model,
@@ -60,19 +60,19 @@ export default function HistoryView({
   };
 
   return (
-    <section className="history-view gallery-view">
+    <section className="gallery-view">
       <LibraryHeader
         eyebrow="Library"
         title="Gallery"
         description="Browse, preview, select, and manage your generated media."
         action={<button className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>}
       />
-      <div className="history-toolbar">
-        <div className="history-kind-tabs" role="group" aria-label="Media type filter">
+      <div className="gallery-toolbar">
+        <div className="gallery-kind-tabs" role="group" aria-label="Media type filter">
           {[['all', 'All'], ['image', 'Images'], ['video', 'Videos']].map(([value, label]) => <button key={value} className={kind === value ? 'selected' : ''} onClick={() => onKindChange(value)}>{label}</button>)}
         </div>
         <div className="gallery-toolbar-actions">
-          <label className="history-model-filter"><span>Model</span><select value={model} onChange={(event) => onModelChange(event.target.value)}><option value="all">All models</option>{models.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label>
+          <label className="gallery-model-filter"><span>Model</span><select value={model} onChange={(event) => onModelChange(event.target.value)}><option value="all">All models</option>{models.map((modelName) => <option key={modelName} value={modelName}>{modelName}</option>)}</select></label>
           <button className={`secondary-button gallery-manage-trigger ${managing ? 'active' : ''}`} onClick={() => managing ? finishManaging() : setManaging(true)}>{managing ? <X size={17}/> : <Check size={17}/>} {managing ? 'Done' : 'Manage'}</button>
         </div>
       </div>
@@ -90,21 +90,21 @@ export default function HistoryView({
         </div>
       )}
 
-      {error && <div className="history-state error">{error}</div>}
+      {error && <div className="gallery-state error">{error}</div>}
       {loading && items.length === 0 ? (
-        <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading Gallery…</div>
+        <div className="gallery-state"><LoaderCircle className="spin" size={22}/> Loading Gallery…</div>
       ) : items.length === 0 ? (
-        <div className="history-state">No media matches these filters.</div>
+        <div className="gallery-state">No media matches these filters.</div>
       ) : (
         <>
-          <section className="gallery-grid history-grid">
+          <section className="gallery-grid gallery-grid">
             {items.map((item) => React.cloneElement(renderCard(item, true), {
               selectable: managing,
               selected: selected.has(item.id),
               onSelect: toggle,
             }))}
           </section>
-          {page.hasMore && <div className="history-load-more"><button className="secondary-button" onClick={onLoadMore} disabled={appending}>{appending ? <LoaderCircle className="spin" size={18}/> : <Plus size={18}/>} {appending ? 'Loading…' : 'Load more'}</button></div>}
+          {page.hasMore && <div className="gallery-load-more"><button className="secondary-button" onClick={onLoadMore} disabled={appending}>{appending ? <LoaderCircle className="spin" size={18}/> : <Plus size={18}/>} {appending ? 'Loading…' : 'Load more'}</button></div>}
         </>
       )}
     </section>
