@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import LegacyCreateWorkspace from '../../create-controls.jsx';
 import {
   VideoGenerationProgress,
@@ -29,23 +28,8 @@ export default function CreateWorkspace(props) {
   const [autoAspect, setAutoAspect] = useState(initial.autoAspect);
   const [manualAspect, setManualAspect] = useState(initial.manualAspect);
   const [frameRate, setFrameRate] = useState(initial.frameRate);
-  const [toolbarHost, setToolbarHost] = useState(null);
-  const [composerHost, setComposerHost] = useState(null);
   const referenceInfo = useMemo(() => referenceAspect(references[0]), [references]);
   const effectiveAspect = autoAspect ? referenceInfo.value : manualAspect;
-
-  useEffect(() => {
-    if (mode !== 'Video' && mode !== 'Edit') {
-      setToolbarHost(null);
-      setComposerHost(null);
-      return;
-    }
-    const frame = window.requestAnimationFrame(() => {
-      setToolbarHost(mode === 'Video' ? document.querySelector('.saga-composer.is-video .saga-toolbar-left') : null);
-      setComposerHost(document.querySelector(mode === 'Video' ? '.saga-composer.is-video' : '.saga-composer.is-edit'));
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [mode]);
 
   useEffect(() => {
     try {
@@ -62,26 +46,39 @@ export default function CreateWorkspace(props) {
     videoFrameRate: frameRate,
   }), [onGenerate, effectiveAspect, autoAspect, frameRate]);
 
+  const videoToolbarSlot = mode === 'Video' ? (
+    <VideoOutputControls
+      autoAspect={autoAspect}
+      setAutoAspect={setAutoAspect}
+      manualAspect={manualAspect}
+      setManualAspect={setManualAspect}
+      effectiveAspect={effectiveAspect}
+      referenceInfo={referenceInfo}
+      frameRate={frameRate}
+      setFrameRate={setFrameRate}
+    />
+  ) : null;
+
+  const composerStatusSlot = mode === 'Video' || mode === 'Edit' ? (
+    <VideoGenerationProgress
+      busy={busy}
+      status={jobStatus}
+      workerStatus={workerStatus}
+      activeJob={activeJob}
+      cancelBusy={cancelBusy}
+      onViewJob={onViewJob}
+      onCancelJob={onCancelJob}
+      kind={mode === 'Video' ? 'video' : 'image'}
+    />
+  ) : null;
+
   return (
-    <>
-      <LegacyCreateWorkspace {...props} videoAspect={effectiveAspect} onGenerate={handleGenerate} />
-      {mode === 'Video' && toolbarHost && createPortal(
-        <VideoOutputControls
-          autoAspect={autoAspect}
-          setAutoAspect={setAutoAspect}
-          manualAspect={manualAspect}
-          setManualAspect={setManualAspect}
-          effectiveAspect={effectiveAspect}
-          referenceInfo={referenceInfo}
-          frameRate={frameRate}
-          setFrameRate={setFrameRate}
-        />,
-        toolbarHost,
-      )}
-      {(mode === 'Video' || mode === 'Edit') && composerHost && createPortal(
-        <VideoGenerationProgress busy={busy} status={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} onViewJob={onViewJob} onCancelJob={onCancelJob} kind={mode === 'Video' ? 'video' : 'image'} />,
-        composerHost,
-      )}
-    </>
+    <LegacyCreateWorkspace
+      {...props}
+      videoAspect={effectiveAspect}
+      onGenerate={handleGenerate}
+      videoToolbarSlot={videoToolbarSlot}
+      composerStatusSlot={composerStatusSlot}
+    />
   );
 }
