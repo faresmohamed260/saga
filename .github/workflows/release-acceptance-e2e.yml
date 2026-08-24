@@ -1,0 +1,257 @@
+name: Studio Release Acceptance E2E
+
+on:
+  push:
+    branches:
+      - studio/video-gallery-ux
+    paths:
+      - .github/release-acceptance-e2e
+
+permissions:
+  contents: read
+
+jobs:
+  video-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.SAGA_SUPABASE_API_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SAGA_SUPABASE_SERVICE_ROLE_KEY }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Require live Studio persistence credentials
+        shell: bash
+        run: |
+          missing=0
+          for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not configured as a GitHub Actions secret"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+
+      - name: Verify ffprobe availability
+        run: ffprobe -version | head -1
+
+      - name: Run real Studio video generation end to end
+        working-directory: apps/studio
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE' | tee /tmp/studio-release-acceptance.json
+          import fs from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+          import sharp from 'sharp';
+          import generateHandler from './api/generate.js';
+          import resultHandler from './api/generate/result.js';
+          import historyHandler from './api/history.js';
+          import mediaHandler from './api/media.js';
+          import { supabaseRequest } from './api/_supabase.js';
+
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const marker = `release-acceptance-${process.env.GITHUB_RUN_ID || Date.now()}`;
+          const bucket = String(process.env.R2_BUCKET_NAME || 'saga-studio-media').trim();
+          const s3 = new S3Client({
+            region: 'auto',
+            endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+            credentials: {
+              accessKeyId: process.env.R2_ACCESS_KEY_ID,
+              secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+            },
+            requestChecksumCalculation: 'WHEN_REQUIRED',
+            responseChecksumValidation: 'WHEN_REQUIRED',
+          });
+
+          function jsonResponse() {
+            return {
+              statusCode: 200,
+              headers: {},
+              body: null,
+              setHeader(name, value) { this.headers[String(name).toLowerCase()] = value; },
+              status(code) { this.statusCode = code; return this; },
+              json(value) { this.body = value; return this; },
+            };
+          }
+
+          function streamResponse() {
+            return {
+              statusCode: 200,
+              headers: {},
+              body: null,
+              chunks: [],
+              setHeader(name, value) { this.headers[String(name).toLowerCase()] = String(value); },
+              status(code) { this.statusCode = code; return this; },
+              json(value) { this.body = value; return this; },
+              write(value) { this.chunks.push(Buffer.from(value)); return true; },
+              end(value) { if (value) this.chunks.push(Buffer.from(value)); },
+            };
+          }
+
+          function expect(condition, message) {
+            if (!condition) throw new Error(message);
+          }
+
+          let jobId = null;
+          let row = null;
+          const summary = { marker, requested: { resolution: '1080p', aspectRatio: '16:9', frameRate: 25, durationSeconds: 5, audioEnabled: false } };
+          try {
+            const submitReq = {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: {
+                workflowId: 'ltx25-redgraft-video',
+                prompt: `[${marker}] Calm ocean horizon at sunrise, subtle natural motion, locked camera`,
+                negativePrompt: '',
+                seed: 260824,
+                resolution: '1080p',
+                durationSeconds: 5,
+                audioEnabled: false,
+                aspectRatio: '16:9',
+                frameRate: 25,
+              },
+            };
+            const submitRes = jsonResponse();
+            await generateHandler(submitReq, submitRes);
+            expect(submitRes.statusCode === 202, `Studio submit returned ${submitRes.statusCode}: ${JSON.stringify(submitRes.body)}`);
+            jobId = submitRes.body?.job?.id;
+            expect(jobId, `Studio submit did not return a job id: ${JSON.stringify(submitRes.body)}`);
+            summary.submit = {
+              statusCode: submitRes.statusCode,
+              jobId,
+              workflow: submitRes.body?.workflow,
+              provider: submitRes.body?.provider,
+              ecosystem: submitRes.body?.ecosystem,
+              workerId: submitRes.body?.worker?.workerId || null,
+              workerState: submitRes.body?.worker?.state || null,
+            };
+
+            const deadline = Date.now() + 55 * 60 * 1000;
+            let polls = 0;
+            while (Date.now() < deadline) {
+              polls += 1;
+              const pollRes = jsonResponse();
+              await resultHandler({ method: 'GET', query: { jobId }, headers: {} }, pollRes);
+              if (pollRes.statusCode === 202) {
+                summary.lastWorkerState = pollRes.body?.workerState || null;
+                await sleep(15000);
+                continue;
+              }
+              expect(pollRes.statusCode === 200, `Studio result returned ${pollRes.statusCode}: ${JSON.stringify(pollRes.body)}`);
+              expect(pollRes.body?.status === 'completed' && pollRes.body?.persisted === true, `Studio result was not persisted: ${JSON.stringify(pollRes.body)}`);
+              expect(pollRes.body?.generationId === jobId, `Generation id changed: ${pollRes.body?.generationId} != ${jobId}`);
+              expect(pollRes.body?.mediaUrl, 'Completed result has no mediaUrl');
+              expect(pollRes.body?.thumbnailUrl, 'Completed video has no persisted poster thumbnail');
+              summary.result = { polls, ...pollRes.body };
+              break;
+            }
+            expect(summary.result, 'Studio video generation timed out');
+
+            const rows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(jobId)}&select=*&limit=1`, { method: 'GET' });
+            row = Array.isArray(rows) ? rows[0] : null;
+            expect(row?.status === 'completed', `Persisted row status is ${row?.status}`);
+            expect(row?.kind === 'video', `Persisted row kind is ${row?.kind}`);
+            expect(row?.mime_type === 'video/mp4', `Persisted MIME is ${row?.mime_type}`);
+            expect(row?.r2_key && row?.thumbnail_r2_key, 'Persisted row is missing R2 media/poster keys');
+            expect(row?.metadata?.execution?.resolution === '1080p', 'Persisted execution resolution is not 1080p');
+            expect(row?.metadata?.execution?.aspectRatio === '16:9', 'Persisted execution aspect is not 16:9');
+            expect(Number(row?.metadata?.execution?.frameRate) === 25, 'Persisted execution FPS is not 25');
+            expect(Number(row?.metadata?.execution?.durationSeconds) === 5, 'Persisted execution duration is not 5s');
+            expect(row?.metadata?.execution?.audioEnabled === false, 'Persisted execution audio state is not false');
+
+            const historyRes = jsonResponse();
+            await historyHandler({ method: 'GET', query: { kind: 'video', search: marker, sort: 'newest', limit: '10', offset: '0' } }, historyRes);
+            expect(historyRes.statusCode === 200, `Gallery/history returned ${historyRes.statusCode}: ${JSON.stringify(historyRes.body)}`);
+            const galleryItem = historyRes.body?.items?.find((item) => item.id === jobId);
+            expect(galleryItem, 'Completed generation did not appear in Gallery/history search');
+            expect(galleryItem.thumbnail_url, 'Gallery/history item has no poster thumbnail URL');
+            summary.gallery = { found: true, id: galleryItem.id, mediaUrl: galleryItem.media_url, thumbnailUrl: galleryItem.thumbnail_url };
+
+            const mediaRes = streamResponse();
+            await mediaHandler({ method: 'GET', query: { key: row.r2_key }, headers: {} }, mediaRes);
+            expect(mediaRes.statusCode === 200, `Media API returned ${mediaRes.statusCode}: ${JSON.stringify(mediaRes.body)}`);
+            expect(String(mediaRes.headers['content-type']).startsWith('video/mp4'), `Media API content type is ${mediaRes.headers['content-type']}`);
+            const videoBytes = Buffer.concat(mediaRes.chunks);
+            expect(videoBytes.length > 100000, `Persisted video is unexpectedly small: ${videoBytes.length}`);
+            fs.writeFileSync('/tmp/studio-e2e.mp4', videoBytes);
+
+            const posterRes = streamResponse();
+            await mediaHandler({ method: 'GET', query: { key: row.thumbnail_r2_key }, headers: {} }, posterRes);
+            expect(posterRes.statusCode === 200, `Poster Media API returned ${posterRes.statusCode}: ${JSON.stringify(posterRes.body)}`);
+            expect(String(posterRes.headers['content-type']).startsWith('image/webp'), `Poster content type is ${posterRes.headers['content-type']}`);
+            const posterBytes = Buffer.concat(posterRes.chunks);
+            expect(posterBytes.length > 1000, `Poster is unexpectedly small: ${posterBytes.length}`);
+            fs.writeFileSync('/tmp/studio-e2e-poster.webp', posterBytes);
+            const posterMeta = await sharp(posterBytes).metadata();
+            expect(posterMeta.format === 'webp', `Poster format is ${posterMeta.format}`);
+            expect(posterMeta.width === 512 && posterMeta.height === 288, `Poster dimensions are ${posterMeta.width}x${posterMeta.height}, expected 512x288`);
+
+            const probe = spawnSync('ffprobe', [
+              '-v', 'error',
+              '-show_entries', 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate',
+              '-of', 'json',
+              '/tmp/studio-e2e.mp4',
+            ], { encoding: 'utf8' });
+            expect(probe.status === 0, `ffprobe failed: ${probe.stderr}`);
+            const ffprobe = JSON.parse(probe.stdout);
+            fs.writeFileSync('/tmp/studio-e2e-ffprobe.json', JSON.stringify(ffprobe, null, 2));
+            const video = (ffprobe.streams || []).find((stream) => stream.codec_type === 'video');
+            const audio = (ffprobe.streams || []).find((stream) => stream.codec_type === 'audio');
+            const duration = Number(ffprobe.format?.duration);
+            expect(video?.width === 1920 && video?.height === 1080, `Delivered dimensions are ${video?.width}x${video?.height}, expected 1920x1080`);
+            expect(video?.avg_frame_rate === '25/1', `Delivered frame rate is ${video?.avg_frame_rate}, expected 25/1`);
+            expect(Math.abs(duration - 5) <= 0.01, `Delivered duration is ${duration}, expected 5.00s`);
+            expect(!audio, 'Audio stream exists even though Audio Off was requested');
+
+            summary.delivery = {
+              bytes: videoBytes.length,
+              contentType: mediaRes.headers['content-type'],
+              width: video.width,
+              height: video.height,
+              frameRate: video.avg_frame_rate,
+              duration,
+              audioStreams: 0,
+              poster: { bytes: posterBytes.length, width: posterMeta.width, height: posterMeta.height, format: posterMeta.format },
+            };
+            summary.ready = true;
+            console.log(JSON.stringify(summary, null, 2));
+          } finally {
+            if (row?.r2_key) {
+              try { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: row.r2_key })); } catch (error) { console.error('Acceptance media cleanup failed', error); }
+            }
+            if (row?.thumbnail_r2_key) {
+              try { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: row.thumbnail_r2_key })); } catch (error) { console.error('Acceptance poster cleanup failed', error); }
+            }
+            if (jobId) {
+              try { await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(jobId)}`, { method: 'DELETE' }); } catch (error) { console.error('Acceptance Supabase cleanup failed', error); }
+            }
+          }
+          NODE
+
+      - name: Publish acceptance evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-release-acceptance-${{ github.run_id }}
+          path: |
+            /tmp/studio-release-acceptance.json
+            /tmp/studio-e2e.mp4
+            /tmp/studio-e2e-poster.webp
+            /tmp/studio-e2e-ffprobe.json
+          retention-days: 1
