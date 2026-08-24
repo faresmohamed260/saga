@@ -8,12 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 7 — unified Video Aspect control**
+**Iteration 8 — shared Image/Video AspectPicker**
 
-- Status: `[x]` complete
-- Completed item: **07**
-- Next item: **08 — unify Image and Video aspect selection into one reusable `AspectPicker`**
-- Rule: do not start Item 08 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[~]` in progress
+- Working item: **08**
+- Rule: extract one reusable AspectPicker for Image and Video with shared ratio preview, option labels, keyboard behavior, responsive anchored positioning, and optional Auto/reference provenance; validate GitHub CI/visual previews and professional review before completion.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -27,7 +26,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **05. Replace fallback video-as-thumbnail behavior with stored poster thumbnails.** Completed videos now expose a server-side poster through the Modal gateway; Studio converts it to the standard 512px WebP thumbnail, persists it in R2/Supabase, and Gallery displays the stored poster first with `preload="none"`. **Iteration 5 complete.**
 - [x] **06. Lazy-load Gallery hover video previews.** Poster-backed Gallery videos defer MP4 `src` until an in-view desktop fine-pointer hover or keyboard-focus preview is eligible; leaving intent pauses/detaches the source, reduced-motion and touch stay poster-only, and legacy thumbnail-less rows only attach their metadata fallback while visible. **Iteration 6 complete.**
 - [x] **07. Merge Auto + aspect ratio into one clear Aspect control.** Video now exposes one Aspect picker that combines Auto/manual mode, effective ratio, and reference provenance in a single trigger/menu while preserving keyboard behavior. **Iteration 7 complete.**
-- [ ] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator.
+- [~] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Shared ratio preview, labels, selection behavior, keyboard support, responsive positioning, optional reference-source indicator. **Iteration 8 in progress.**
 - [ ] **09. Standardize resolution terminology and expose actual delivery dimensions.** Prefer `1080p` over `Full HD`; show context such as `1920×1080 at 16:9` or `1080×1920 at 9:16`.
 - [ ] **10. Strengthen the Generate primary action.** Make Generate read clearly as the principal verb/action on desktop while retaining a compact mobile treatment.
 - [ ] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state.
