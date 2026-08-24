@@ -1,15 +1,14 @@
 name: Studio Iteration 9 Start
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [studio/video-gallery-ux]
 
 permissions:
   contents: write
 
 jobs:
   mark-in-progress:
-    if: github.event.pull_request.head.ref == 'studio/video-gallery-ux'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
