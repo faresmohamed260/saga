@@ -262,7 +262,7 @@ try {
   const selectedMode = desktop.locator('.saga-media-toggle button[aria-pressed="true"]');
   await expectText(selectedMode, 'Video', 'Persisted media mode');
   await expectText(desktop.locator('.saga-video-resolution-trigger'), '2K', 'Persisted video resolution');
-  await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(1), '23s', 'Persisted video duration');
+  await expectText(desktop.getByRole('button', { name: 'Video duration 23 seconds', exact: true }), '23s', 'Persisted video duration');
   if (await desktop.locator('.saga-audio-toggle').getAttribute('aria-pressed') !== 'false') throw new Error('Persisted audio state did not remain muted');
 
   // Switch back to Image and verify image + advanced values also persisted.
