@@ -172,6 +172,19 @@ try {
   await page.keyboard.press('Escape');
   await desktopMore.waitFor({ state: 'detached' });
 
+  await primaryButtons.nth(1).click();
+  const mediaModal = page.locator('.media-modal');
+  await mediaModal.waitFor({ state: 'visible' });
+  const details = mediaModal.locator('.media-modal-details');
+  await details.locator('summary').click();
+  await details.getByText('Model', { exact: true }).waitFor({ state: 'visible' });
+  await details.getByText('Seed', { exact: true }).waitFor({ state: 'visible' });
+  if (await cards.nth(1).getByText(/Seed /).count()) throw new Error('Seed leaked back into Gallery card metadata');
+  await page.screenshot({ path: path.join(outputDir, '11d-gallery-media-details.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('11d-gallery-media-details.png');
+  await mediaModal.locator('.media-modal-close').click();
+  await mediaModal.waitFor({ state: 'detached' });
+
   await page.getByRole('button', { name: 'Manage', exact: true }).click();
   const manager = page.locator('.gallery-manager');
   await manager.waitFor({ state: 'visible' });
