@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "deploymentRevision": "worker-identity-v2",
   "ecosystems": [
     {
       "id": "flux2-klein-9b",
