@@ -11,11 +11,11 @@ The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-u
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–29**.
-- Next item: **30 — expand deterministic video delivery-contract tests**.
-- Do not begin Item 30 until the user says **continue**.
+- Completed checklist items: **01–30**.
+- Next item: **none — accepted checklist complete**.
+- Do not begin a new numbered item unless the user explicitly defines or approves new scope.
 - Development/review previews remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 29. The GitHub-only visual harness now covers Create/Video and Gallery at 320, 390, 768, 900, 1024, 1100, 1440, and 1920px, with Manage coverage through the 768–1100 transition range and hard assertions for overflow, containment, overlap, card collapse, and minimum mobile control widths. It caught and drove fixes for a real 1024px Create overflow and 320px Gallery filter collision. Final Studio Visual Preview `32771622937` passed the responsive matrix and all eight approved visual-regression surfaces with zero changed pixels; artifact `9536443571` was downloaded and inspected. Standard validation also passed: Studio CI `32771622957`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922`.
+- Latest completed item is Iteration 30. The normal Studio build now executes the production LTX worker's pure delivery math through AST extraction without importing Modal or requiring GPU generation. The deterministic contract covers 204 resolution/aspect/FPS cases and all 78 supported duration/FPS combinations, including six odd/reference ratios and exact rounding ties. It enforces even delivery dimensions, Studio/runtime parity, <=1px nearest-even aspect quantization, 64-aligned internal dimensions, 32-aligned low-stage dimensions, LTX 8n+1 padding, exact delivered frame/duration math, and canonical 1080p landscape/portrait output. Professional review found and fixed a real Python-bankers-rounding mismatch. Final product/test head `7808b2b001a6b1db3ae56b4067cc63c6817310d2` passed Studio CI `32774404109`, Studio Visual Preview `32774404096`, Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076`; artifact `9537419708` was downloaded and all eight approved visual baselines had zero changed pixels.
 
 ## Non-negotiable process
 
@@ -41,9 +41,21 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is a coherent product direction rather than a prototype. Items 01–29 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, a true screenshot-baseline regression gate, and responsive visual coverage across the full width matrix. Remaining accepted work is expanded deterministic video delivery-contract testing (Item 30).
+The implementation is a coherent product direction rather than a prototype. Items 01–30 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, screenshot-baseline regression, full responsive coverage, and exhaustive deterministic video delivery-contract testing. No accepted checklist item remains.
 
 ## Recent iteration log
+
+### Iteration 30 — deterministic video delivery contract
+
+**Status:** complete; accepted checklist complete.
+
+**Implementation:** expanded `apps/studio/scripts/check-resolution-contract.mjs` so the standard `npm run build` contract AST-extracts and executes the production LTX worker's pure dimension/frame functions without importing Modal or starting a GPU. Coverage is 204 resolution/aspect/FPS cases (four enabled resolutions, 11 supported aspect presets, six odd/reference ratios, 24/25/30 FPS) plus 78 duration/FPS cases covering every 5–30 second duration. Assertions cover even delivery dimensions, exact Studio/runtime parity, one-pixel nearest-even aspect quantization, 64-aligned internal dimensions, 32-aligned half-resolution low-stage dimensions, 8n+1 LTX frame padding, exact delivery frame/duration math, ffmpeg finalizer wiring, and canonical 1080p landscape/portrait dimensions.
+
+**Professional review cycle:** the expanded test initially passed its broad matrix, then review added exact odd-pixel tie cases `481:480` / `480:481`. Those exposed a real cross-language defect: Python `round()` uses bankers rounding while Studio's JavaScript uses half-up `Math.round`, allowing a 2px UI/runtime mismatch. Runtime `_even` now performs explicit positive half-up rounding. The first tie-case run then exposed that a fixed 0.10% aspect threshold was impossible for a one-pixel quantization tie at 480p; rather than inflate the threshold, the contract was corrected to the exact physical rule that the flexible edge may differ from ideal by no more than one pixel, with relative tolerance derived per case.
+
+**Validation:** final product/test head before documentation `7808b2b001a6b1db3ae56b4067cc63c6817310d2`. Studio CI `32774404109` passed and reported `matrixCases: 204`, `durationCases: 78`, worst aspect case `480p 481:480 -> 482×480`, canonical landscape `1920×1080`, and portrait `1080×1920`. Studio Visual Preview `32774404096` passed; artifact `9537419708` was downloaded and `visual-regression-report.json` confirmed zero changed pixels on all eight approved surfaces. Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076` all passed.
+
+**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **The accepted Items 01–30 polish checklist is complete. No new numbered item should begin without explicit user scope.**
 
 ### Iteration 29 — responsive visual coverage
 
@@ -55,7 +67,7 @@ The implementation is a coherent product direction rather than a prototype. Item
 
 **Validation:** final product/visual head before documentation `c2b95923686a338b93eb6aade3b8cfe1cf08a6ca`. Studio Visual Preview `32771622937` passed 20 responsive captures and all eight approved visual-regression surfaces with `0` changed pixels; artifact `9536443571` and `responsive-diagnostics.json` were downloaded and inspected. The final diagnostics recorded no horizontal overflow or page errors; mobile Search widths were 168px at 320 and 174px at 390, both above the 140px contract. Studio CI `32771622957`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922` all passed.
 
-**Professional review:** Item 29 is complete with no remaining item-specific actionable comment. **Item 30 — expand deterministic video delivery-contract tests — is next and remains gated on explicit user approval.**
+**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **Items 01–30 and the accepted polish checklist are complete; no new numbered item should begin without explicit user scope.**
 
 ### Iteration 27 — typography/contrast accessibility
 
@@ -73,4 +85,4 @@ Raised the dense text tiers to a 10/11/12px minimum, strengthened muted/subtle c
 
 **Validation:** final product/visual head before documentation `b390aea21f46225d2a2a8b0a209ac8154a03633b`. Studio Visual Preview `32768394649` passed the regression comparison with `0` changed pixels on all eight gated surfaces; artifact `9535309218` was downloaded and its JSON report inspected. Studio CI `32768394643`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739` all passed.
 
-**Professional review:** Item 29 is complete with no remaining item-specific actionable comment. **Item 30 — expand deterministic video delivery-contract tests — is next and remains gated on explicit user approval.**
+**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **Items 01–30 and the accepted polish checklist are complete; no new numbered item should begin without explicit user scope.**
