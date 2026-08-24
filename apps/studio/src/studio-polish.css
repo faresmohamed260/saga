@@ -96,6 +96,12 @@
   .gallery-toolbar-actions .gallery-sort > span {
     display: none;
   }
+
+  .gallery-toolbar-actions .gallery-sort select {
+    width: 110px;
+    min-width: 0;
+    max-width: 110px;
+  }
 }
 
 
