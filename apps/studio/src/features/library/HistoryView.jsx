@@ -85,7 +85,7 @@ export default function HistoryView({
           <span className="gallery-manager-spacer" />
           <button onClick={() => runBulk('favorite', onBulkFavorite)} disabled={!selected.size || Boolean(actionBusy)}><Heart size={15}/> Favorite</button>
           <button onClick={() => runBulk('collection', onBulkAddToCollection)} disabled={!selected.size || Boolean(actionBusy)}>{actionBusy === 'collection' ? <LoaderCircle className="spin" size={15}/> : <FolderPlus size={15}/>} Add to Collection</button>
-          <button onClick={() => runBulk('download', onBulkDownload)} disabled={!selected.size || Boolean(actionBusy)}><Download size={15}/> Download</button>
+          <button onClick={() => runBulk('download', onBulkDownload)} disabled={!selected.size || Boolean(actionBusy)}>{actionBusy === 'download' ? <LoaderCircle className="spin" size={15}/> : <Download size={15}/>} Download ZIP</button>
           <button className="danger" onClick={() => runBulk('delete', onBulkDelete)} disabled={!selected.size || Boolean(actionBusy)}>{actionBusy === 'delete' ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>} Delete</button>
         </div>
       )}
