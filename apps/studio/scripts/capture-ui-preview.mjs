@@ -204,7 +204,7 @@ try {
   if ((await videoResolutionTrigger.innerText()).includes('Full HD')) throw new Error('Video resolution trigger still uses Full HD terminology');
   const videoResolutionTitle = await videoResolutionTrigger.getAttribute('title') || '';
   if (!/1920×1080 at 16:9/.test(videoResolutionTitle)) throw new Error(`Video resolution trigger does not expose exact delivery context: ${videoResolutionTitle}`);
-  const durationTrigger = videoControls.nth(1);
+  const durationTrigger = desktop.getByRole('button', { name: /10s/, exact: false });
   await videoResolutionTrigger.focus();
   await desktop.keyboard.press('ArrowDown');
   const videoResolutionPicker = desktop.locator('.saga-picker').filter({ has: desktop.getByRole('menu', { name: 'Video resolution' }) });
