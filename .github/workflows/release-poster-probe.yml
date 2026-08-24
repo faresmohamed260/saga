@@ -17,82 +17,15 @@ jobs:
         with:
           ref: studio/video-gallery-ux
           fetch-depth: 0
-      - name: Apply production LTX performance fix
+      - name: Apply production LTX runtime performance fix
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          app = Path('integrations/comfyui/ltx23_app.py')
-          text = app.read_text(encoding='utf-8')
-
-          def once(old, new):
-              global text
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'Expected one match, found {count}: {old[:100]!r}')
-              text = text.replace(old, new, 1)
-
-          once(
-              'GPU_TYPE = os.environ.get("MODAL_LTX25_GPU", "A10")\n',
-              'GPU_CHOICES = [choice.strip() for choice in os.environ.get("MODAL_LTX25_GPU", "L40S,A100-40GB").split(",") if choice.strip()]\n'
-              'GPU_REQUEST: str | list[str] = GPU_CHOICES[0] if len(GPU_CHOICES) == 1 else GPU_CHOICES\n'
-              'GPU_LABEL = ",".join(GPU_CHOICES)\n'
-          )
-          once('    gpu=GPU_TYPE,\n', '    gpu=GPU_REQUEST,\n')
-          once('            "gpu": GPU_TYPE,\n', '            "gpu": GPU_LABEL,\n')
-          once(
-              '            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 A10 runtime")\n',
-              '            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 runtime")\n'
-          )
-
-          old_launch = '''        self.process = subprocess.Popen(\n            [\n                "python",\n                "main.py",\n                "--listen",\n                "127.0.0.1",\n                "--port",\n                "8188",\n                "--lowvram",\n                "--reserve-vram",\n                "2",\n                "--disable-auto-launch",\n                "--preview-method",\n                "none",\n            ],\n            cwd=COMFY_DIR,\n        )\n'''
-          new_launch = '''        launch_command = [\n            "python",\n            "main.py",\n            "--listen",\n            "127.0.0.1",\n            "--port",\n            "8188",\n            "--reserve-vram",\n            "2",\n            "--disable-auto-launch",\n            "--preview-method",\n            "none",\n        ]\n        # A10's 24 GB requires aggressive offloading. Production L40S/A100\n        # workers have 40-48 GB and should use ComfyUI's normal VRAM policy.\n        if any(choice.upper() == "A10" for choice in GPU_CHOICES):\n            launch_command.append("--lowvram")\n        self.process = subprocess.Popen(launch_command, cwd=COMFY_DIR)\n'''
-          once(old_launch, new_launch)
-          once(
-              '        _set_worker_state("generating")\n',
-              '        generation_started = time.perf_counter()\n'
-              '        _set_worker_state("generating", gpu=GPU_LABEL)\n'
-          )
-          once(
-              '        started_at = time.time()\n        client_id = str(uuid.uuid4())\n',
-              '        internal_width, internal_height = _internal_dimensions(resolution, aspect_ratio)\n'
-              '        frame_count = _frame_count(int(duration_seconds), int(frame_rate))\n'
-              '        _log("ltx25_generation_queued", gpu=GPU_LABEL, resolution=resolution, aspect_ratio=aspect_ratio, frame_rate=int(frame_rate), duration_seconds=int(duration_seconds), internal_width=internal_width, internal_height=internal_height, frames=frame_count)\n'
-              '        started_at = time.time()\n'
-              '        client_id = str(uuid.uuid4())\n'
-          )
-          once(
-              '                if status.get("completed") is True:\n                    video_path = _find_new_video(started_at, item)\n',
-              '                if status.get("completed") is True:\n'
-              '                    compute_seconds = round(time.perf_counter() - generation_started, 3)\n'
-              '                    finalize_started = time.perf_counter()\n'
-              '                    video_path = _find_new_video(started_at, item)\n'
-          )
-          once(
-              '                        bytes=final_path.stat().st_size,\n                    )\n',
-              '                        bytes=final_path.stat().st_size,\n'
-              '                        gpu=GPU_LABEL,\n'
-              '                        compute_seconds=compute_seconds,\n'
-              '                        finalize_seconds=round(time.perf_counter() - finalize_started, 3),\n'
-              '                        total_seconds=round(time.perf_counter() - generation_started, 3),\n'
-              '                    )\n'
-          )
-          app.write_text(text, encoding='utf-8')
-
-          for path in [Path('.github/workflows/modal-worker-maintenance.yml'), Path('.github/workflows/modal-worker-provision.yml')]:
-              content = path.read_text(encoding='utf-8')
-              old = '      MODAL_LTX25_GPU: A10\n'
-              if content.count(old) != 1:
-                  raise SystemExit(f'Expected one LTX GPU env in {path}')
-              path.write_text(content.replace(old, '      MODAL_LTX25_GPU: "L40S,A100-40GB"\n', 1), encoding='utf-8')
-          PY
-
+          python scripts/ltx_performance_patch.py
           python -m py_compile integrations/comfyui/ltx23_app.py
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/comfyui/ltx23_app.py .github/workflows/modal-worker-maintenance.yml .github/workflows/modal-worker-provision.yml
+          git add integrations/comfyui/ltx23_app.py
           git commit -m "perf(video): move LTX production off A10 lowvram"
           git push origin HEAD:studio/video-gallery-ux
