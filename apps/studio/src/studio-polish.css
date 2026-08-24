@@ -89,3 +89,7 @@
 .workspace .saga-generation-progress-actions button.danger:hover{background:rgba(150,28,48,.2)}
 .workspace .saga-generation-progress-actions button:disabled{opacity:.55;cursor:wait}
 @media(max-width:760px){.workspace .saga-generation-progress-actions{width:100%}.workspace .saga-generation-progress-actions button{min-height:36px;flex:1 1 120px}}
+
+/* Iteration 13 — keep the bulk collection action readable in the sticky manager. */
+.gallery-manager button{white-space:nowrap}
+@media(max-width:760px){.gallery-manager{overflow-x:auto}.gallery-manager-spacer{min-width:8px}}
