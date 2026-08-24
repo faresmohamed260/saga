@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
 
+# Temporary remote implementation/review workflow. It self-removes after green validation.
 jobs:
   implement-and-review:
     if: github.event.pull_request.head.ref == 'studio/video-gallery-ux'
