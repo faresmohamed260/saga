@@ -1,0 +1,34 @@
+name: Studio Iteration 22 Finalize
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - "scripts/studio_iteration22_finalize.py"
+      - ".github/workflows/studio-iteration22-finalize.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python scripts/studio_iteration22_finalize.py
+      - name: Commit checklist restore
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/studio-ui-polish-checklist.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "docs: complete Iteration 22"
+          git push origin HEAD:studio/video-gallery-ux
