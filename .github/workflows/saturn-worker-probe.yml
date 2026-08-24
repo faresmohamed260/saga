@@ -1,0 +1,109 @@
+name: Saturn Worker Probe
+
+on:
+  push:
+    branches:
+      - experiment/saturn-worker
+    paths:
+      - .github/saturn-worker-probe-trigger
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SATURN_BASE_URL: https://app.community.saturnenterprise.io
+      SATURN_TOKEN: ${{ secrets.SATURN_TOKEN }}
+      SATURN_PROBE_OUTPUT: /tmp/saturn-worker-probe.json
+    steps:
+      - name: Checkout experiment branch
+        uses: actions/checkout@v4
+        with:
+          ref: experiment/saturn-worker
+
+      - name: Require Saturn API token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SATURN_TOKEN:-}" ]; then
+            echo "::error::SATURN_TOKEN is not configured as a repository Actions secret"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Saturn client
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input saturn-client
+
+      - name: Probe Saturn GPU worker support
+        id: saturn_probe
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          python scripts/saturn_worker_probe.py
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish probe evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saturn-worker-probe-${{ github.run_id }}
+          path: /tmp/saturn-worker-probe.json
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Summarize probe
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/saturn-worker-probe.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/saturn-worker-probe.json').read_text())
+          selected = data.get('selected_gpu') or {}
+          print('### Saturn worker probe')
+          print(f"- Outcome: `{data.get('outcome', 'unknown')}`")
+          print(f"- Selected GPU instance: `{selected.get('name', 'none')}`")
+          dep = data.get('deployment') or {}
+          if dep:
+              print(f"- Deployment success: `{dep.get('success')}`")
+              if dep.get('startup_seconds') is not None:
+                  print(f"- Deployment startup: `{dep.get('startup_seconds')}s`")
+              if dep.get('error'):
+                  print(f"- Deployment error: `{dep.get('error')}`")
+          ws = data.get('workspace_fallback') or {}
+          if ws:
+              print(f"- Workspace fallback success: `{ws.get('success')}`")
+              if ws.get('startup_seconds') is not None:
+                  print(f"- Workspace startup: `{ws.get('startup_seconds')}s`")
+              if ws.get('error'):
+                  print(f"- Workspace error: `{ws.get('error')}`")
+          PY
+          fi >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce useful result
+        shell: bash
+        run: |
+          code='${{ steps.saturn_probe.outputs.exit_code }}'
+          if [ -z "$code" ]; then
+            echo "::error::Saturn probe did not produce an exit code"
+            exit 1
+          fi
+          if [ "$code" != "0" ]; then
+            echo "::error::Saturn probe completed with diagnostic exit code $code; inspect artifact"
+            exit "$code"
+          fi
