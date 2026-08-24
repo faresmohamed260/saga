@@ -1,7 +1,7 @@
 import {
   createGenerationJob,
-  setProviderJobId,
   transitionGenerationJob,
+  updateGenerationWorkerAssignment,
 } from './_generation-jobs.js';
 import { submitWorkflow } from './_providers.js';
 import { readSourceObject, isSourceKey } from './_r2.js';
@@ -191,7 +191,17 @@ export default async function handler(req, res) {
       aspectRatio,
       frameRate,
     });
-    const updatedJob = await setProviderJobId(job.id, submitted.providerJobId);
+    const submissionFailures = Array.isArray(submitted.worker?.failedWorkers) ? submitted.worker.failedWorkers : [];
+    const submittedAt = new Date().toISOString();
+    const updatedJob = await updateGenerationWorkerAssignment(job.id, submitted.providerJobId, {
+      assignedWorkerId: submitted.worker?.workerId || null,
+      workerFailoverHistory: submissionFailures.map((failure) => ({
+        fromWorkerId: failure.workerId || null,
+        reason: failure.kind || 'unavailable',
+        errorCode: failure.code || null,
+        at: submittedAt,
+      })),
+    });
 
     return res.status(202).json({
       job: updatedJob,
