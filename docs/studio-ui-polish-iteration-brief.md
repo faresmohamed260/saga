@@ -2,54 +2,46 @@
 
 ## Purpose
 
-This document is the durable handoff and operating brief for the professional UI/UX and implementation polish pass on PR #121 (`studio/video-gallery-ux`). It is intentionally stored in GitHub so a future ChatGPT session can continue without reconstructing the process from chat history.
+This is the durable operating brief for the professional UI/UX and implementation polish pass on PR #121 (`studio/video-gallery-ux`). It exists so a future session can continue without reconstructing the process from chat history.
 
-The **canonical checklist** is stored separately at [`docs/studio-ui-polish-checklist.md`](./studio-ui-polish-checklist.md). That checklist is the single source of truth for item status and iteration state. Every iteration must update it before reporting back to the user. Do not maintain a competing checklist in chat or another file.
+The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-ui-polish-checklist.md). That file is the single source of truth for item status and iteration state. Do not maintain a competing checklist in chat, the PR body, or another document.
 
 ## Current handoff state
 
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–08**.
-- Next item: **09 — standardize resolution terminology and expose actual delivery dimensions**.
-- Do not begin Item 09 until the user says **continue**.
+- Completed checklist items: **01–09**.
+- Next item: **10 — strengthen the Generate primary action**.
+- Do not begin Item 10 until the user says **continue**.
 - Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 8. Final standard Studio Visual Preview run `32676390654` passed on reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`; artifact `9502799506` was professionally reviewed across Image, Video, Edit, mobile Create, and Gallery. Studio CI, Backend Architecture CI, and Required Check Compatibility also passed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.
+- Latest completed item is Iteration 9. Final standard Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed on reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`. Visual artifact `9503419570` was downloaded and all 31 screenshots were professionally reviewed. Video now uses explicit resolution terminology plus aspect-aware delivery dimensions, and disabled Video 4K is no longer advertised. REDGraft Modal validation remains externally blocked because the configured Modal workspace is disabled.
 
 ## Non-negotiable process
 
-1. Work only on the existing feature branch `studio/video-gallery-ux` / PR #121 unless the user explicitly changes the plan.
+1. Work only on `studio/video-gallery-ux` / PR #121 unless the user explicitly changes the plan.
 2. Keep PR #121 **draft, unmerged, and undeployed** until the user explicitly approves merge/deployment.
 3. Use the remote GitHub workflow for implementation and review. Do not depend on Vercel previews during iteration.
-4. Work in numbered iterations. Prefer one checklist item at a time; combine items only when they are technically inseparable.
-5. For each iteration:
-   - read the canonical checklist first;
-   - pick the highest-priority unchecked item;
-   - mark it `[~]` in the repo checklist;
-   - implement it;
-   - add/update deterministic tests where practical;
-   - run GitHub CI and the GitHub Studio Visual Preview workflow;
-   - inspect the generated screenshots/artifacts, not just workflow status;
-   - act as a professional web developer/product UX reviewer and critique the result;
-   - if the visual/professional review finds an issue in the current item, improve it and repeat the review before closing the iteration;
-   - record any newly discovered out-of-scope issue as a new checklist item;
-   - update the canonical checklist and this brief on GitHub;
-   - **stop after the iteration** and report to the user what changed, what the professional review found, the updated checklist, CI status, and visual evidence. Wait for the user to say continue or stop.
-6. Every iteration must provide visual feedback. If the iteration is backend-only, still inspect and provide a current visual-regression screenshot to prove no UI regression, and explicitly state that no deliberate visual change was expected.
-7. Do not call an iteration complete merely because tests pass. The visual artifact must be inspected by the professional reviewer.
-8. Continue the implementation → visual review → professional critique → improvement cycle inside the current checklist item until that item has no remaining actionable comments; then close the iteration and wait for the user.
-9. Favor reusable components, explicit state/data flow, accessibility, performance, and maintainability over one-off CSS/DOM patches.
-10. Do not silently weaken tests to make them pass. If a visual or correctness test exposes a real problem, fix the product.
-11. Before starting a new session or iteration, read this brief and the canonical checklist from the branch so the process cannot drift.
+4. Work in numbered iterations, one checklist item at a time unless items are technically inseparable.
+5. At the start of every iteration, read the canonical checklist first and mark the working item `[~]` in the repo before product implementation.
+6. Implement the item and add/update deterministic tests where practical.
+7. Run GitHub CI plus **Studio Visual Preview**.
+8. Download and inspect the generated screenshots/artifacts, even for backend-focused work.
+9. Act as a professional developer/product UX reviewer after implementation. If the review finds an item-specific problem, fix it and repeat test + visual review within the same iteration until no item-specific actionable comment remains.
+10. If review finds a separate/out-of-scope issue, record it as a checklist item instead of silently expanding scope.
+11. Do not weaken tests simply to make them pass. Fix the product or correct a stale/incorrect assertion while preserving the intended contract.
+12. Update both the canonical checklist and this brief before reporting completion.
+13. **Stop after each completed iteration** and wait for the user to say continue or stop.
+14. Favor reusable components, explicit state/data flow, accessibility, performance, and maintainability over one-off CSS/DOM patches.
+15. Before starting a new session or iteration, reread this file and the canonical checklist from the branch so the process cannot drift.
 
 ## Definition of done for the whole pass
 
-The pass is finished only when all accepted checklist items are complete, current GitHub checks are green or any external infrastructure blocker is explicitly documented, visual-regression screenshots are reviewed at the agreed breakpoints, the professional review produces no further actionable comments, and the user approves ending the iteration cycle.
+The pass is finished only when all accepted checklist items are complete, current GitHub checks are green or external infrastructure blockers are explicitly documented, visual evidence has been reviewed at the agreed breakpoints, the professional review produces no remaining actionable comments, and the user approves ending the iteration cycle.
 
 ## Professional-review baseline
 
-The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes consistent resolution terminology and delivery dimensions, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is a coherent product direction rather than a prototype. Completed work has improved exact video delivery, Gallery action density and touch safety, card semantics/accessibility, custom-picker keyboard behavior, stored video posters, deferred preview loading, unified/shared aspect selection, and resolution terminology/delivery geometry. Remaining high-value work includes stronger Generate/audio affordances, real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
 
 ## Iteration log
 
@@ -57,99 +49,62 @@ The implementation is now a coherent product direction rather than a broken prot
 
 **Status:** complete.
 
-**Implementation:** preserved LTX-required 8n+1 internal frames while enforcing an exact user-facing delivery contract. The first ffmpeg `-t` approach was rejected after the live 25 FPS generated-audio smoke delivered 5.160000 seconds for a requested 5 seconds. The final approach explicitly clamps delivered video frames (`duration_seconds × frame_rate`) and trims/resets audio timestamps.
-
-**Validated results:** 24 FPS muted T2V = 5.000000 s; 25 FPS generated-audio T2V = 5.000000 s with H.264 + AAC; 30 FPS gateway I2V = 5.000000 s. Studio CI, Studio Visual Preview, Backend Architecture CI, Required Check Compatibility, Modal smoke, and live R2/Supabase persistence all passed on the validated product head. Visual inspection found no UI regression.
-
-**Professional review:** duration correctness resolved; no new visual issues introduced.
+Preserved LTX-required 8n+1 internal frames while enforcing exact delivered duration. Final live checks: 24 FPS muted T2V = 5.000000 s; 25 FPS generated-audio T2V = 5.000000 s; 30 FPS gateway I2V = 5.000000 s. Visual inspection found no UI regression.
 
 ### Iteration 2 — Gallery action density and mobile touch safety
 
 **Status:** complete.
 
-**Implementation:** reduced desktop per-card immediate actions from seven to four: Favorite, Download, Open, and More. Reuse, Edit, Add/Remove collection, and Delete moved into the More menu. Mobile shows only Favorite, Open, and More as immediate actions; Download moves into More. Mobile action targets are at least 44px and visible without hover. Delete is separated as destructive in overflow.
+Reduced desktop immediate card actions to Favorite, Download, Open, More; moved secondary/destructive actions into overflow. Mobile uses three immediate controls with >=44px touch targets. First visual review found the mobile More surface clipped by a containing block; that was fixed and revalidated. Final reviewed product head: `2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`.
 
-**Professional review cycle:** the first visual review found that the initial mobile More implementation was clipped by the card/overlay containing block. That implementation was rejected. The containing-block issue was fixed, a second GitHub visual-preview run was inspected, and all overflow actions rendered correctly.
-
-**Validation:** Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on final Iteration 2 product head `2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`.
-
-### Iteration 3 — MediaCard interaction semantics/accessibility
+### Iteration 3 — MediaCard semantics/accessibility
 
 **Status:** complete.
 
-**Implementation:** removed fake button semantics from the structural media frame; added one native full-preview primary button as the first focusable control; Manage selection uses `aria-pressed`; the visible checkbox is decorative/non-interactive; nested button semantics were removed; keyboard focus has a clear 2px indicator; focus reveals secondary card actions.
-
-**Professional review cycle:** the first visual assertion checked an action-overlay transition too early. The product behavior was retained and the test was corrected to observe the completed 160ms transition instead of weakening the UI. Final keyboard-focus, desktop Manage, and mobile Manage screenshots were inspected with no remaining Item 03 comments.
-
-**Validation:** Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility passed on product head `1503d40a1421a81e4c7b169edbfda0affc6e42d9`.
+Replaced fake frame-button semantics with one native full-frame primary action, `aria-pressed` selection, decorative selection indicator, correct focus order, and clear focus treatment. Deterministic desktop/mobile keyboard coverage passed. Final reviewed product head: `1503d40a1421a81e4c7b169edbfda0affc6e42d9`.
 
 ### Iteration 4 — custom-picker keyboard behavior
 
 **Status:** complete.
 
-**Implementation:** added Enter/Space and Arrow opening, roving Arrow focus, Home/End, Enter/Space selection, Escape dismissal, focus restoration, nested Advanced-picker Escape protection, and strong `:focus-visible` states across shared Create pickers and dedicated Video aspect/FPS controls.
-
-**Professional review cycle:** multiple remote runs exposed asynchronous focus races and a nested Escape problem. Those were fixed rather than hidden by timing changes. Dedicated visual evidence (`02b-image-picker-keyboard-focus.png`, `03b-advanced-picker-keyboard-focus.png`, `05f-video-picker-keyboard-focus.png`) was inspected and accepted.
-
-**Validation:** final dedicated GitHub validation run `32669033886` passed build + full visual suite. Product implementation commit `9a09522d1c7dac4eed1fd4d6f4d5f4db78582a0f`. Later PR checks were green except the unrelated REDGraft smoke, which became externally blocked when the configured Modal workspace was disabled.
+Added Enter/Space and Arrow opening, roving focus, Home/End, selection, Escape/focus return, nested Advanced Escape protection, and strong `:focus-visible` states. Multiple remote runs exposed real focus races and nested Escape issues; those were fixed rather than hidden by timing changes. Dedicated success run `32669033886`; implementation commit `9a09522d1c7dac4eed1fd4d6f4d5f4db78582a0f`.
 
 ### Iteration 5 — stored video poster thumbnails
 
 **Status:** complete.
 
-**Implementation:** completed videos now have a stored poster path. The Modal gateway installs ffmpeg and exposes `GET /jobs/{call_id}/poster`, extracting a JPEG frame from the completed MP4. Studio provider polling retrieves video plus poster; poster failure is non-fatal to a valid video. `persistVideoJobResult` converts the poster to the same 512px WebP thumbnail format used by images, stores it in R2, and persists thumbnail URL/key/dimensions and metadata in Supabase. Gallery uses the stored poster and `preload="none"` for poster-backed videos; legacy rows without thumbnails keep the old metadata/seek fallback. True deferred `src` attachment remains Item 06.
-
-**Deterministic coverage:** added `npm run test:poster` and wired it into Studio CI. The contract verifies a 1920×1080 JPEG becomes a 512×288 WebP, provider video/poster retrieval, runtime/gateway contract markers, result plumbing, persistence fields, and Gallery poster-first preload behavior. Gallery visual tests also assert poster URLs and `preload="none"`, and capture `10c-gallery-video-posters.png`.
-
-**Professional review cycle:** the first implementation changed `LTX25Worker.generate()` from raw MP4 bytes to a `{video, poster}` object. This was rejected as an unnecessary compatibility break. The refinement restored the worker's existing `-> bytes` contract and moved poster extraction to the gateway, which keeps existing direct-worker callers intact while avoiding ffmpeg work in Studio/Vercel. The refined deterministic test, build, and full visual suite passed.
-
-**Visual review:** desktop and mobile Gallery screenshots show stored posters fitting the existing dense card layout with no new clipping, sizing, action, or responsive regression. The known blank/dark synthetic image-card artifact is pre-existing and unrelated to poster work.
-
-**Validation:** Required Check Compatibility, Studio CI (including the poster contract), Studio Visual Preview, and Backend Architecture CI passed on reviewed head `44e6f5df0e5e8d97a021078f0d31e21d431a8a81`. The REDGraft live Modal smoke deployed the runtime but failed at the subsequent prefetch invocation because Modal returned `ConflictError: workspace ... is disabled`; runtime/gateway rendering and live poster/R2 persistence therefore could not execute. Treat this as an external validation blocker and rerun live coverage when the workspace is enabled.
-
-**Professional review:** Item 05 has no remaining actionable comments. The next iteration is **Item 06 — lazy-load Gallery hover video previews**, gated on explicit user approval.
+Modal gateway extracts a JPEG poster from completed MP4 output; Studio converts it to a 512px WebP thumbnail, persists it to R2/Supabase, and Gallery uses it first. An initial change to `LTX25Worker.generate()` return type was rejected as a compatibility break; final implementation preserves `-> bytes` and moves poster extraction to the gateway. Added `test:poster`. Final reviewed branch head before docs: `44e6f5df0e5e8d97a021078f0d31e21d431a8a81`. Live Modal poster/R2 verification remained blocked by the disabled workspace.
 
 ### Iteration 6 — lazy/deferred Gallery video previews
 
 **Status:** complete.
 
-**Implementation:** poster-backed Gallery videos now render only their stored poster until an eligible preview is requested. The MP4 `src` is attached only for visible Gallery videos when desktop fine-pointer hover or keyboard focus expresses preview intent; the video is muted, inline, and looping, and is paused/detached when intent or visibility leaves. `IntersectionObserver` gates preview activity, reduced-motion users remain poster-only, and legacy rows without a stored poster only attach their metadata fallback while visible.
-
-**Deterministic coverage:** Gallery Playwright verifies initial `src` absence, keyboard-focus attach/detach, hover activation, reduced-motion suppression, and true touch-emulated suppression (`hasTouch: true`, `isMobile: true`). `test:poster` also guards the deferred-source contract and the final input-modality implementation.
-
-**Professional review cycle:** the first validation run exposed a stale poster-contract assertion that still expected the old preload expression; the contract was updated to match the new deferred behavior. The first professional source review then rejected a `window.innerWidth > 640` gate because narrow desktop windows are not touch devices. The final refinement uses only `(hover: hover) and (pointer: fine)` and validates a genuinely touch-emulated page. The refined visual suite passed and was inspected.
-
-**Visual review:** static poster state, hover-preview state, reduced-motion state, and touch/mobile Gallery all preserve the established grid, action overlays, focus treatment, and mobile action geometry. No new Item 06 visual defect remains.
-
-**Validation:** final refinement run `32671818722` passed source validation, `npm run test:poster`, Studio build, the full Playwright visual suite, and artifact upload (`9501593078`). Product refinement commit `c7ba940865eba1be07c23f2b09b6a78a051c2b92`. No Gallery page errors were recorded. Item 07 is next and remains gated on explicit user approval.
+Poster-backed videos attach MP4 only for eligible visible desktop fine-pointer hover or keyboard focus, then pause/detach when intent leaves. Reduced-motion and touch stay poster-only; legacy thumbnail-less rows keep a visible-only fallback. Source review rejected viewport width as a modality proxy; final implementation uses `(hover: hover) and (pointer: fine)`. Validation run `32671818722`, artifact `9501593078`.
 
 ### Iteration 7 — unified Video Aspect control
 
 **Status:** complete.
 
-**Implementation:** replaced the separate Video Auto toggle plus ratio picker with one Aspect picker. Its trigger communicates automatic/manual mode and the effective ratio directly, including full reference provenance (`Aspect · Auto 4:3 · From reference`). The menu places Auto alongside the manual ratio choices; Auto follows the first reference when present and falls back to 16:9, while any explicit ratio switches to manual mode. Existing persistence and generation payload semantics remain unchanged.
-
-**Deterministic coverage:** the Video-output Playwright suite now rejects any separate Auto button, requires exactly Aspect + FPS extra controls, verifies default Auto selection, keyboard navigation to manual 9:16, returning to Auto through the same menu, reference-derived 4:3 state, 16:9 fallback after reference removal, complete desktop option visibility, mobile trigger containment, and mobile menu viewport containment.
-
-**Professional review cycle:** the first visual review accepted the combined-control direction but rejected two details: `Ref` was too abbreviated for a primary state label, and the new Auto row pushed `21:9 Cinematic` partly behind the desktop menu scroll boundary. The refinement uses the full `From reference` wording and a desktop-only Aspect-menu height that exposes all twelve choices without scrolling while preserving the viewport-safe mobile cap.
-
-**Visual review:** the final desktop trigger/menu, reference-derived state, keyboard-focus state, and 390px mobile state were inspected. The control reads as one coherent setting, reference provenance is explicit, all desktop choices are visible, and mobile layout remains unclipped. No additional Item 07 defect remains.
-
-**Validation:** dedicated refinement run `32673600494` passed source formatting, `npm run test:poster`, Studio build, the full `visual:preview` suite, and artifact upload (`9502051993`). Refined product head `93c4f7005ee651778775fb217892558487c1ede3`. Item 08 is next and remains gated on explicit user approval.
+Removed the separate Video Auto button and combined Auto/manual aspect state plus reference provenance in one Aspect picker. First visual review rejected abbreviated `Ref` provenance and found 21:9 partly hidden; final refinement uses `From reference` and exposes all desktop choices without scrolling. Refinement run `32673600494`, artifact `9502051993`, product head `93c4f7005ee651778775fb217892558487c1ede3`.
 
 ### Iteration 8 — shared Image/Video AspectPicker
 
 **Status:** complete.
 
-**Implementation:** extracted `apps/studio/src/features/create/AspectPicker.jsx` as the reusable aspect-selection surface and canonical aspect-preset source. Image/Create, Edit, and Video now consume the same component. It owns the ratio-shape preview, option labels, menu radio semantics, keyboard navigation/selection, Escape and outside-focus dismissal, focus restoration, and viewport-aware fixed positioning. Video supplies optional Auto/reference state through props; Image uses the same component without an Auto option, while Edit exposes its reference-derived Auto state through the shared trigger.
+Extracted `features/create/AspectPicker.jsx` and made Image, Edit, and Video consume one shared component/preset source. Review cycles fixed focus handoff, a 2px border-box overflow, and truncated default Auto provenance. Final standard Studio Visual Preview `32676390654`, artifact `9502799506`, reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`. Modal prefetch remained externally blocked by the disabled workspace.
 
-**Deterministic coverage:** Create and Video visual scripts assert that both modes use the shared trigger/surface rather than independent implementations. Existing contracts continue to cover Arrow/Home/End navigation, Enter/Space selection, Escape focus return, focus-visible treatment, preview morphing, no unwanted menu scroll, Video Auto/manual transitions, reference inheritance/provenance, and mobile containment.
+### Iteration 9 — resolution terminology and delivery dimensions
 
-**Professional review cycle:** the first remote implementation run (`32675725844`) exposed a focus-handoff race when the shared menu mounted and attempted to focus its selected option; focus management was corrected instead of loosening the test. Refinement run `32675995131` then exposed a real 2px border-box overflow (`366` scroll height vs `364` client height); the menu height calculation was fixed while keeping the no-scroll assertion. Successful run `32676138933` produced the first fully green shared-component artifact (`9502718139`). Visual inspection then found that the default Video Auto provenance text was truncated inside the shared row. The row allocation and copy were refined to keep `16:9 · Follows reference` readable while retaining explicit `From reference` states.
+**Status:** complete.
 
-**Visual review:** Image and Video now visibly use the same two-column picker with the same ratio preview, row density, selected/focused treatment, and complete 1:1–21:9 preset set. Video adds only the configured Auto row, rather than a parallel picker design. Edit's reference-driven Auto trigger is clear, the 390px Video toolbar remains contained, and Gallery/mobile regression screenshots remain stable. No remaining Item 08 visual defect was found.
+**Implementation:** standardized user-facing resolution language and separated friendly preset names from exact delivery geometry. Video now exposes `480p`, `720p`, `1080p`, and `2K`; picker rows, preview, title, and accessible label show aspect-aware delivered dimensions. The shared effective Aspect state drives those dimensions, including reference-derived Auto ratios. Image uses explicit pixel terminology with computed aspect-aware dimensions. Video 4K was removed because the production workflow/runtime does not currently enable it.
 
-**Validation:** final standard Studio Visual Preview run `32676390654` passed on reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`; artifact `9502799506` was inspected and recorded no page errors. Studio CI, Backend Architecture CI, and Required Check Compatibility also passed. REDGraft runtime deployment succeeded but Modal rejected the prefetch call with `ConflictError: workspace ... is disabled`, so that remains an external infrastructure blocker unrelated to this UI refactor.
+**Deterministic coverage:** added `features/create/ResolutionPresets.js` as the shared preset/dimension source and `scripts/check-resolution-contract.mjs` to the normal Studio build. The contract verifies canonical 1080p `1920×1080` landscape, `1080×1920` portrait, and `1440×1080` 4:3 delivery, enabled runtime/workflow resolution parity, and guards against reintroducing `Full HD` or disabled Video 4K. Existing poster/deferred-preview coverage remains green.
 
-**Professional review:** Item 08 is complete with no remaining actionable comments. Item 09 is next and remains gated on explicit user approval.
+**Professional review cycle:** first validation run `32678010842` passed source/build contracts but the visual suite found a stale text expectation after terminology changed. The assertion was corrected while retaining keyboard End/Home/focus behavior. Refinement run `32678135023` then passed the full visual suite; artifact `9503328418` was inspected. A branch-hygiene review also caught validation-generated screenshots and `package-lock.json`; those were removed before final standard validation.
 
+**Visual review:** final artifact `9503419570` from standard Studio Visual Preview `32678441802` was downloaded and all 31 screenshots were inspected. Image resolution rows are explicit and compact. Video pairs `1080p` with `1920×1080` at 16:9 and `1080×1920` at 9:16; picker geometry, keyboard focus, shared Aspect behavior, mobile Create, Edit, Gallery hover/focus/Manage, reduced-motion, and poster states remained stable. No Item 09 visual or responsive defect remained.
+
+**Validation:** reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`. Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed. REDGraft run `32678441765` successfully deployed the runtime but Modal rejected prefetch with `ConflictError: workspace ... is disabled`; this remains the existing external infrastructure blocker unrelated to Item 09.
+
+**Professional review:** Item 09 is complete with no remaining actionable comments. **Item 10 — strengthen the Generate primary action — is next and remains gated on explicit user approval.**
