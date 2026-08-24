@@ -1,0 +1,31 @@
+name: Studio Iteration 9 Cleanup
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# Temporary hygiene step: validation artifacts belong in Actions, not the product branch.
+jobs:
+  cleanup:
+    if: github.event.pull_request.head.ref == 'studio/video-gallery-ux'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+      - name: Remove generated validation outputs from product branch
+        run: |
+          set -euo pipefail
+          git rm -r apps/studio/visual-preview
+          git rm apps/studio/package-lock.json
+          rm .github/workflows/studio-iteration9-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A .github/workflows/studio-iteration9-cleanup.yml
+          git diff --cached --check
+          git commit -m 'chore(studio): remove generated iteration 9 artifacts'
+          git push origin HEAD:studio/video-gallery-ux
