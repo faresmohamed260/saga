@@ -745,8 +745,7 @@ class LTX25Worker:
         }
         return {name: info.get(name) for name in sorted(wanted)}
 
-    @modal.method()
-    def generate(
+    def _generate_impl(
         self,
         prompt: str,
         negative_prompt: str = "",
@@ -833,6 +832,36 @@ class LTX25Worker:
             time.sleep(2)
         _set_worker_state("failed")
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")
+
+
+    @modal.method()
+    def generate(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        seed: int = 42,
+        resolution: str = "480p",
+        duration_seconds: int = 5,
+        audio_enabled: bool = True,
+        aspect_ratio: str = "16:9",
+        frame_rate: int = DEFAULT_FPS,
+        source_image: bytes | None = None,
+    ) -> bytes:
+        try:
+            return self._generate_impl(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                seed=seed,
+                resolution=resolution,
+                duration_seconds=duration_seconds,
+                audio_enabled=audio_enabled,
+                aspect_ratio=aspect_ratio,
+                frame_rate=frame_rate,
+                source_image=source_image,
+            )
+        except Exception:
+            _set_worker_state("failed")
+            raise
 
     @modal.exit()
     def stop(self) -> None:

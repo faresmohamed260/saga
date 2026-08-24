@@ -85,6 +85,10 @@ def web():
         except Exception:
             return {"state": "unknown", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
 
+    def _submit_state():
+        state = str(_state().get("state") or "").strip()
+        return "waking" if state in {"", "sleeping", "unknown"} else state
+
     @api.get("/health")
     async def health():
         return {
@@ -123,8 +127,7 @@ def web():
             )
         try:
             call = _worker_call(images, prompt, negative_prompt, seed, steps, cfg, megapixels)
-            current = _state()
-            return {"status": "queued", "call_id": call.object_id, "reference_count": len(images), "worker_state": current.get("state") or "waking", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+            return {"status": "queued", "call_id": call.object_id, "reference_count": len(images), "worker_state": _submit_state(), "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
         except Exception as exc:  # noqa: BLE001
             print({"event": "flux2_gateway_spawn_failed", "error": repr(exc)}, flush=True)
             status_code, error_code, state, detail = _failure_payload(exc)

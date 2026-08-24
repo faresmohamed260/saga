@@ -67,6 +67,10 @@ def web():
         except Exception:
             return {"state": "unknown", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
 
+    def _submit_state():
+        state = str(_state().get("state") or "").strip()
+        return "waking" if state in {"", "sleeping", "unknown"} else state
+
     def _extract_poster(video: bytes) -> bytes:
         import subprocess
 
@@ -159,7 +163,7 @@ def web():
                 "resolution": resolution,
                 "aspect_ratio": normalized_aspect,
                 "frame_rate": normalized_frame_rate,
-                "worker_state": (_state().get("state") or "waking"),
+                "worker_state": _submit_state(),
                 "worker_id": WORKER_ID,
                 "ecosystem": ECOSYSTEM_ID,
             }
