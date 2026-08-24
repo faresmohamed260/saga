@@ -31,7 +31,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **09. Standardize resolution terminology and expose actual delivery dimensions.** Video uses explicit `480p`/`720p`/`1080p`/`2K` terminology with aspect-aware delivery dimensions; Image uses explicit pixel terminology and computed output dimensions. Unsupported Video 4K is no longer advertised. **Iteration 9 complete.**
 - [x] **10. Strengthen the Generate primary action.** Desktop Image/Video now expose a clear labeled `Generate` CTA and Edit exposes `Edit`, while mobile retains the compact circular arrow action and mode-specific accessible names. **Iteration 10 complete.**
 - [x] **11. Make Audio state explicit and non-color-dependent.** Video keeps the compact speaker button while showing explicit `Audio On`/`Audio Off` text on desktop and `On`/`Off` on mobile, preserves `aria-pressed`, and exposes concise explanatory hover/focus copy. **Iteration 11 complete.**
-- [~] **12. Improve generation lifecycle feedback.** Real worker-backed stages are implemented; this iteration adds View Job, real Cancel, and explicit guidance that edits during a running job apply to the next generation. Pending visual/CI review before completion.
+- [x] **12. Improve generation lifecycle feedback.** Real worker-backed stages, View Job, provider-aware Cancel, cancelled terminal feedback, and explicit guidance that edits during a running job apply to the next generation are implemented and validated. **Iteration 12 complete.**
 - [ ] **13. Add bulk Add to Collection.** Include it in selection mode and use an appropriate collection picker.
 - [ ] **14. Make bulk selection wording precise.** Use `Select visible` unless selection truly spans all matching paginated results.
 - [ ] **15. Improve mobile Manage mode.** Prefer a sticky bottom selection action bar with large touch targets; keep `Done` at the top and minimize vertical clutter.
@@ -155,3 +155,15 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Final visual artifact `9516351275` was downloaded and inspected. Accepted evidence includes `05i-video-audio-on.png`, `05j-video-audio-off.png`, `09b-mobile-video-audio-off.png`, and the wider Video/mobile regression captures. The Audio state is explicit without overpowering Generate, desktop controls remain balanced, mobile stays contained, and no Item-11-specific visual issue remains.
 - [x] REDGraft run `32717092793` deployed the runtime successfully, then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`; gateway/GPU/persistence stages were skipped. This remains the existing external Modal account blocker, not an Item 11 regression.
 - [x] Professional review result for Item 11: complete. No new checklist item required. **Item 12 is next and remains gated on explicit user approval.**
+
+### Iteration 12 — generation lifecycle feedback
+
+- [x] Preserved real worker-backed lifecycle states from the Modal ecosystem fleet, including sleep/wake/load/ready/generating/finalizing plus unavailable, credit-exhausted, failover, completion, failure, and cancellation states.
+- [x] Added `View Job` from the active Create progress surface, routing directly to Jobs & queue without losing the active job record.
+- [x] Added provider-aware `Cancel` from Create using the same `/api/job-actions` cancellation path as Jobs; polling is abortable so user cancellation remains a distinct terminal state instead of becoming a later generic failure.
+- [x] Added explicit running-job guidance: `Changes to settings now apply to your next generation.`
+- [x] Added `check-generation-lifecycle-contract.mjs` to the normal Studio build and expanded Playwright coverage for failover feedback, View Job, cancellation, and settings guidance.
+- [x] Final standard validation on head `4a6a996c0bc4dcbccd98d335b411e88d91db2d21`: Studio CI `32744435239`, Studio Visual Preview `32744435348`, Backend Architecture CI `32744434517`, Modal Worker Inventory `32744435147`, Worker Fleet Live Smoke `32744434530`, and Required Check Compatibility `32744434697` all passed.
+- [x] Final visual artifact `9526513296` was produced successfully by the GitHub-only Playwright preview workflow; no Vercel Preview deployment was used.
+- [x] Professional review result for Item 12: complete. Item 13 is next.
+
