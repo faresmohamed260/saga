@@ -1,33 +1,49 @@
 .workspace .saga-toolbar .saga-audio-toggle {
   position: relative;
-  width: auto;
-  min-width: 88px;
-  height: 34px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 0 10px;
-  border-radius: 11px;
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: .01em;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin-right: 68px;
+  border-radius: 50%;
 }
 
 .workspace .saga-toolbar .saga-audio-toggle::after {
   content: 'Audio On';
+  position: absolute;
+  left: 42px;
+  top: 50%;
+  min-width: 62px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid #303743;
+  border-radius: 9px;
+  background: #151920;
+  color: #dfe3ea;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .01em;
+  line-height: 1;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::after {
   content: 'Audio Off';
+  color: #aeb6c2;
+  background: #12161c;
 }
 
 .workspace .saga-toolbar .saga-audio-toggle::before {
   content: 'Audio on · Generate with sound';
   position: absolute;
-  left: 50%;
+  left: calc(50% + 34px);
   bottom: calc(100% + 8px);
   z-index: 2200;
   padding: 6px 8px;
@@ -63,16 +79,20 @@
 
 @media (max-width: 720px) {
   .workspace .saga-toolbar .saga-audio-toggle {
-    width: auto;
-    min-width: 54px;
+    width: 32px;
+    min-width: 32px;
     height: 32px;
-    flex-basis: auto;
-    gap: 5px;
-    padding: 0 8px;
+    flex-basis: 32px;
+    margin-right: 32px;
   }
 
   .workspace .saga-toolbar .saga-audio-toggle::after {
     content: 'On';
+    left: 36px;
+    min-width: 27px;
+    height: 24px;
+    padding: 0 6px;
+    font-size: 9px;
   }
 
   .workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::after {
