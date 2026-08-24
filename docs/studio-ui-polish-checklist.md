@@ -42,7 +42,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## P2 — product polish and scale
 
-- [ ] **21. Simplify Gallery card information hierarchy.** Preview + max two-line prompt + concise metadata (`1080p · 16:9 · 24fps`). Move seed and implementation details to Details.
+- [~] **21. Simplify Gallery card information hierarchy.** Implementation in validation: Gallery cards now show preview + max two-line prompt + one concise output line (`resolution · aspect · fps`), with model/seed/dimensions/created metadata moved into the media modal’s expandable Details surface.
 - [ ] **22. Replace technical checkpoint/model strings with user-facing names.** Keep exact checkpoint/quantization/workflow metadata in a Details surface.
 - [ ] **23. Add Gallery search and sorting.** Prompt search plus at least Newest/Oldest before adding more niche filters.
 - [ ] **24. Add optional Gallery density modes.** Compact default plus Comfortable/detail-oriented density where useful.
