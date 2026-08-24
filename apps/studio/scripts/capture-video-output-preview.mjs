@@ -191,6 +191,11 @@ try {
   await progress.getByRole('button', { name: 'View Job' }).click();
   await page.waitForURL(/#\/jobs$/);
   await page.getByText('Jobs & queue', { exact: true }).waitFor({ state: 'visible' });
+  // Reloading the SPA preserves the in-flight generation promise, which can keep Create disabled.
+  // Use a fresh page for the independent cancellation scenario instead.
+  await page.close();
+  page = await context.newPage();
+  page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message));
   await page.goto(createUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
   await page.locator('.saga-prompt-shell textarea').fill('A second lifecycle cancellation test');
