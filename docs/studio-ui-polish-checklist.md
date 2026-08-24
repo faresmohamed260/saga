@@ -8,12 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 8 — shared Image/Video AspectPicker**
+**Iteration 9 — resolution terminology and delivery dimensions**
 
-- Status: `[x]` complete
-- Completed item: **08**
-- Next item: **09 — standardize resolution terminology and expose actual delivery dimensions**
-- Rule: do not start Item 09 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[~]` in progress
+- Working item: **09**
+- Rule: standardize user-facing resolution terminology and show aspect-aware delivery dimensions without exposing internal alignment dimensions; validate deterministic contracts, GitHub CI/visual preview, and professional review before completion.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -28,7 +27,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **06. Lazy-load Gallery hover video previews.** Poster-backed Gallery videos defer MP4 `src` until an in-view desktop fine-pointer hover or keyboard-focus preview is eligible; leaving intent pauses/detaches the source, reduced-motion and touch stay poster-only, and legacy thumbnail-less rows only attach their metadata fallback while visible. **Iteration 6 complete.**
 - [x] **07. Merge Auto + aspect ratio into one clear Aspect control.** Video now exposes one Aspect picker that combines Auto/manual mode, effective ratio, and reference provenance in a single trigger/menu while preserving keyboard behavior. **Iteration 7 complete.**
 - [x] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Image, Edit, and Video now use one shared `AspectPicker` and one canonical preset list, with a shared ratio preview, menu layout, keyboard behavior, responsive anchored positioning, and optional Auto/reference provenance. **Iteration 8 complete.**
-- [ ] **09. Standardize resolution terminology and expose actual delivery dimensions.** Prefer `1080p` over `Full HD`; show context such as `1920×1080 at 16:9` or `1080×1920 at 9:16`.
+- [~] **09. Standardize resolution terminology and expose actual delivery dimensions.** Prefer `1080p` over `Full HD`; show context such as `1920×1080 at 16:9` or `1080×1920 at 9:16`. **Iteration 9 in progress.**
 - [ ] **10. Strengthen the Generate primary action.** Make Generate read clearly as the principal verb/action on desktop while retaining a compact mobile treatment.
 - [ ] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state.
 - [ ] **12. Improve generation lifecycle feedback.** Only expose real backend stages, add View Job and Cancel if supported, and clarify that setting edits during a running job apply to the next generation.
@@ -170,4 +169,3 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Final standard Studio Visual Preview run `32676390654` passed on reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`; artifact `9502799506` was inspected across Image, Video, Edit, mobile Create, and Gallery with no remaining Item 08 visual defect.
 - [x] Studio CI, Studio Visual Preview, Backend Architecture CI, and Required Check Compatibility all passed on the reviewed product head. REDGraft runtime deployment succeeded, but Modal again rejected the prefetch invocation because the configured workspace is disabled; this remains an external validation blocker, not an Item 08 regression.
 - [x] Professional review result for Item 08: complete. No new checklist item required. **Item 09 is next and remains gated on user approval.**
-
