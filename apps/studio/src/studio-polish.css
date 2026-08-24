@@ -63,16 +63,16 @@
     min-width: 0;
   }
 
-  .gallery-toolbar-actions .history-model-filter {
+  .gallery-toolbar-actions .gallery-model-filter {
     width: 100%;
     min-width: 0;
   }
 
-  .gallery-toolbar-actions .history-model-filter > span {
+  .gallery-toolbar-actions .gallery-model-filter > span {
     display: none;
   }
 
-  .gallery-toolbar-actions .history-model-filter select {
+  .gallery-toolbar-actions .gallery-model-filter select {
     width: 100%;
     min-width: 0;
     max-width: none;
@@ -89,6 +89,12 @@
     margin-left: 0;
     margin-right: 0;
     box-sizing: border-box;
+  }
+}
+
+@media (max-width: 390px) {
+  .gallery-toolbar-actions .gallery-sort > span {
+    display: none;
   }
 }
 
