@@ -10,9 +10,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 11 — explicit Audio state**
 
-- Status: `[~]` in progress
-- Working item: **11**
-- Rule: make Video Audio state explicit and non-color-dependent with visible On/Off wording, accessible pressed state, and concise explanatory copy; validate deterministic contracts, GitHub CI/visual preview, and professional review before completion.
+- Status: `[x]` complete
+- Completed item: **11**
+- Next item: **12 — improve generation lifecycle feedback**
+- Rule: do not start Item 12 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -29,7 +30,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Image, Edit, and Video use one shared `AspectPicker` and canonical preset list, with shared ratio preview, layout, keyboard behavior, responsive anchored positioning, and optional Auto/reference provenance. **Iteration 8 complete.**
 - [x] **09. Standardize resolution terminology and expose actual delivery dimensions.** Video uses explicit `480p`/`720p`/`1080p`/`2K` terminology with aspect-aware delivery dimensions; Image uses explicit pixel terminology and computed output dimensions. Unsupported Video 4K is no longer advertised. **Iteration 9 complete.**
 - [x] **10. Strengthen the Generate primary action.** Desktop Image/Video now expose a clear labeled `Generate` CTA and Edit exposes `Edit`, while mobile retains the compact circular arrow action and mode-specific accessible names. **Iteration 10 complete.**
-- [~] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state. **Iteration 11 in progress.**
+- [x] **11. Make Audio state explicit and non-color-dependent.** Video keeps the compact speaker button while showing explicit `Audio On`/`Audio Off` text on desktop and `On`/`Off` on mobile, preserves `aria-pressed`, and exposes concise explanatory hover/focus copy. **Iteration 11 complete.**
 - [ ] **12. Improve generation lifecycle feedback.** Only expose real backend stages, add View Job and Cancel if supported, and clarify that setting edits during a running job apply to the next generation.
 - [ ] **13. Add bulk Add to Collection.** Include it in selection mode and use an appropriate collection picker.
 - [ ] **14. Make bulk selection wording precise.** Use `Select visible` unless selection truly spans all matching paginated results.
@@ -63,7 +64,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ### Iteration 2 — Gallery action density and mobile touch safety
 
-- [x] Reduced desktop immediate actions to Favorite, Download, Open, More; moved secondary/destructive actions into overflow.
+- [x] Reduced desktop immediate card actions to Favorite, Download, Open, More; moved secondary/destructive actions into overflow.
 - [x] Mobile uses three immediate controls with >=44px touch targets.
 - [x] First visual review caught a clipped mobile More surface; containing-block behavior was fixed and revalidated.
 - [x] Final reviewed product head: `2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`.
@@ -139,4 +140,18 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Final standard validation on reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`: Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` all passed.
 - [x] Final standard visual artifact `9515300251` was downloaded and inspected across Create/Image, Video, Edit, 390px mobile, and Gallery desktop/mobile regression states. No Item-10-specific visual defect or Gallery regression remained; diagnostics recorded no page errors.
 - [x] REDGraft run `32714238545` deployed the runtime successfully and then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`; downstream GPU smoke/persistence stages were skipped. This is the existing external Modal account blocker, not an Item 10 regression.
-- [x] Professional review result for Item 10: complete. No new checklist item required. **Item 11 is next and remains gated on explicit user approval.**
+- [x] Professional review result for Item 10: complete. No new checklist item required.
+
+### Iteration 11 — explicit Audio state
+
+- [x] Kept the Audio action itself as a compact circular speaker control and added an adjacent textual state badge: `Audio On` / `Audio Off` on desktop and compact `On` / `Off` on 390px mobile.
+- [x] Preserved `aria-pressed` plus action-oriented accessible labels (`Disable audio` / `Enable audio`) and added a 2px keyboard `:focus-visible` ring.
+- [x] Added concise explanatory hover/focus copy: `Audio on · Generate with sound` and `Audio off · Generate without sound`.
+- [x] Added `check-audio-control-contract.mjs` to the normal Studio build and `capture-audio-state-preview.mjs` to Studio Visual Preview, covering explicit text, accessible state, keyboard focus, compact geometry, toolbar containment, On/Off toggling, and desktop/mobile screenshots.
+- [x] Professional review rejected an initial wide-pill implementation because it broke the established compact toolbar geometry; the final design restored the 36px/32px circular button and moved state wording into a separate adjacent badge.
+- [x] Validation also caught two stale/incorrect test assumptions around programmatic `:focus-visible` and tooltip transition timing; the tests were corrected to enter keyboard modality and wait for the real CSS transition without weakening the accessibility contract.
+- [x] Final reviewed product head: `b65d6cb48c100403e6643f00a32b35d9b12f836a`.
+- [x] Final standard Studio CI `32717092869`, Studio Visual Preview `32717093243`, Backend Architecture CI `32717092902`, and Required Check Compatibility `32717092821` all passed.
+- [x] Final visual artifact `9516351275` was downloaded and inspected. Accepted evidence includes `05i-video-audio-on.png`, `05j-video-audio-off.png`, `09b-mobile-video-audio-off.png`, and the wider Video/mobile regression captures. The Audio state is explicit without overpowering Generate, desktop controls remain balanced, mobile stays contained, and no Item-11-specific visual issue remains.
+- [x] REDGraft run `32717092793` deployed the runtime successfully, then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`; gateway/GPU/persistence stages were skipped. This remains the existing external Modal account blocker, not an Item 11 regression.
+- [x] Professional review result for Item 11: complete. No new checklist item required. **Item 12 is next and remains gated on explicit user approval.**
