@@ -949,6 +949,7 @@ export default function CreateWorkspace({
                     className={`saga-control-pill ${durationOpen ? 'active' : ''}`}
                     aria-haspopup="dialog"
                     aria-expanded={durationOpen}
+                    aria-label={`Video duration ${videoDuration} seconds`}
                     onClick={() => {
                       setDurationOpen((current) => !current);
                       setVideoResolutionOpen(false);
