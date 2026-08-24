@@ -32,7 +32,8 @@ export default function GalleryView({
   const { managing, setManaging, selected, setSelected, actionBusy, toggle, finishManaging, runBulk } = useGallerySelection(items);
   const [density, setDensity] = React.useState(() => {
     if (typeof window === 'undefined') return 'compact';
-    return window.localStorage.getItem(DENSITY_STORAGE_KEY) === 'comfortable' ? 'comfortable' : 'compact';
+    try { return window.localStorage.getItem(DENSITY_STORAGE_KEY) === 'comfortable' ? 'comfortable' : 'compact'; }
+    catch { return 'compact'; }
   });
 
   const changeDensity = (nextDensity) => {
