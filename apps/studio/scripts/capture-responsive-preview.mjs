@@ -115,6 +115,18 @@ async function assertContained(locator, label, width, allowance = 1) {
   }
 }
 
+async function assertNoOverlap(first, second, label, width, allowance = 1) {
+  if (!(await first.isVisible().catch(() => false)) || !(await second.isVisible().catch(() => false))) return;
+  const [firstBox, secondBox] = await Promise.all([first.boundingBox(), second.boundingBox()]);
+  if (!firstBox || !secondBox) throw new Error(`${label} at ${width}px could not be measured`);
+  diagnostics.measurements.push({ label, width, type: 'pair', firstBox, secondBox });
+  const overlapX = Math.min(firstBox.x + firstBox.width, secondBox.x + secondBox.width) - Math.max(firstBox.x, secondBox.x);
+  const overlapY = Math.min(firstBox.y + firstBox.height, secondBox.y + secondBox.height) - Math.max(firstBox.y, secondBox.y);
+  if (overlapX > allowance && overlapY > allowance) {
+    throw new Error(`${label} overlaps at ${width}px: ${JSON.stringify({ firstBox, secondBox, overlapX, overlapY })}`);
+  }
+}
+
 async function shot(page, filename) {
   await page.screenshot({ path: path.join(outputDir, filename), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push(filename);
@@ -132,7 +144,6 @@ try {
       isMobile: width <= 390,
     });
     const page = await context.newPage();
-    const label = `${width}px`;
     page.on('console', (message) => {
       if (message.type() === 'error') diagnostics.consoleErrors.push({ width, route: page.url(), text: message.text() });
     });
@@ -158,10 +169,12 @@ try {
     await page.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
     const cards = page.locator('.gallery-grid .gallery-card');
     await cards.nth(5).waitFor({ state: 'visible', timeout: 10_000 });
+    const search = page.getByRole('searchbox', { name: 'Search prompts' });
     await assertNoHorizontalOverflow(page, 'Gallery compact', width);
     await assertContained(page.locator('main.workspace'), 'Gallery workspace', width);
-    await assertContained(page.getByRole('searchbox', { name: 'Search prompts' }), 'Gallery search', width);
+    await assertContained(search, 'Gallery search', width);
     await assertContained(page.locator('.gallery-grid'), 'Gallery grid', width);
+    await assertNoOverlap(search, page.locator('.gallery-sort'), 'Gallery search / sort', width);
     const firstCard = await cards.first().boundingBox();
     if (!firstCard || firstCard.width < 120) throw new Error(`Gallery cards collapse below 120px at ${width}px: ${JSON.stringify(firstCard)}`);
     diagnostics.measurements.push({ label: 'Gallery first card', width, type: 'element', box: firstCard });
