@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "latest",
-    "@aws-sdk/client-s3": "latest",
     "@aws-sdk/s3-request-presigner": "latest",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
