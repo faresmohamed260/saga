@@ -104,6 +104,24 @@
   }
 }
 
+@media (max-width: 340px) {
+  .gallery-toolbar-actions {
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+
+  .gallery-toolbar-actions .gallery-density-control {
+    grid-column: 1 / -1;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gallery-toolbar-actions .gallery-manage-trigger {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
 
 /* Iteration 12 — generation lifecycle actions */
 .workspace .saga-generation-next-note{display:block;margin-top:7px;color:var(--saga-color-text-subtle);font-size:var(--saga-text-xs);line-height:1.4}
@@ -132,4 +150,4 @@
   box-shadow: var(--saga-focus-shadow);
 }
 .app-shell input::placeholder,
-.app-shell textarea::placeholder { color: var(--saga-color-text-subtle); opacity:1; }
+.app-shell textarea::placeholder { color:var(--saga-color-text-subtle); opacity:1; }
