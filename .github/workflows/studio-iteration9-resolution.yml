@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: '22'
       - name: Apply Item 09 product patch
-        run: python apps/studio/scripts/iteration9_resolution_patch.py
+        run: python apps/studio/scripts/iteration9_resolution_refine.py
       - name: Check product diff
         run: git diff --check
       - name: Install Studio dependencies
@@ -67,6 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           rm apps/studio/scripts/iteration9_resolution_patch.py
+          rm apps/studio/scripts/iteration9_resolution_refine.py
           rm .github/workflows/studio-iteration9-resolution.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
