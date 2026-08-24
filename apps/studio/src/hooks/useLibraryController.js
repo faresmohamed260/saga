@@ -12,6 +12,8 @@ export default function useLibraryController({ section, toGalleryItem }) {
   const [galleryError, setGalleryError] = React.useState('');
   const [galleryKind, setGalleryKind] = React.useState('all');
   const [galleryModel, setGalleryModel] = React.useState('all');
+  const [gallerySearch, setGallerySearch] = React.useState('');
+  const [gallerySort, setGallerySort] = React.useState('newest');
   const [galleryModels, setGalleryModels] = React.useState([]);
   const [galleryPage, setGalleryPage] = React.useState({ nextOffset: null, hasMore: false });
   const [libraryLoading, setLibraryLoading] = React.useState(false);
@@ -20,12 +22,12 @@ export default function useLibraryController({ section, toGalleryItem }) {
   const [selectedCollection, setSelectedCollection] = React.useState(null);
   const [collectionItems, setCollectionItems] = React.useState([]);
 
-  const loadGallery = async ({ append = false, kind = galleryKind, model = galleryModel } = {}) => {
+  const loadGallery = async ({ append = false, kind = galleryKind, model = galleryModel, search = gallerySearch, sort = gallerySort } = {}) => {
     if (append && galleryPage.nextOffset == null) return;
     append ? setGalleryAppending(true) : setGalleryLoading(true);
     setGalleryError('');
     try {
-      const payload = await fetchGallery({ limit: GALLERY_PAGE_SIZE, offset: append ? galleryPage.nextOffset : 0, kind, model });
+      const payload = await fetchGallery({ limit: GALLERY_PAGE_SIZE, offset: append ? galleryPage.nextOffset : 0, kind, model, search, sort });
       const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
       setGalleryItems((current) => append ? [...current, ...nextItems] : nextItems);
       setFavorites((current) => {
@@ -76,7 +78,7 @@ export default function useLibraryController({ section, toGalleryItem }) {
     if (section === 'Gallery') loadGallery({ append: false, kind: galleryKind, model: galleryModel });
     if (section === 'Favorites') loadFavorites();
     if (section === 'Collections') { setSelectedCollection(null); setCollectionItems([]); loadCollections(); }
-  }, [section, galleryKind, galleryModel]);
+  }, [section, galleryKind, galleryModel, gallerySearch, gallerySort]);
 
-  return { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems };
+  return { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, gallerySearch, setGallerySearch, gallerySort, setGallerySort, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems };
 }
