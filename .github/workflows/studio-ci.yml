@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   worker-fleet-patch:
@@ -132,3 +133,15 @@ jobs:
           path: modal-worker-inventory.json
           if-no-files-found: error
           retention-days: 7
+
+  provision-observer:
+    if: github.event_name == 'pull_request' && github.head_ref == 'studio/video-gallery-ux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Show latest worker provisioning runs
+        shell: bash
+        run: |
+          gh run list --repo "${{ github.repository }}" --workflow modal-worker-provision.yml --branch studio/video-gallery-ux --limit 5 --json databaseId,status,conclusion,headSha,event,createdAt,updatedAt,url
