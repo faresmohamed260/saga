@@ -1,0 +1,166 @@
+name: Saturn Worker Probe V3
+
+on:
+  push:
+    branches:
+      - experiment/saturn-worker
+    paths:
+      - .github/saturn-worker-probe-v3-trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SATURN_BASE_URL: https://app.community.saturnenterprise.io
+      SATURN_TOKEN: ${{ secrets.SATURN_TOKEN }}
+      SATURN_PROBE_OUTPUT: /tmp/saturn-worker-probe-v3.json
+      SATURN_RESULT_FILE: .github/saturn-worker-probe-result.json
+    steps:
+      - name: Checkout experiment branch
+        uses: actions/checkout@v4
+        with:
+          ref: experiment/saturn-worker
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install current Saturn client
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SATURN_TOKEN:-}" || { echo "::error::SATURN_TOKEN is missing"; exit 1; }
+          python -m pip install --disable-pip-version-check --no-input \
+            'git+https://github.com/saturncloud/saturn-client.git@main'
+
+      - name: Probe community A10G deployment
+        id: saturn_probe
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json
+          import scripts.saturn_worker_probe as probe
+
+          def choose_community_a10g(sizes):
+              eligible = []
+              for size in sizes:
+                  clusters = size.get('clusters') or []
+                  availability = size.get('availability') or []
+                  try:
+                      gpu_count = float(size.get('gpu') or 0)
+                  except (TypeError, ValueError):
+                      gpu_count = 0
+                  if (
+                      'saturn-cluster-community' in clusters
+                      and 'ai_studio' in availability
+                      and not size.get('disabled')
+                      and gpu_count > 0
+                  ):
+                      eligible.append(size)
+
+              for exact in ('g5xlarge', 'g52xlarge'):
+                  for item in eligible:
+                      if str(item.get('name')) == exact:
+                          print('selected community A10G:', json.dumps(item, indent=2, default=str))
+                          return item
+              for item in eligible:
+                  label = f"{item.get('name','')} {item.get('display_name','')}".lower()
+                  if 'a10g' in label or 'a10' in label:
+                      print('selected community A10G fallback:', json.dumps(item, indent=2, default=str))
+                      return item
+              return None
+
+          probe.choose_gpu = choose_community_a10g
+          raise SystemExit(probe.main())
+          PY
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit sanitized probe result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          src = Path(os.environ['SATURN_PROBE_OUTPUT'])
+          dst = Path(os.environ['SATURN_RESULT_FILE'])
+          exit_code = '${{ steps.saturn_probe.outputs.exit_code }}' or 'missing'
+          if src.exists():
+              data = json.loads(src.read_text())
+              selected = data.get('selected_gpu') or {}
+              dep = data.get('deployment') or {}
+              ws = data.get('workspace_fallback') or {}
+              def compact(resource):
+                  if not isinstance(resource, dict):
+                      return resource
+                  final = resource.get('final') or {}
+                  return {
+                      'success': resource.get('success'),
+                      'error': resource.get('error'),
+                      'startup_seconds': resource.get('startup_seconds'),
+                      'timeline': resource.get('timeline'),
+                      'candidate_urls': resource.get('candidate_urls'),
+                      'http_probes': resource.get('http_probes'),
+                      'cleanup': resource.get('cleanup'),
+                      'final_status': ((final.get('state') or {}).get('status') if isinstance(final, dict) else None),
+                      'logs_tail': (resource.get('logs') or '')[-4000:],
+                  }
+              result = {
+                  'run_id': os.environ.get('GITHUB_RUN_ID'),
+                  'commit': os.environ.get('GITHUB_SHA'),
+                  'probe_exit_code': exit_code,
+                  'outcome': data.get('outcome'),
+                  'selected_gpu': {k: selected.get(k) for k in (
+                      'name','display_name','gpu','gpu_type','price_per_hour','clusters','availability','disabled'
+                  )},
+                  'deployment': compact(dep),
+                  'workspace_fallback': compact(ws),
+              }
+          else:
+              result = {
+                  'run_id': os.environ.get('GITHUB_RUN_ID'),
+                  'commit': os.environ.get('GITHUB_SHA'),
+                  'probe_exit_code': exit_code,
+                  'outcome': 'probe_output_missing',
+              }
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          dst.write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result, indent=2))
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$SATURN_RESULT_FILE"
+          if git diff --cached --quiet; then
+            echo "No result change to commit"
+          else
+            git commit -m "ci: record Saturn community GPU probe result"
+            git push origin HEAD:experiment/saturn-worker
+          fi
+
+      - name: Enforce probe result
+        if: always()
+        shell: bash
+        run: |
+          code='${{ steps.saturn_probe.outputs.exit_code }}'
+          if [ -z "$code" ]; then
+            echo "::error::Saturn probe did not produce an exit code"
+            exit 1
+          fi
+          if [ "$code" != "0" ]; then
+            echo "::error::Saturn probe completed with diagnostic exit code $code"
+            exit "$code"
+          fi
