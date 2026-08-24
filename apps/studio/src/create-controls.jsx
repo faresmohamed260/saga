@@ -7,36 +7,14 @@ import {
 } from 'lucide-react';
 import { setEditSizingPreference } from './generation-client.js';
 import { AspectPicker, ASPECT_PRESETS } from './features/create/AspectPicker.jsx';
+import {
+  IMAGE_RESOLUTIONS, VIDEO_RESOLUTIONS, dimensionsForPreset, formatDimensions, videoDeliveryDimensions,
+} from './features/create/ResolutionPresets.js';
 import './create-workspace-v2.css';
 
-export const IMAGE_RESOLUTIONS = [
-  { value: 480, label: 'SD', detail: '480 px' },
-  { value: 720, label: 'HD', detail: '720 px' },
-  { value: 1080, label: 'Full HD', detail: '1080 px' },
-  { value: 2048, label: '2K', detail: '2048 px' },
-  { value: 3840, label: '4K', detail: '3840 px' },
-];
-
-const VIDEO_RESOLUTIONS = [
-  { value: '480p', label: 'SD', detail: '480p', preview: '480', dimensions: '896×512' },
-  { value: '720p', label: 'HD', detail: '720p', preview: '720', dimensions: '1280×704' },
-  { value: '1080p', label: 'Full HD', detail: '1080p', preview: '1080', dimensions: '1920×1088' },
-  { value: '2K', label: '2K', detail: '2048 px', preview: '2048', dimensions: '2048×1152' },
-  { value: '4K', label: '4K', detail: '3840 px', preview: '3840', dimensions: '3840×2176' },
-];
+export { IMAGE_RESOLUTIONS, dimensionsForPreset };
 
 const STORAGE_KEY = 'saga-studio:create-settings:v5';
-
-function round64(value) {
-  return Math.max(64, Math.round(value / 64) * 64);
-}
-
-export function dimensionsForPreset(aspect, longEdge) {
-  const preset = ASPECT_PRESETS.find((item) => item.value === aspect) || ASPECT_PRESETS[0];
-  const ratio = preset.ratio;
-  if (ratio >= 1) return { width: round64(longEdge), height: round64(longEdge / ratio) };
-  return { width: round64(longEdge * ratio), height: round64(longEdge) };
-}
 
 function parseAutoDimensions(detail) {
   const match = String(detail || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
@@ -380,7 +358,7 @@ function ResolutionPicker({
       <div className="saga-picker-preview saga-resolution-preview">
         <div className="saga-resolution-cube">{editAuto ? <Sparkles size={20} /> : previewValue}</div>
         <strong>{editAuto ? 'Auto' : previewOption.label}</strong>
-        <small>{editAuto ? autoInfo?.detail : dimensions ? `${dimensions.width}×${dimensions.height}` : ''}</small>
+        <small>{editAuto ? autoInfo?.detail : dimensions ? `${formatDimensions(dimensions)} at ${aspect}` : ''}</small>
       </div>
       <MorphList
         focusWhen={open}
@@ -394,29 +372,33 @@ function ResolutionPicker({
           setOpen(false);
           anchorRef.current?.focus();
         }}
-        render={(option) => (
-          <>
-            <span className="saga-option-label">{option.label}</span>
-            <span className="saga-option-detail">{option.detail}</span>
-          </>
-        )}
+        render={(option) => {
+          const optionDimensions = dimensionsForPreset(aspect, Number(option.value));
+          return (
+            <>
+              <span className="saga-option-label">{option.label}</span>
+              <span className="saga-option-detail">{formatDimensions(optionDimensions)}</span>
+            </>
+          );
+        }}
       />
     </PickerShell>
   );
 }
 
-function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
+function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue, aspect }) {
   const selectedOption = VIDEO_RESOLUTIONS.find((item) => item.value === value) || VIDEO_RESOLUTIONS[2];
   const [previewValue, setPreviewValue] = useState(selectedOption.value);
   useEffect(() => setPreviewValue(selectedOption.value), [selectedOption.value, open]);
   const previewOption = VIDEO_RESOLUTIONS.find((item) => item.value === previewValue) || selectedOption;
+  const previewDimensions = videoDeliveryDimensions(previewOption.value, aspect);
 
   return (
     <PickerShell open={open} anchorRef={anchorRef} width={390} height={220} className="saga-video-resolution-picker saga-resolution-picker" onClose={() => setOpen(false)}>
       <div className="saga-picker-preview saga-resolution-preview">
-        <div className="saga-resolution-cube">{previewOption.preview}</div>
+        <div className="saga-resolution-cube">{previewOption.label}</div>
         <strong>{previewOption.label}</strong>
-        <small>{previewOption.dimensions}</small>
+        <small>{formatDimensions(previewDimensions)} at {aspect}</small>
       </div>
       <MorphList
         focusWhen={open}
@@ -429,12 +411,15 @@ function VideoResolutionPicker({ open, setOpen, anchorRef, value, setValue }) {
           setOpen(false);
           anchorRef.current?.focus();
         }}
-        render={(option) => (
-          <>
-            <span className="saga-option-label">{option.label}</span>
-            <span className="saga-option-detail">{option.detail}</span>
-          </>
-        )}
+        render={(option) => {
+          const optionDimensions = videoDeliveryDimensions(option.value, aspect);
+          return (
+            <>
+              <span className="saga-option-label">{option.label}</span>
+              <span className="saga-option-detail">{formatDimensions(optionDimensions)}</span>
+            </>
+          );
+        }}
       />
     </PickerShell>
   );
@@ -692,6 +677,7 @@ export default function CreateWorkspace({
   aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
   seed, setSeed, steps, setSteps, cfg, setCfg,
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
+  videoAspect = '16:9',
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -718,6 +704,7 @@ export default function CreateWorkspace({
   const videoOption = VIDEO_RESOLUTIONS.find((item) => item.value === videoResolution) || VIDEO_RESOLUTIONS[2];
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
+  const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
   const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'More creation tools' : 'Imagine worlds';
 
   useEffect(() => {
@@ -886,6 +873,8 @@ export default function CreateWorkspace({
                     className={`saga-control-pill saga-resolution-trigger ${resolutionOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={resolutionOpen}
+                    aria-label={isEdit && editAuto ? `Image resolution Auto, ${autoEditInfo?.detail || 'from reference'}` : `Image resolution ${imageOption.label}, ${formatDimensions(imageDimensions)} at ${aspect}`}
+                    title={isEdit && editAuto ? `Image resolution · Auto · ${autoEditInfo?.detail || 'from reference'}` : `Image resolution · ${imageOption.label} · ${formatDimensions(imageDimensions)} at ${aspect}`}
                     onKeyDown={(event) => {
                       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
                       event.preventDefault();
@@ -931,9 +920,11 @@ export default function CreateWorkspace({
                   <button
                     ref={videoResolutionButtonRef}
                     type="button"
-                    className={`saga-control-pill ${videoResolutionOpen ? 'active' : ''}`}
+                    className={`saga-control-pill saga-video-resolution-trigger ${videoResolutionOpen ? 'active' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={videoResolutionOpen}
+                    aria-label={`Video resolution ${videoOption.label}, ${formatDimensions(videoDimensions)} at ${videoAspect}`}
+                    title={`Video resolution · ${videoOption.label} · ${formatDimensions(videoDimensions)} at ${videoAspect}`}
                     onKeyDown={(event) => {
                       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
                       event.preventDefault();
@@ -1035,6 +1026,7 @@ export default function CreateWorkspace({
           anchorRef={videoResolutionButtonRef}
           value={videoResolution}
           setValue={setVideoResolution}
+          aspect={videoAspect}
         />
         <DurationPicker
           open={durationOpen}

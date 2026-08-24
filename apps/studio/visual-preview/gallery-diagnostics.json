@@ -1,0 +1,18 @@
+{
+  "galleryUrl": "http://127.0.0.1:4173/#/gallery",
+  "generatedAt": "2026-08-24T00:56:04.492Z",
+  "screenshots": [
+    "10-gallery-grid.png",
+    "10c-gallery-video-posters.png",
+    "10b-gallery-keyboard-focus.png",
+    "11c-gallery-video-preview-hover.png",
+    "11-gallery-hover-actions.png",
+    "11b-gallery-more-actions.png",
+    "12-gallery-manager.png",
+    "10d-gallery-reduced-motion.png",
+    "13-gallery-mobile.png",
+    "13b-gallery-mobile-more-actions.png",
+    "14-gallery-mobile-manager.png"
+  ],
+  "pageErrors": []
+}

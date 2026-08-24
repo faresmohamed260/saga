@@ -79,14 +79,14 @@ try {
   await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1000 });
   const focusedRole = await desktop.evaluate(() => document.activeElement?.getAttribute('role'));
   if (focusedRole !== 'menuitemradio') throw new Error(`Resolution picker did not focus selected option: ${focusedRole}`);
-  const expectedImageRows = [['SD', '480 px'], ['HD', '720 px'], ['Full HD', '1080 px'], ['2K', '2048 px'], ['4K', '3840 px']];
+  const expectedImageRows = [['480 px', '512×512'], ['720 px', '704×704'], ['1080 px', '1088×1088'], ['2048 px', '2048×2048'], ['3840 px', '3840×3840']];
   const imageRows = resolutionPicker.getByRole('menuitemradio');
   if (await imageRows.count() !== expectedImageRows.length) throw new Error('Image resolution picker row count is wrong');
   for (let index = 0; index < expectedImageRows.length; index += 1) {
     const [label, detail] = expectedImageRows[index];
     const row = imageRows.nth(index);
     if ((await row.locator('.saga-option-label').innerText()).trim() !== label) throw new Error(`Image label mismatch at ${index}`);
-    if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Image pixel detail mismatch at ${index}`);
+    if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Image delivery detail mismatch at ${index}`);
   }
   const resolutionPreviewBefore = (await resolutionPicker.locator('.saga-resolution-cube').innerText()).trim();
   const resolutionLabelBefore = (await resolutionPicker.locator('.saga-picker-preview strong').innerText()).trim();
@@ -95,13 +95,13 @@ try {
   const resolutionPreviewAfter = (await resolutionPicker.locator('.saga-resolution-cube').innerText()).trim();
   const resolutionLabelAfter = (await resolutionPicker.locator('.saga-picker-preview strong').innerText()).trim();
   if (resolutionPreviewBefore === resolutionPreviewAfter) throw new Error('Resolution preview did not morph with keyboard focus');
-  if (resolutionLabelBefore === resolutionLabelAfter || resolutionLabelAfter !== '2K') throw new Error(`Resolution label did not morph with preview: ${resolutionLabelBefore} -> ${resolutionLabelAfter}`);
+  if (resolutionLabelBefore === resolutionLabelAfter || resolutionLabelAfter !== '2048 px') throw new Error(`Resolution label did not morph with preview: ${resolutionLabelBefore} -> ${resolutionLabelAfter}`);
   await desktop.keyboard.press('End');
-  if (!/4K/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('End did not focus the last resolution option');
+  if (!/3840 px/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('End did not focus the last resolution option');
   await expectStrongFocus(resolutionPicker.getByRole('menuitemradio').last(), 'Resolution End option');
   await shot(desktop, '02-image-resolution-picker.png');
   await desktop.keyboard.press('Home');
-  if (!/SD/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the first resolution option');
+  if (!/480 px/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the first resolution option');
   await desktop.keyboard.press('Escape');
   await expectHidden(resolutionPicker, 'Resolution picker');
   await expectFocused(resolutionTrigger, 'Resolution trigger after Escape');
@@ -136,7 +136,7 @@ try {
 
   // Set image resolution/aspect for persistence verification.
   await resolutionTrigger.click();
-  await resolutionPicker.getByRole('menuitemradio', { name: /2K.*2048 px/i }).click();
+  await resolutionPicker.getByRole('menuitemradio', { name: /2048 px.*2048×2048/i }).click();
   await aspectTrigger.click();
   await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
 
@@ -183,23 +183,25 @@ try {
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
   await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
   const videoControls = desktop.locator('.saga-toolbar-left .saga-control-pill');
-  await expectText(videoControls.nth(0), 'Full HD', 'Video resolution trigger label');
-  if ((await videoControls.nth(0).innerText()).includes('1080p')) throw new Error('Video resolution trigger still exposes the raw resolution value');
-  const videoResolutionTrigger = videoControls.nth(0);
+  const videoResolutionTrigger = desktop.locator('.saga-video-resolution-trigger');
+  await expectText(videoResolutionTrigger, '1080p', 'Video resolution trigger label');
+  if ((await videoResolutionTrigger.innerText()).includes('Full HD')) throw new Error('Video resolution trigger still uses Full HD terminology');
+  const videoResolutionTitle = await videoResolutionTrigger.getAttribute('title') || '';
+  if (!/1920×1080 at 16:9/.test(videoResolutionTitle)) throw new Error(`Video resolution trigger does not expose exact delivery context: ${videoResolutionTitle}`);
   const durationTrigger = videoControls.nth(1);
   await videoResolutionTrigger.focus();
   await desktop.keyboard.press('ArrowDown');
   const videoResolutionPicker = desktop.locator('.saga-picker').filter({ has: desktop.getByRole('menu', { name: 'Video resolution' }) });
   await videoResolutionPicker.waitFor({ state: 'visible' });
   await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
-  const expectedVideoRows = [['SD', '480p'], ['HD', '720p'], ['Full HD', '1080p'], ['2K', '2048 px'], ['4K', '3840 px']];
+  const expectedVideoRows = [['480p', '854×480'], ['720p', '1280×720'], ['1080p', '1920×1080'], ['2K', '2048×1152']];
   const videoRows = videoResolutionPicker.getByRole('menuitemradio');
   if (await videoRows.count() !== expectedVideoRows.length) throw new Error('Video resolution picker row count is wrong');
   for (let index = 0; index < expectedVideoRows.length; index += 1) {
     const [label, detail] = expectedVideoRows[index];
     const row = videoRows.nth(index);
     if ((await row.locator('.saga-option-label').innerText()).trim() !== label) throw new Error(`Video label mismatch at ${index}`);
-    if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Video pixel detail mismatch at ${index}`);
+    if ((await row.locator('.saga-option-detail').innerText()).trim() !== detail) throw new Error(`Video delivery detail mismatch at ${index}`);
   }
   const videoList = videoResolutionPicker.locator('.saga-morph-list');
   const videoScroll = await videoList.evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
@@ -207,12 +209,14 @@ try {
   const videoPreview = videoResolutionPicker.locator('.saga-picker-preview');
   if (await videoPreview.count() !== 1) throw new Error('Video resolution picker is missing the shared preview panel');
   const videoPreviewLabelBefore = (await videoPreview.locator('strong').innerText()).trim();
-  await videoResolutionPicker.getByRole('menuitemradio', { name: /2K.*2048 px/i }).hover();
+  await videoResolutionPicker.getByRole('menuitemradio', { name: /2K.*2048×1152/i }).hover();
   await desktop.waitForTimeout(180);
   const videoPreviewLabelAfter = (await videoPreview.locator('strong').innerText()).trim();
   if (videoPreviewLabelBefore === videoPreviewLabelAfter || videoPreviewLabelAfter !== '2K') throw new Error(`Video resolution preview did not morph: ${videoPreviewLabelBefore} -> ${videoPreviewLabelAfter}`);
+  if ((await videoPreview.locator('small').innerText()).trim() !== '2048×1152 at 16:9') throw new Error(`Video preview does not expose delivery dimensions + aspect: ${await videoPreview.locator('small').innerText()}`);
+  if (await videoResolutionPicker.getByRole('menuitemradio', { name: /4K/i }).count()) throw new Error('Video picker advertises unsupported 4K output');
   await shot(desktop, '04-video-resolution-picker.png');
-  await videoResolutionPicker.getByRole('menuitemradio', { name: /4K.*3840 px/i }).click();
+  await videoResolutionPicker.getByRole('menuitemradio', { name: /2K.*2048×1152/i }).click();
   await expectFocused(videoResolutionTrigger, 'Video resolution trigger after selection');
 
   await durationTrigger.focus();
@@ -241,14 +245,15 @@ try {
   await desktop.waitForTimeout(250);
   const selectedMode = desktop.locator('.saga-media-toggle button[aria-pressed="true"]');
   await expectText(selectedMode, 'Video', 'Persisted media mode');
-  await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(0), '4K', 'Persisted video resolution');
+  await expectText(desktop.locator('.saga-video-resolution-trigger'), '2K', 'Persisted video resolution');
   await expectText(desktop.locator('.saga-toolbar-left .saga-control-pill').nth(1), '23s', 'Persisted video duration');
   if (await desktop.locator('.saga-audio-toggle').getAttribute('aria-pressed') !== 'false') throw new Error('Persisted audio state did not remain muted');
 
   // Switch back to Image and verify image + advanced values also persisted.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
-  await expectText(desktop.locator('.saga-resolution-trigger'), '2K', 'Persisted image resolution');
-  if ((await desktop.locator('.saga-resolution-trigger').innerText()).includes('2048')) throw new Error('Image resolution trigger still exposes the raw resolution value');
+  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');
+  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';
+  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);
   await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });

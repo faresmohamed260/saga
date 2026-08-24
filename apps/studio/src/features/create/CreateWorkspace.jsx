@@ -64,7 +64,7 @@ export default function CreateWorkspace(props) {
 
   return (
     <>
-      <LegacyCreateWorkspace {...props} onGenerate={handleGenerate} />
+      <LegacyCreateWorkspace {...props} videoAspect={effectiveAspect} onGenerate={handleGenerate} />
       {mode === 'Video' && toolbarHost && createPortal(
         <VideoOutputControls
           autoAspect={autoAspect}

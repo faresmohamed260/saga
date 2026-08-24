@@ -1,0 +1,34 @@
+{
+  "baseUrl": "http://127.0.0.1:4173/#/create",
+  "generatedAt": "2026-08-24T00:55:52.766Z",
+  "screenshots": [
+    "01-create-image-centered.png",
+    "02-image-resolution-picker.png",
+    "02b-image-picker-keyboard-focus.png",
+    "02-image-aspect-picker.png",
+    "03b-advanced-picker-keyboard-focus.png",
+    "03-advanced-custom-dropdown.png",
+    "04-video-resolution-picker.png",
+    "05-video-controls.png",
+    "06-edit-inline-reference-and-auto.png",
+    "06b-reference-removal-cleanup.png",
+    "07-more-sidebar.png",
+    "08-output-wall-hover.png",
+    "09-mobile-create.png"
+  ],
+  "consoleErrors": [
+    {
+      "label": "desktop",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "label": "desktop",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "label": "mobile",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "pageErrors": []
+}

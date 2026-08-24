@@ -48,6 +48,10 @@ try {
   if (await pickers.count() !== 2) throw new Error(`Video output controls should expose Aspect + FPS only, found ${await pickers.count()}`);
   const aspect = pickers.nth(0);
   const fps = pickers.nth(1);
+  const resolution = page.locator('.saga-video-resolution-trigger');
+  await resolution.waitFor({ state: 'visible' });
+  if ((await resolution.innerText()).trim() !== '1080p') throw new Error(`Video resolution trigger should use 1080p terminology: ${await resolution.innerText()}`);
+  if (!/1920×1080 at 16:9/.test(await resolution.getAttribute('title') || '')) throw new Error(`Default Video resolution context is not exact: ${await resolution.getAttribute('title')}`);
   if (await aspect.getAttribute('data-shared-aspect-picker') !== 'true') throw new Error('Video mode is not using the shared AspectPicker trigger');
   if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Unified Aspect control does not show default Auto 16:9: ${await aspect.innerText()}`);
   if (!/Follows an attached reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Default Aspect tooltip does not explain Auto behavior: ${await aspect.getAttribute('title')}`);
@@ -73,6 +77,16 @@ try {
   await page.keyboard.press('Enter');
   if (/Auto/.test(await aspect.innerText())) throw new Error(`Choosing a manual aspect did not leave Auto mode: ${await aspect.innerText()}`);
   if (!/Aspect\s*·\s*9:16/.test(await aspect.innerText())) throw new Error(`Manual video aspect did not update to 9:16: ${await aspect.innerText()}`);
+  if (!/1080×1920 at 9:16/.test(await resolution.getAttribute('title') || '')) throw new Error(`Portrait resolution context did not follow Aspect: ${await resolution.getAttribute('title')}`);
+  await resolution.click();
+  const resolutionMenu = page.getByRole('menu', { name: 'Video resolution' });
+  await resolutionMenu.waitFor({ state: 'visible' });
+  const resolutionSurface = page.locator('.saga-video-resolution-picker');
+  if ((await resolutionSurface.locator('.saga-picker-preview small').innerText()).trim() !== '1080×1920 at 9:16') throw new Error(`Portrait delivery preview is incorrect: ${await resolutionSurface.locator('.saga-picker-preview small').innerText()}`);
+  if (await resolutionMenu.getByRole('menuitemradio', { name: /4K/i }).count()) throw new Error('Video resolution menu exposes disabled 4K');
+  await page.screenshot({ path: path.join(outputDir, '05h-video-resolution-portrait.png'), fullPage: true, animations: 'disabled' });
+  diagnostics.screenshots.push('05h-video-resolution-portrait.png');
+  await page.keyboard.press('Escape');
 
   await fps.focus();
   await page.keyboard.press('Space');
@@ -114,12 +128,14 @@ try {
   await page.keyboard.press('Enter');
   if (!/Aspect\s*·\s*Auto\s+4:3\s*·\s*From reference/.test(await aspect.innerText())) throw new Error(`Auto aspect did not visibly expose reference provenance: ${await aspect.innerText()}`);
   if (!/From reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Reference provenance is not exposed by the unified Aspect control: ${await aspect.getAttribute('title')}`);
+  if (!/1440×1080 at 4:3/.test(await resolution.getAttribute('title') || '')) throw new Error(`Reference-derived resolution context is incorrect: ${await resolution.getAttribute('title')}`);
   await page.screenshot({ path: path.join(outputDir, '05d-video-auto-reference-aspect.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05d-video-auto-reference-aspect.png');
 
   await page.locator('.saga-reference-chip .saga-reference-remove').click();
   await page.locator('.saga-reference-chip').waitFor({ state: 'detached', timeout: 3000 });
   if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Auto aspect did not fall back to 16:9 after removing the reference: ${await aspect.innerText()}`);
+  if (!/1920×1080 at 16:9/.test(await resolution.getAttribute('title') || '')) throw new Error(`Resolution context did not return to 16:9 after reference removal: ${await resolution.getAttribute('title')}`);
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark', hasTouch: true, isMobile: true });
   mobile.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
@@ -130,6 +146,9 @@ try {
   await mobileExtras.waitFor({ state: 'visible', timeout: 3000 });
   if (await mobileExtras.locator('.saga-auto-toggle').count()) throw new Error('Mobile Video still exposes a separate Auto aspect button');
   const mobileAspect = mobileExtras.locator('.saga-control-pill').first();
+  const mobileResolution = mobile.locator('.saga-video-resolution-trigger');
+  if ((await mobileResolution.innerText()).trim() !== '1080p') throw new Error(`Mobile Video resolution terminology is inconsistent: ${await mobileResolution.innerText()}`);
+  if (!/1920×1080 at 16:9/.test(await mobileResolution.getAttribute('title') || '')) throw new Error(`Mobile Video resolution context is incomplete: ${await mobileResolution.getAttribute('title')}`);
   if (!/Aspect\s*·\s*Auto\s+16:9/.test(await mobileAspect.innerText())) throw new Error(`Mobile unified Aspect state is unclear: ${await mobileAspect.innerText()}`);
   const mobileAspectBox = await mobileAspect.boundingBox();
   if (!mobileAspectBox || mobileAspectBox.x < 0 || mobileAspectBox.x + mobileAspectBox.width > 390) throw new Error(`Mobile Aspect control is clipped: ${JSON.stringify(mobileAspectBox)}`);
