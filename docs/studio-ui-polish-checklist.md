@@ -8,12 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 9 — resolution terminology and delivery dimensions**
+**Iteration 10 — strengthen the Generate primary action**
 
-- Status: `[x]` complete
-- Completed item: **09**
-- Next item: **10 — strengthen the Generate primary action**
-- Rule: do not start Item 10 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[~]` in progress
+- Working item: **10**
+- Rule: make Generate clearly read as the principal desktop action while keeping an appropriate compact mobile treatment; validate deterministic contracts, GitHub CI/visual preview, and professional review before completion.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -29,7 +28,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **07. Merge Auto + aspect ratio into one clear Aspect control.** Video exposes one Aspect picker that combines Auto/manual mode, effective ratio, and reference provenance while preserving keyboard behavior. **Iteration 7 complete.**
 - [x] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Image, Edit, and Video use one shared `AspectPicker` and canonical preset list, with shared ratio preview, layout, keyboard behavior, responsive anchored positioning, and optional Auto/reference provenance. **Iteration 8 complete.**
 - [x] **09. Standardize resolution terminology and expose actual delivery dimensions.** Video uses explicit `480p`/`720p`/`1080p`/`2K` terminology with aspect-aware delivery dimensions; Image uses explicit pixel terminology and computed output dimensions. Unsupported Video 4K is no longer advertised. **Iteration 9 complete.**
-- [ ] **10. Strengthen the Generate primary action.** Make Generate read clearly as the principal verb/action on desktop while retaining a compact mobile treatment.
+- [~] **10. Strengthen the Generate primary action.** Make Generate read clearly as the principal verb/action on desktop while retaining a compact mobile treatment. **Iteration 10 in progress.**
 - [ ] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state.
 - [ ] **12. Improve generation lifecycle feedback.** Only expose real backend stages, add View Job and Cancel if supported, and clarify that setting edits during a running job apply to the next generation.
 - [ ] **13. Add bulk Add to Collection.** Include it in selection mode and use an appropriate collection picker.
