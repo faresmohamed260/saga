@@ -34,6 +34,25 @@ async function expectFocusRing(locator, label) {
   }
 }
 
+async function expectCircularButton(locator, label, maxSize) {
+  const box = await locator.boundingBox();
+  if (!box || Math.abs(box.width - box.height) > 1 || box.width > maxSize) {
+    throw new Error(`${label} should remain compact and circular: ${JSON.stringify(box)}`);
+  }
+  return box;
+}
+
+async function expectToolbarContained(page, label) {
+  const layout = await page.locator('.saga-toolbar').evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    rect: element.getBoundingClientRect().toJSON(),
+  }));
+  if (layout.scrollWidth > layout.clientWidth + 1) {
+    throw new Error(`${label} toolbar overflows horizontally: ${JSON.stringify(layout)}`);
+  }
+}
+
 const browser = await chromium.launch({ headless: true });
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -45,8 +64,10 @@ try {
   if (await audio.getAttribute('aria-label') !== 'Disable audio') throw new Error('Audio On accessible action label is wrong');
   if (await audio.getAttribute('title') !== 'Audio enabled') throw new Error('Audio On native tooltip copy is wrong');
   if (await pseudoContent(audio, '::after') !== 'Audio On') throw new Error('Desktop Audio On text is not visible');
-  const desktopBox = await audio.boundingBox();
-  if (!desktopBox || desktopBox.width < 80 || desktopBox.height < 32) throw new Error(`Desktop Audio control is not a clear pill: ${JSON.stringify(desktopBox)}`);
+  await expectCircularButton(audio, 'Desktop Audio button', 38);
+  const desktopMargin = Number.parseFloat(await audio.evaluate((element) => getComputedStyle(element).marginRight));
+  if (desktopMargin < 60) throw new Error(`Desktop Audio control does not reserve enough room for its explicit state badge: ${desktopMargin}`);
+  await expectToolbarContained(desktop, 'Desktop Video');
 
   await audio.focus();
   await expectFocusRing(audio, 'Audio control');
@@ -70,11 +91,10 @@ try {
   const mobileAudio = mobile.locator('.saga-audio-toggle');
   await mobileAudio.waitFor({ state: 'visible' });
   if (await pseudoContent(mobileAudio, '::after') !== 'On') throw new Error('Mobile Audio On state is not compact and explicit');
-  const mobileBox = await mobileAudio.boundingBox();
-  const toolbarBox = await mobile.locator('.saga-toolbar').boundingBox();
-  if (!mobileBox || !toolbarBox) throw new Error('Could not measure mobile Audio control');
-  if (mobileBox.width < 50 || mobileBox.width > 72 || mobileBox.height < 32) throw new Error(`Mobile Audio pill is outside compact target geometry: ${JSON.stringify(mobileBox)}`);
-  if (mobileBox.x < toolbarBox.x || mobileBox.x + mobileBox.width > toolbarBox.x + toolbarBox.width + 1) throw new Error('Mobile Audio control overflows the toolbar');
+  await expectCircularButton(mobileAudio, 'Mobile Audio button', 34);
+  const mobileMargin = Number.parseFloat(await mobileAudio.evaluate((element) => getComputedStyle(element).marginRight));
+  if (mobileMargin < 28 || mobileMargin > 40) throw new Error(`Mobile Audio state badge spacing is outside the intended compact range: ${mobileMargin}`);
+  await expectToolbarContained(mobile, 'Mobile Video');
   await mobileAudio.click();
   if (await mobileAudio.getAttribute('aria-pressed') !== 'false' || await pseudoContent(mobileAudio, '::after') !== 'Off') {
     throw new Error('Mobile Audio Off state is not explicit after toggle');
