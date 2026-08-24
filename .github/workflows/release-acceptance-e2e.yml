@@ -47,8 +47,13 @@ jobs:
         working-directory: apps/studio
         run: npm install --no-audit --no-fund
 
-      - name: Verify ffprobe availability
-        run: ffprobe -version | head -1
+      - name: Install and verify ffprobe
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg >/dev/null
+          ffprobe -version | head -1
 
       - name: Run real Studio video generation end to end
         working-directory: apps/studio
@@ -141,6 +146,7 @@ jobs:
               workerId: submitRes.body?.worker?.workerId || null,
               workerState: submitRes.body?.worker?.state || null,
             };
+            console.log(JSON.stringify({ acceptanceSubmit: summary.submit }));
 
             const deadline = Date.now() + 55 * 60 * 1000;
             let polls = 0;
@@ -208,7 +214,7 @@ jobs:
               '-of', 'json',
               '/tmp/studio-e2e.mp4',
             ], { encoding: 'utf8' });
-            expect(probe.status === 0, `ffprobe failed: ${probe.stderr}`);
+            expect(probe.status === 0, `ffprobe failed: ${probe.stderr || probe.error?.message || 'unknown error'}`);
             const ffprobe = JSON.parse(probe.stdout);
             fs.writeFileSync('/tmp/studio-e2e-ffprobe.json', JSON.stringify(ffprobe, null, 2));
             const video = (ffprobe.streams || []).find((stream) => stream.codec_type === 'video');
@@ -232,6 +238,14 @@ jobs:
             summary.ready = true;
             console.log(JSON.stringify(summary, null, 2));
           } finally {
+            if (!row && jobId) {
+              try {
+                const cleanupRows = await supabaseRequest(`studio_generations?id=eq.${encodeURIComponent(jobId)}&select=*&limit=1`, { method: 'GET' });
+                row = Array.isArray(cleanupRows) ? cleanupRows[0] : null;
+              } catch (error) {
+                console.error('Acceptance cleanup row lookup failed', error);
+              }
+            }
             if (row?.r2_key) {
               try { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: row.r2_key })); } catch (error) { console.error('Acceptance media cleanup failed', error); }
             }
