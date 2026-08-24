@@ -25,7 +25,7 @@
 }
 
 .workspace .saga-toolbar .saga-audio-toggle::before {
-  content: attr(title);
+  content: 'Audio on · Generate with sound';
   position: absolute;
   left: 50%;
   bottom: calc(100% + 8px);
@@ -44,6 +44,10 @@
   opacity: 0;
   transform: translate(-50%, 4px);
   transition: opacity .14s ease, transform .14s ease;
+}
+
+.workspace .saga-toolbar .saga-audio-toggle[aria-pressed='false']::before {
+  content: 'Audio off · Generate without sound';
 }
 
 .workspace .saga-toolbar .saga-audio-toggle:hover::before,
