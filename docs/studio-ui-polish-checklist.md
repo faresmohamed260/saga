@@ -10,9 +10,10 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 **Iteration 10 — strengthen the Generate primary action**
 
-- Status: `[~]` in progress
-- Working item: **10**
-- Rule: make Generate clearly read as the principal desktop action while keeping an appropriate compact mobile treatment; validate deterministic contracts, GitHub CI/visual preview, and professional review before completion.
+- Status: `[x]` complete
+- Completed item: **10**
+- Next item: **11 — make Audio state explicit and non-color-dependent**
+- Rule: do not start Item 11 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -28,7 +29,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **07. Merge Auto + aspect ratio into one clear Aspect control.** Video exposes one Aspect picker that combines Auto/manual mode, effective ratio, and reference provenance while preserving keyboard behavior. **Iteration 7 complete.**
 - [x] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Image, Edit, and Video use one shared `AspectPicker` and canonical preset list, with shared ratio preview, layout, keyboard behavior, responsive anchored positioning, and optional Auto/reference provenance. **Iteration 8 complete.**
 - [x] **09. Standardize resolution terminology and expose actual delivery dimensions.** Video uses explicit `480p`/`720p`/`1080p`/`2K` terminology with aspect-aware delivery dimensions; Image uses explicit pixel terminology and computed output dimensions. Unsupported Video 4K is no longer advertised. **Iteration 9 complete.**
-- [~] **10. Strengthen the Generate primary action.** Make Generate read clearly as the principal verb/action on desktop while retaining a compact mobile treatment. **Iteration 10 in progress.**
+- [x] **10. Strengthen the Generate primary action.** Desktop Image/Video now expose a clear labeled `Generate` CTA and Edit exposes `Edit`, while mobile retains the compact circular arrow action and mode-specific accessible names. **Iteration 10 complete.**
 - [ ] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state.
 - [ ] **12. Improve generation lifecycle feedback.** Only expose real backend stages, add View Job and Cancel if supported, and clarify that setting edits during a running job apply to the next generation.
 - [ ] **13. Add bulk Add to Collection.** Include it in selection mode and use an appropriate collection picker.
@@ -124,4 +125,19 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Final visual artifact `9503419570` was downloaded and all 31 screenshots were inspected across Image, Video, Edit, desktop/mobile Create, and Gallery states. No Item-09-specific visual or responsive regression remained.
 - [x] Accepted evidence: `02-image-resolution-picker.png`, `04-video-resolution-picker.png`, `05h-video-resolution-portrait.png`.
 - [x] REDGraft smoke `32678441765` successfully deployed the runtime, then failed at prefetch because Modal returned `ConflictError: workspace ... is disabled`; this is the existing external infrastructure blocker, not an Item 09 regression.
-- [x] Professional review result for Item 09: complete. No new checklist item required. **Item 10 is next and remains gated on explicit user approval.**
+- [x] Professional review result for Item 09: complete.
+
+### Iteration 10 — strengthen the Generate primary action
+
+- [x] Replaced the desktop icon-only submit affordance with an explicit high-contrast primary CTA: Image and Video show `Generate` plus the send arrow; Edit shows `Edit` plus the same arrow.
+- [x] Desktop CTA uses a promoted 112px-minimum rounded rectangle with bold verb text, restrained elevation, hover/active feedback, and a 2px `:focus-visible` outline instead of looking like another 36px utility icon.
+- [x] Preserved the existing mode-specific accessible names: `Generate image`, `Generate video`, and `Edit image`.
+- [x] Kept the 390px mobile treatment compact: the verb label collapses and the action remains a 36×36 circular arrow with its accessible name intact.
+- [x] Expanded `capture-ui-preview.mjs` to assert desktop CTA hierarchy/geometry, mode-specific visible verbs and accessible names, strong keyboard focus, and compact mobile behavior; added dedicated `01b-generate-primary.png` evidence.
+- [x] Added `check-generate-action-contract.mjs` to the normal Studio build so the visible verb, promoted desktop geometry, focus treatment, mobile collapse, and Playwright contract cannot silently regress.
+- [x] Initial successful GitHub product/visual refinement run `32713936104` passed build and the complete Playwright suite, uploaded artifact `9515188794`, and committed reviewed product implementation `eaec5e4528885b6012f1a43d5e9eb6b2c6d0192d` while restoring temporary workflow machinery.
+- [x] Professional visual review accepted Image `Generate`, Video `Generate`, Edit `Edit`, and compact mobile arrow treatments: the CTA is clearly primary without overpowering the composer, stays aligned with dense Video controls, and introduces no clipping or responsive regression.
+- [x] Final standard validation on reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`: Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` all passed.
+- [x] Final standard visual artifact `9515300251` was downloaded and inspected across Create/Image, Video, Edit, 390px mobile, and Gallery desktop/mobile regression states. No Item-10-specific visual defect or Gallery regression remained; diagnostics recorded no page errors.
+- [x] REDGraft run `32714238545` deployed the runtime successfully and then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`; downstream GPU smoke/persistence stages were skipped. This is the existing external Modal account blocker, not an Item 10 regression.
+- [x] Professional review result for Item 10: complete. No new checklist item required. **Item 11 is next and remains gated on explicit user approval.**
