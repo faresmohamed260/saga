@@ -15,7 +15,7 @@ The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-u
 - Next item: **none — accepted checklist complete**.
 - Do not begin a new numbered item unless the user explicitly defines or approves new scope.
 - Development/review previews remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 30. The normal Studio build now executes the production LTX worker's pure delivery math through AST extraction without importing Modal or requiring GPU generation. The deterministic contract covers 204 resolution/aspect/FPS cases and all 78 supported duration/FPS combinations, including six odd/reference ratios and exact rounding ties. It enforces even delivery dimensions, Studio/runtime parity, <=1px nearest-even aspect quantization, 64-aligned internal dimensions, 32-aligned low-stage dimensions, LTX 8n+1 padding, exact delivered frame/duration math, and canonical 1080p landscape/portrait output. Professional review found and fixed a real Python-bankers-rounding mismatch. Final product/test head `7808b2b001a6b1db3ae56b4067cc63c6817310d2` passed Studio CI `32774404109`, Studio Visual Preview `32774404096`, Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076`; artifact `9537419708` was downloaded and all eight approved visual baselines had zero changed pixels.
+- Latest numbered item remains Iteration 30. Release acceptance subsequently found and fixed an LTX production-latency and poster-delivery defect without adding new numbered scope. The durable runtime now uses the deployable A10 tier with normal ComfyUI memory management, two-container burst capacity, exact build observability, runtime-produced poster bytes, and a seekable gateway poster fallback. A real Studio 1080p/16:9/25 FPS/5s/Audio Off E2E passed through generation, Supabase/R2 persistence, Gallery discovery, media serving, poster serving, ffprobe validation, and cleanup.
 
 ## Non-negotiable process
 
@@ -42,6 +42,20 @@ The pass is finished only when all accepted checklist items are complete, curren
 ## Professional-review baseline
 
 The implementation is a coherent product direction rather than a prototype. Items 01–30 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, screenshot-baseline regression, full responsive coverage, and exhaustive deterministic video delivery-contract testing. No accepted checklist item remains.
+
+## Release acceptance and production-performance validation
+
+**Status:** complete; this is release acceptance after the accepted checklist, not a new numbered polish item.
+
+**Production defect found:** the LTX 1080p path was running the two-stage workflow on a 24 GB A10 with ComfyUI forced into `--lowvram`, producing unacceptable 25+ minute behavior. H100, L40S, and A100-40GB were tested as alternatives but are payment-gated on the current Modal credit workspaces. The deployable production configuration is therefore A10 with normal smart-memory behavior (`MODAL_LTX25_LOWVRAM=0`), a 0.5 GB reserve, and two-container burst capacity.
+
+**Poster reliability fix:** the runtime now returns the completed MP4 and its JPEG poster together. The gateway consumes the runtime poster directly and retains a reliable fallback that writes the MP4 to a seekable temporary file before ffmpeg extraction. Studio provider polling keeps bounded transient poster retries and does not declare a video completed until a poster is available. Runtime/gateway build IDs make deployment identity observable and prevent acceptance from accidentally validating a stale rollout.
+
+**Low-level validation:** exact build `a10-normalvram-poster-v2` was verified on `NVIDIA A10`. The accepted 1080p/16:9/25 FPS/5s/Audio Off run produced H.264 1920×1080 at 25/1 FPS for exactly 5.000s with no audio; runtime telemetry recorded approximately 145.0s compute, 1.4s finalization, and 146.4s total worker time. The poster endpoint returned 200 and the downloaded artifact independently matched the delivery contract.
+
+**Full Studio E2E:** `Studio Release Acceptance E2E` run `32786172286` completed successfully. Studio submit returned 202 on `ltx-primary-01`; result polling completed and persisted the item; Supabase metadata matched 1080p / 16:9 / 25 FPS / 5s / Audio Off; Gallery/history found the exact item with a thumbnail; the media API returned a 6,176,186-byte MP4; the poster media API returned a 512×288 WebP; ffprobe confirmed 1920×1080, 25/1 FPS, 5.000s, and zero audio streams. Acceptance cleanup removed its R2 objects and Supabase row. Temporary acceptance/performance workflows, triggers, and patch scripts were removed afterward.
+
+**Durable operations:** both Modal maintenance and provisioning workflows persist the validated A10 + normal-VRAM + two-container configuration. `apps/studio/scripts/check-video-poster-contract.mjs` now asserts the runtime `{video, poster}` result contract, seekable gateway fallback, provider retry/finalizing behavior, and persisted thumbnail plumbing.
 
 ## Recent iteration log
 
@@ -85,4 +99,4 @@ Raised the dense text tiers to a 10/11/12px minimum, strengthened muted/subtle c
 
 **Validation:** final product/visual head before documentation `b390aea21f46225d2a2a8b0a209ac8154a03633b`. Studio Visual Preview `32768394649` passed the regression comparison with `0` changed pixels on all eight gated surfaces; artifact `9535309218` was downloaded and its JSON report inspected. Studio CI `32768394643`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739` all passed.
 
-**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **Items 01–30 and the accepted polish checklist are complete; no new numbered item should begin without explicit user scope.**
+**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **Items 01–30 and the accepted polish checklist is complete; no new numbered item should begin without explicit user scope.**
