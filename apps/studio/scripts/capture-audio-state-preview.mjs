@@ -76,6 +76,7 @@ try {
   if (!(await audio.evaluate((element) => document.activeElement === element))) throw new Error('Keyboard focus did not return to Audio control');
   await expectFocusRing(audio, 'Audio control');
   if (await pseudoContent(audio, '::before') !== 'Audio on · Generate with sound') throw new Error('Focused Audio tooltip does not explain the On state');
+  await desktop.waitForTimeout(180);
   const tooltipOpacity = Number(await audio.evaluate((element) => getComputedStyle(element, '::before').opacity));
   if (tooltipOpacity < 0.9) throw new Error(`Audio tooltip should be visible on focus, opacity=${tooltipOpacity}`);
   await desktop.screenshot({ path: path.join(outputDir, '05i-video-audio-on.png'), fullPage: true, animations: 'disabled' });
