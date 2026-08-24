@@ -14,8 +14,9 @@ const referencePng = await sharp({
 }).png().toBuffer();
 
 const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  let page = await context.newPage();
   page.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
 
   await page.route('**/api/generate', async (route) => {
