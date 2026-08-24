@@ -79,13 +79,15 @@ export function listConfiguredWorkers() {
 export function workersForWorkflow(workflow, { excludeWorkerIds = [] } = {}) {
   const ecosystem = cleanText(workflow?.ecosystem);
   const excluded = new Set((excludeWorkerIds || []).map(cleanText).filter(Boolean));
-  const configured = listConfiguredWorkers()
-    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem && !excluded.has(worker.id))
+  const fleet = listConfiguredWorkers()
+    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem);
+  const configured = fleet
+    .filter((worker) => !excluded.has(worker.id))
     .sort((a, b) => {
       const role = (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1);
       return role || a.order - b.order || a.id.localeCompare(b.id);
     });
-  if (configured.length) return configured;
+  if (fleet.length) return configured;
   const legacy = legacyWorker(workflow);
   return legacy && !excluded.has(legacy.id) ? [legacy] : [];
 }
@@ -143,7 +145,7 @@ export function classifyWorkerFailure({ status = 0, body = null, error = null } 
   }
 
   if (Number(status) === 429) {
-    return { retryable: true, safeToReassign: true, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };
+    return { retryable: true, safeToReassign: false, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };
   }
   if (Number(status) >= 500 || error) {
     return { retryable: true, safeToReassign: false, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };

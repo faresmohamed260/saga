@@ -41,6 +41,13 @@ LOCAL_WORKFLOW_PATH = Path(__file__).parent / "workflows" / "flux2_klein_9b_imag
 cache_volume = modal.Volume.from_name(CACHE_VOLUME_NAME, create_if_missing=True)
 worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
 
+_runtime_secret_values: dict[str, str] = {}
+for _name in ("HF_TOKEN", "CIVITAI_API_TOKEN"):
+    _value = str(os.environ.get(_name) or "").strip()
+    if _value:
+        _runtime_secret_values[_name] = _value
+RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
+
 image = (
     modal.Image.debian_slim(python_version=PYTHON_VERSION)
     .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0", "libsm6", "libxrender1", "libxext6")
@@ -194,7 +201,7 @@ def _request_bytes(url: str) -> bytes:
         return response.read()
 
 
-@app.function(image=image, timeout=FUNCTION_TIMEOUT_SECONDS, volumes={CACHE_DIR: cache_volume})
+@app.function(image=image, timeout=FUNCTION_TIMEOUT_SECONDS, volumes={CACHE_DIR: cache_volume}, secrets=RUNTIME_SECRETS)
 def prefetch_klein(force_checkpoint: bool = False) -> dict[str, Any]:
     started = time.perf_counter()
     files = _ensure_model_files(force_checkpoint=force_checkpoint)
@@ -215,6 +222,7 @@ def prefetch_klein(force_checkpoint: bool = False) -> dict[str, Any]:
     min_containers=WORKER_MIN_CONTAINERS,
     max_containers=WORKER_MAX_CONTAINERS,
     volumes={CACHE_DIR: cache_volume},
+    secrets=RUNTIME_SECRETS,
 )
 @modal.concurrent(max_inputs=1)
 class Flux2KleinWorker:

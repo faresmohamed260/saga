@@ -76,6 +76,17 @@ await assert.rejects(
   (error) => error?.errorCode === 'ALL_WORKERS_CREDIT_EXHAUSTED' && error?.workerState === 'credit_exhausted',
 );
 
+assert.equal(classifyWorkerFailure({ status: 429, body: { detail: 'rate limited' } }).safeToReassign, false, 'Generic 429 must not duplicate an accepted generation during poll-time failover');
+
+process.env.SAGA_MODAL_WORKER_REGISTRY_JSON = JSON.stringify({ workers: [
+  { id: 'only-primary', ecosystem: 'flux2-klein-9b', gatewayUrl: 'https://only.example', role: 'primary', enabled: true },
+] });
+assert.deepEqual(workersForWorkflow(flux, { excludeWorkerIds: ['only-primary'] }), [], 'Configured fleets must not fall through to the legacy modal-01 worker after exclusions');
+
+const fluxRuntimeSource = await readFile(new URL('../../../integrations/comfyui/flux2_klein_app.py', import.meta.url), 'utf8');
+assert.ok(fluxRuntimeSource.includes('RUNTIME_SECRETS = [modal.Secret.from_dict'), 'Flux worker must inject deployment-time model credentials as Modal secrets');
+assert.ok(fluxRuntimeSource.includes('secrets=RUNTIME_SECRETS'), 'Flux prefetch/runtime must receive deployment-time model credentials');
+
 const resultSource = await readFile(new URL('../api/generate/result.js', import.meta.url), 'utf8');
 for (const required of [
   'MAX_WORKER_FAILOVERS',
