@@ -25,9 +25,16 @@ def _failure_payload(exc):
         return 503, "WORKER_UNAVAILABLE", "unavailable", text
     return 502, "WORKER_RUNTIME_FAILED", "failed", text
 
-image = modal.Image.debian_slim(python_version="3.11").pip_install(
-    f"modal=={MODAL_VERSION}",
-    "fastapi[standard]==0.121.0",
+image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        f"modal=={MODAL_VERSION}",
+        "fastapi[standard]==0.121.0",
+    )
+    .env({
+        "SAGA_MODAL_WORKER_ID": WORKER_ID,
+        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,
+    })
 )
 app = modal.App(APP_NAME, image=image)
 
@@ -84,6 +91,10 @@ def web():
             return worker_state.get("worker") or {"state": "sleeping", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
         except Exception:
             return {"state": "unknown", "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+
+    def _submit_state():
+        state = str(_state().get("state") or "").strip()
+        return "waking" if state in {"", "sleeping", "unknown"} else state
 
     def _submit_state():
         state = str(_state().get("state") or "").strip()

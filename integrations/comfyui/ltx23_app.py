@@ -85,7 +85,14 @@ image = (
         "requests>=2.32,<3",
         "pillow>=11,<13",
     )
-    .env({"COMFYUI_DISABLE_TELEMETRY": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    .env({
+        "COMFYUI_DISABLE_TELEMETRY": "1",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "SAGA_MODAL_WORKER_ID": WORKER_ID,
+        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,
+        "SAGA_MODAL_WORKER_VOLUME": CACHE_VOLUME_NAME,
+    })
     .run_commands(
         "git clone --depth 1 https://github.com/Comfy-Org/ComfyUI.git /root/ComfyUI",
         "pip install -r /root/ComfyUI/requirements.txt",
