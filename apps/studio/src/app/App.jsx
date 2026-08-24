@@ -407,7 +407,8 @@ export default function App() {
       else throw new Error('Choose Image, Video, or Edit to generate media.');
     } catch (err) {
       setJobStatus('failed');
-      setWorkerStatus((current) => ({ ...(current || {}), state: 'failed' }));
+      const terminalWorkerState = ['credit_exhausted', 'unavailable'].includes(String(err?.workerState || '')) ? String(err.workerState) : 'failed';
+      setWorkerStatus((current) => ({ ...(current || {}), ...(err?.worker || {}), state: terminalWorkerState, errorCode: err?.errorCode || null }));
       setError(err instanceof Error ? err.message : 'Generation failed.');
     } finally { setBusy(false); }
   };

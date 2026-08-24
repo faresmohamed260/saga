@@ -28,6 +28,13 @@ try {
         job: { id: '77777777-7777-4777-8777-777777777777' },
         status: 'running',
         workflow: 'ltx25-redgraft-video',
+        worker: {
+          workerId: 'ltx-standby-01',
+          ecosystem: 'ltx25-redgraft',
+          displayName: 'REDGraft LTX 2.5 · Standby',
+          state: 'waking',
+          failedWorkers: [{ workerId: 'ltx-primary-01', kind: 'credit_exhausted', code: 'WORKER_CREDIT_EXHAUSTED' }],
+        },
       }),
     });
   });
@@ -168,7 +175,7 @@ try {
   const progress = page.locator('.saga-generation-progress');
   await progress.waitFor({ state: 'visible', timeout: 3000 });
   const progressText = await progress.innerText();
-  if (!/Submitting generation|Generating video|Queued/i.test(progressText)) throw new Error(`Generation feedback did not expose an active state: ${progressText}`);
+  if (!/Switching worker/i.test(progressText) || !/reached its credit limit/i.test(progressText) || !/Standby/.test(progressText)) throw new Error(`Worker credit failover feedback is incomplete: ${progressText}`);
   await page.screenshot({ path: path.join(outputDir, '05e-video-generation-progress.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05e-video-generation-progress.png');
 

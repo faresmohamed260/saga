@@ -87,7 +87,11 @@ def web():
 
     def _submit_state():
         state = str(_state().get("state") or "").strip()
-        return "waking" if state in {"", "sleeping", "unknown"} else state
+        if state in {"", "sleeping", "unknown"}:
+            return "waking"
+        if state in {"generating", "finalizing"}:
+            return "queued"
+        return state
 
     @api.get("/health")
     async def health():

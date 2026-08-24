@@ -229,14 +229,31 @@ export function VideoGenerationProgress({ busy, status, workerStatus, kind = 'vi
   if (!busy && !showTerminal) return null;
   const normalized = workerStatus?.state || status || (busy ? 'submitting' : 'completed');
   const [baseTitle, baseDetail] = STATUS_COPY[normalized] || STATUS_COPY.running;
-  const title = normalized === 'generating' || normalized === 'running' ? `Generating ${kind}` : baseTitle;
   const workerName = workerStatus?.displayName || '';
-  const detail = workerName ? `${baseDetail} · ${workerName}` : baseDetail;
-  const terminal = normalized === 'completed' || normalized === 'failed';
+  const failedWorkers = Array.isArray(workerStatus?.failedWorkers) ? workerStatus.failedWorkers : [];
+  const failoverReason = workerStatus?.failoverReason
+    || failedWorkers.find((failure) => failure?.kind === 'credit_exhausted')?.kind
+    || failedWorkers.find((failure) => failure?.kind === 'unavailable')?.kind
+    || '';
+  const allCreditsExhausted = workerStatus?.errorCode === 'ALL_WORKERS_CREDIT_EXHAUSTED';
+  const terminalError = !busy && status === 'failed';
+  let title = normalized === 'generating' || normalized === 'running' ? `Generating ${kind}` : baseTitle;
+  let detail = workerName ? `${baseDetail} · ${workerName}` : baseDetail;
+  if (allCreditsExhausted) {
+    title = 'Workers out of credits';
+    detail = 'No worker in this model ecosystem currently has available credits. Try again later or choose another model.';
+  } else if (busy && failoverReason === 'credit_exhausted') {
+    title = 'Switching worker';
+    detail = `The previous worker reached its credit limit. ${workerName ? `Starting ${workerName}.` : 'Starting a standby worker.'}`;
+  } else if (busy && failoverReason === 'unavailable') {
+    title = 'Switching worker';
+    detail = `The previous worker became unavailable. ${workerName ? `Starting ${workerName}.` : 'Starting a standby worker.'}`;
+  }
+  const terminal = normalized === 'completed' || normalized === 'failed' || terminalError;
   return (
     <div className={`saga-generation-progress is-${normalized}`} role="status" aria-live="polite">
       <div className="saga-generation-progress-icon">
-        {normalized === 'completed' ? <CheckCircle2 size={17} /> : normalized === 'failed' ? <XCircle size={17} /> : <LoaderCircle className="spin" size={17} />}
+        {normalized === 'completed' ? <CheckCircle2 size={17} /> : terminalError || normalized === 'failed' ? <XCircle size={17} /> : <LoaderCircle className="spin" size={17} />}
       </div>
       <div className="saga-generation-progress-copy">
         <div><strong>{title}</strong>{busy && <span>{elapsed}s elapsed</span>}</div>
