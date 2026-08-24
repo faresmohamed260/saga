@@ -68,7 +68,21 @@ try {
   const composerCenter = composerBox.x + composerBox.width / 2;
   const workspaceCenter = workspaceBox.x + workspaceBox.width / 2;
   if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
+  const primarySubmit = desktop.locator('.saga-submit');
+  await primarySubmit.waitFor({ state: 'visible' });
+  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Desktop primary action does not expose the Generate verb');
+  if (await primarySubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Desktop primary action lost its mode-specific accessible name');
+  const primarySubmitBox = await primarySubmit.boundingBox();
+  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop Generate action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
+  const primarySubmitStyle = await primarySubmit.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { display: style.display, fontWeight: Number(style.fontWeight), borderRadius: style.borderRadius };
+  });
+  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop Generate action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
   await shot(desktop, '01-create-image-centered.png');
+  await shot(desktop, '01b-generate-primary.png');
+  await primarySubmit.focus();
+  await expectStrongFocus(primarySubmit, 'Generate primary action');
 
   // Image picker keyboard, morphing and outside dismissal.
   const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
@@ -182,6 +196,8 @@ try {
   // Video mode and all requested controls.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
   await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
+  if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Video mode primary action does not retain the Generate verb');
+  if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Generate video') throw new Error('Video Generate action lost its mode-specific accessible name');
   const videoControls = desktop.locator('.saga-toolbar-left .saga-control-pill');
   const videoResolutionTrigger = desktop.locator('.saga-video-resolution-trigger');
   await expectText(videoResolutionTrigger, '1080p', 'Video resolution trigger label');
@@ -277,6 +293,8 @@ try {
   await secondChooser.setFiles({ name: 'reference-2.png', mimeType: 'image/png', buffer: referencePng });
   const refChips = desktop.locator('.saga-reference-chip');
   await refChips.nth(1).waitFor({ state: 'visible', timeout: 5000 });
+  if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Edit') throw new Error('Edit mode primary action does not expose its principal Edit verb');
+  if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Edit image') throw new Error('Edit primary action lost its accessible name');
   const richPrompt = desktop.locator('.saga-rich-prompt');
   await richPrompt.click();
   await richPrompt.pressSequentially('Put ');
@@ -356,6 +374,12 @@ try {
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(mobile, 'mobile');
   await waitForStudio(mobile);
+  const mobileSubmit = mobile.locator('.saga-submit');
+  await mobileSubmit.waitFor({ state: 'visible' });
+  if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
+  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');
+  const mobileSubmitBox = await mobileSubmit.boundingBox();
+  if (!mobileSubmitBox || mobileSubmitBox.width > 40 || mobileSubmitBox.height > 40 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action is not compact/circular: ${JSON.stringify(mobileSubmitBox)}`);
   await shot(mobile, '09-mobile-create.png');
 
   if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);

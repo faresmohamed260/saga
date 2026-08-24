@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: studio-visual-${{ github.event.pull_request.number || github.ref }}
@@ -24,13 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: studio/video-gallery-ux
-          fetch-depth: 0
-
-      - name: Apply Iteration 10 Generate refinement
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'studio/video-gallery-ux'
-        run: python scripts/iteration10-apply.py
 
       - uses: actions/setup-node@v5
         with:
@@ -90,20 +83,3 @@ jobs:
             echo
             echo "No Vercel Preview deployment is used by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Commit reviewed Iteration 10 implementation
-        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'studio/video-gallery-ux'
-        working-directory: .
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf apps/studio/visual-preview
-          rm -f apps/studio/package-lock.json
-          rm -f apps/studio/scripts/iteration10-apply.py
-          git checkout HEAD^ -- .github/workflows/studio-visual-preview.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/iteration10-apply.py .github/workflows/studio-visual-preview.yml
-          git diff --cached --check
-          git commit -m 'feat(studio): strengthen generate primary action'
-          git push origin HEAD:studio/video-gallery-ux

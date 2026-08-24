@@ -996,7 +996,8 @@ export default function CreateWorkspace({
                 onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
                 disabled={busy || (isEdit && references.length === 0)}
               >
-                <ArrowUp size={21} />
+                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
+                <ArrowUp size={18} aria-hidden="true" />
               </button>
             </div>
           </div>
