@@ -21,19 +21,24 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 
 # Once an ecosystem has a real fleet, exclusions must never fall through to modal-01.
-replace_once(
-    "apps/studio/api/_worker-registry.js",
-    """  const configured = listConfiguredWorkers()\n    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem && !excluded.has(worker.id))\n    .sort((a, b) => {\n      const role = (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1);\n      return role || a.order - b.order || a.id.localeCompare(b.id);\n    });\n  if (configured.length) return configured;\n  const legacy = legacyWorker(workflow);\n  return legacy && !excluded.has(legacy.id) ? [legacy] : [];\n""",
-    """  const fleet = listConfiguredWorkers()\n    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem);\n  const configured = fleet\n    .filter((worker) => !excluded.has(worker.id))\n    .sort((a, b) => {\n      const role = (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1);\n      return role || a.order - b.order || a.id.localeCompare(b.id);\n    });\n  if (fleet.length) return configured;\n  const legacy = legacyWorker(workflow);\n  return legacy && !excluded.has(legacy.id) ? [legacy] : [];\n""",
-)
+registry_path = "apps/studio/api/_worker-registry.js"
+registry = read(registry_path)
+old_registry = """  const configured = listConfiguredWorkers()\n    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem && !excluded.has(worker.id))\n    .sort((a, b) => {\n      const role = (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1);\n      return role || a.order - b.order || a.id.localeCompare(b.id);\n    });\n  if (configured.length) return configured;\n  const legacy = legacyWorker(workflow);\n  return legacy && !excluded.has(legacy.id) ? [legacy] : [];\n"""
+new_registry = """  const fleet = listConfiguredWorkers()\n    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem);\n  const configured = fleet\n    .filter((worker) => !excluded.has(worker.id))\n    .sort((a, b) => {\n      const role = (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1);\n      return role || a.order - b.order || a.id.localeCompare(b.id);\n    });\n  if (fleet.length) return configured;\n  const legacy = legacyWorker(workflow);\n  return legacy && !excluded.has(legacy.id) ? [legacy] : [];\n"""
+if old_registry in registry:
+    registry = registry.replace(old_registry, new_registry, 1)
+elif new_registry not in registry:
+    raise SystemExit("Worker registry fleet-fallback anchor not found")
 
-# A generic 429 is safe to try on another worker during submit, but not safe to
-# duplicate an already-accepted generation during poll-time reassignment.
-replace_once(
-    "apps/studio/api/_worker-registry.js",
-    """  if (Number(status) === 429) {\n    return { retryable: true, safeToReassign: true, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };\n  }\n""",
-    """  if (Number(status) === 429) {\n    return { retryable: true, safeToReassign: false, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };\n  }\n""",
-)
+# A generic 429 is safe to try on another worker during initial submit, but it is
+# not enough evidence to duplicate a job that a worker may already be executing.
+old_429 = """  if (Number(status) === 429) {\n    return { retryable: true, safeToReassign: true, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };\n  }\n"""
+new_429 = """  if (Number(status) === 429) {\n    return { retryable: true, safeToReassign: false, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };\n  }\n"""
+if old_429 in registry:
+    registry = registry.replace(old_429, new_429, 1)
+elif new_429 not in registry:
+    raise SystemExit("Worker registry 429 anchor not found")
+write(registry_path, registry)
 
 # Flux needs the same deployment-time secret injection pattern already used by
 # LTX so clean workers can prefetch gated/private model assets without baking
@@ -62,17 +67,14 @@ elif cls_new not in flux:
     raise SystemExit("Flux class decorator anchor not found")
 write(flux_path, flux)
 
-# Clean LTX provisioning verifies the REDGraft checkpoint hash; Flux keeps its
-# existing force_checkpoint=False behavior.
-fleet_path = "scripts/modal_worker_fleet.py"
-fleet = read(fleet_path)
-old = """    code = (\n        \"import modal, json; \"\n        f\"fn=modal.Function.from_name({ecosystem['runtimeApp']!r}, {prefetch!r}); \"\n        \"result=fn.remote(False); print(json.dumps({'ready': bool(result.get('ready')), 'model': result.get('model')}))\"\n    )\n"""
-new = """    prefetch_arg = \"True\" if ecosystem_id == \"ltx25-redgraft\" else \"False\"\n    code = (\n        \"import modal, json; \"\n        f\"fn=modal.Function.from_name({ecosystem['runtimeApp']!r}, {prefetch!r}); \"\n        f\"result=fn.remote({prefetch_arg}); print(json.dumps({{'ready': bool(result.get('ready')), 'model': result.get('model')}}))\"\n    )\n"""
-if old not in fleet:
-    raise SystemExit("Prefetch invocation anchor not found")
-write(fleet_path, fleet.replace(old, new, 1))
+# The fleet utility already uses False for Flux prefetch and True for LTX, so
+# clean LTX provisioning verifies its checkpoint while Flux keeps its existing
+# force-checkpoint behavior. Assert that invariant instead of rewriting it.
+fleet = read("scripts/modal_worker_fleet.py")
+if 'prefetch_argument = "False" if ecosystem_id == "flux2-klein-9b" else "True"' not in fleet:
+    raise SystemExit("Worker fleet prefetch verification contract is missing")
 
-# Extend the deterministic architecture contract with the two safety refinements.
+# Extend deterministic architecture coverage with the safety refinements.
 contract_path = "apps/studio/scripts/check-worker-registry-contract.mjs"
 contract = read(contract_path)
 marker = "const resultSource = await readFile(new URL('../api/generate/result.js', import.meta.url), 'utf8');"
