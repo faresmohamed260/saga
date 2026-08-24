@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Download, Heart, LoaderCircle, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
+import { Check, Download, FolderPlus, Heart, LoaderCircle, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 
 export default function HistoryView({
@@ -17,6 +17,7 @@ export default function HistoryView({
   onLoadMore,
   renderCard,
   onBulkFavorite,
+  onBulkAddToCollection,
   onBulkDownload,
   onBulkDelete,
 }) {
@@ -79,6 +80,7 @@ export default function HistoryView({
           <button onClick={() => setSelected(new Set())} disabled={!selected.size}>Clear</button>
           <span className="gallery-manager-spacer" />
           <button onClick={() => runBulk('favorite', onBulkFavorite)} disabled={!selected.size || Boolean(actionBusy)}><Heart size={15}/> Favorite</button>
+          <button onClick={() => runBulk('collection', onBulkAddToCollection)} disabled={!selected.size || Boolean(actionBusy)}>{actionBusy === 'collection' ? <LoaderCircle className="spin" size={15}/> : <FolderPlus size={15}/>} Add to Collection</button>
           <button onClick={() => runBulk('download', onBulkDownload)} disabled={!selected.size || Boolean(actionBusy)}><Download size={15}/> Download</button>
           <button className="danger" onClick={() => runBulk('delete', onBulkDelete)} disabled={!selected.size || Boolean(actionBusy)}>{actionBusy === 'delete' ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>} Delete</button>
         </div>
