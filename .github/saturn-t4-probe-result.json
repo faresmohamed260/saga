@@ -1,0 +1,47 @@
+{
+  "run_id": "32791768238",
+  "commit": "b6aaa43198aabb186c8e006682eff03b46364c73",
+  "probe_exit_code": "6",
+  "outcome": "gpu_workspace_rejected",
+  "selected_gpu": {
+    "name": "g4dnxlarge",
+    "display_name": "T4-XLarge",
+    "gpu": 1,
+    "gpu_type": "NVIDIA",
+    "price_per_hour": 0.795,
+    "clusters": [
+      "saturn-cluster-community"
+    ],
+    "availability": [
+      "ai_studio"
+    ],
+    "disabled": false
+  },
+  "deployment": {
+    "success": false,
+    "error": "SaturnHTTPError: {'message': 'You have exceeded the limits applied to your account.\\n\\nOrganization limits:\\n  - Max of 0 hours of resource usage\\n\\nUpgrade to Pro for more resources!', 'error_code': 'OrgErrors.UPGRADE_TO_PRO'}",
+    "startup_seconds": null,
+    "timeline": null,
+    "candidate_urls": null,
+    "http_probes": null,
+    "cleanup": {
+      "stop": "requested",
+      "delete_status": 204
+    },
+    "final_status": null,
+    "logs_tail": ""
+  },
+  "workspace_fallback": {
+    "success": false,
+    "error": "SaturnHTTPError: {'message': 'You have exceeded the limits applied to your account.\\n\\nOrganization limits:\\n  - Max disk space 0GiB (64GiB required, 0GiB available).\\n\\nUpgrade to Pro for more resources!', 'error_code': 'OrgErrors.UPGRADE_TO_PRO'}",
+    "startup_seconds": null,
+    "timeline": null,
+    "candidate_urls": null,
+    "http_probes": null,
+    "cleanup": {
+      "lookup": "failed: SaturnHTTPError: {'message': 'Resource not found'}"
+    },
+    "final_status": null,
+    "logs_tail": ""
+  }
+}
