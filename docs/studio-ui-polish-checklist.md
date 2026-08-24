@@ -32,7 +32,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **10. Strengthen the Generate primary action.** Desktop Image/Video now expose a clear labeled `Generate` CTA and Edit exposes `Edit`, while mobile retains the compact circular arrow action and mode-specific accessible names. **Iteration 10 complete.**
 - [x] **11. Make Audio state explicit and non-color-dependent.** Video keeps the compact speaker button while showing explicit `Audio On`/`Audio Off` text on desktop and `On`/`Off` on mobile, preserves `aria-pressed`, and exposes concise explanatory hover/focus copy. **Iteration 11 complete.**
 - [x] **12. Improve generation lifecycle feedback.** Real worker-backed stages, View Job, provider-aware Cancel, cancelled terminal feedback, and explicit guidance that edits during a running job apply to the next generation are implemented and validated. **Iteration 12 complete.**
-- [ ] **13. Add bulk Add to Collection.** Include it in selection mode and use an appropriate collection picker.
+- [ ] **13. Add bulk Add to Collection.** Implementation in validation: Gallery Manage mode now exposes Add to Collection and applies the selected collection to all persisted selected generations. Pending CI/visual review before completion.
 - [ ] **14. Make bulk selection wording precise.** Use `Select visible` unless selection truly spans all matching paginated results.
 - [ ] **15. Improve mobile Manage mode.** Prefer a sticky bottom selection action bar with large touch targets; keep `Done` at the top and minimize vertical clutter.
 - [ ] **16. Harden bulk destructive failure handling.** Return/report per-item outcomes and keep failed items selected instead of treating partial success as all-or-nothing.
