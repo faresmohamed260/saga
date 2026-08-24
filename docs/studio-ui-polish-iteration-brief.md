@@ -11,11 +11,11 @@ The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-u
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–11**.
-- Next item: **12 — improve generation lifecycle feedback**.
-- Do not begin Item 12 until the user says **continue**.
-- Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 11. Final standard Studio CI `32717092869`, Studio Visual Preview `32717093243`, Backend Architecture CI `32717092902`, and Required Check Compatibility `32717092821` passed on reviewed product head `b65d6cb48c100403e6643f00a32b35d9b12f836a`. Visual artifact `9516351275` was downloaded and professionally reviewed across desktop Audio On/Off, keyboard-focus tooltip, 390px mobile Audio Off, and wider Video/Gallery regression states. Audio state is now explicit and non-color-dependent while preserving the compact toolbar geometry. REDGraft run `32717092793` still fails only because the configured Modal workspace is disabled after runtime deployment succeeds.
+- Completed checklist items: **01–28**.
+- Next item: **29 — expand responsive visual coverage**.
+- Do not begin Item 29 until the user says **continue**.
+- Development/review previews remain GitHub-based; do not depend on Vercel previews during iteration.
+- Latest completed item is Iteration 28. Studio Visual Preview is now a real regression gate: eight deterministic approved surfaces are versioned under `apps/studio/visual-baselines`, `scripts/check-visual-regression.mjs` compares changed pixels with explicit per-surface tolerances and emits diff/report evidence, and a manual baseline-update workflow exists for intentional reviewed changes. Final Studio Visual Preview `32768394649` passed all eight gated surfaces with zero changed pixels; artifact `9535309218` was downloaded and inspected. Standard validation also passed: Studio CI `32768394643`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739`.
 
 ## Non-negotiable process
 
@@ -41,98 +41,24 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is a coherent product direction rather than a prototype. Completed work has improved exact video delivery, Gallery action density and touch safety, card semantics/accessibility, custom-picker keyboard behavior, stored video posters, deferred preview loading, unified/shared aspect selection, resolution terminology/delivery geometry, Create primary-action hierarchy, and explicit non-color-dependent Audio state. Remaining high-value work includes real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is a coherent product direction rather than a prototype. Items 01–28 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, and a true screenshot-baseline regression gate. Remaining accepted work is responsive visual coverage across the full width matrix (Item 29) and expanded deterministic video delivery-contract testing (Item 30).
 
-## Iteration log
+## Recent iteration log
 
-### Iteration 1 — exact video delivery duration
-
-**Status:** complete.
-
-Preserved LTX-required 8n+1 internal frames while enforcing exact delivered duration. Final live checks: 24 FPS muted T2V = 5.000000 s; 25 FPS generated-audio T2V = 5.000000 s; 30 FPS gateway I2V = 5.000000 s. Visual inspection found no UI regression.
-
-### Iteration 2 — Gallery action density and mobile touch safety
+### Iteration 27 — typography/contrast accessibility
 
 **Status:** complete.
 
-Reduced desktop immediate card actions to Favorite, Download, Open, More; moved secondary/destructive actions into overflow. Mobile uses three immediate controls with >=44px touch targets. First visual review found the mobile More surface clipped by a containing block; that was fixed and revalidated. Final reviewed product head: `2cd1a0de5ac3c55b2f9af9eca905e1cafc081c9e`.
+Raised the dense text tiers to a 10/11/12px minimum, strengthened muted/subtle contrast, added a shared focus halo, and reinforced selected states with semantic and non-color cues. Final artifact `9534555187` from Studio Visual Preview `32766234976` was manually inspected across desktop Create, picker focus, desktop Gallery, and 390px mobile Manage. Standard validation passed.
 
-### Iteration 3 — MediaCard semantics/accessibility
-
-**Status:** complete.
-
-Replaced fake frame-button semantics with one native full-frame primary action, `aria-pressed` selection, decorative selection indicator, correct focus order, and clear focus treatment. Deterministic desktop/mobile keyboard coverage passed. Final reviewed product head: `1503d40a1421a81e4c7b169edbfda0affc6e42d9`.
-
-### Iteration 4 — custom-picker keyboard behavior
+### Iteration 28 — true visual regression
 
 **Status:** complete.
 
-Added Enter/Space and Arrow opening, roving focus, Home/End, selection, Escape/focus return, nested Advanced Escape protection, and strong `:focus-visible` states. Multiple remote runs exposed real focus races and nested Escape issues; those were fixed rather than hidden by timing changes. Dedicated success run `32669033886`; implementation commit `9a09522d1c7dac4eed1fd4d6f4d5f4db78582a0f`.
+**Implementation:** added `apps/studio/scripts/check-visual-regression.mjs`, a versioned `apps/studio/visual-baselines/manifest.json`, eight approved baseline PNGs, and the `visual:regression` npm command. The standard Studio Visual Preview now captures the existing Playwright evidence and then compares approved deterministic surfaces against baselines. Meaningful changed-pixel drift fails CI; the artifact contains current screenshots, `visual-regression-report.json`, and highlighted diff PNGs. `.github/workflows/studio-visual-baseline.yml` is a manual-only workflow for intentional reviewed baseline refreshes; ordinary PR runs never rewrite baselines.
 
-### Iteration 5 — stored video poster thumbnails
+**Professional review cycle:** the first baseline-backed run did exactly what the new system is meant to do: it rejected `02b-image-picker-keyboard-focus.png` at `0.845%` changed pixels while all other gated surfaces were pixel-identical. Inspection of the generated highlighted diff showed the differences were isolated to the Aspect picker morph/focus animation capture, not a product regression. The gate was not weakened and the tolerance was not inflated; that inherently animated screenshot remains available for manual preview review but was removed from pixel gating. This leaves eight stable representative surfaces covering Create, Video controls/focus/audio, 390px Create, Gallery, Gallery focus, and 390px Manage.
 
-**Status:** complete.
+**Validation:** final product/visual head before documentation `b390aea21f46225d2a2a8b0a209ac8154a03633b`. Studio Visual Preview `32768394649` passed the regression comparison with `0` changed pixels on all eight gated surfaces; artifact `9535309218` was downloaded and its JSON report inspected. Studio CI `32768394643`, Backend Architecture CI `32768394714`, Modal Worker Inventory `32768394650`, Worker Fleet Live Smoke `32768394705`, and Required Check Compatibility `32768394739` all passed.
 
-Modal gateway extracts a JPEG poster from completed MP4 output; Studio converts it to a 512px WebP thumbnail, persists it to R2/Supabase, and Gallery uses it first. An initial change to `LTX25Worker.generate()` return type was rejected as a compatibility break; final implementation preserves `-> bytes` and moves poster extraction to the gateway. Added `test:poster`. Final reviewed branch head before docs: `44e6f5df0e5e8d97a021078f0d31e21d431a8a81`. Live Modal poster/R2 verification remained blocked by the disabled workspace.
-
-### Iteration 6 — lazy/deferred Gallery video previews
-
-**Status:** complete.
-
-Poster-backed videos attach MP4 only for eligible visible desktop fine-pointer hover or keyboard focus, then pause/detach when intent leaves. Reduced-motion and touch stay poster-only; legacy thumbnail-less rows keep a visible-only fallback. Source review rejected viewport width as a modality proxy; final implementation uses `(hover: hover) and (pointer: fine)`. Validation run `32671818722`, artifact `9501593078`.
-
-### Iteration 7 — unified Video Aspect control
-
-**Status:** complete.
-
-Removed the separate Video Auto button and combined Auto/manual aspect state plus reference provenance in one Aspect picker. First visual review rejected abbreviated `Ref` provenance and found 21:9 partly hidden; final refinement uses `From reference` and exposes all desktop choices without scrolling. Refinement run `32673600494`, artifact `9502051993`, product head `93c4f7005ee651778775fb217892558487c1ede3`.
-
-### Iteration 8 — shared Image/Video AspectPicker
-
-**Status:** complete.
-
-Extracted `features/create/AspectPicker.jsx` and made Image, Edit, and Video consume one shared component/preset source. Review cycles fixed focus handoff, a 2px border-box overflow, and truncated default Auto provenance. Final standard Studio Visual Preview `32676390654`, artifact `9502799506`, reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`. Modal prefetch remained externally blocked by the disabled workspace.
-
-### Iteration 9 — resolution terminology and delivery dimensions
-
-**Status:** complete.
-
-**Implementation:** standardized user-facing resolution language and separated friendly preset names from exact delivery geometry. Video exposes `480p`, `720p`, `1080p`, and `2K`; picker rows, preview, title, and accessible label show aspect-aware delivered dimensions. The shared effective Aspect state drives those dimensions, including reference-derived Auto ratios. Image uses explicit pixel terminology with computed aspect-aware dimensions. Video 4K was removed because the production workflow/runtime does not currently enable it.
-
-**Deterministic coverage:** `features/create/ResolutionPresets.js` is the shared preset/dimension source and `scripts/check-resolution-contract.mjs` runs in the normal Studio build. The contract verifies canonical 1080p landscape/portrait/4:3 delivery, enabled runtime/workflow parity, and guards against `Full HD`/disabled Video 4K regressions.
-
-**Professional review cycle:** first validation run `32678010842` exposed a stale text expectation after terminology changed; the assertion was corrected while retaining keyboard behavior. Refinement run `32678135023` passed the full visual suite, and validation-generated screenshots/package-lock were removed before final standard validation.
-
-**Validation:** reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`. Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed. Final artifact `9503419570` was inspected. REDGraft Modal remained externally blocked by the disabled workspace.
-
-### Iteration 10 — strengthen the Generate primary action
-
-**Status:** complete.
-
-**Implementation:** promoted the desktop submit control from an icon-only 36px utility circle into a clearly labeled principal action. Image and Video expose `Generate`; Edit exposes `Edit`. The CTA is a restrained high-contrast rounded rectangle with a 112px minimum width, bold verb text, send arrow, subtle elevation, hover/active feedback, and a 2px keyboard focus indicator. Existing mode-specific accessible names (`Generate image`, `Generate video`, `Edit image`) remain intact. The 390px mobile layout deliberately collapses the visible label and retains the compact 36×36 circular arrow.
-
-**Deterministic coverage:** `capture-ui-preview.mjs` now asserts desktop CTA geometry/hierarchy, mode-specific visible verbs and accessible names, strong focus-visible treatment, and compact mobile behavior, and captures dedicated evidence `01b-generate-primary.png`. `check-generate-action-contract.mjs` is part of the normal Studio build and guards the visible verb markup, promoted desktop dimensions, focus treatment, mobile collapse, and corresponding Playwright assertions.
-
-**Professional review cycle:** the successful GitHub product/visual refinement run `32713936104` passed build and the full Playwright suite, uploaded artifact `9515188794`, and committed product implementation `eaec5e4528885b6012f1a43d5e9eb6b2c6d0192d` while restoring temporary validation machinery. Professional review accepted the hierarchy: the desktop CTA is materially more discoverable without overpowering the composer, Video remains balanced despite its denser toolbar, Edit reads contextually, and mobile remains appropriately compact. No Item-10-specific follow-up was required.
-
-**Visual review:** the final standard artifact `9515300251` from Studio Visual Preview `32714238605` was downloaded and inspected across Image `Generate`, Video `Generate`, Edit `Edit`, 390px mobile Create, and Gallery desktop/mobile regression states. No clipping, collision, hierarchy regression, responsive break, or Gallery regression was found. Diagnostics recorded no page errors; only the same generic tolerated resource 404 messages seen in prior preview suites.
-
-**Validation:** final reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`. Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` passed. REDGraft run `32714238545` deployed the runtime, then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`, so downstream GPU smoke/persistence stages were skipped; this remains the existing external account blocker unrelated to Item 10.
-
-**Professional review:** Item 10 is complete with no remaining actionable comments.
-
-### Iteration 11 — explicit Audio state
-
-**Status:** complete.
-
-**Implementation:** retained the existing compact circular speaker control instead of turning it into another wide toolbar pill. Desktop now pairs the icon button with a persistent `Audio On` / `Audio Off` textual badge; 390px mobile uses compact `On` / `Off` wording. State is therefore visible without relying on the icon glyph or accent color. The button preserves `aria-pressed`, action-oriented accessible labels (`Disable audio` / `Enable audio`), and a 2px keyboard focus ring. Hover/focus copy explains the effect directly: `Audio on · Generate with sound` and `Audio off · Generate without sound`.
-
-**Deterministic coverage:** added `scripts/check-audio-control-contract.mjs` to the normal Studio build and `scripts/capture-audio-state-preview.mjs` to `visual:preview`. Coverage checks explicit desktop/mobile state text, `aria-pressed`, accessible labels, explanatory copy, compact circular geometry, reserved badge space, toolbar containment, keyboard focus-visible behavior, toggling, and dedicated screenshots.
-
-**Professional review cycle:** the first implementation made the whole Audio control a roughly 90px pill. The existing visual contract correctly flagged that as inconsistent with the compact Video toolbar, so the product—not the test—was changed. A later pass exposed two stale/incorrect test assumptions: calling `focus()` directly did not enter keyboard modality for `:focus-visible`, and the tooltip opacity assertion ran before the 140ms CSS transition completed. Those tests were corrected to exercise real keyboard modality and wait for the actual transition. A final alignment refinement centered the adjacent state badge vertically without enlarging the button.
-
-**Visual review:** final artifact `9516351275` from Studio Visual Preview `32717093243` was downloaded and inspected. `05i-video-audio-on.png` shows the focused On state with explanatory tooltip; `05j-video-audio-off.png` shows the corresponding Off state; `09b-mobile-video-audio-off.png` confirms the 390px toolbar remains contained. Wider Video and Gallery captures showed no layout regression. The Audio control remains visibly secondary to Generate, the state is unambiguous, and no Item-11-specific visual defect remains.
-
-**Validation:** final reviewed product head `b65d6cb48c100403e6643f00a32b35d9b12f836a`. Studio CI `32717092869`, Studio Visual Preview `32717093243`, Backend Architecture CI `32717092902`, and Required Check Compatibility `32717092821` all passed. REDGraft run `32717092793` deployed the runtime successfully and then failed at prefetch with `modal.exception.ConflictError: workspace ac-88wJ5dCXYBOywnXXaGmUoV is disabled`; gateway validation, GPU smokes, artifact publication, and persistence were skipped. That remains the existing external account-state blocker and is unrelated to Item 11.
-
-**Professional review:** Item 11 is complete with no remaining actionable comments and no new checklist item required. **Item 12 — improve generation lifecycle feedback — is next and remains gated on explicit user approval.**
+**Professional review:** Item 28 is complete with no remaining item-specific actionable comment. **Item 29 — expand responsive visual coverage — is next and remains gated on explicit user approval.**
