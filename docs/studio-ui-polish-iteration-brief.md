@@ -11,11 +11,11 @@ The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-u
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–10**.
-- Next item: **11 — make Audio state explicit and non-color-dependent**.
-- Do not begin Item 11 until the user says **continue**.
+- Completed checklist items: **01–11**.
+- Next item: **12 — improve generation lifecycle feedback**.
+- Do not begin Item 12 until the user says **continue**.
 - Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 10. Final standard Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` passed on reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`. Visual artifact `9515300251` was downloaded and professionally reviewed across Image, Video, Edit, mobile Create, and Gallery regression states. Desktop now exposes an explicit primary `Generate`/`Edit` CTA while mobile remains compact. REDGraft Modal validation remains externally blocked because the configured Modal workspace is disabled.
+- Latest completed item is Iteration 11. Final standard Studio CI `32717092869`, Studio Visual Preview `32717093243`, Backend Architecture CI `32717092902`, and Required Check Compatibility `32717092821` passed on reviewed product head `b65d6cb48c100403e6643f00a32b35d9b12f836a`. Visual artifact `9516351275` was downloaded and professionally reviewed across desktop Audio On/Off, keyboard-focus tooltip, 390px mobile Audio Off, and wider Video/Gallery regression states. Audio state is now explicit and non-color-dependent while preserving the compact toolbar geometry. REDGraft run `32717092793` still fails only because the configured Modal workspace is disabled after runtime deployment succeeds.
 
 ## Non-negotiable process
 
@@ -41,7 +41,7 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is a coherent product direction rather than a prototype. Completed work has improved exact video delivery, Gallery action density and touch safety, card semantics/accessibility, custom-picker keyboard behavior, stored video posters, deferred preview loading, unified/shared aspect selection, resolution terminology/delivery geometry, and Create primary-action hierarchy. Remaining high-value work includes explicit Audio state, real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is a coherent product direction rather than a prototype. Completed work has improved exact video delivery, Gallery action density and touch safety, card semantics/accessibility, custom-picker keyboard behavior, stored video posters, deferred preview loading, unified/shared aspect selection, resolution terminology/delivery geometry, Create primary-action hierarchy, and explicit non-color-dependent Audio state. Remaining high-value work includes real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
 
 ## Iteration log
 
@@ -119,4 +119,20 @@ Extracted `features/create/AspectPicker.jsx` and made Image, Edit, and Video con
 
 **Validation:** final reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`. Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` passed. REDGraft run `32714238545` deployed the runtime, then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`, so downstream GPU smoke/persistence stages were skipped; this remains the existing external account blocker unrelated to Item 10.
 
-**Professional review:** Item 10 is complete with no remaining actionable comments. **Item 11 — make Audio state explicit and non-color-dependent — is next and remains gated on explicit user approval.**
+**Professional review:** Item 10 is complete with no remaining actionable comments.
+
+### Iteration 11 — explicit Audio state
+
+**Status:** complete.
+
+**Implementation:** retained the existing compact circular speaker control instead of turning it into another wide toolbar pill. Desktop now pairs the icon button with a persistent `Audio On` / `Audio Off` textual badge; 390px mobile uses compact `On` / `Off` wording. State is therefore visible without relying on the icon glyph or accent color. The button preserves `aria-pressed`, action-oriented accessible labels (`Disable audio` / `Enable audio`), and a 2px keyboard focus ring. Hover/focus copy explains the effect directly: `Audio on · Generate with sound` and `Audio off · Generate without sound`.
+
+**Deterministic coverage:** added `scripts/check-audio-control-contract.mjs` to the normal Studio build and `scripts/capture-audio-state-preview.mjs` to `visual:preview`. Coverage checks explicit desktop/mobile state text, `aria-pressed`, accessible labels, explanatory copy, compact circular geometry, reserved badge space, toolbar containment, keyboard focus-visible behavior, toggling, and dedicated screenshots.
+
+**Professional review cycle:** the first implementation made the whole Audio control a roughly 90px pill. The existing visual contract correctly flagged that as inconsistent with the compact Video toolbar, so the product—not the test—was changed. A later pass exposed two stale/incorrect test assumptions: calling `focus()` directly did not enter keyboard modality for `:focus-visible`, and the tooltip opacity assertion ran before the 140ms CSS transition completed. Those tests were corrected to exercise real keyboard modality and wait for the actual transition. A final alignment refinement centered the adjacent state badge vertically without enlarging the button.
+
+**Visual review:** final artifact `9516351275` from Studio Visual Preview `32717093243` was downloaded and inspected. `05i-video-audio-on.png` shows the focused On state with explanatory tooltip; `05j-video-audio-off.png` shows the corresponding Off state; `09b-mobile-video-audio-off.png` confirms the 390px toolbar remains contained. Wider Video and Gallery captures showed no layout regression. The Audio control remains visibly secondary to Generate, the state is unambiguous, and no Item-11-specific visual defect remains.
+
+**Validation:** final reviewed product head `b65d6cb48c100403e6643f00a32b35d9b12f836a`. Studio CI `32717092869`, Studio Visual Preview `32717093243`, Backend Architecture CI `32717092902`, and Required Check Compatibility `32717092821` all passed. REDGraft run `32717092793` deployed the runtime successfully and then failed at prefetch with `modal.exception.ConflictError: workspace ac-88wJ5dCXYBOywnXXaGmUoV is disabled`; gateway validation, GPU smokes, artifact publication, and persistence were skipped. That remains the existing external account-state blocker and is unrelated to Item 11.
+
+**Professional review:** Item 11 is complete with no remaining actionable comments and no new checklist item required. **Item 12 — improve generation lifecycle feedback — is next and remains gated on explicit user approval.**
