@@ -171,7 +171,7 @@ export function VideoOutputControls({
         effectiveRatio={referenceInfo.ratio || undefined}
         autoDetail={referenceInfo.fromReference
           ? `${referenceInfo.value} · From reference`
-          : '16:9 default · Follows reference when attached'}
+          : '16:9 · Follows reference'}
         fromReference={autoAspect && referenceInfo.fromReference}
       />
       <CompactPicker
