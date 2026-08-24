@@ -22,17 +22,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Apply visual test fix
+      - name: Apply Iteration 12 finalization patch
         run: python scripts/iteration12_visual_fix.py
-      - name: Commit fix
+      - name: Commit finalization
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/studio/scripts/capture-video-output-preview.mjs
+          git add apps/studio/scripts/capture-video-output-preview.mjs docs/studio-ui-polish-checklist.md
           if git diff --cached --quiet; then
-            echo "No visual fix changes to commit"
+            echo "No Iteration 12 finalization changes to commit"
             exit 0
           fi
-          git commit -m "test: fix Iteration 12 visual isolation"
+          git commit -m "docs: complete Iteration 12 lifecycle feedback"
           git push origin HEAD:studio/video-gallery-ux
