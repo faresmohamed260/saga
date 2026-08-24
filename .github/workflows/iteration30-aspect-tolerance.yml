@@ -1,0 +1,64 @@
+name: Iteration 30 Aspect Tolerance
+
+on:
+  push:
+    branches:
+      - studio/video-gallery-ux
+    paths:
+      - .github/iteration30-aspect-tolerance
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+
+      - name: Make aspect tolerance quantization-exact
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/studio/scripts/check-resolution-contract.mjs')
+          text = path.read_text()
+          old = '''const aspectRelativeTolerance = 0.001; // <= 0.1% after required even-pixel rounding.\nlet worstAspectError = 0;\nlet worstAspectCase = null;\n'''
+          new = '''let worstAspectError = 0;\nlet worstAspectTolerance = 0;\nlet worstAspectCase = null;\n'''
+          if old not in text:
+              raise SystemExit('aspect tolerance declaration anchor missing')
+          text = text.replace(old, new, 1)
+
+          old = '''  const deliveredRatio = deliveryWidth / deliveryHeight;\n  const relativeError = Math.abs(deliveredRatio - requestedRatio) / requestedRatio;\n  if (relativeError > worstAspectError) {\n    worstAspectError = relativeError;\n    worstAspectCase = row;\n  }\n'''
+          new = '''  const deliveredRatio = deliveryWidth / deliveryHeight;\n  const relativeError = Math.abs(deliveredRatio - requestedRatio) / requestedRatio;\n  const idealLongEdge = requestedRatio >= 1 ? deliveryHeight * requestedRatio : deliveryWidth / requestedRatio;\n  const actualLongEdge = requestedRatio >= 1 ? deliveryWidth : deliveryHeight;\n  const longEdgeQuantizationError = Math.abs(actualLongEdge - idealLongEdge);\n  const aspectRelativeTolerance = 1 / idealLongEdge + 1e-12;\n  if (relativeError > worstAspectError) {\n    worstAspectError = relativeError;\n    worstAspectTolerance = aspectRelativeTolerance;\n    worstAspectCase = row;\n  }\n'''
+          if old not in text:
+              raise SystemExit('aspect error calculation anchor missing')
+          text = text.replace(old, new, 1)
+
+          old = '''  expect((internalWidth / 2) % 32 === 0 && (internalHeight / 2) % 32 === 0, `${row.resolution} ${row.aspect}: low-stage dimensions must remain 32-aligned`);\n  expect(relativeError <= aspectRelativeTolerance, `${row.resolution} ${row.aspect}: delivered aspect error ${(relativeError * 100).toFixed(4)}% exceeds ${(aspectRelativeTolerance * 100).toFixed(2)}% tolerance`);\n'''
+          new = '''  expect((internalWidth / 2) % 32 === 0 && (internalHeight / 2) % 32 === 0, `${row.resolution} ${row.aspect}: low-stage dimensions must remain 32-aligned`);\n  expect(longEdgeQuantizationError <= 1 + 1e-9, `${row.resolution} ${row.aspect}: nearest-even delivery changed the flexible edge by more than 1px (${longEdgeQuantizationError})`);\n  expect(relativeError <= aspectRelativeTolerance, `${row.resolution} ${row.aspect}: delivered aspect error ${(relativeError * 100).toFixed(4)}% exceeds the exact one-pixel quantization tolerance ${(aspectRelativeTolerance * 100).toFixed(4)}%`);\n'''
+          if old not in text:
+              raise SystemExit('aspect assertion anchor missing')
+          text = text.replace(old, new, 1)
+
+          old = '''  aspectRelativeTolerance,\n  worstAspectError,\n'''
+          new = '''  aspectToleranceRule: 'nearest-even flexible edge <= 1px; relative tolerance <= 1 / ideal long edge',\n  worstAspectTolerance,\n  worstAspectError,\n'''
+          if old not in text:
+              raise SystemExit('aspect report anchor missing')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Commit contract fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/scripts/check-resolution-contract.mjs
+          git diff --cached --check
+          git commit -m "test(video): use exact aspect quantization tolerance"
+          git push origin HEAD:studio/video-gallery-ux
