@@ -59,9 +59,12 @@ try {
   recordDiagnostics(desktop, 'desktop');
   await waitForStudio(desktop);
 
-  // Core composition: no old mode navbar, centered composer, More moved to sidebar.
+  // Core composition: no old mode navbar, centered composer, additional creation Tools live in the sidebar.
   if (await desktop.locator('.create-mode-tabs,.mode-tabs').count()) throw new Error('Old Create mode navbar is still rendered');
-  await desktop.getByRole('button', { name: 'More', exact: true }).waitFor({ state: 'visible' });
+  await desktop.getByRole('button', { name: 'Tools', exact: true }).waitFor({ state: 'visible' });
+  const sidebar = desktop.locator('.sidebar');
+  if ((await sidebar.innerText()).includes('FLUX.2 online')) throw new Error('Provider status leaked into persistent sidebar account chrome');
+  await sidebar.getByText('Status in Jobs & Models', { exact: true }).waitFor({ state: 'visible' });
   const composerBox = await desktop.locator('.saga-composer').boundingBox();
   const workspaceBox = await desktop.locator('main.workspace').boundingBox();
   if (!composerBox || !workspaceBox) throw new Error('Could not measure centered composer');
@@ -330,10 +333,10 @@ try {
   if (/@Image\s+\d+/i.test(cleanedPrompt)) throw new Error(`Stale reference tag remains after removing all references: ${cleanedPrompt}`);
   await shot(desktop, '06b-reference-removal-cleanup.png');
 
-  // More is a sidebar destination, and Create returns to the compact image composer.
-  await desktop.getByRole('button', { name: 'More', exact: true }).click();
+  // Tools is the clarified sidebar destination for additional creation utilities, and Create returns to the compact image composer.
+  await desktop.getByRole('button', { name: 'Tools', exact: true }).click();
   await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });
-  await shot(desktop, '07-more-sidebar.png');
+  await shot(desktop, '07-tools-sidebar.png');
   await desktop.getByRole('button', { name: 'Create', exact: true }).click();
   await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
 
