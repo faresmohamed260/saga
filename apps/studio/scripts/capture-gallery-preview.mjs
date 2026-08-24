@@ -189,7 +189,7 @@ try {
   await thirdSelectButton.press('Enter');
   if (await thirdSelectButton.getAttribute('aria-pressed') !== 'true') throw new Error('Enter did not select the third Gallery card');
   if (!(await manager.locator('strong').innerText()).includes('2 selected')) throw new Error('Gallery manager did not track two keyboard-selected items');
-  for (const label of ['Favorite', 'Download', 'Delete']) {
+  for (const label of ['Favorite', 'Download ZIP', 'Delete']) {
     const button = manager.getByRole('button', { name: label, exact: true });
     if (await button.isDisabled()) throw new Error(`${label} bulk action stayed disabled after selection`);
   }
