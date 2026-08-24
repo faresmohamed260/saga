@@ -23,7 +23,9 @@ INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
 DEFAULT_FPS = 24
 FRAME_RATES = {24, 25, 30}
-GPU_TYPE = os.environ.get("MODAL_LTX25_GPU", "A10")
+GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "L40S,A100-40GB").split(",") if x.strip()]
+GPU_REQUEST: str | list[str] = GPU_CHOICES[0] if len(GPU_CHOICES) == 1 else GPU_CHOICES
+GPU_LABEL = ",".join(GPU_CHOICES)
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_LTX25_IDLE_SECONDS", "180"))
 WORKER_MIN_CONTAINERS = 0
 WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_LTX25_MAX_CONTAINERS", "1"))
@@ -668,7 +670,7 @@ def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
 
 @app.cls(
     image=image,
-    gpu=GPU_TYPE,
+    gpu=GPU_REQUEST,
     timeout=4200,
     scaledown_window=CONTAINER_IDLE_SECONDS,
     min_containers=WORKER_MIN_CONTAINERS,
@@ -686,23 +688,13 @@ class LTX25Worker:
         self.models = _prepare_models(files)
         INPUT_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        self.process = subprocess.Popen(
-            [
-                "python",
-                "main.py",
-                "--listen",
-                "127.0.0.1",
-                "--port",
-                "8188",
-                "--lowvram",
-                "--reserve-vram",
-                "2",
-                "--disable-auto-launch",
-                "--preview-method",
-                "none",
-            ],
-            cwd=COMFY_DIR,
-        )
+        launch_command = [
+            "python", "main.py", "--listen", "127.0.0.1", "--port", "8188",
+            "--reserve-vram", "2", "--disable-auto-launch", "--preview-method", "none",
+        ]
+        if any(choice.upper() == "A10" for choice in GPU_CHOICES):
+            launch_command.append("--lowvram")
+        self.process = subprocess.Popen(launch_command, cwd=COMFY_DIR)
         _wait_server()
         self.started_seconds = round(time.perf_counter() - started, 3)
         _set_worker_state("ready", startup_seconds=self.started_seconds)
@@ -712,7 +704,7 @@ class LTX25Worker:
         return {
             "ready": True,
             "app": APP_NAME,
-            "gpu": GPU_TYPE,
+            "gpu": GPU_LABEL,
             "default_fps": DEFAULT_FPS,
             "frame_rates": sorted(FRAME_RATES),
             "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
@@ -774,7 +766,7 @@ class LTX25Worker:
         if resolution not in RESOLUTIONS:
             raise ValueError(f"unsupported resolution: {resolution}")
         if resolution not in ENABLED_RESOLUTIONS:
-            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 A10 runtime")
+            raise ValueError(f"{resolution} is not enabled for the REDGraft LTX 2.5 runtime")
         if not 5 <= int(duration_seconds) <= 30:
             raise ValueError("duration_seconds must be between 5 and 30")
         _parse_aspect_ratio(aspect_ratio)
