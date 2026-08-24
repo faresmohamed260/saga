@@ -27,9 +27,15 @@ def refine_component() -> None:
         raise RuntimeError("Could not locate shared AspectPicker root blur handler")
     text = text.replace(old_root, new_root, 1)
 
+    old_height = "  const desiredHeight = options.length * 32 + 14;\n"
+    new_height = "  const desiredHeight = options.length * 32 + 16;\n"
+    if text.count(old_height) != 1:
+        raise RuntimeError("Could not locate shared AspectPicker desired height")
+    text = text.replace(old_height, new_height, 1)
+
     path.write_text(text)
     base.validate_source()
-    print("Iteration 8 deterministic focus-management refinement applied")
+    print("Iteration 8 deterministic focus and overflow refinement applied")
 
 
 if __name__ == '__main__':
