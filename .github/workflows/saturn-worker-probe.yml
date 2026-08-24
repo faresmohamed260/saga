@@ -20,6 +20,8 @@ jobs:
       SATURN_TOKEN: ${{ secrets.SATURN_TOKEN }}
       SATURN_PROBE_OUTPUT: /tmp/saturn-worker-probe.json
       SATURN_AUTH_OUTPUT: /tmp/saturn-auth-diagnostic.json
+      SATURN_SCHEMA_OUTPUT: /tmp/saturn-recipe-schema.json
+      SATURN_SCHEMA_SUMMARY_OUTPUT: /tmp/saturn-recipe-schema-summary.json
     steps:
       - name: Checkout experiment branch
         uses: actions/checkout@v4
@@ -59,6 +61,17 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Inspect live recipe schema
+        id: saturn_schema
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          python scripts/saturn_recipe_schema_probe.py
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Probe Saturn GPU worker support
         id: saturn_probe
         continue-on-error: true
@@ -78,6 +91,8 @@ jobs:
           path: |
             /tmp/saturn-worker-probe.json
             /tmp/saturn-auth-diagnostic.json
+            /tmp/saturn-recipe-schema.json
+            /tmp/saturn-recipe-schema-summary.json
           retention-days: 3
           if-no-files-found: warn
 
@@ -95,6 +110,22 @@ jobs:
               print(f"- {attempt.get('scheme')}: HTTP `{attempt.get('status')}`")
           meta = data.get('token_metadata') or {}
           print(f"- Token is refresh token: `{meta.get('is_refresh')}`")
+          PY
+          fi >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f /tmp/saturn-recipe-schema-summary.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/saturn-recipe-schema-summary.json').read_text())
+          print('### Live Saturn recipe schema')
+          print(f"- Title: `{data.get('schema_title')}`")
+          print(f"- Definitions: `{len(data.get('definition_names') or [])}`")
+          interesting = data.get('interesting_definitions') or {}
+          for name, item in interesting.items():
+              values = item.get('type_values') or []
+              if values or name.lower() in {'resource', 'resourcespec', 'recipe'}:
+                  print(f"- `{name}` type values: `{values}` properties: `{item.get('property_keys')}`")
           PY
           fi >> "$GITHUB_STEP_SUMMARY"
 
@@ -131,6 +162,11 @@ jobs:
           if [ "$auth_code" != "0" ]; then
             echo "::error::Saturn authentication diagnostic failed with code $auth_code"
             exit "$auth_code"
+          fi
+          schema_code='${{ steps.saturn_schema.outputs.exit_code }}'
+          if [ "$schema_code" != "0" ]; then
+            echo "::error::Saturn recipe schema probe failed with code $schema_code"
+            exit "$schema_code"
           fi
           code='${{ steps.saturn_probe.outputs.exit_code }}'
           if [ -z "$code" ]; then
