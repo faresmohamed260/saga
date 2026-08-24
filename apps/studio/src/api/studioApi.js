@@ -4,10 +4,12 @@ async function jsonResponse(response, fallback) {
   return payload;
 }
 
-export async function fetchGallery({ limit, offset, kind, model }) {
+export async function fetchGallery({ limit, offset, kind, model, search, sort }) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (kind === 'image' || kind === 'video') params.set('kind', kind);
   if (model && model !== 'all') params.set('model', model);
+  if (search?.trim()) params.set('search', search.trim());
+  if (sort === 'oldest') params.set('sort', 'oldest');
   const response = await fetch(`/api/history?${params.toString()}`, { headers: { Accept: 'application/json' } });
   return jsonResponse(response, `Gallery request failed (${response.status})`);
 }
