@@ -11,11 +11,11 @@ The **canonical checklist** is stored separately at [`docs/studio-ui-polish-chec
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–07**.
-- Next item: **08 — unify Image and Video aspect selection into one reusable `AspectPicker`**.
-- Do not begin Item 08 until the user says **continue**.
+- Completed checklist items: **01–08**.
+- Next item: **09 — standardize resolution terminology and expose actual delivery dimensions**.
+- Do not begin Item 09 until the user says **continue**.
 - Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 7. Refinement run `32673600494` passed source validation, the poster/deferred-preview contract, build, and the full visual suite; artifact `9502051993` was professionally reviewed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.
+- Latest completed item is Iteration 8. Final standard Studio Visual Preview run `32676390654` passed on reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`; artifact `9502799506` was professionally reviewed across Image, Video, Edit, mobile Create, and Gallery. Studio CI, Backend Architecture CI, and Required Check Compatibility also passed. The REDGraft Modal smoke remains externally blocked because the configured Modal workspace is disabled.
 
 ## Non-negotiable process
 
@@ -136,3 +136,20 @@ The implementation is now a coherent product direction rather than a broken prot
 **Visual review:** the final desktop trigger/menu, reference-derived state, keyboard-focus state, and 390px mobile state were inspected. The control reads as one coherent setting, reference provenance is explicit, all desktop choices are visible, and mobile layout remains unclipped. No additional Item 07 defect remains.
 
 **Validation:** dedicated refinement run `32673600494` passed source formatting, `npm run test:poster`, Studio build, the full `visual:preview` suite, and artifact upload (`9502051993`). Refined product head `93c4f7005ee651778775fb217892558487c1ede3`. Item 08 is next and remains gated on explicit user approval.
+
+### Iteration 8 — shared Image/Video AspectPicker
+
+**Status:** complete.
+
+**Implementation:** extracted `apps/studio/src/features/create/AspectPicker.jsx` as the reusable aspect-selection surface and canonical aspect-preset source. Image/Create, Edit, and Video now consume the same component. It owns the ratio-shape preview, option labels, menu radio semantics, keyboard navigation/selection, Escape and outside-focus dismissal, focus restoration, and viewport-aware fixed positioning. Video supplies optional Auto/reference state through props; Image uses the same component without an Auto option, while Edit exposes its reference-derived Auto state through the shared trigger.
+
+**Deterministic coverage:** Create and Video visual scripts assert that both modes use the shared trigger/surface rather than independent implementations. Existing contracts continue to cover Arrow/Home/End navigation, Enter/Space selection, Escape focus return, focus-visible treatment, preview morphing, no unwanted menu scroll, Video Auto/manual transitions, reference inheritance/provenance, and mobile containment.
+
+**Professional review cycle:** the first remote implementation run (`32675725844`) exposed a focus-handoff race when the shared menu mounted and attempted to focus its selected option; focus management was corrected instead of loosening the test. Refinement run `32675995131` then exposed a real 2px border-box overflow (`366` scroll height vs `364` client height); the menu height calculation was fixed while keeping the no-scroll assertion. Successful run `32676138933` produced the first fully green shared-component artifact (`9502718139`). Visual inspection then found that the default Video Auto provenance text was truncated inside the shared row. The row allocation and copy were refined to keep `16:9 · Follows reference` readable while retaining explicit `From reference` states.
+
+**Visual review:** Image and Video now visibly use the same two-column picker with the same ratio preview, row density, selected/focused treatment, and complete 1:1–21:9 preset set. Video adds only the configured Auto row, rather than a parallel picker design. Edit's reference-driven Auto trigger is clear, the 390px Video toolbar remains contained, and Gallery/mobile regression screenshots remain stable. No remaining Item 08 visual defect was found.
+
+**Validation:** final standard Studio Visual Preview run `32676390654` passed on reviewed product head `333e32236b116be9a48234abada56582cbfd6ff2`; artifact `9502799506` was inspected and recorded no page errors. Studio CI, Backend Architecture CI, and Required Check Compatibility also passed. REDGraft runtime deployment succeeded but Modal rejected the prefetch call with `ConflictError: workspace ... is disabled`, so that remains an external infrastructure blocker unrelated to this UI refactor.
+
+**Professional review:** Item 08 is complete with no remaining actionable comments. Item 09 is next and remains gated on explicit user approval.
+
