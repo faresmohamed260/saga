@@ -19,6 +19,7 @@ jobs:
       SATURN_BASE_URL: https://app.community.saturnenterprise.io
       SATURN_TOKEN: ${{ secrets.SATURN_TOKEN }}
       SATURN_PROBE_OUTPUT: /tmp/saturn-worker-probe.json
+      SATURN_AUTH_OUTPUT: /tmp/saturn-auth-diagnostic.json
     steps:
       - name: Checkout experiment branch
         uses: actions/checkout@v4
@@ -45,6 +46,17 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check --no-input saturn-client
 
+      - name: Diagnose Saturn authentication
+        id: saturn_auth
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          python scripts/saturn_auth_diagnostic.py
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Probe Saturn GPU worker support
         id: saturn_probe
         continue-on-error: true
@@ -61,7 +73,9 @@ jobs:
         if: always()
         with:
           name: saturn-worker-probe-${{ github.run_id }}
-          path: /tmp/saturn-worker-probe.json
+          path: |
+            /tmp/saturn-worker-probe.json
+            /tmp/saturn-auth-diagnostic.json
           retention-days: 3
           if-no-files-found: warn
 
@@ -69,6 +83,19 @@ jobs:
         if: always()
         shell: bash
         run: |
+          if [ -f /tmp/saturn-auth-diagnostic.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('/tmp/saturn-auth-diagnostic.json').read_text())
+          print('### Saturn authentication')
+          for attempt in data.get('attempts', []):
+              print(f"- {attempt.get('scheme')}: HTTP `{attempt.get('status')}`")
+          meta = data.get('token_metadata') or {}
+          print(f"- Token is refresh token: `{meta.get('is_refresh')}`")
+          PY
+          fi >> "$GITHUB_STEP_SUMMARY"
+
           if [ -f /tmp/saturn-worker-probe.json ]; then
             python - <<'PY'
           import json
@@ -98,6 +125,11 @@ jobs:
       - name: Enforce useful result
         shell: bash
         run: |
+          auth_code='${{ steps.saturn_auth.outputs.exit_code }}'
+          if [ "$auth_code" != "0" ]; then
+            echo "::error::Saturn authentication diagnostic failed with code $auth_code"
+            exit "$auth_code"
+          fi
           code='${{ steps.saturn_probe.outputs.exit_code }}'
           if [ -z "$code" ]; then
             echo "::error::Saturn probe did not produce an exit code"
