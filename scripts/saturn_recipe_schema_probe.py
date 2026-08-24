@@ -15,6 +15,23 @@ TOKEN = os.environ.get("SATURN_TOKEN", "").strip()
 OUT = Path(os.environ.get("SATURN_SCHEMA_OUTPUT", "/tmp/saturn-recipe-schema.json"))
 SUMMARY_OUT = Path(os.environ.get("SATURN_SCHEMA_SUMMARY_OUTPUT", "/tmp/saturn-recipe-schema-summary.json"))
 
+KEY_DEFINITIONS = (
+    "ResourceConfigSpec",
+    "OwnerResourceCreate",
+    "OwnerResourceEnvironmentCreate",
+    "CommandCreate",
+    "Command",
+    "Port",
+    "ResourceScaleCreate",
+    "ResourceScale",
+    "RecipeResourceImageCreate",
+    "RecipeResourceDiskCreate",
+    "GitRepositoryInput",
+    "GlobalEnvVariableInput",
+    "ResourceEnvVariableCreate",
+    "VolumeMountInput",
+)
+
 
 def describe_schema(schema: dict[str, Any]) -> dict[str, Any]:
     defs = schema.get("$defs") or schema.get("definitions") or {}
@@ -49,6 +66,7 @@ def describe_schema(schema: dict[str, Any]) -> dict[str, Any]:
         "root_any_of": schema.get("anyOf"),
         "definition_names": sorted(defs.keys()),
         "interesting_definitions": interesting,
+        "key_definitions": {name: defs.get(name) for name in KEY_DEFINITIONS if name in defs},
     }
 
 
