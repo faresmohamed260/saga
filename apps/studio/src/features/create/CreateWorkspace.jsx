@@ -24,7 +24,7 @@ function loadVideoOutputSettings() {
 }
 
 export default function CreateWorkspace(props) {
-  const { mode, references = [], busy, jobStatus, onGenerate } = props;
+  const { mode, references = [], busy, jobStatus, workerStatus, onGenerate } = props;
   const initial = useMemo(loadVideoOutputSettings, []);
   const [autoAspect, setAutoAspect] = useState(initial.autoAspect);
   const [manualAspect, setManualAspect] = useState(initial.manualAspect);
@@ -35,14 +35,14 @@ export default function CreateWorkspace(props) {
   const effectiveAspect = autoAspect ? referenceInfo.value : manualAspect;
 
   useEffect(() => {
-    if (mode !== 'Video') {
+    if (mode !== 'Video' && mode !== 'Edit') {
       setToolbarHost(null);
       setComposerHost(null);
       return;
     }
     const frame = window.requestAnimationFrame(() => {
-      setToolbarHost(document.querySelector('.saga-composer.is-video .saga-toolbar-left'));
-      setComposerHost(document.querySelector('.saga-composer.is-video'));
+      setToolbarHost(mode === 'Video' ? document.querySelector('.saga-composer.is-video .saga-toolbar-left') : null);
+      setComposerHost(document.querySelector(mode === 'Video' ? '.saga-composer.is-video' : '.saga-composer.is-edit'));
     });
     return () => window.cancelAnimationFrame(frame);
   }, [mode]);
@@ -78,8 +78,8 @@ export default function CreateWorkspace(props) {
         />,
         toolbarHost,
       )}
-      {mode === 'Video' && composerHost && createPortal(
-        <VideoGenerationProgress busy={busy} status={jobStatus} />,
+      {(mode === 'Video' || mode === 'Edit') && composerHost && createPortal(
+        <VideoGenerationProgress busy={busy} status={jobStatus} workerStatus={workerStatus} kind={mode === 'Video' ? 'video' : 'image'} />,
         composerHost,
       )}
     </>

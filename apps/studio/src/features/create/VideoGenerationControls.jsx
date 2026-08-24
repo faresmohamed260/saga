@@ -187,14 +187,22 @@ export function VideoOutputControls({
 
 const STATUS_COPY = {
   uploading: ['Uploading reference', 'Preparing the source image for generation.'],
-  submitting: ['Submitting generation', 'Sending the video request to the generation service.'],
-  queued: ['Queued', 'The request is waiting for an available generation worker.'],
-  running: ['Generating video', 'REDGraft LTX 2.5 is rendering the requested frames.'],
-  completed: ['Video ready', 'The completed video has been saved to Gallery.'],
+  submitting: ['Submitting generation', 'Sending the request to the assigned model ecosystem.'],
+  queued: ['Waiting for worker', 'The request is queued for an available ecosystem worker.'],
+  sleeping: ['Worker sleeping', 'Compute is scaled to zero and will start on demand.'],
+  waking: ['Starting worker', 'The assigned worker is waking from zero compute.'],
+  loading: ['Loading model', 'Cached model assets are loading into GPU memory.'],
+  ready: ['Worker ready', 'The model ecosystem is ready to begin generation.'],
+  generating: ['Generating', 'The assigned model ecosystem is producing the requested media.'],
+  running: ['Generating', 'The assigned model ecosystem is producing the requested media.'],
+  finalizing: ['Finalizing result', 'Generation is complete and the result is being prepared for Gallery.'],
+  credit_exhausted: ['Switching worker', 'The assigned worker reached its credit limit. A standby worker will be used when available.'],
+  unavailable: ['Worker unavailable', 'The assigned worker is unavailable. A standby worker will be used when available.'],
+  completed: ['Generation ready', 'The completed result has been saved to Gallery.'],
   failed: ['Generation failed', 'The request did not complete. See the message below for details.'],
 };
 
-export function VideoGenerationProgress({ busy, status }) {
+export function VideoGenerationProgress({ busy, status, workerStatus, kind = 'video' }) {
   const [elapsed, setElapsed] = useState(0);
   const [showTerminal, setShowTerminal] = useState(false);
 
@@ -219,8 +227,11 @@ export function VideoGenerationProgress({ busy, status }) {
   }, [busy, status]);
 
   if (!busy && !showTerminal) return null;
-  const normalized = status || (busy ? 'submitting' : 'completed');
-  const [title, detail] = STATUS_COPY[normalized] || STATUS_COPY.running;
+  const normalized = workerStatus?.state || status || (busy ? 'submitting' : 'completed');
+  const [baseTitle, baseDetail] = STATUS_COPY[normalized] || STATUS_COPY.running;
+  const title = normalized === 'generating' || normalized === 'running' ? `Generating ${kind}` : baseTitle;
+  const workerName = workerStatus?.displayName || '';
+  const detail = workerName ? `${baseDetail} · ${workerName}` : baseDetail;
   const terminal = normalized === 'completed' || normalized === 'failed';
   return (
     <div className={`saga-generation-progress is-${normalized}`} role="status" aria-live="polite">

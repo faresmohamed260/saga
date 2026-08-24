@@ -154,6 +154,7 @@ export default async function handler(req, res) {
       provider: workflow.provider,
       metadata: {
         inputTransport,
+        ecosystem: workflow.ecosystem || null,
         sourceR2Key: sourceKeys[0] || null,
         sourceR2Keys: sourceKeys,
         sourceContentType: primary.contentType || null,
@@ -197,6 +198,8 @@ export default async function handler(req, res) {
       status: 'running',
       workflow: workflow.id,
       provider: workflow.provider,
+      ecosystem: workflow.ecosystem || null,
+      worker: submitted.worker || null,
       inputTransport,
       referenceCount: sources.length,
     });
@@ -209,6 +212,6 @@ export default async function handler(req, res) {
       }
     }
     console.error('Generation orchestration submit failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation submit failed' });
+    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation submit failed', errorCode: error?.errorCode || null, workerState: error?.workerState || null });
   }
 }

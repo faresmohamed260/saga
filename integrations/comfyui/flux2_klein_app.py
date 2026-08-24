@@ -23,7 +23,12 @@ CACHE_DIR = "/cache"
 GPU_TYPE = os.environ.get("MODAL_FLUX2_KLEIN_GPU", "L40S")
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_FLUX2_KLEIN_TIMEOUT_SECONDS", "1800"))
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_FLUX2_KLEIN_IDLE_SECONDS", "300"))
-WORKER_MIN_CONTAINERS = int(os.environ.get("MODAL_FLUX2_KLEIN_MIN_CONTAINERS", "0"))
+WORKER_MIN_CONTAINERS = 0
+WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_FLUX2_KLEIN_MAX_CONTAINERS", "1"))
+ECOSYSTEM_ID = "flux2-klein-9b"
+WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
+STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-flux2-klein-9b-worker-state")
+CACHE_VOLUME_NAME = os.environ.get("SAGA_MODAL_WORKER_VOLUME", "saga-flux2-klein-9b-cache")
 
 CHECKPOINT_NAME = "darkBeast_dbkleinv2BFS.safetensors"
 CHECKPOINT_URL = "https://civitai.red/api/download/models/2740209?fileId=2626634"
@@ -33,7 +38,8 @@ CHECKPOINT_CACHE = Path(CACHE_DIR) / "studio" / "flux2-klein-9b" / CHECKPOINT_NA
 WORKFLOW_BUNDLED_PATH = "/root/flux2_klein_9b_image_edit_api.json"
 LOCAL_WORKFLOW_PATH = Path(__file__).parent / "workflows" / "flux2_klein_9b_image_edit_api.json"
 
-cache_volume = modal.Volume.from_name("graduation-comfyui-cache", create_if_missing=True)
+cache_volume = modal.Volume.from_name(CACHE_VOLUME_NAME, create_if_missing=True)
+worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version=PYTHON_VERSION)
@@ -65,6 +71,12 @@ app = modal.App(APP_NAME, image=image)
 
 def _log(event: str, **fields: Any) -> None:
     print({"event": event, **fields}, flush=True)
+
+
+def _set_worker_state(state: str, **fields: Any) -> None:
+    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "updated_at": int(time.time()), **fields}
+    worker_state["worker"] = payload
+    _log("worker_state", **payload)
 
 
 def _find_cached_file(name: str) -> Path | None:
@@ -186,6 +198,7 @@ def _request_bytes(url: str) -> bytes:
 def prefetch_klein(force_checkpoint: bool = False) -> dict[str, Any]:
     started = time.perf_counter()
     files = _ensure_model_files(force_checkpoint=force_checkpoint)
+    _set_worker_state("sleeping", assets_cached=True)
     return {
         "ready": True,
         "model": "flux2-klein-9b-darkbeast-v2-bfs",
@@ -200,6 +213,7 @@ def prefetch_klein(force_checkpoint: bool = False) -> dict[str, Any]:
     timeout=FUNCTION_TIMEOUT_SECONDS,
     scaledown_window=CONTAINER_IDLE_SECONDS,
     min_containers=WORKER_MIN_CONTAINERS,
+    max_containers=WORKER_MAX_CONTAINERS,
     volumes={CACHE_DIR: cache_volume},
 )
 @modal.concurrent(max_inputs=1)
@@ -208,6 +222,7 @@ class Flux2KleinWorker:
 
     @modal.enter()
     def start(self) -> None:
+        _set_worker_state("loading")
         started = time.perf_counter()
         files = _ensure_model_files(force_checkpoint=False)
         _link_models(files)
@@ -239,6 +254,7 @@ class Flux2KleinWorker:
             "vae": VAE_NAME,
             "multiple_references": True,
         }
+        _set_worker_state("ready", startup_seconds=self._status["startup_seconds"])
         _log("flux2_klein_worker_ready", **self._status)
 
     def _wait_until_ready(self) -> None:
@@ -412,8 +428,14 @@ class Flux2KleinWorker:
             filename_prefix=prefix,
             megapixels=max(0.25, min(float(megapixels), 4.0)),
         )
+        _set_worker_state("generating", job_token=prompt_id[:12])
         started = time.perf_counter()
-        result = self._queue_and_wait(workflow, prompt_id)
+        try:
+            result = self._queue_and_wait(workflow, prompt_id)
+            _set_worker_state("finalizing", job_token=prompt_id[:12])
+        except Exception:
+            _set_worker_state("failed", job_token=prompt_id[:12])
+            raise
         _log(
             "flux2_klein_edit_completed",
             prompt_id=prompt_id,
@@ -423,7 +445,12 @@ class Flux2KleinWorker:
             steps=int(steps),
             cfg=float(cfg),
         )
+        _set_worker_state("ready")
         return result
+
+    @modal.exit()
+    def stop(self) -> None:
+        _set_worker_state("sleeping")
 
 
 @app.function(image=image, timeout=FUNCTION_TIMEOUT_SECONDS, volumes={CACHE_DIR: cache_volume})

@@ -24,6 +24,13 @@ SERVER = "127.0.0.1:8188"
 DEFAULT_FPS = 24
 FRAME_RATES = {24, 25, 30}
 GPU_TYPE = os.environ.get("MODAL_LTX25_GPU", "A10")
+CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_LTX25_IDLE_SECONDS", "180"))
+WORKER_MIN_CONTAINERS = 0
+WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_LTX25_MAX_CONTAINERS", "1"))
+ECOSYSTEM_ID = "ltx25-redgraft"
+WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
+STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-ltx25-redgraft-worker-state")
+CACHE_VOLUME_NAME = os.environ.get("SAGA_MODAL_WORKER_VOLUME", "saga-ltx25-redgraft-cache")
 
 CHECKPOINT = "REDGraft-ltx25-sulphur2-int8-convrot-ComfyMCP.safetensors"
 CHECKPOINT_URL = "https://civitai.red/api/download/models/3250230?fileId=3133376"
@@ -58,7 +65,8 @@ RESOLUTION_SHORT_EDGES = {"480p": 480, "720p": 720, "1080p": 1080, "2K": 1152, "
 LOW_STAGE_SIGMAS = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 HIGH_STAGE_SIGMAS = "0.85, 0.7250, 0.4219, 0.0"
 
-cache_volume = modal.Volume.from_name("graduation-comfyui-cache", create_if_missing=True)
+cache_volume = modal.Volume.from_name(CACHE_VOLUME_NAME, create_if_missing=True)
+worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
 
 _runtime_secret_values: dict[str, str] = {}
 for _name in ("HF_TOKEN", "CIVITAI_API_TOKEN"):
@@ -89,6 +97,12 @@ app = modal.App(APP_NAME, image=image)
 
 def _log(event: str, **fields: Any) -> None:
     print({"event": event, **fields}, flush=True)
+
+
+def _set_worker_state(state: str, **fields: Any) -> None:
+    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "updated_at": int(time.time()), **fields}
+    worker_state["worker"] = payload
+    _log("worker_state", **payload)
 
 
 def _safe_link(source: Path, destination: Path) -> None:
@@ -631,6 +645,7 @@ def _finalize_video(
 def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
     started = time.perf_counter()
     files = _ensure_model_files(verify_checkpoint=verify_checkpoint)
+    _set_worker_state("sleeping", assets_cached=True)
     return {
         "ready": True,
         "model": "redgraft-ltx25-sulphur2-int8-convrot",
@@ -645,7 +660,9 @@ def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
     image=image,
     gpu=GPU_TYPE,
     timeout=4200,
-    scaledown_window=300,
+    scaledown_window=CONTAINER_IDLE_SECONDS,
+    min_containers=WORKER_MIN_CONTAINERS,
+    max_containers=WORKER_MAX_CONTAINERS,
     volumes={str(CACHE_DIR): cache_volume},
     secrets=RUNTIME_SECRETS,
 )
@@ -653,6 +670,7 @@ def prefetch_ltx25(verify_checkpoint: bool = True) -> dict[str, Any]:
 class LTX25Worker:
     @modal.enter()
     def start(self) -> None:
+        _set_worker_state("loading")
         started = time.perf_counter()
         files = _ensure_model_files(verify_checkpoint=True)
         self.models = _prepare_models(files)
@@ -677,6 +695,7 @@ class LTX25Worker:
         )
         _wait_server()
         self.started_seconds = round(time.perf_counter() - started, 3)
+        _set_worker_state("ready", startup_seconds=self.started_seconds)
 
     @modal.method()
     def health(self) -> dict[str, Any]:
@@ -753,6 +772,7 @@ class LTX25Worker:
         if int(frame_rate) not in FRAME_RATES:
             raise ValueError("frame_rate must be 24, 25, or 30")
 
+        _set_worker_state("generating")
         source_name = _upload_image(source_image) if source_image else None
         output_token = uuid.uuid4().hex[:12]
         graph = _workflow(
@@ -796,6 +816,7 @@ class LTX25Worker:
                         frame_rate=int(frame_rate),
                         duration_seconds=int(duration_seconds),
                     )
+                    _set_worker_state("finalizing")
                     _log(
                         "ltx25_delivery_ready",
                         resolution=resolution,
@@ -806,6 +827,13 @@ class LTX25Worker:
                         height=delivery_height,
                         bytes=final_path.stat().st_size,
                     )
-                    return final_path.read_bytes()
+                    result = final_path.read_bytes()
+                    _set_worker_state("ready")
+                    return result
             time.sleep(2)
+        _set_worker_state("failed")
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")
+
+    @modal.exit()
+    def stop(self) -> None:
+        _set_worker_state("sleeping")

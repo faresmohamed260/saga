@@ -111,6 +111,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [jobStatus, setJobStatus] = useState('');
+  const [workerStatus, setWorkerStatus] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [jobsFilter, setJobsFilter] = useState('active');
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -329,7 +330,7 @@ export default function App() {
       steps,
       cfg,
       megapixels: autoEditInfo.megapixels,
-    }, { onStatus: setJobStatus });
+    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus });
 
     setJobStatus('completed');
     const item = {
@@ -371,7 +372,7 @@ export default function App() {
       aspectRatio: videoAspect,
       frameRate: videoFrameRate,
       seed: effectiveSeed,
-    }, { onStatus: setJobStatus });
+    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus });
 
     setJobStatus('completed');
     const item = {
@@ -398,7 +399,7 @@ export default function App() {
 
   const generate = async (generationOptions = {}) => {
     if (busy) return;
-    setBusy(true); setError(''); setJobStatus('');
+    setBusy(true); setError(''); setJobStatus(''); setWorkerStatus(null);
     try {
       if (isEdit) await runFluxEdit();
       else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
@@ -406,6 +407,7 @@ export default function App() {
       else throw new Error('Choose Image, Video, or Edit to generate media.');
     } catch (err) {
       setJobStatus('failed');
+      setWorkerStatus((current) => ({ ...(current || {}), state: 'failed' }));
       setError(err instanceof Error ? err.message : 'Generation failed.');
     } finally { setBusy(false); }
   };
@@ -646,7 +648,7 @@ export default function App() {
           : <CreateWorkspace
               mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else if (nextMode === 'Video') { setWorkflowId('video-planned'); setModelId('saga-video-auto'); } else if (nextMode === 'Image') { setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
-              error={error} jobStatus={jobStatus} busy={busy} onGenerate={generate} items={visibleItems} renderCard={renderCard}
+              error={error} jobStatus={jobStatus} workerStatus={workerStatus} busy={busy} onGenerate={generate} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
               outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
               seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}

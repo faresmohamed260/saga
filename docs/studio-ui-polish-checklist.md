@@ -8,12 +8,12 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 11 — explicit Audio state**
+**Platform blocker — Modal ecosystem worker fleet**
 
-- Status: `[x]` complete
-- Completed item: **11**
-- Next item: **12 — improve generation lifecycle feedback**
-- Rule: do not start Item 12 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[~]` in progress
+- Completed checklist items remain **01–11**.
+- Blocker: replace the single-account Modal runtime assumption with ecosystem-affine workers, scale-to-zero compute, persistent model caches, credit/unavailable failover, clean worker provisioning, and production worker-state feedback.
+- Item **12 — improve generation lifecycle feedback** remains pending and must not start until this blocker is implemented and end-to-end generation is validated.
 
 ## P0 — correctness, interaction safety, accessibility
 

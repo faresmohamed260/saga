@@ -193,7 +193,7 @@ export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sour
   if (response.status !== 202) throw new Error(await responseError(response, 'Could not submit generation'));
   const payload = await response.json();
   if (!payload?.job?.id) throw new Error('Generation submit did not return a job id.');
-  return payload.job;
+  return { job: payload.job, worker: payload.worker || null };
 }
 
 export async function submitVideoGeneration({
@@ -240,10 +240,10 @@ export async function submitVideoGeneration({
   if (response.status !== 202) throw new Error(await responseError(response, 'Could not submit video generation'));
   const payload = await response.json();
   if (!payload?.job?.id) throw new Error('Video generation submit did not return a job id.');
-  return payload.job;
+  return { job: payload.job, worker: payload.worker || null };
 }
 
-export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus } = {}) {
+export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus, onWorkerStatus } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (onStatus) onStatus('running');
@@ -253,6 +253,8 @@ export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 
       cache: 'no-store',
     });
     if (response.status === 202) {
+      const pending = await response.json().catch(() => ({}));
+      if (onWorkerStatus) onWorkerStatus(pending.worker || { state: pending.workerState || 'queued', ecosystem: pending.ecosystem || '' });
       await sleep(intervalMs);
       continue;
     }
@@ -271,19 +273,21 @@ export async function runImageEdit(input, options = {}) {
   if (options.onStatus) options.onStatus(editSizingPreference.mode === 'manual' ? 'preparing' : 'uploading');
   const effectiveInput = await applyEditSizing(input);
   if (options.onStatus) options.onStatus('uploading');
-  const job = await submitImageEdit(effectiveInput);
+  const submitted = await submitImageEdit(effectiveInput);
+  if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
   if (options.onStatus) options.onStatus('running');
-  const result = await waitForGeneration(job.id, options);
-  return { job, result };
+  const result = await waitForGeneration(submitted.job.id, options);
+  return { job: submitted.job, result };
 }
 
 export async function runVideoGeneration(input, options = {}) {
   if (options.onStatus) options.onStatus(input?.sourceFile ? 'uploading' : 'submitting');
-  const job = await submitVideoGeneration(input);
+  const submitted = await submitVideoGeneration(input);
+  if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
   if (options.onStatus) options.onStatus('running');
-  const result = await waitForGeneration(job.id, {
+  const result = await waitForGeneration(submitted.job.id, {
     timeoutMs: 55 * 60 * 1000,
     ...options,
   });
-  return { job, result };
+  return { job: submitted.job, result };
 }

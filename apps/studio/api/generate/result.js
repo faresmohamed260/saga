@@ -29,13 +29,13 @@ export default async function handler(req, res) {
         thumbnailUrl: job.thumbnail_url || null,
       });
     }
-    if (!job.workflow_id || !job.provider_job_id) return res.status(202).json({ status: job.status || 'queued' });
+    if (!job.workflow_id || !job.provider_job_id) return res.status(202).json({ status: job.status || 'queued', workerState: 'queued', ecosystem: job.metadata?.ecosystem || null });
 
     const workflow = getWorkflow(job.workflow_id);
     if (!workflow) return res.status(409).json({ error: 'Generation workflow is no longer registered' });
 
     const result = await pollWorkflow(workflow, job.provider_job_id);
-    if (result.status !== 'completed') return res.status(202).json({ status: 'running' });
+    if (result.status !== 'completed') return res.status(202).json({ status: 'running', workerState: result.worker?.state || 'generating', worker: result.worker || null, ecosystem: workflow.ecosystem || null });
 
     const contentType = result.contentType || workflow.outputMimeType;
     const completed = workflow.kind === 'video'
@@ -58,6 +58,6 @@ export default async function handler(req, res) {
       }
     }
     console.error('Generation result poll failed', error);
-    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation result poll failed' });
+    return res.status(error?.statusCode || 500).json({ error: error?.message || 'Generation result poll failed', errorCode: error?.errorCode || null, workerState: error?.workerState || null });
   }
 }
