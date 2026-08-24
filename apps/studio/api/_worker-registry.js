@@ -5,9 +5,8 @@ const CREDIT_PATTERNS = [
   'spending limit', 'spend limit', 'workspace budget', 'out of funds', 'balance',
 ];
 const UNAVAILABLE_PATTERNS = [
-  'workspace is disabled', 'workspace disabled', 'disabled workspace', 'not found',
-  'unavailable', 'temporarily unavailable', 'connection refused', 'timed out', 'timeout',
-  'container failed', 'app is stopped', 'app stopped',
+  'workspace is disabled', 'workspace disabled', 'disabled workspace',
+  'temporarily unavailable', 'app is stopped', 'app stopped',
 ];
 
 function cleanText(value) {
@@ -77,17 +76,18 @@ export function listConfiguredWorkers() {
   return [...unique.values()];
 }
 
-export function workersForWorkflow(workflow) {
+export function workersForWorkflow(workflow, { excludeWorkerIds = [] } = {}) {
   const ecosystem = cleanText(workflow?.ecosystem);
+  const excluded = new Set((excludeWorkerIds || []).map(cleanText).filter(Boolean));
   const configured = listConfiguredWorkers()
-    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem)
+    .filter((worker) => worker.enabled && worker.ecosystem === ecosystem && !excluded.has(worker.id))
     .sort((a, b) => {
       const role = (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1);
       return role || a.order - b.order || a.id.localeCompare(b.id);
     });
   if (configured.length) return configured;
   const legacy = legacyWorker(workflow);
-  return legacy ? [legacy] : [];
+  return legacy && !excluded.has(legacy.id) ? [legacy] : [];
 }
 
 export function encodeProviderJobId(workerId, callId) {
@@ -117,7 +117,7 @@ export function workerForProviderJob(workflow, providerJobId) {
 
 function errorText({ body, error } = {}) {
   const pieces = [];
-  if (body && typeof body === 'object') pieces.push(body.error, body.detail, body.errorCode, body.code, body.workerState);
+  if (body && typeof body === 'object') pieces.push(body.error, body.detail, body.errorCode, body.code, body.workerState, body.worker_state);
   else pieces.push(body);
   if (error) pieces.push(error.message, error.name, error.cause?.message);
   return pieces.filter(Boolean).join(' ').toLowerCase();
@@ -125,13 +125,30 @@ function errorText({ body, error } = {}) {
 
 export function classifyWorkerFailure({ status = 0, body = null, error = null } = {}) {
   const text = errorText({ body, error });
-  if (Number(status) === 402 || CREDIT_PATTERNS.some((pattern) => text.includes(pattern))) {
-    return { retryable: true, kind: 'credit_exhausted', code: 'WORKER_CREDIT_EXHAUSTED' };
+  const explicitState = cleanText(body?.workerState || body?.worker_state).toLowerCase();
+  const explicitCode = cleanText(body?.errorCode || body?.code).toUpperCase();
+  const credit = Number(status) === 402
+    || explicitState === 'credit_exhausted'
+    || explicitCode === 'WORKER_CREDIT_EXHAUSTED'
+    || CREDIT_PATTERNS.some((pattern) => text.includes(pattern));
+  if (credit) {
+    return { retryable: true, safeToReassign: true, kind: 'credit_exhausted', code: 'WORKER_CREDIT_EXHAUSTED' };
   }
-  if (Number(status) === 429 || Number(status) >= 500 || UNAVAILABLE_PATTERNS.some((pattern) => text.includes(pattern)) || error) {
-    return { retryable: true, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };
+
+  const explicitUnavailable = explicitState === 'unavailable'
+    || explicitCode === 'WORKER_UNAVAILABLE'
+    || UNAVAILABLE_PATTERNS.some((pattern) => text.includes(pattern));
+  if (explicitUnavailable) {
+    return { retryable: true, safeToReassign: true, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };
   }
-  return { retryable: false, kind: 'failed', code: 'PROVIDER_FAILED' };
+
+  if (Number(status) === 429) {
+    return { retryable: true, safeToReassign: true, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };
+  }
+  if (Number(status) >= 500 || error) {
+    return { retryable: true, safeToReassign: false, kind: 'unavailable', code: 'WORKER_UNAVAILABLE' };
+  }
+  return { retryable: false, safeToReassign: false, kind: 'failed', code: 'PROVIDER_FAILED' };
 }
 
 export function providerFailureError(message, { status = 0, body = null, cause = null, worker = null } = {}) {
@@ -141,14 +158,17 @@ export function providerFailureError(message, { status = 0, body = null, cause =
   error.errorCode = classification.code;
   error.workerState = classification.kind;
   error.workerFailure = classification;
+  error.safeToReassign = classification.safeToReassign;
   error.workerId = worker?.id || '';
   error.ecosystem = worker?.ecosystem || '';
+  error.providerStatus = Number(status) || 0;
+  error.providerBody = body && typeof body === 'object' ? body : null;
   if (cause) error.cause = cause;
   return error;
 }
 
-export async function submitWithWorkerFailover(workflow, operation) {
-  const workers = workersForWorkflow(workflow);
+export async function submitWithWorkerFailover(workflow, operation, { excludeWorkerIds = [] } = {}) {
+  const workers = workersForWorkflow(workflow, { excludeWorkerIds });
   if (!workers.length) {
     const error = new Error(`No worker is configured for ${workflow?.ecosystem || workflow?.id || 'workflow'}`);
     error.statusCode = 503;
