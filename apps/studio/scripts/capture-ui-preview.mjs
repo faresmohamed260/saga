@@ -336,6 +336,9 @@ try {
   // Tools is the clarified sidebar destination for additional creation utilities, and Create returns to the compact image composer.
   await desktop.getByRole('button', { name: 'Tools', exact: true }).click();
   await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });
+  await desktop.getByRole('heading', { name: 'Creation tools', exact: true }).waitFor({ state: 'visible' });
+  await desktop.locator('.saga-more-panel').getByText('Additional tools', { exact: true }).waitFor({ state: 'visible' });
+  if ((await desktop.locator('.saga-create-stage').innerText()).includes('More tools')) throw new Error('Ambiguous More terminology remains on the Tools destination');
   await shot(desktop, '07-tools-sidebar.png');
   await desktop.getByRole('button', { name: 'Create', exact: true }).click();
   await desktop.locator('.saga-composer').waitFor({ state: 'visible' });

@@ -705,7 +705,7 @@ export default function CreateWorkspace({
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
   const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
-  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'More creation tools' : 'Imagine worlds';
+  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'Creation tools' : 'Imagine worlds';
 
   useEffect(() => {
     if (autoEditInfo) autoBaselineRef.current = { ...autoEditInfo };
@@ -797,7 +797,7 @@ export default function CreateWorkspace({
     return (
       <div className="saga-create-stage">
         <div className="saga-stage-heading"><span>STUDIO</span><h1>{heading}</h1><p>Additional creation workflows will live here without crowding the core Image and Video composer.</p></div>
-        <section className="saga-more-panel"><Sparkles size={24} /><div><strong>More tools</strong><p>Choose Create in the sidebar to return to the Image composer.</p></div></section>
+        <section className="saga-more-panel"><Sparkles size={24} /><div><strong>Additional tools</strong><p>Choose Create in the sidebar to return to the Image composer.</p></div></section>
       </div>
     );
   }
