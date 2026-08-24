@@ -6,6 +6,8 @@ on:
       - "apps/studio/**"
       - ".github/workflows/studio-ci.yml"
       - "scripts/worker_fleet_platform_patch.py"
+      - "scripts/modal_worker_fleet.py"
+      - "config/modal-worker-ecosystems.json"
   push:
     branches: [main]
     paths:
@@ -35,9 +37,6 @@ jobs:
             exit 0
           fi
           python scripts/worker_fleet_platform_patch.py
-          # Workflow-file writes require GitHub Apps with workflows permission. The
-          # platform patch is safe to land without the optional inventory workflow;
-          # that workflow is added separately through the connected GitHub app.
           rm -f .github/workflows/modal-worker-inventory.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -80,3 +79,45 @@ jobs:
             echo "Temporary async fetch shim must not return." >&2
             exit 1
           fi
+
+  modal-worker-inventory:
+    if: github.event_name == 'pull_request' && github.head_ref == 'studio/video-gallery-ux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      EXPECTED_MODAL_ACCOUNTS: "47"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Inventory all Modal accounts
+        run: python scripts/modal_worker_fleet.py inventory --out modal-worker-inventory.json
+      - name: Validate 47-account roster
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path('modal-worker-inventory.json').read_text(encoding='utf-8'))
+          rows = payload.get('accounts') or []
+          expected = int(os.environ['EXPECTED_MODAL_ACCOUNTS'])
+          if len(rows) != expected:
+              raise SystemExit(f'Expected {expected} Modal accounts, inventoried {len(rows)}')
+          counts = {}
+          for row in rows:
+              state = str(row.get('state') or 'unknown')
+              counts[state] = counts.get(state, 0) + 1
+          print(json.dumps({'count': len(rows), 'states': counts}, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modal-worker-inventory
+          path: modal-worker-inventory.json
+          if-no-files-found: error
+          retention-days: 7
