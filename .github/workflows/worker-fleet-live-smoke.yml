@@ -1,8 +1,8 @@
 name: Worker Fleet Live Smoke
 
 on:
-  push:
-    branches: [studio/video-gallery-ux]
+  pull_request:
+    branches: [main]
     paths:
       - "apps/studio/api/_worker-registry.generated.js"
       - "apps/studio/api/_worker-registry.js"
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: worker-fleet-live-smoke
+  group: worker-fleet-live-smoke-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -24,8 +24,6 @@ jobs:
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: studio/video-gallery-ux
 
       - uses: actions/setup-python@v5
         with:
