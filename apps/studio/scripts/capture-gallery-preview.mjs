@@ -116,6 +116,15 @@ try {
   const firstFocusableClass = await cards.first().locator('button').first().getAttribute('class');
   if (!firstFocusableClass?.includes('media-frame-primary')) throw new Error(`Primary media action is not first in card focus order: ${firstFocusableClass}`);
 
+  const searchInput = page.getByRole('searchbox', { name: 'Search prompts' });
+  await searchInput.fill('shoreline');
+  await page.waitForTimeout(250);
+  if (!page.url().includes('#/gallery')) throw new Error('Gallery search unexpectedly changed navigation');
+  await page.getByLabel('Sort').selectOption('oldest');
+  await page.waitForTimeout(250);
+  await searchInput.fill('');
+  await page.getByLabel('Sort').selectOption('newest');
+
   await page.screenshot({ path: path.join(outputDir, '10-gallery-grid.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('10-gallery-grid.png');
   await page.locator('.gallery-grid').screenshot({ path: path.join(outputDir, '10c-gallery-video-posters.png'), animations: 'disabled' });
