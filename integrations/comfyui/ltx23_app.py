@@ -15,6 +15,7 @@ from typing import Any
 import modal
 
 APP_NAME = "saga-ltx25-video"
+RUNTIME_BUILD = "a10-normalvram-poster-v2"
 COMFY_DIR = Path("/root/ComfyUI")
 CACHE_DIR = Path("/cache")
 MODEL_ROOT = CACHE_DIR / "studio-models"
@@ -23,7 +24,7 @@ INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
 DEFAULT_FPS = 24
 FRAME_RATES = {24, 25, 30}
-GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "H100,L40S,A100-40GB").split(",") if x.strip()]
+GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "A10").split(",") if x.strip()]
 GPU_REQUEST: str | list[str] = GPU_CHOICES[0] if len(GPU_CHOICES) == 1 else GPU_CHOICES
 GPU_LABEL = ",".join(GPU_CHOICES)
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_LTX25_IDLE_SECONDS", "180"))
@@ -109,7 +110,7 @@ def _log(event: str, **fields: Any) -> None:
 
 
 def _set_worker_state(state: str, **fields: Any) -> None:
-    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "updated_at": int(time.time()), **fields}
+    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "runtime_build": RUNTIME_BUILD, "updated_at": int(time.time()), **fields}
     worker_state["worker"] = payload
     _log("worker_state", **payload)
 
@@ -690,21 +691,28 @@ class LTX25Worker:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         launch_command = [
             "python", "main.py", "--listen", "127.0.0.1", "--port", "8188",
-            "--reserve-vram", "2", "--disable-auto-launch", "--preview-method", "none",
+            "--reserve-vram", "0.5", "--disable-auto-launch", "--preview-method", "none",
         ]
-        if any(choice.upper() == "A10" for choice in GPU_CHOICES):
+        if str(os.environ.get("MODAL_LTX25_LOWVRAM") or "").strip().lower() in {"1", "true", "yes"}:
             launch_command.append("--lowvram")
         self.process = subprocess.Popen(launch_command, cwd=COMFY_DIR)
         _wait_server()
         self.started_seconds = round(time.perf_counter() - started, 3)
-        _set_worker_state("ready", startup_seconds=self.started_seconds)
+        try:
+            import torch
+            self.gpu_name = torch.cuda.get_device_name(0)
+        except Exception:
+            self.gpu_name = GPU_LABEL
+        _set_worker_state("ready", startup_seconds=self.started_seconds, gpu_name=self.gpu_name)
 
     @modal.method()
     def health(self) -> dict[str, Any]:
         return {
             "ready": True,
             "app": APP_NAME,
+            "runtime_build": RUNTIME_BUILD,
             "gpu": GPU_LABEL,
+            "gpu_name": getattr(self, "gpu_name", GPU_LABEL),
             "default_fps": DEFAULT_FPS,
             "frame_rates": sorted(FRAME_RATES),
             "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
@@ -773,7 +781,8 @@ class LTX25Worker:
         if int(frame_rate) not in FRAME_RATES:
             raise ValueError("frame_rate must be 24, 25, or 30")
 
-        _set_worker_state("generating")
+        generation_started = time.perf_counter()
+        _set_worker_state("generating", gpu_name=getattr(self, "gpu_name", GPU_LABEL))
         source_name = _upload_image(source_image) if source_image else None
         output_token = uuid.uuid4().hex[:12]
         graph = _workflow(
@@ -810,6 +819,13 @@ class LTX25Worker:
                 if status.get("completed") is True:
                     video_path = _find_new_video(started_at, item)
                     delivery_width, delivery_height = _delivery_dimensions(resolution, aspect_ratio)
+                    compute_seconds = round(time.perf_counter() - generation_started, 3)
+                    finalize_started = time.perf_counter()
+                    _set_worker_state(
+                        "finalizing",
+                        gpu_name=getattr(self, "gpu_name", GPU_LABEL),
+                        compute_seconds=compute_seconds,
+                    )
                     final_path = _finalize_video(
                         video_path,
                         width=delivery_width,
@@ -817,7 +833,6 @@ class LTX25Worker:
                         frame_rate=int(frame_rate),
                         duration_seconds=int(duration_seconds),
                     )
-                    _set_worker_state("finalizing")
                     _log(
                         "ltx25_delivery_ready",
                         resolution=resolution,
@@ -842,7 +857,15 @@ class LTX25Worker:
                     if poster_process.returncode != 0 or not poster_process.stdout:
                         detail = poster_process.stderr.decode("utf-8", errors="replace")[-3000:]
                         raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")
-                    _set_worker_state("ready")
+                    finalize_seconds = round(time.perf_counter() - finalize_started, 3)
+                    total_seconds = round(time.perf_counter() - generation_started, 3)
+                    _set_worker_state(
+                        "ready",
+                        gpu_name=getattr(self, "gpu_name", GPU_LABEL),
+                        compute_seconds=compute_seconds,
+                        finalize_seconds=finalize_seconds,
+                        total_seconds=total_seconds,
+                    )
                     return {"video": result, "poster": bytes(poster_process.stdout)}
             time.sleep(2)
         _set_worker_state("failed")

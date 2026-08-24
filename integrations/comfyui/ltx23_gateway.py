@@ -4,6 +4,7 @@ import re
 import modal
 
 APP_NAME = "saga-ltx25-gateway"
+GATEWAY_BUILD = "a10-normalvram-poster-v2"
 RUNTIME_APP_NAME = "saga-ltx25-video"
 RUNTIME_CLASS_NAME = "LTX25Worker"
 MODAL_VERSION = "1.4.2"
@@ -49,7 +50,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.4.0")
+    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.5.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -89,18 +90,24 @@ def web():
 
     def _extract_poster(video: bytes) -> bytes:
         import subprocess
+        import tempfile
 
-        command = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-ss", "0.08",
-            "-i", "pipe:0",
-            "-frames:v", "1",
-            "-f", "image2pipe",
-            "-vcodec", "mjpeg",
-            "-q:v", "3",
-            "pipe:1",
-        ]
-        result = subprocess.run(command, input=video, capture_output=True, check=False)
+        # MP4 seek metadata can live at the end of the file. Use a seekable
+        # temporary file rather than stdin so fallback extraction is reliable.
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+            source.write(video)
+            source.flush()
+            command = [
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-ss", "0.08",
+                "-i", source.name,
+                "-frames:v", "1",
+                "-f", "image2pipe",
+                "-vcodec", "mjpeg",
+                "-q:v", "3",
+                "pipe:1",
+            ]
+            result = subprocess.run(command, capture_output=True, check=False)
         if result.returncode != 0 or not result.stdout:
             detail = result.stderr.decode("utf-8", errors="replace")[-3000:]
             raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")
@@ -111,12 +118,21 @@ def web():
         return {
             "ready": True,
             "gateway": APP_NAME,
+            "build": GATEWAY_BUILD,
             "runtime_app": RUNTIME_APP_NAME,
             "runtime_class": RUNTIME_CLASS_NAME,
             "async_jobs": True,
             "cancel_jobs": True,
             "worker": _state(),
         }
+
+    @api.get("/runtime-health")
+    async def runtime_health():
+        try:
+            return _worker().health.remote()
+        except Exception as exc:  # noqa: BLE001
+            status_code, error_code, state, detail = _failure_payload(exc)
+            return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "build": GATEWAY_BUILD})
 
     @api.post("/jobs/video")
     async def submit_video(
