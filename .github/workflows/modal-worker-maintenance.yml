@@ -1,0 +1,87 @@
+name: Maintain Modal Worker Fleet
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - "scripts/modal_worker_maintenance.py"
+      - "integrations/comfyui/flux2_klein_app.py"
+      - "integrations/comfyui/flux2_klein_gateway.py"
+      - "integrations/comfyui/ltx23_app.py"
+      - "integrations/comfyui/ltx23_gateway.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modal-worker-maintenance
+  cancel-in-progress: false
+
+jobs:
+  redeploy:
+    name: ${{ matrix.worker_id }} on ${{ matrix.account }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - account: modal-44
+            ecosystem: flux2-klein-9b
+            worker_id: flux-primary-01
+          - account: modal-45
+            ecosystem: flux2-klein-9b
+            worker_id: flux-standby-01
+          - account: modal-46
+            ecosystem: ltx25-redgraft
+            worker_id: ltx-primary-01
+          - account: modal-47
+            ecosystem: ltx25-redgraft
+            worker_id: ltx-standby-01
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      MODAL_FLUX2_KLEIN_GPU: A10
+      MODAL_LTX25_GPU: A10
+      ACCOUNT: ${{ matrix.account }}
+      ECOSYSTEM: ${{ matrix.ecosystem }}
+      WORKER_ID: ${{ matrix.worker_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal runtime CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Apply credit-workspace runtime compatibility
+        shell: bash
+        run: |
+          if [ "$ECOSYSTEM" = "ltx25-redgraft" ]; then
+            sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+          fi
+      - name: Redeploy worker without reset or prefetch
+        shell: bash
+        run: python scripts/modal_worker_maintenance.py "$ACCOUNT" "$ECOSYSTEM" "$WORKER_ID" > worker-maintenance.json
+      - name: Verify gateway identity and health
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+          row = json.loads(Path('worker-maintenance.json').read_text(encoding='utf-8'))
+          with urllib.request.urlopen(row['gatewayUrl'].rstrip('/') + '/health', timeout=90) as response:
+              payload = json.loads(response.read().decode('utf-8'))
+          if payload.get('ready') is not True:
+              raise SystemExit(f"Gateway did not report ready: {payload}")
+          live = payload.get('worker') or {}
+          if live.get('worker_id') != os.environ['WORKER_ID']:
+              raise SystemExit(f"Wrong worker identity: expected {os.environ['WORKER_ID']}, got {live}")
+          if live.get('ecosystem') != os.environ['ECOSYSTEM']:
+              raise SystemExit(f"Wrong ecosystem identity: expected {os.environ['ECOSYSTEM']}, got {live}")
+          print(json.dumps({'workerId': os.environ['WORKER_ID'], 'ready': True, 'state': live.get('state'), 'cachePreserved': True, 'prefetch': 'skipped'}))
+          PY
