@@ -106,7 +106,6 @@ assert.ok(submitSource.includes('assignedWorkerId'), 'Initial submit must persis
 assert.ok(submitSource.includes('workerFailoverHistory'), 'Initial submit must persist failed primary attempts');
 assert.ok(submitSource.includes('updateGenerationWorkerAssignment'), 'Initial submit must atomically persist worker provider id + metadata');
 
-
 const clientSource = await readFile(new URL('../src/generation-client.js', import.meta.url), 'utf8');
 const appSource = await readFile(new URL('../src/app/App.jsx', import.meta.url), 'utf8');
 const lifecycleSource = await readFile(new URL('../src/features/create/VideoGenerationControls.jsx', import.meta.url), 'utf8');
@@ -114,13 +113,5 @@ assert.ok(clientSource.includes('ALL_WORKERS_CREDIT_EXHAUSTED') || clientSource.
 assert.ok(appSource.includes("terminalWorkerState = ['credit_exhausted', 'unavailable']"), 'App must preserve terminal worker state instead of flattening it to failed');
 assert.ok(lifecycleSource.includes('Workers out of credits'), 'Lifecycle UI must explicitly explain all-worker credit exhaustion');
 assert.ok(lifecycleSource.includes('previous worker reached its credit limit'), 'Lifecycle UI must explicitly explain credit-driven standby switching');
-
-const clientSource = await readFile(new URL('../src/generation-client.js', import.meta.url), 'utf8');
-const appSource = await readFile(new URL('../src/app/App.jsx', import.meta.url), 'utf8');
-const lifecycleSource = await readFile(new URL('../src/features/create/VideoGenerationControls.jsx', import.meta.url), 'utf8');
-assert.ok(clientSource.includes('error.workerState = body?.workerState'), 'Browser client must preserve worker failure metadata');
-assert.ok(appSource.includes("terminalWorkerState = ['credit_exhausted', 'unavailable']"), 'App must preserve terminal worker failure state');
-assert.ok(lifecycleSource.includes('Workers out of credits'), 'UI must explicitly explain fleet-wide credit exhaustion');
-assert.ok(lifecycleSource.includes('previous worker reached its credit limit'), 'UI must explicitly explain credit-driven standby switching');
 
 console.log('Modal worker registry contract passed: ecosystem affinity, pinned provider IDs, exclusion, credit failover, all-credit exhaustion, safe reassignment, and persisted poll-time standby routing.');
