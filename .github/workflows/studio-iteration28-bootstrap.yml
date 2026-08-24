@@ -1,0 +1,65 @@
+name: Studio Iteration 28 Bootstrap
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - "scripts/studio_iteration28_bootstrap.py"
+      - ".github/workflows/studio-iteration28-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright Chromium
+        working-directory: apps/studio
+        run: npx playwright install --with-deps chromium
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+      - name: Start remote runner preview
+        working-directory: apps/studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+      - name: Capture reviewed product state
+        working-directory: apps/studio
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:preview
+      - name: Bootstrap approved baselines
+        run: python scripts/studio_iteration28_bootstrap.py
+      - name: Commit baselines
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/visual-baselines/*.png
+          git commit -m "test(studio): approve initial visual baselines"
+          git push origin HEAD:studio/video-gallery-ux
