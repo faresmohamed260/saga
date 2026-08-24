@@ -59,6 +59,13 @@ jobs:
           UI_PREVIEW_DIR: visual-preview
         run: npm run visual:preview
 
+      - name: Compare approved visual baselines
+        env:
+          UI_PREVIEW_DIR: visual-preview
+          UI_BASELINE_DIR: visual-baselines
+          UI_DIFF_DIR: visual-preview/diffs
+        run: npm run visual:regression
+
       - name: Publish visual preview artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,7 +73,8 @@ jobs:
           name: studio-ui-preview-${{ github.run_id }}
           path: |
             apps/studio/visual-preview/*.png
-            apps/studio/visual-preview/diagnostics.json
+            apps/studio/visual-preview/*.json
+            apps/studio/visual-preview/diffs/*.png
           if-no-files-found: error
           retention-days: 7
 
@@ -75,11 +83,13 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Studio visual preview"
+            echo "## Studio visual regression"
             echo
             echo "Rendered entirely inside this GitHub Actions runner with Playwright."
             echo
-            echo "Screenshots are attached to this run as the \`studio-ui-preview-${{ github.run_id }}\` artifact."
+            echo "Approved deterministic surfaces are compared against versioned baselines with per-surface tolerances."
+            echo
+            echo "Current screenshots, the regression report, and any pixel diffs are attached to this run as the \`studio-ui-preview-${{ github.run_id }}\` artifact."
             echo
             echo "No Vercel Preview deployment is used by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
