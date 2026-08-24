@@ -7,10 +7,10 @@
   --saga-color-surface-control: #151920;
   --saga-color-surface-control-hover: #1d222b;
   --saga-color-text: #f6f7fb;
-  --saga-color-text-muted: #9da4b3;
-  --saga-color-text-subtle: #737b8a;
+  --saga-color-text-muted: #a9b0bd;
+  --saga-color-text-subtle: #8993a3;
   --saga-color-accent: #7a5cff;
-  --saga-color-accent-soft: #9f8cff;
+  --saga-color-accent-soft: #b1a3ff;
   --saga-color-accent-secondary: #4b9cff;
   --saga-color-danger: #ff7f91;
   --saga-color-success: #65d5a2;
@@ -45,16 +45,17 @@
   --saga-control-xl: 48px;
   --saga-touch-target: 44px;
 
-  /* Type scale. Item 27 owns any readability-driven size changes. */
-  --saga-text-2xs: 9px;
-  --saga-text-xs: 10px;
-  --saga-text-sm: 11px;
+  /* Readable product type scale. Keep dense utility text at 10px minimum. */
+  --saga-text-2xs: 10px;
+  --saga-text-xs: 11px;
+  --saga-text-sm: 12px;
   --saga-text-md: 12px;
   --saga-text-lg: 13px;
   --saga-text-base: 14px;
 
   /* Interaction */
   --saga-focus-ring: 2px solid var(--saga-color-accent-soft);
+  --saga-focus-shadow: 0 0 0 4px rgba(177, 163, 255, .16);
   --saga-transition-fast: .16s ease;
   --saga-transition-base: .18s ease;
 }
