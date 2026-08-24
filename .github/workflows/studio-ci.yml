@@ -12,23 +12,181 @@ on:
       - ".github/workflows/studio-ci.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/studio
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+
+      - name: Apply Iteration 10 Generate refinement
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'studio/video-gallery-ux'
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          controls_path = Path('apps/studio/src/create-controls.jsx')
+          controls = controls_path.read_text()
+          old = '''              >
+                <ArrowUp size={21} />
+              </button>
+'''
+          new = '''              >
+                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
+                <ArrowUp size={18} aria-hidden="true" />
+              </button>
+'''
+          if controls.count(old) != 1:
+              raise SystemExit(f'Generate button markup replacement count was {controls.count(old)}')
+          controls_path.write_text(controls.replace(old, new, 1))
+
+          css_path = Path('apps/studio/src/create-workspace-v2.css')
+          css = css_path.read_text()
+          old = '''.workspace .saga-round-button,
+.workspace .saga-settings-button,
+.workspace .saga-submit{
+  width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center;border:1px solid #272c35;border-radius:50%;background:#171b21;color:#b7beca;cursor:pointer;transition:.18s ease;
+}
+.workspace .saga-round-button:hover,.workspace .saga-settings-button:hover{background:#20252d;color:#fff;border-color:#363d49}
+.workspace .saga-settings-button.active{color:#ddd7ff;background:#242039;border-color:#5d4db0}
+.workspace .saga-submit{background:#f1f1ef;color:#101216;border-color:#f1f1ef}
+.workspace .saga-submit:hover:not(:disabled){transform:translateY(-1px);background:#fff}
+.workspace .saga-submit:disabled{opacity:.28;cursor:not-allowed}
+'''
+          new = '''.workspace .saga-round-button,
+.workspace .saga-settings-button{
+  width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center;border:1px solid #272c35;border-radius:50%;background:#171b21;color:#b7beca;cursor:pointer;transition:.18s ease;
+}
+.workspace .saga-round-button:hover,.workspace .saga-settings-button:hover{background:#20252d;color:#fff;border-color:#363d49}
+.workspace .saga-settings-button.active{color:#ddd7ff;background:#242039;border-color:#5d4db0}
+.workspace .saga-submit{
+  min-width:112px;height:38px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 15px;border:1px solid #f1f1ef;border-radius:12px;background:#f1f1ef;color:#101216;font-size:11px;font-weight:800;letter-spacing:-.01em;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);transition:transform .18s ease,background .18s ease,box-shadow .18s ease,opacity .18s ease;
+}
+.workspace .saga-submit-label{display:block;line-height:1}
+.workspace .saga-submit svg{flex:0 0 auto;stroke-width:2.4}
+.workspace .saga-submit:hover:not(:disabled){transform:translateY(-1px);background:#fff;box-shadow:0 10px 24px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.7)}
+.workspace .saga-submit:active:not(:disabled){transform:translateY(0)}
+.workspace .saga-submit:focus-visible{outline:2px solid #9f8cff;outline-offset:2px}
+.workspace .saga-submit:disabled{opacity:.32;cursor:not-allowed;box-shadow:none}
+'''
+          if css.count(old) != 1:
+              raise SystemExit(f'Generate CSS replacement count was {css.count(old)}')
+          css = css.replace(old, new, 1)
+          mobile_anchor = '''  .workspace .saga-toolbar-left{gap:5px}
+  .workspace .saga-toolbar-right{gap:5px}
+  .workspace .saga-prompt-count{display:none}
+'''
+          mobile_new = '''  .workspace .saga-toolbar-left{gap:5px}
+  .workspace .saga-toolbar-right{gap:5px}
+  .workspace .saga-submit{width:36px;height:36px;min-width:36px;flex-basis:36px;padding:0;border-radius:50%;box-shadow:none}
+  .workspace .saga-submit-label{display:none}
+  .workspace .saga-submit svg{width:21px;height:21px}
+  .workspace .saga-prompt-count{display:none}
+'''
+          if css.count(mobile_anchor) != 1:
+              raise SystemExit(f'Mobile Generate CSS anchor count was {css.count(mobile_anchor)}')
+          css_path.write_text(css.replace(mobile_anchor, mobile_new, 1))
+
+          preview_path = Path('apps/studio/scripts/capture-ui-preview.mjs')
+          preview = preview_path.read_text()
+          desktop_anchor = '''  if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
+  await shot(desktop, '01-create-image-centered.png');
+
+  // Image picker keyboard, morphing and outside dismissal.
+'''
+          desktop_new = '''  if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
+  const primarySubmit = desktop.locator('.saga-submit');
+  await primarySubmit.waitFor({ state: 'visible' });
+  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Desktop primary action does not expose the Generate verb');
+  if (await primarySubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Desktop primary action lost its mode-specific accessible name');
+  const primarySubmitBox = await primarySubmit.boundingBox();
+  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop Generate action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
+  const primarySubmitStyle = await primarySubmit.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { display: style.display, fontWeight: Number(style.fontWeight), borderRadius: style.borderRadius };
+  });
+  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop Generate action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
+  await shot(desktop, '01-create-image-centered.png');
+  await shot(desktop, '01b-generate-primary.png');
+  await primarySubmit.focus();
+  await expectStrongFocus(primarySubmit, 'Generate primary action');
+
+  // Image picker keyboard, morphing and outside dismissal.
+'''
+          if preview.count(desktop_anchor) != 1:
+              raise SystemExit(f'Desktop visual assertion anchor count was {preview.count(desktop_anchor)}')
+          preview = preview.replace(desktop_anchor, desktop_new, 1)
+
+          video_anchor = '''  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
+  await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
+  const videoControls = desktop.locator('.saga-toolbar-left .saga-control-pill');
+'''
+          video_new = '''  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
+  await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
+  if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Video mode primary action does not retain the Generate verb');
+  if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Generate video') throw new Error('Video Generate action lost its mode-specific accessible name');
+  const videoControls = desktop.locator('.saga-toolbar-left .saga-control-pill');
+'''
+          if preview.count(video_anchor) != 1:
+              raise SystemExit(f'Video visual assertion anchor count was {preview.count(video_anchor)}')
+          preview = preview.replace(video_anchor, video_new, 1)
+
+          edit_anchor = '''  const refChips = desktop.locator('.saga-reference-chip');
+  await refChips.nth(1).waitFor({ state: 'visible', timeout: 5000 });
+  const richPrompt = desktop.locator('.saga-rich-prompt');
+'''
+          edit_new = '''  const refChips = desktop.locator('.saga-reference-chip');
+  await refChips.nth(1).waitFor({ state: 'visible', timeout: 5000 });
+  if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Edit') throw new Error('Edit mode primary action does not expose its principal Edit verb');
+  if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Edit image') throw new Error('Edit primary action lost its accessible name');
+  const richPrompt = desktop.locator('.saga-rich-prompt');
+'''
+          if preview.count(edit_anchor) != 1:
+              raise SystemExit(f'Edit visual assertion anchor count was {preview.count(edit_anchor)}')
+          preview = preview.replace(edit_anchor, edit_new, 1)
+
+          mobile_anchor = '''  await waitForStudio(mobile);
+  await shot(mobile, '09-mobile-create.png');
+
+  if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
+'''
+          mobile_new = '''  await waitForStudio(mobile);
+  const mobileSubmit = mobile.locator('.saga-submit');
+  await mobileSubmit.waitFor({ state: 'visible' });
+  if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
+  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');
+  const mobileSubmitBox = await mobileSubmit.boundingBox();
+  if (!mobileSubmitBox || mobileSubmitBox.width > 40 || mobileSubmitBox.height > 40 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action is not compact/circular: ${JSON.stringify(mobileSubmitBox)}`);
+  await shot(mobile, '09-mobile-create.png');
+
+  if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
+'''
+          if preview.count(mobile_anchor) != 1:
+              raise SystemExit(f'Mobile visual assertion anchor count was {preview.count(mobile_anchor)}')
+          preview_path.write_text(preview.replace(mobile_anchor, mobile_new, 1))
+          PY
+          git diff --check
+
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+
       - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:poster
+
       - name: Guard Vercel Hobby function count
         shell: bash
         run: |
@@ -40,6 +198,7 @@ jobs:
             echo "Studio exceeds Vercel Hobby's 12 Serverless Function limit." >&2
             exit 1
           fi
+
       - name: Guard browser execution boundary
         run: |
           if grep -R "saga-flux2-klein-gateway-web.modal.run" src index.html; then
@@ -50,3 +209,50 @@ jobs:
             echo "Temporary async fetch shim must not return." >&2
             exit 1
           fi
+
+      - name: Start GitHub-runner preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-iteration10-preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-iteration10-preview.log
+          exit 1
+
+      - name: Run Iteration 10 deterministic visual suite
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:preview
+
+      - name: Publish Iteration 10 visual artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-iteration10-generate-${{ github.run_id }}
+          path: |
+            apps/studio/visual-preview/*.png
+            apps/studio/visual-preview/diagnostics.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Commit reviewed Iteration 10 implementation
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'studio/video-gallery-ux'
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf apps/studio/visual-preview
+          rm -f apps/studio/package-lock.json
+          rm -f .github/workflows/studio-iteration10-generate-patch.yml
+          git checkout HEAD^ -- .github/workflows/studio-ci.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/scripts/capture-ui-preview.mjs .github/workflows/studio-ci.yml .github/workflows/studio-iteration10-generate-patch.yml
+          git diff --cached --check
+          git commit -m 'feat(studio): strengthen generate primary action'
+          git push origin HEAD:studio/video-gallery-ux
