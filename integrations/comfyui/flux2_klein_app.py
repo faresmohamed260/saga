@@ -64,6 +64,9 @@ image = (
             "COMFYUI_DISABLE_TELEMETRY": "1",
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
+            "SAGA_MODAL_WORKER_ID": WORKER_ID,
+            "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,
+            "SAGA_MODAL_WORKER_VOLUME": CACHE_VOLUME_NAME,
         }
     )
     .run_commands(
