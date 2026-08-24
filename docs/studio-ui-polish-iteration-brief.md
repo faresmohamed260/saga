@@ -11,11 +11,11 @@ The **canonical checklist** is [`docs/studio-ui-polish-checklist.md`](./studio-u
 - PR: #121 — `Video output controls and Gallery UX`
 - Branch: `studio/video-gallery-ux`
 - PR state: draft, open, unmerged, undeployed.
-- Completed checklist items: **01–09**.
-- Next item: **10 — strengthen the Generate primary action**.
-- Do not begin Item 10 until the user says **continue**.
+- Completed checklist items: **01–10**.
+- Next item: **11 — make Audio state explicit and non-color-dependent**.
+- Do not begin Item 11 until the user says **continue**.
 - Development/review previews must remain GitHub-based; do not depend on Vercel previews during iteration.
-- Latest completed item is Iteration 9. Final standard Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed on reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`. Visual artifact `9503419570` was downloaded and all 31 screenshots were professionally reviewed. Video now uses explicit resolution terminology plus aspect-aware delivery dimensions, and disabled Video 4K is no longer advertised. REDGraft Modal validation remains externally blocked because the configured Modal workspace is disabled.
+- Latest completed item is Iteration 10. Final standard Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` passed on reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`. Visual artifact `9515300251` was downloaded and professionally reviewed across Image, Video, Edit, mobile Create, and Gallery regression states. Desktop now exposes an explicit primary `Generate`/`Edit` CTA while mobile remains compact. REDGraft Modal validation remains externally blocked because the configured Modal workspace is disabled.
 
 ## Non-negotiable process
 
@@ -41,7 +41,7 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is a coherent product direction rather than a prototype. Completed work has improved exact video delivery, Gallery action density and touch safety, card semantics/accessibility, custom-picker keyboard behavior, stored video posters, deferred preview loading, unified/shared aspect selection, and resolution terminology/delivery geometry. Remaining high-value work includes stronger Generate/audio affordances, real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is a coherent product direction rather than a prototype. Completed work has improved exact video delivery, Gallery action density and touch safety, card semantics/accessibility, custom-picker keyboard behavior, stored video posters, deferred preview loading, unified/shared aspect selection, resolution terminology/delivery geometry, and Create primary-action hierarchy. Remaining high-value work includes explicit Audio state, real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
 
 ## Iteration log
 
@@ -97,14 +97,26 @@ Extracted `features/create/AspectPicker.jsx` and made Image, Edit, and Video con
 
 **Status:** complete.
 
-**Implementation:** standardized user-facing resolution language and separated friendly preset names from exact delivery geometry. Video now exposes `480p`, `720p`, `1080p`, and `2K`; picker rows, preview, title, and accessible label show aspect-aware delivered dimensions. The shared effective Aspect state drives those dimensions, including reference-derived Auto ratios. Image uses explicit pixel terminology with computed aspect-aware dimensions. Video 4K was removed because the production workflow/runtime does not currently enable it.
+**Implementation:** standardized user-facing resolution language and separated friendly preset names from exact delivery geometry. Video exposes `480p`, `720p`, `1080p`, and `2K`; picker rows, preview, title, and accessible label show aspect-aware delivered dimensions. The shared effective Aspect state drives those dimensions, including reference-derived Auto ratios. Image uses explicit pixel terminology with computed aspect-aware dimensions. Video 4K was removed because the production workflow/runtime does not currently enable it.
 
-**Deterministic coverage:** added `features/create/ResolutionPresets.js` as the shared preset/dimension source and `scripts/check-resolution-contract.mjs` to the normal Studio build. The contract verifies canonical 1080p `1920×1080` landscape, `1080×1920` portrait, and `1440×1080` 4:3 delivery, enabled runtime/workflow resolution parity, and guards against reintroducing `Full HD` or disabled Video 4K. Existing poster/deferred-preview coverage remains green.
+**Deterministic coverage:** `features/create/ResolutionPresets.js` is the shared preset/dimension source and `scripts/check-resolution-contract.mjs` runs in the normal Studio build. The contract verifies canonical 1080p landscape/portrait/4:3 delivery, enabled runtime/workflow parity, and guards against `Full HD`/disabled Video 4K regressions.
 
-**Professional review cycle:** first validation run `32678010842` passed source/build contracts but the visual suite found a stale text expectation after terminology changed. The assertion was corrected while retaining keyboard End/Home/focus behavior. Refinement run `32678135023` then passed the full visual suite; artifact `9503328418` was inspected. A branch-hygiene review also caught validation-generated screenshots and `package-lock.json`; those were removed before final standard validation.
+**Professional review cycle:** first validation run `32678010842` exposed a stale text expectation after terminology changed; the assertion was corrected while retaining keyboard behavior. Refinement run `32678135023` passed the full visual suite, and validation-generated screenshots/package-lock were removed before final standard validation.
 
-**Visual review:** final artifact `9503419570` from standard Studio Visual Preview `32678441802` was downloaded and all 31 screenshots were inspected. Image resolution rows are explicit and compact. Video pairs `1080p` with `1920×1080` at 16:9 and `1080×1920` at 9:16; picker geometry, keyboard focus, shared Aspect behavior, mobile Create, Edit, Gallery hover/focus/Manage, reduced-motion, and poster states remained stable. No Item 09 visual or responsive defect remained.
+**Validation:** reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`. Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed. Final artifact `9503419570` was inspected. REDGraft Modal remained externally blocked by the disabled workspace.
 
-**Validation:** reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`. Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed. REDGraft run `32678441765` successfully deployed the runtime but Modal rejected prefetch with `ConflictError: workspace ... is disabled`; this remains the existing external infrastructure blocker unrelated to Item 09.
+### Iteration 10 — strengthen the Generate primary action
 
-**Professional review:** Item 09 is complete with no remaining actionable comments. **Item 10 — strengthen the Generate primary action — is next and remains gated on explicit user approval.**
+**Status:** complete.
+
+**Implementation:** promoted the desktop submit control from an icon-only 36px utility circle into a clearly labeled principal action. Image and Video expose `Generate`; Edit exposes `Edit`. The CTA is a restrained high-contrast rounded rectangle with a 112px minimum width, bold verb text, send arrow, subtle elevation, hover/active feedback, and a 2px keyboard focus indicator. Existing mode-specific accessible names (`Generate image`, `Generate video`, `Edit image`) remain intact. The 390px mobile layout deliberately collapses the visible label and retains the compact 36×36 circular arrow.
+
+**Deterministic coverage:** `capture-ui-preview.mjs` now asserts desktop CTA geometry/hierarchy, mode-specific visible verbs and accessible names, strong focus-visible treatment, and compact mobile behavior, and captures dedicated evidence `01b-generate-primary.png`. `check-generate-action-contract.mjs` is part of the normal Studio build and guards the visible verb markup, promoted desktop dimensions, focus treatment, mobile collapse, and corresponding Playwright assertions.
+
+**Professional review cycle:** the successful GitHub product/visual refinement run `32713936104` passed build and the full Playwright suite, uploaded artifact `9515188794`, and committed product implementation `eaec5e4528885b6012f1a43d5e9eb6b2c6d0192d` while restoring temporary validation machinery. Professional review accepted the hierarchy: the desktop CTA is materially more discoverable without overpowering the composer, Video remains balanced despite its denser toolbar, Edit reads contextually, and mobile remains appropriately compact. No Item-10-specific follow-up was required.
+
+**Visual review:** the final standard artifact `9515300251` from Studio Visual Preview `32714238605` was downloaded and inspected across Image `Generate`, Video `Generate`, Edit `Edit`, 390px mobile Create, and Gallery desktop/mobile regression states. No clipping, collision, hierarchy regression, responsive break, or Gallery regression was found. Diagnostics recorded no page errors; only the same generic tolerated resource 404 messages seen in prior preview suites.
+
+**Validation:** final reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`. Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` passed. REDGraft run `32714238545` deployed the runtime, then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`, so downstream GPU smoke/persistence stages were skipped; this remains the existing external account blocker unrelated to Item 10.
+
+**Professional review:** Item 10 is complete with no remaining actionable comments. **Item 11 — make Audio state explicit and non-color-dependent — is next and remains gated on explicit user approval.**
