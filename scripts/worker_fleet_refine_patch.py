@@ -51,4 +51,32 @@ replace_once(
     wrapper + '    @modal.exit()\n    def stop(self) -> None:\n',
 )
 
+# Modal deploy evaluates these constants locally, but arbitrary local environment
+# variables are not inherited by remote containers. Bake the resolved worker
+# identity into each image so runtime state and gateway responses remain pinned
+# to the registry worker that was provisioned.
+replace_once(
+    "integrations/comfyui/flux2_klein_app.py",
+    '''            "PYTHONIOENCODING": "utf-8",\n        }\n''',
+    '''            "PYTHONIOENCODING": "utf-8",\n            "SAGA_MODAL_WORKER_ID": WORKER_ID,\n            "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,\n            "SAGA_MODAL_WORKER_VOLUME": CACHE_VOLUME_NAME,\n        }\n''',
+)
+
+replace_once(
+    "integrations/comfyui/ltx23_app.py",
+    '    .env({"COMFYUI_DISABLE_TELEMETRY": "1", "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})\n',
+    '''    .env({\n        "COMFYUI_DISABLE_TELEMETRY": "1",\n        "PYTHONUTF8": "1",\n        "PYTHONIOENCODING": "utf-8",\n        "SAGA_MODAL_WORKER_ID": WORKER_ID,\n        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,\n        "SAGA_MODAL_WORKER_VOLUME": CACHE_VOLUME_NAME,\n    })\n''',
+)
+
+replace_once(
+    "integrations/comfyui/flux2_klein_gateway.py",
+    '''image = modal.Image.debian_slim(python_version="3.11").pip_install(\n    f"modal=={MODAL_VERSION}",\n    "fastapi[standard]==0.121.0",\n)\n''',
+    '''image = (\n    modal.Image.debian_slim(python_version="3.11")\n    .pip_install(\n        f"modal=={MODAL_VERSION}",\n        "fastapi[standard]==0.121.0",\n    )\n    .env({\n        "SAGA_MODAL_WORKER_ID": WORKER_ID,\n        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,\n    })\n)\n''',
+)
+
+replace_once(
+    "integrations/comfyui/ltx23_gateway.py",
+    '''image = modal.Image.debian_slim(python_version="3.11").apt_install("ffmpeg").pip_install(\n    f"modal=={MODAL_VERSION}",\n    "fastapi[standard]==0.121.0",\n    "python-multipart>=0.0.20,<1",\n)\n''',
+    '''image = (\n    modal.Image.debian_slim(python_version="3.11")\n    .apt_install("ffmpeg")\n    .pip_install(\n        f"modal=={MODAL_VERSION}",\n        "fastapi[standard]==0.121.0",\n        "python-multipart>=0.0.20,<1",\n    )\n    .env({\n        "SAGA_MODAL_WORKER_ID": WORKER_ID,\n        "SAGA_MODAL_WORKER_STATE_DICT": STATE_DICT_NAME,\n    })\n)\n''',
+)
+
 print("Worker fleet refinement patch applied.")
