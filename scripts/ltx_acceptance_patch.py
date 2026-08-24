@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+BUILD_ID = "a10-normalvram-poster-v2"
+
 app = Path('integrations/comfyui/ltx23_app.py')
 text = app.read_text(encoding='utf-8')
 
@@ -13,11 +15,19 @@ def once(old: str, new: str) -> None:
     text = text.replace(old, new, 1)
 
 
+once(
+    'APP_NAME = "saga-ltx25-video"\n',
+    f'APP_NAME = "saga-ltx25-video"\nRUNTIME_BUILD = "{BUILD_ID}"\n',
+)
 # Paid GPU tiers are unavailable on the current credit workspaces. Keep A10 as
 # the deployable default, but let ComfyUI use normal smart-memory management.
 once(
     'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "H100,L40S,A100-40GB").split(",") if x.strip()]\n',
     'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "A10").split(",") if x.strip()]\n',
+)
+once(
+    '    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "updated_at": int(time.time()), **fields}\n',
+    '    payload = {"state": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID, "runtime_build": RUNTIME_BUILD, "updated_at": int(time.time()), **fields}\n',
 )
 once(
     '            "--reserve-vram", "2", "--disable-auto-launch", "--preview-method", "none",\n',
@@ -30,6 +40,10 @@ once(
 once(
     '        _wait_server()\n        self.started_seconds = round(time.perf_counter() - started, 3)\n        _set_worker_state("ready", startup_seconds=self.started_seconds)\n',
     '''        _wait_server()\n        self.started_seconds = round(time.perf_counter() - started, 3)\n        try:\n            import torch\n            self.gpu_name = torch.cuda.get_device_name(0)\n        except Exception:\n            self.gpu_name = GPU_LABEL\n        _set_worker_state("ready", startup_seconds=self.started_seconds, gpu_name=self.gpu_name)\n''',
+)
+once(
+    '            "ready": True,\n            "app": APP_NAME,\n',
+    '            "ready": True,\n            "app": APP_NAME,\n            "runtime_build": RUNTIME_BUILD,\n',
 )
 once(
     '            "gpu": GPU_LABEL,\n',
@@ -62,12 +76,24 @@ def gone(old: str, new: str) -> None:
 
 
 gone(
+    'APP_NAME = "saga-ltx25-gateway"\n',
+    f'APP_NAME = "saga-ltx25-gateway"\nGATEWAY_BUILD = "{BUILD_ID}"\n',
+)
+gone(
     '    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.4.0")\n',
     '    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.5.0")\n',
 )
 gone(
     '''    def _extract_poster(video: bytes) -> bytes:\n        import subprocess\n\n        command = [\n            "ffmpeg", "-hide_banner", "-loglevel", "error",\n            "-ss", "0.08",\n            "-i", "pipe:0",\n            "-frames:v", "1",\n            "-f", "image2pipe",\n            "-vcodec", "mjpeg",\n            "-q:v", "3",\n            "pipe:1",\n        ]\n        result = subprocess.run(command, input=video, capture_output=True, check=False)\n        if result.returncode != 0 or not result.stdout:\n            detail = result.stderr.decode("utf-8", errors="replace")[-3000:]\n            raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")\n        return bytes(result.stdout)\n''',
     '''    def _extract_poster(video: bytes) -> bytes:\n        import subprocess\n        import tempfile\n\n        # MP4 seek metadata can live at the end of the file. Use a seekable\n        # temporary file rather than stdin so fallback extraction is reliable.\n        with tempfile.NamedTemporaryFile(suffix=".mp4") as source:\n            source.write(video)\n            source.flush()\n            command = [\n                "ffmpeg", "-hide_banner", "-loglevel", "error",\n                "-ss", "0.08",\n                "-i", source.name,\n                "-frames:v", "1",\n                "-f", "image2pipe",\n                "-vcodec", "mjpeg",\n                "-q:v", "3",\n                "pipe:1",\n            ]\n            result = subprocess.run(command, capture_output=True, check=False)\n        if result.returncode != 0 or not result.stdout:\n            detail = result.stderr.decode("utf-8", errors="replace")[-3000:]\n            raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")\n        return bytes(result.stdout)\n''',
+)
+gone(
+    '            "ready": True,\n            "gateway": APP_NAME,\n',
+    '            "ready": True,\n            "gateway": APP_NAME,\n            "build": GATEWAY_BUILD,\n',
+)
+gone(
+    '''    @api.post("/jobs/video")\n    async def submit_video(\n''',
+    '''    @api.get("/runtime-health")\n    async def runtime_health():\n        try:\n            return _worker().health.remote()\n        except Exception as exc:  # noqa: BLE001\n            status_code, error_code, state, detail = _failure_payload(exc)\n            return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "build": GATEWAY_BUILD})\n\n    @api.post("/jobs/video")\n    async def submit_video(\n''',
 )
 gateway.write_text(text, encoding='utf-8')
 
@@ -76,3 +102,4 @@ if github_env:
     with open(github_env, 'a', encoding='utf-8') as handle:
         handle.write('MODAL_LTX25_GPU=A10\n')
         handle.write('MODAL_LTX25_LOWVRAM=0\n')
+        handle.write(f'LTX_ACCEPTANCE_BUILD={BUILD_ID}\n')
