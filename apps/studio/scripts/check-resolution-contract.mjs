@@ -1,3 +1,4 @@
+// Item 09 delivery contract: keep Studio terminology and runtime output math aligned.
 import { readFile } from 'node:fs/promises';
 import {
   IMAGE_RESOLUTIONS,
