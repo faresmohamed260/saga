@@ -43,14 +43,14 @@ try {
 
   if (await audio.getAttribute('aria-pressed') !== 'true') throw new Error('Audio should default to aria-pressed=true');
   if (await audio.getAttribute('aria-label') !== 'Disable audio') throw new Error('Audio On accessible action label is wrong');
-  if (await audio.getAttribute('title') !== 'Audio enabled') throw new Error('Audio On tooltip copy is wrong');
+  if (await audio.getAttribute('title') !== 'Audio enabled') throw new Error('Audio On native tooltip copy is wrong');
   if (await pseudoContent(audio, '::after') !== 'Audio On') throw new Error('Desktop Audio On text is not visible');
   const desktopBox = await audio.boundingBox();
   if (!desktopBox || desktopBox.width < 80 || desktopBox.height < 32) throw new Error(`Desktop Audio control is not a clear pill: ${JSON.stringify(desktopBox)}`);
 
   await audio.focus();
   await expectFocusRing(audio, 'Audio control');
-  if (await pseudoContent(audio, '::before') !== 'Audio enabled') throw new Error('Focused Audio tooltip does not expose state copy');
+  if (await pseudoContent(audio, '::before') !== 'Audio on · Generate with sound') throw new Error('Focused Audio tooltip does not explain the On state');
   const tooltipOpacity = Number(await audio.evaluate((element) => getComputedStyle(element, '::before').opacity));
   if (tooltipOpacity < 0.9) throw new Error(`Audio tooltip should be visible on focus, opacity=${tooltipOpacity}`);
   await desktop.screenshot({ path: path.join(outputDir, '05i-video-audio-on.png'), fullPage: true, animations: 'disabled' });
@@ -59,9 +59,9 @@ try {
   await desktop.keyboard.press('Space');
   if (await audio.getAttribute('aria-pressed') !== 'false') throw new Error('Space did not toggle Audio Off');
   if (await audio.getAttribute('aria-label') !== 'Enable audio') throw new Error('Audio Off accessible action label is wrong');
-  if (await audio.getAttribute('title') !== 'Audio disabled') throw new Error('Audio Off tooltip copy is wrong');
+  if (await audio.getAttribute('title') !== 'Audio disabled') throw new Error('Audio Off native tooltip copy is wrong');
   if (await pseudoContent(audio, '::after') !== 'Audio Off') throw new Error('Desktop Audio Off text is not visible');
-  if (await pseudoContent(audio, '::before') !== 'Audio disabled') throw new Error('Audio Off tooltip did not update');
+  if (await pseudoContent(audio, '::before') !== 'Audio off · Generate without sound') throw new Error('Audio Off tooltip did not update with explanatory copy');
   await desktop.screenshot({ path: path.join(outputDir, '05j-video-audio-off.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05j-video-audio-off.png');
 
