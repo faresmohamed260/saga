@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 app = Path('integrations/comfyui/ltx23_app.py')
@@ -12,8 +13,6 @@ def once(old: str, new: str) -> None:
     text = text.replace(old, new, 1)
 
 
-# H100 requires a payment method on the current Modal credit workspaces.
-# L40S/A100 are the production-capable GPUs available to this fleet.
 once(
     'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "H100,L40S,A100-40GB").split(",") if x.strip()]\n',
     'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "L40S,A100-40GB").split(",") if x.strip()]\n',
@@ -61,3 +60,10 @@ gone(
     '''    def _extract_poster(video: bytes) -> bytes:\n        import subprocess\n        import tempfile\n\n        # MP4 seek metadata can live at the end of the file. Use a seekable\n        # temporary file rather than stdin so fallback extraction is reliable.\n        with tempfile.NamedTemporaryFile(suffix=".mp4") as source:\n            source.write(video)\n            source.flush()\n            command = [\n                "ffmpeg", "-hide_banner", "-loglevel", "error",\n                "-ss", "0.08",\n                "-i", source.name,\n                "-frames:v", "1",\n                "-f", "image2pipe",\n                "-vcodec", "mjpeg",\n                "-q:v", "3",\n                "pipe:1",\n            ]\n            result = subprocess.run(command, capture_output=True, check=False)\n        if result.returncode != 0 or not result.stdout:\n            detail = result.stderr.decode("utf-8", errors="replace")[-3000:]\n            raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")\n        return bytes(result.stdout)\n''',
 )
 gateway.write_text(text, encoding='utf-8')
+
+# Probe A100 independently. Ordered lists fail deployment validation as soon as
+# a restricted GPU is present, so this must be tested by itself.
+github_env = os.environ.get('GITHUB_ENV')
+if github_env:
+    with open(github_env, 'a', encoding='utf-8') as handle:
+        handle.write('MODAL_LTX25_GPU=A100-40GB\n')
