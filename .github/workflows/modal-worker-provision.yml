@@ -1,17 +1,8 @@
 name: Provision Modal Worker Fleet
 
-# fleet-v1 provisioning run: modal-44..47 selected from the 47-account availability inventory.
+# Full provisioning is intentionally manual. It resets dedicated accounts and
+# rebuilds model caches; routine runtime/gateway fixes use modal-worker-maintenance.yml.
 on:
-  push:
-    branches: [studio/video-gallery-ux]
-    paths:
-      - ".github/workflows/modal-worker-provision.yml"
-      - "scripts/modal_worker_fleet.py"
-      - "config/modal-worker-ecosystems.json"
-      - "integrations/comfyui/flux2_klein_app.py"
-      - "integrations/comfyui/flux2_klein_gateway.py"
-      - "integrations/comfyui/ltx23_app.py"
-      - "integrations/comfyui/ltx23_gateway.py"
   workflow_dispatch:
 
 permissions:
