@@ -8,12 +8,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## Current iteration
 
-**Iteration 10 — strengthen the Generate primary action**
+**Iteration 11 — explicit Audio state**
 
-- Status: `[x]` complete
-- Completed item: **10**
-- Next item: **11 — make Audio state explicit and non-color-dependent**
-- Rule: do not start Item 11 until the user explicitly says continue. Each future iteration must follow implement → deterministic test → GitHub CI/visual preview → inspect screenshots → professional critique → record improvements → update this file → stop for user approval.
+- Status: `[~]` in progress
+- Working item: **11**
+- Rule: make Video Audio state explicit and non-color-dependent with visible On/Off wording, accessible pressed state, and concise explanatory copy; validate deterministic contracts, GitHub CI/visual preview, and professional review before completion.
 
 ## P0 — correctness, interaction safety, accessibility
 
@@ -30,7 +29,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **08. Unify Image and Video aspect selection into one reusable `AspectPicker`.** Image, Edit, and Video use one shared `AspectPicker` and canonical preset list, with shared ratio preview, layout, keyboard behavior, responsive anchored positioning, and optional Auto/reference provenance. **Iteration 8 complete.**
 - [x] **09. Standardize resolution terminology and expose actual delivery dimensions.** Video uses explicit `480p`/`720p`/`1080p`/`2K` terminology with aspect-aware delivery dimensions; Image uses explicit pixel terminology and computed output dimensions. Unsupported Video 4K is no longer advertised. **Iteration 9 complete.**
 - [x] **10. Strengthen the Generate primary action.** Desktop Image/Video now expose a clear labeled `Generate` CTA and Edit exposes `Edit`, while mobile retains the compact circular arrow action and mode-specific accessible names. **Iteration 10 complete.**
-- [ ] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state.
+- [~] **11. Make Audio state explicit and non-color-dependent.** Clear On/Off state, tooltip/popover copy, accessible pressed state. **Iteration 11 in progress.**
 - [ ] **12. Improve generation lifecycle feedback.** Only expose real backend stages, add View Job and Cancel if supported, and clarify that setting edits during a running job apply to the next generation.
 - [ ] **13. Add bulk Add to Collection.** Include it in selection mode and use an appropriate collection picker.
 - [ ] **14. Make bulk selection wording precise.** Use `Select visible` unless selection truly spans all matching paginated results.
