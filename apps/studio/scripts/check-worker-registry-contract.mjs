@@ -20,9 +20,20 @@ const flux = getWorkflow('flux2-klein-image-edit');
 const ltx = getWorkflow('ltx25-redgraft-video');
 assert.equal(flux.ecosystem, 'flux2-klein-9b');
 assert.equal(ltx.ecosystem, 'ltx25-redgraft');
-assert.deepEqual(workersForWorkflow(flux).map((worker) => worker.id), ['flux-primary', 'flux-standby']);
-assert.deepEqual(workersForWorkflow(flux, { excludeWorkerIds: ['flux-primary'] }).map((worker) => worker.id), ['flux-standby']);
-assert.deepEqual(workersForWorkflow(ltx).map((worker) => worker.id), ['ltx-primary']);
+
+const fluxWorkerIds = workersForWorkflow(flux).map((worker) => worker.id);
+for (const workerId of ['flux-primary', 'flux-standby', 'flux-primary-01', 'flux-standby-01']) {
+  assert.ok(fluxWorkerIds.includes(workerId), `FLUX registry is missing ${workerId}`);
+}
+const fluxWorkerIdsWithoutFixturePrimary = workersForWorkflow(flux, { excludeWorkerIds: ['flux-primary'] }).map((worker) => worker.id);
+assert.ok(!fluxWorkerIdsWithoutFixturePrimary.includes('flux-primary'));
+assert.ok(fluxWorkerIdsWithoutFixturePrimary.includes('flux-standby'));
+assert.ok(fluxWorkerIdsWithoutFixturePrimary.includes('flux-primary-01'));
+
+const ltxWorkerIds = workersForWorkflow(ltx).map((worker) => worker.id);
+for (const workerId of ['ltx-primary', 'ltx-primary-01', 'ltx-standby-01']) {
+  assert.ok(ltxWorkerIds.includes(workerId), `LTX registry is missing ${workerId}`);
+}
 
 const encoded = encodeProviderJobId('flux-standby', 'fc-123');
 assert.deepEqual(decodeProviderJobId(encoded), { workerId: 'flux-standby', callId: 'fc-123', legacy: false });
@@ -58,8 +69,8 @@ const accepted = await submitWithWorkerFailover(flux, async (worker) => {
   }
   return { callId: 'fc-standby', state: 'waking' };
 });
-assert.deepEqual(attempts, ['flux-primary', 'flux-standby']);
-assert.equal(accepted.worker.id, 'flux-standby');
+assert.deepEqual(attempts, ['flux-primary', 'flux-primary-01']);
+assert.equal(accepted.worker.id, 'flux-primary-01');
 assert.equal(accepted.callId, 'fc-standby');
 assert.deepEqual(accepted.failedWorkers, [
   { workerId: 'flux-primary', kind: 'credit_exhausted', code: 'WORKER_CREDIT_EXHAUSTED' },
@@ -81,7 +92,9 @@ assert.equal(classifyWorkerFailure({ status: 429, body: { detail: 'rate limited'
 process.env.SAGA_MODAL_WORKER_REGISTRY_JSON = JSON.stringify({ workers: [
   { id: 'only-primary', ecosystem: 'flux2-klein-9b', gatewayUrl: 'https://only.example', role: 'primary', enabled: true },
 ] });
-assert.deepEqual(workersForWorkflow(flux, { excludeWorkerIds: ['only-primary'] }), [], 'Configured fleets must not fall through to the legacy modal-01 worker after exclusions');
+const configuredAfterExclusion = workersForWorkflow(flux, { excludeWorkerIds: ['only-primary'] });
+assert.ok(configuredAfterExclusion.length > 0, 'Generated FLUX workers should remain configured after excluding the env fixture');
+assert.ok(configuredAfterExclusion.every((worker) => worker.id !== 'only-primary' && worker.id !== 'legacy-flux2-klein'), 'Configured fleets must not fall through to the legacy modal-01 worker after exclusions');
 
 const fluxRuntimeSource = await readFile(new URL('../../../integrations/comfyui/flux2_klein_app.py', import.meta.url), 'utf8');
 assert.ok(fluxRuntimeSource.includes('RUNTIME_SECRETS = [modal.Secret.from_dict'), 'Flux worker must inject deployment-time model credentials as Modal secrets');
@@ -114,4 +127,4 @@ assert.ok(appSource.includes("terminalWorkerState = ['credit_exhausted', 'unavai
 assert.ok(lifecycleSource.includes('Workers out of credits'), 'Lifecycle UI must explicitly explain all-worker credit exhaustion');
 assert.ok(lifecycleSource.includes('previous worker reached its credit limit'), 'Lifecycle UI must explicitly explain credit-driven standby switching');
 
-console.log('Modal worker registry contract passed: ecosystem affinity, pinned provider IDs, exclusion, credit failover, all-credit exhaustion, safe reassignment, and persisted poll-time standby routing.');
+console.log('Modal worker registry contract passed: generated fleet merge, ecosystem affinity, pinned provider IDs, exclusion, credit failover, all-credit exhaustion, safe reassignment, and persisted poll-time standby routing.');
