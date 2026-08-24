@@ -54,6 +54,15 @@
     gap: 10px;
   }
 
+  .gallery-toolbar-actions .gallery-search {
+    min-width: 0;
+  }
+
+  .gallery-toolbar-actions .gallery-search input {
+    width: 100%;
+    min-width: 0;
+  }
+
   .gallery-toolbar-actions .history-model-filter {
     width: 100%;
     min-width: 0;
