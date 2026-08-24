@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   classifyWorkerFailure,
   decodeProviderJobId,
@@ -75,4 +76,23 @@ await assert.rejects(
   (error) => error?.errorCode === 'ALL_WORKERS_CREDIT_EXHAUSTED' && error?.workerState === 'credit_exhausted',
 );
 
-console.log('Modal worker registry contract passed: ecosystem affinity, pinned provider IDs, exclusion, credit failover, all-credit exhaustion, and safe reassignment classification.');
+const resultSource = await readFile(new URL('../api/generate/result.js', import.meta.url), 'utf8');
+for (const required of [
+  'MAX_WORKER_FAILOVERS',
+  'shouldReassignWorker',
+  'safeToReassign',
+  'reassignToStandby',
+  'excludeWorkerIds',
+  'workerFailoverHistory',
+  'updateGenerationWorkerAssignment',
+]) {
+  assert.ok(resultSource.includes(required), `Poll-time failover contract missing ${required}`);
+}
+assert.ok(resultSource.includes("['credit_exhausted', 'unavailable']"), 'Poll-time reassignment must stay limited to explicit safe worker states');
+
+const submitSource = await readFile(new URL('../api/generate.js', import.meta.url), 'utf8');
+assert.ok(submitSource.includes('assignedWorkerId'), 'Initial submit must persist the accepted worker assignment');
+assert.ok(submitSource.includes('workerFailoverHistory'), 'Initial submit must persist failed primary attempts');
+assert.ok(submitSource.includes('updateGenerationWorkerAssignment'), 'Initial submit must atomically persist worker provider id + metadata');
+
+console.log('Modal worker registry contract passed: ecosystem affinity, pinned provider IDs, exclusion, credit failover, all-credit exhaustion, safe reassignment, and persisted poll-time standby routing.');
