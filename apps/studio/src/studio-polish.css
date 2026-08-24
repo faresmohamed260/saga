@@ -29,6 +29,10 @@
   scrollbar-width: thin;
 }
 
+.workspace .saga-shared-aspect-picker .saga-morph-list button {
+  grid-template-columns: 54px minmax(0, 1fr) 18px;
+}
+
 @media (min-width: 761px) {
   .workspace .saga-video-option-menu.saga-video-aspect-menu {
     max-height: min(456px, calc(100vh - 24px));
