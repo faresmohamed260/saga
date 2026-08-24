@@ -45,7 +45,8 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
       MODAL_FLUX2_KLEIN_GPU: A10
-      MODAL_LTX25_GPU: "L40S,A100-40GB"
+      MODAL_LTX25_GPU: "H100,L40S,A100-40GB"
+      MODAL_LTX25_MAX_CONTAINERS: "2"
       ACCOUNT: ${{ matrix.account }}
       ECOSYSTEM: ${{ matrix.ecosystem }}
       WORKER_ID: ${{ matrix.worker_id }}
