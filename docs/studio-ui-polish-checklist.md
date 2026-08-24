@@ -42,7 +42,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 
 ## P2 — product polish and scale
 
-- [~] **21. Simplify Gallery card information hierarchy.** Implementation in validation: Gallery cards now show preview + max two-line prompt + one concise output line (`resolution · aspect · fps`), with model/seed/dimensions/created metadata moved into the media modal’s expandable Details surface.
+- [x] **21. Simplify Gallery card information hierarchy.** Gallery cards now show preview + max two-line prompt + one concise output line (`resolution · aspect · fps`), with model/seed/dimensions/created metadata moved into the media modal’s expandable Details surface. Final artifact `9531277488` from Studio Visual Preview `32757067506` was manually inspected across desktop Gallery, 390px mobile Gallery, and the expanded media Details surface; hierarchy is clear and contained with no layout regression. The visual harness now explicitly asserts that seed does not leak into card metadata and captures the expanded Details surface. Validated by Studio CI `32757067710`, Studio Visual Preview `32757067506`, Backend Architecture CI `32757067502`, Modal Worker Inventory `32757067546`, Worker Fleet Live Smoke `32757067667`, and Required Check Compatibility `32757067535`. **Iteration 21 complete.**
 - [ ] **22. Replace technical checkpoint/model strings with user-facing names.** Keep exact checkpoint/quantization/workflow metadata in a Details surface.
 - [ ] **23. Add Gallery search and sorting.** Prompt search plus at least Newest/Oldest before adding more niche filters.
 - [ ] **24. Add optional Gallery density modes.** Compact default plus Comfortable/detail-oriented density where useful.
