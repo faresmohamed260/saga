@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { runImageEdit, runVideoGeneration } from '../generation-client.js';
 import CreateWorkspace from '../features/create/CreateWorkspace.jsx';
 import Sidebar from '../components/Sidebar.jsx';
 import MobileTopbar from '../components/MobileTopbar.jsx';
@@ -12,8 +11,9 @@ import CollectionsView from '../features/library/CollectionsView.jsx';
 import ModelsView from '../features/catalog/ModelsView.jsx';
 import WorkflowsView from '../features/catalog/WorkflowsView.jsx';
 import SettingsView from '../features/settings/SettingsView.jsx';
+import useLibraryController from '../hooks/useLibraryController.js';
+import useGenerationController from '../hooks/useGenerationController.js';
 
-const GALLERY_PAGE_SIZE = 24;
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
 
@@ -109,12 +109,6 @@ export default function App() {
   const [advanced, setAdvanced] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [jobStatus, setJobStatus] = useState('');
-  const [workerStatus, setWorkerStatus] = useState(null);
-  const [activeJob, setActiveJob] = useState(null);
-  const [cancelBusy, setCancelBusy] = useState(false);
-  const generationAbortRef = React.useRef(null);
   const [jobs, setJobs] = useState([]);
   const [jobsFilter, setJobsFilter] = useState('active');
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -126,28 +120,17 @@ export default function App() {
   const [workflowId, setWorkflowId] = useState('default-image');
   const [modelId, setModelId] = useState('saga-image-auto');
   const [references, setReferences] = useState([]);
-  const [favorites, setFavorites] = useState(new Set());
-  const [favoriteItems, setFavoriteItems] = useState([]);
   const [items, setItems] = useState(samples);
-  const [galleryItems, setGalleryItems] = useState([]);
-  const [galleryLoading, setGalleryLoading] = useState(false);
-  const [galleryAppending, setGalleryAppending] = useState(false);
-  const [galleryError, setGalleryError] = useState('');
-  const [galleryKind, setGalleryKind] = useState('all');
-  const [galleryModel, setGalleryModel] = useState('all');
-  const [galleryModels, setGalleryModels] = useState([]);
-  const [galleryPage, setGalleryPage] = useState({ nextOffset: null, hasMore: false });
-  const [libraryLoading, setLibraryLoading] = useState(false);
-  const [libraryError, setLibraryError] = useState('');
-  const [collections, setCollections] = useState([]);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [collectionItems, setCollectionItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [error, setError] = useState('');
 
   const visibleItems = useMemo(() => items.slice(0, mode === 'Edit' ? 4 : outputs), [items, outputs, mode]);
   const isEdit = mode === 'Edit';
   const autoEditInfo = useMemo(() => autoReferenceSizing(references[0]), [references]);
+
+  const library = useLibraryController({ section, toGalleryItem });
+  const { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems } = library;
+  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
 
   React.useEffect(() => {
     const expectedHash = `#/${SECTION_HASHES[section] || 'create'}`;
@@ -204,79 +187,6 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [section, jobsFilter]);
 
-  const loadGallery = async ({ append = false, kind = galleryKind, model = galleryModel } = {}) => {
-    if (append && galleryPage.nextOffset == null) return;
-    append ? setGalleryAppending(true) : setGalleryLoading(true);
-    setGalleryError('');
-    try {
-      const params = new URLSearchParams({ limit: String(GALLERY_PAGE_SIZE), offset: String(append ? galleryPage.nextOffset : 0) });
-      if (kind === 'image' || kind === 'video') params.set('kind', kind);
-      if (model !== 'all') params.set('model', model);
-      const response = await fetch(`/api/history?${params.toString()}`, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`Gallery request failed (${response.status})`);
-      const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
-      setGalleryItems((current) => append ? [...current, ...nextItems] : nextItems);
-      setFavorites((current) => {
-        const next = new Set(current);
-        nextItems.forEach((item) => item.favorite ? next.add(item.id) : next.delete(item.id));
-        return next;
-      });
-      setGalleryPage({ nextOffset: payload?.page?.nextOffset ?? null, hasMore: Boolean(payload?.page?.hasMore) });
-      if (Array.isArray(payload?.facets?.models)) setGalleryModels(payload.facets.models);
-    } catch (err) {
-      setGalleryError(err instanceof Error ? err.message : 'Unable to load Gallery.');
-    } finally {
-      append ? setGalleryAppending(false) : setGalleryLoading(false);
-    }
-  };
-
-  const loadFavorites = async () => {
-    setLibraryLoading(true); setLibraryError('');
-    try {
-      const response = await fetch('/api/favorites');
-      if (!response.ok) throw new Error(`Favorites request failed (${response.status})`);
-      const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
-      setFavoriteItems(nextItems);
-      setFavorites(new Set(nextItems.map((item) => item.id)));
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load favorites.'); }
-    finally { setLibraryLoading(false); }
-  };
-
-  const loadCollections = async () => {
-    setLibraryLoading(true); setLibraryError('');
-    try {
-      const response = await fetch('/api/collections');
-      if (!response.ok) throw new Error(`Collections request failed (${response.status})`);
-      const payload = await response.json();
-      setCollections(Array.isArray(payload?.collections) ? payload.collections : []);
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load collections.'); }
-    finally { setLibraryLoading(false); }
-  };
-
-  const loadCollectionItems = async (collection) => {
-    setSelectedCollection(collection); setLibraryLoading(true); setLibraryError('');
-    try {
-      const response = await fetch(`/api/collection-items?collectionId=${encodeURIComponent(collection.id)}`);
-      if (!response.ok) throw new Error(`Collection request failed (${response.status})`);
-      const payload = await response.json();
-      const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
-      setCollectionItems(nextItems);
-      setFavorites((current) => {
-        const next = new Set(current);
-        nextItems.forEach((item) => item.favorite ? next.add(item.id) : next.delete(item.id));
-        return next;
-      });
-    } catch (err) { setLibraryError(err instanceof Error ? err.message : 'Unable to load collection.'); }
-    finally { setLibraryLoading(false); }
-  };
-
-  React.useEffect(() => {
-    if (section === 'Gallery') loadGallery({ append: false, kind: galleryKind, model: galleryModel });
-    if (section === 'Favorites') loadFavorites();
-    if (section === 'Collections') { setSelectedCollection(null); setCollectionItems([]); loadCollections(); }
-  }, [section, galleryKind, galleryModel]);
 
   const addReferences = async (files) => {
     const valid = [];
@@ -317,144 +227,7 @@ export default function App() {
     }
   };
 
-  const runFluxEdit = async () => {
-    if (!references.length) throw new Error('Add at least one reference image before running an edit.');
-    if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
-    const effectiveSeed = Number(seed) || 42;
-    const model = 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
-    setJobStatus('queued');
 
-    const { job, result } = await runImageEdit({
-      sourceFiles: references.map((reference) => reference.file),
-      prompt: prompt.trim(),
-      negativePrompt: '',
-      resolution: autoEditInfo.detail,
-      seed: effectiveSeed,
-      steps,
-      cfg,
-      megapixels: autoEditInfo.megapixels,
-    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
-
-    setJobStatus('completed');
-    const item = {
-      id: result.generationId || job.id,
-      title: prompt.trim(),
-      url: result.thumbnailUrl || result.mediaUrl,
-      originalUrl: result.mediaUrl,
-      thumbnailUrl: result.thumbnailUrl || null,
-      generated: true,
-      model,
-      resolution: autoEditInfo.detail,
-      seed: effectiveSeed,
-      kind: 'image',
-      mode: 'edit',
-      persisted: true,
-    };
-    setItems((current) => [item, ...current]);
-    if (section === 'Gallery') loadGallery({ append: false });
-  };
-
-  const runLtxVideo = async (videoOptions = {}) => {
-    if (!prompt.trim()) throw new Error('Describe the video you want to generate.');
-    const effectiveSeed = Number(seed) || 42;
-    const videoResolution = String(videoOptions.videoResolution || '480p');
-    const videoDuration = Math.max(5, Math.min(30, Math.round(Number(videoOptions.videoDuration) || 5)));
-    const videoAudio = videoOptions.videoAudio !== false;
-    const videoAspect = String(videoOptions.videoAspect || '16:9');
-    const requestedFrameRate = Number(videoOptions.videoFrameRate);
-    const videoFrameRate = [24, 25, 30].includes(requestedFrameRate) ? requestedFrameRate : 24;
-    const sourceFile = references[0]?.file || null;
-    setJobStatus(sourceFile ? 'uploading' : 'queued');
-
-    const { job, result } = await runVideoGeneration({
-      sourceFile,
-      prompt: prompt.trim(),
-      resolution: videoResolution,
-      durationSeconds: videoDuration,
-      audioEnabled: videoAudio,
-      aspectRatio: videoAspect,
-      frameRate: videoFrameRate,
-      seed: effectiveSeed,
-    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
-
-    setJobStatus('completed');
-    const item = {
-      id: result.generationId || job.id,
-      title: prompt.trim(),
-      url: result.thumbnailUrl || result.mediaUrl,
-      originalUrl: result.mediaUrl,
-      thumbnailUrl: result.thumbnailUrl || null,
-      generated: true,
-      model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot',
-      resolution: videoResolution,
-      seed: effectiveSeed,
-      kind: 'video',
-      mode: sourceFile ? 'image-to-video' : 'video',
-      persisted: true,
-      durationSeconds: videoDuration,
-      audioEnabled: videoAudio,
-      aspectRatio: videoAspect,
-      frameRate: videoFrameRate,
-    };
-    setItems((current) => [item, ...current]);
-    if (section === 'Gallery') loadGallery({ append: false });
-  };
-
-  const generate = async (generationOptions = {}) => {
-    if (busy) return;
-    const controller = new AbortController();
-    generationAbortRef.current = controller;
-    setBusy(true); setError(''); setJobStatus(''); setWorkerStatus(null); setActiveJob(null); setCancelBusy(false);
-    try {
-      if (isEdit) await runFluxEdit();
-      else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
-      else if (mode === 'Video') await runLtxVideo(generationOptions);
-      else throw new Error('Choose Image, Video, or Edit to generate media.');
-    } catch (err) {
-      if (err?.name === 'AbortError') {
-        setJobStatus('cancelled');
-        setWorkerStatus((current) => ({ ...(current || {}), state: 'cancelled' }));
-        setError('');
-      } else {
-        setJobStatus('failed');
-        const terminalWorkerState = ['credit_exhausted', 'unavailable'].includes(String(err?.workerState || '')) ? String(err.workerState) : 'failed';
-        setWorkerStatus((current) => ({ ...(current || {}), ...(err?.worker || {}), state: terminalWorkerState, errorCode: err?.errorCode || null }));
-        setError(err instanceof Error ? err.message : 'Generation failed.');
-      }
-    } finally {
-      if (generationAbortRef.current === controller) generationAbortRef.current = null;
-      setBusy(false);
-      setCancelBusy(false);
-    }
-  };
-
-  const viewActiveJob = () => {
-    setJobsFilter('all');
-    setSection('Jobs');
-  };
-
-  const cancelActiveJob = async () => {
-    if (!busy || !activeJob?.id || cancelBusy) return;
-    if (!window.confirm('Cancel this generation? The provider job will be stopped if it is still running.')) return;
-    setCancelBusy(true);
-    setError('');
-    try {
-      const response = await fetch('/api/job-actions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: activeJob.id, action: 'cancel' }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error || `Cancel failed (${response.status})`);
-      setActiveJob(payload?.job || activeJob);
-      setJobStatus('cancelled');
-      setWorkerStatus((current) => ({ ...(current || {}), state: 'cancelled' }));
-      generationAbortRef.current?.abort();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to cancel generation.');
-      setCancelBusy(false);
-    }
-  };
 
   const toggleFavorite = async (item) => {
     const id = item.id;

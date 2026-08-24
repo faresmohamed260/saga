@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
+import useGallerySelection from '../../hooks/useGallerySelection.js';
 import { Check, Download, FolderPlus, Heart, LoaderCircle, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 
@@ -21,43 +22,7 @@ export default function GalleryView({
   onBulkDownload,
   onBulkDelete,
 }) {
-  const [managing, setManaging] = useState(false);
-  const [selected, setSelected] = useState(() => new Set());
-  const [actionBusy, setActionBusy] = useState('');
-  const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
-
-  useEffect(() => {
-    setSelected((current) => {
-      const next = new Set([...current].filter((id) => itemIds.has(id)));
-      return next.size === current.size ? current : next;
-    });
-  }, [itemIds]);
-
-  const selectedItems = useMemo(() => items.filter((item) => selected.has(item.id)), [items, selected]);
-  const toggle = (item) => setSelected((current) => {
-    const next = new Set(current);
-    if (next.has(item.id)) next.delete(item.id);
-    else next.add(item.id);
-    return next;
-  });
-  const finishManaging = () => {
-    setManaging(false);
-    setSelected(new Set());
-  };
-  const runBulk = async (name, callback) => {
-    if (!selectedItems.length || actionBusy) return;
-    setActionBusy(name);
-    try {
-      const result = await callback?.(selectedItems);
-      if (result && Array.isArray(result.failedIds)) {
-        setSelected(new Set(result.failedIds));
-      } else if ((name === 'delete' || name === 'collection') && result !== false) {
-        setSelected(new Set());
-      }
-    } finally {
-      setActionBusy('');
-    }
-  };
+  const { managing, setManaging, selected, setSelected, actionBusy, toggle, finishManaging, runBulk } = useGallerySelection(items);
 
   return (
     <section className="gallery-view">
