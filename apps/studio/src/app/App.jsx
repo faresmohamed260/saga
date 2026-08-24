@@ -677,29 +677,46 @@ export default function App() {
     const candidates = selectedItems.filter((item) => item.persisted && isUuid(item.id));
     if (!candidates.length) return false;
     if (!window.confirm(`Permanently delete ${candidates.length} selected generation${candidates.length === 1 ? '' : 's'}? This removes originals, favorites, collection memberships, and retained source references.`)) return false;
-    try {
-      await Promise.all(candidates.map(async (item) => {
+
+    const outcomes = await Promise.all(candidates.map(async (item) => {
+      try {
         const response = await fetch(`/api/generations?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
-        if (!response.ok) throw new Error(`Delete failed for one or more items (${response.status})`);
-      }));
-      const ids = new Set(candidates.map((item) => item.id));
-      setSelectedMedia((current) => current && ids.has(current.id) ? null : current);
-      setHistoryItems((current) => current.filter((entry) => !ids.has(entry.id)));
-      setFavoriteItems((current) => current.filter((entry) => !ids.has(entry.id)));
-      setCollectionItems((current) => current.filter((entry) => !ids.has(entry.id)));
-      setItems((current) => current.filter((entry) => !ids.has(entry.id)));
+        if (!response.ok) {
+          let detail = '';
+          try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
+          throw new Error(`Delete failed (${response.status})${detail}`);
+        }
+        return { id: item.id, ok: true };
+      } catch (error) {
+        return { id: item.id, ok: false, error: error instanceof Error ? error.message : 'Delete failed' };
+      }
+    }));
+
+    const succeededIds = new Set(outcomes.filter((outcome) => outcome.ok).map((outcome) => outcome.id));
+    const failed = outcomes.filter((outcome) => !outcome.ok);
+    const failedIds = failed.map((outcome) => outcome.id);
+
+    if (succeededIds.size) {
+      setSelectedMedia((current) => current && succeededIds.has(current.id) ? null : current);
+      setHistoryItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
+      setFavoriteItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
+      setCollectionItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
+      setItems((current) => current.filter((entry) => !succeededIds.has(entry.id)));
       setFavorites((current) => {
         const next = new Set(current);
-        ids.forEach((id) => next.delete(id));
+        succeededIds.forEach((id) => next.delete(id));
         return next;
       });
       await loadCollections();
-      return true;
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Could not delete selected media.');
-      await loadHistory({ append: false });
-      return false;
     }
+
+    if (failed.length) {
+      const firstError = failed[0]?.error ? ` First error: ${failed[0].error}` : '';
+      window.alert(`Deleted ${succeededIds.size} of ${candidates.length} selected items. ${failed.length} failed and remain selected for retry.${firstError}`);
+      return { failedIds, succeededIds: [...succeededIds] };
+    }
+
+    return { failedIds: [], succeededIds: [...succeededIds] };
   };
 
   const openMedia = (item) => setSelectedMedia(item);
