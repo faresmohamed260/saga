@@ -80,11 +80,11 @@
 
 
 /* Iteration 12 — generation lifecycle actions */
-.workspace .saga-generation-next-note{display:block;margin-top:7px;color:#7f8999;font-size:10px;line-height:1.4}
+.workspace .saga-generation-next-note{display:block;margin-top:7px;color:#7f8999;font-size:var(--saga-text-xs);line-height:1.4}
 .workspace .saga-generation-progress-actions{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}
-.workspace .saga-generation-progress-actions button{height:30px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:rgba(255,255,255,.045);color:#cdd3dc;font-size:10px;font-weight:750;cursor:pointer}
-.workspace .saga-generation-progress-actions button:hover{background:rgba(255,255,255,.08);color:#fff}
-.workspace .saga-generation-progress-actions button:focus-visible{outline:2px solid #9f8cff;outline-offset:2px}
+.workspace .saga-generation-progress-actions button{height:30px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;border:1px solid rgba(255,255,255,.12);border-radius:var(--saga-radius-sm);background:rgba(255,255,255,.045);color:#cdd3dc;font-size:var(--saga-text-xs);font-weight:750;cursor:pointer}
+.workspace .saga-generation-progress-actions button:hover{background:var(--saga-border-subtle);color:#fff}
+.workspace .saga-generation-progress-actions button:focus-visible{outline:var(--saga-focus-ring);outline-offset:2px}
 .workspace .saga-generation-progress-actions button.danger{border-color:rgba(255,100,120,.28);color:#ffb4c0;background:rgba(120,20,35,.12)}
 .workspace .saga-generation-progress-actions button.danger:hover{background:rgba(150,28,48,.2)}
 .workspace .saga-generation-progress-actions button:disabled{opacity:.55;cursor:wait}

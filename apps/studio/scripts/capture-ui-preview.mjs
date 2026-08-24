@@ -59,6 +59,20 @@ try {
   recordDiagnostics(desktop, 'desktop');
   await waitForStudio(desktop);
 
+  const tokenContract = await desktop.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return {
+      bg: root.getPropertyValue('--saga-color-bg').trim(),
+      radius: root.getPropertyValue('--saga-radius-lg').trim(),
+      control: root.getPropertyValue('--saga-control-md').trim(),
+      text: root.getPropertyValue('--saga-text-md').trim(),
+      focus: root.getPropertyValue('--saga-focus-ring').trim(),
+    };
+  });
+  if (tokenContract.bg !== '#080a0f' || tokenContract.radius !== '12px' || tokenContract.control !== '36px' || tokenContract.text !== '12px' || !tokenContract.focus.includes('2px')) {
+    throw new Error(`Studio design token contract is incomplete: ${JSON.stringify(tokenContract)}`);
+  }
+
   // Core composition: no old mode navbar, centered composer, additional creation Tools live in the sidebar.
   if (await desktop.locator('.create-mode-tabs,.mode-tabs').count()) throw new Error('Old Create mode navbar is still rendered');
   await desktop.getByRole('button', { name: 'Tools', exact: true }).waitFor({ state: 'visible' });
