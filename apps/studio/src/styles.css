@@ -126,7 +126,7 @@ button { color: inherit; }
 .gallery-card .media-frame { aspect-ratio:1; }
 .history-copy { padding:11px 12px 12px; border-bottom:1px solid rgba(255,255,255,.06); }
 .history-prompt { font-size:12px; line-height:1.45; color:#eef1f6; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:34px; }
-.history-meta { margin-top:8px; display:flex; flex-direction:column; gap:3px; color:#7f8898; font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.history-meta { margin-top:7px; color:#8d96a6; font-size:11px; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .history-state { min-height:260px; border:1px dashed rgba(255,255,255,.12); border-radius:14px; display:flex; align-items:center; justify-content:center; gap:10px; color:var(--muted); }
 .history-state.error { color:#ffb4c0; border-color:rgba(255,100,120,.26); background:rgba(120,20,35,.08); }
 .spin { animation:spin .9s linear infinite; }
@@ -139,6 +139,11 @@ button { color: inherit; }
 .media-modal-copy { width:min(900px,100%); display:flex; justify-content:space-between; gap:18px; align-items:center; font-size:12px; }
 .media-modal-copy strong { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .media-modal-copy span { color:var(--muted); white-space:nowrap; }
+.media-modal-details { width:100%; color:var(--muted); font-size:11px; }
+.media-modal-details summary { cursor:pointer; width:max-content; color:#c5cbd5; }
+.media-modal-details dl { margin:10px 0 0; display:grid; grid-template-columns:max-content minmax(0,1fr); gap:6px 14px; }
+.media-modal-details dt { color:#7f8898; }
+.media-modal-details dd { margin:0; color:#c5cbd5; overflow-wrap:anywhere; }
 
 @media (max-width: 1280px) {
   .app-shell { grid-template-columns: 220px minmax(0,1fr) 300px; }
