@@ -136,8 +136,8 @@ const runtimeContract = JSON.parse(python.stdout);
 expect(runtimeContract.matrix.length === matrixCases.length, 'Runtime matrix result count mismatch');
 expect(runtimeContract.durations.length === durationCases.length, 'Runtime duration result count mismatch');
 
-const aspectRelativeTolerance = 0.001; // <= 0.1% after required even-pixel rounding.
 let worstAspectError = 0;
+let worstAspectTolerance = 0;
 let worstAspectCase = null;
 for (const row of runtimeContract.matrix) {
   const [deliveryWidth, deliveryHeight] = row.delivery;
@@ -145,8 +145,13 @@ for (const row of runtimeContract.matrix) {
   const requestedRatio = parseRatio(row.aspect);
   const deliveredRatio = deliveryWidth / deliveryHeight;
   const relativeError = Math.abs(deliveredRatio - requestedRatio) / requestedRatio;
+  const idealLongEdge = requestedRatio >= 1 ? deliveryHeight * requestedRatio : deliveryWidth / requestedRatio;
+  const actualLongEdge = requestedRatio >= 1 ? deliveryWidth : deliveryHeight;
+  const longEdgeQuantizationError = Math.abs(actualLongEdge - idealLongEdge);
+  const aspectRelativeTolerance = 1 / idealLongEdge + 1e-12;
   if (relativeError > worstAspectError) {
     worstAspectError = relativeError;
+    worstAspectTolerance = aspectRelativeTolerance;
     worstAspectCase = row;
   }
 
@@ -154,7 +159,8 @@ for (const row of runtimeContract.matrix) {
   expect(internalWidth % 64 === 0 && internalHeight % 64 === 0, `${row.resolution} ${row.aspect}: internal dimensions must be 64-aligned, got ${internalWidth}×${internalHeight}`);
   expect(internalWidth >= deliveryWidth && internalHeight >= deliveryHeight, `${row.resolution} ${row.aspect}: internal dimensions cannot undershoot delivery dimensions`);
   expect((internalWidth / 2) % 32 === 0 && (internalHeight / 2) % 32 === 0, `${row.resolution} ${row.aspect}: low-stage dimensions must remain 32-aligned`);
-  expect(relativeError <= aspectRelativeTolerance, `${row.resolution} ${row.aspect}: delivered aspect error ${(relativeError * 100).toFixed(4)}% exceeds ${(aspectRelativeTolerance * 100).toFixed(2)}% tolerance`);
+  expect(longEdgeQuantizationError <= 1 + 1e-9, `${row.resolution} ${row.aspect}: nearest-even delivery changed the flexible edge by more than 1px (${longEdgeQuantizationError})`);
+  expect(relativeError <= aspectRelativeTolerance, `${row.resolution} ${row.aspect}: delivered aspect error ${(relativeError * 100).toFixed(4)}% exceeds the exact one-pixel quantization tolerance ${(aspectRelativeTolerance * 100).toFixed(4)}%`);
 
   const uiDimensions = videoDeliveryDimensions(row.resolution, row.aspect);
   expect(uiDimensions.width === deliveryWidth && uiDimensions.height === deliveryHeight, `${row.resolution} ${row.aspect}: Studio/runtime delivery mismatch (${formatDimensions(uiDimensions)} vs ${deliveryWidth}×${deliveryHeight})`);
@@ -185,7 +191,8 @@ console.log(JSON.stringify({
   frameRates,
   matrixCases: runtimeContract.matrix.length,
   durationCases: runtimeContract.durations.length,
-  aspectRelativeTolerance,
+  aspectToleranceRule: 'nearest-even flexible edge <= 1px; relative tolerance <= 1 / ideal long edge',
+  worstAspectTolerance,
   worstAspectError,
   worstAspectCase: worstAspectCase ? {
     resolution: worstAspectCase.resolution,
