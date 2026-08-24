@@ -69,7 +69,11 @@ try {
   if (desktopMargin < 60) throw new Error(`Desktop Audio control does not reserve enough room for its explicit state badge: ${desktopMargin}`);
   await expectToolbarContained(desktop, 'Desktop Video');
 
+  // Enter focus through keyboard modality so :focus-visible is tested as users experience it.
   await audio.focus();
+  await desktop.keyboard.press('Tab');
+  await desktop.keyboard.press('Shift+Tab');
+  if (!(await audio.evaluate((element) => document.activeElement === element))) throw new Error('Keyboard focus did not return to Audio control');
   await expectFocusRing(audio, 'Audio control');
   if (await pseudoContent(audio, '::before') !== 'Audio on · Generate with sound') throw new Error('Focused Audio tooltip does not explain the On state');
   const tooltipOpacity = Number(await audio.evaluate((element) => getComputedStyle(element, '::before').opacity));
