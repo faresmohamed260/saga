@@ -19,7 +19,7 @@ try {
   let page = await context.newPage();
   page.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
 
-  await page.route('**/api/generate', async (route) => {
+  await context.route('**/api/generate', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     await new Promise((resolve) => setTimeout(resolve, 350));
     await route.fulfill({
@@ -39,13 +39,13 @@ try {
       }),
     });
   });
-  await page.route('**/api/job-actions', async (route) => {
+  await context.route('**/api/job-actions', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ job: { id: '77777777-7777-4777-8777-777777777777', status: 'failed', metadata: { cancelled: true } }, action: 'cancelled' }) });
   });
-  await page.route('**/api/jobs?**', async (route) => {
+  await context.route('**/api/jobs?**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jobs: [{ id: '77777777-7777-4777-8777-777777777777', status: 'running', prompt: 'A slow cinematic camera move through a sunlit coastal landscape', kind: 'video', mode: 'video', model: 'REDGraft LTX 2.5' }] }) });
   });
-  await page.route('**/api/generate/result?**', async (route) => {
+  await context.route('**/api/generate/result?**', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ status: 'running' }) });
   });
