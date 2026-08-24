@@ -1,0 +1,42 @@
+name: Studio Iteration 19 Patch
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - "scripts/studio_iteration19_patch.py"
+      - ".github/workflows/studio-iteration19-patch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: studio-iteration19-patch
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply Iteration 19 patch
+        run: python scripts/studio_iteration19_patch.py
+      - name: Commit Iteration 19 implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A apps/studio/src apps/studio/scripts apps/studio/index.html
+          if git diff --cached --quiet; then
+            echo "Iteration 19 already applied"
+            exit 0
+          fi
+          git commit -m "refactor: rename Gallery internals"
+          git push origin HEAD:studio/video-gallery-ux
