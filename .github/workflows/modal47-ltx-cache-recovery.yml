@@ -1,0 +1,91 @@
+name: Recover modal-47 LTX cache
+
+on:
+  push:
+    branches: [studio/video-gallery-ux]
+    paths:
+      - ".github/workflows/modal47-ltx-cache-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modal47-ltx-cache-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      MODAL_LTX25_GPU: A10
+      ACCOUNT: modal-47
+      ECOSYSTEM: ltx25-redgraft
+      WORKER_ID: ltx-standby-01
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal runtime CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Apply public LTX auxiliary mirror
+        run: sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+      - name: Redeploy corrected worker without reset
+        run: python scripts/modal_worker_maintenance.py "$ACCOUNT" "$ECOSYSTEM" "$WORKER_ID" > worker-maintenance.json
+      - name: Resume cache recovery without reset
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys
+          payload = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          rows = payload.get('accounts') or payload.get('tokens') or payload.get('roster') if isinstance(payload, dict) else payload
+          account = next((row for row in rows if str(row.get('label') or row.get('name') or row.get('account')) == 'modal-47'), None)
+          if not account:
+              raise SystemExit('modal-47 not found in Modal roster')
+          token_id = str(account.get('token_id') or '').strip()
+          token_secret = str(account.get('token_secret') or '').strip()
+          combined = str(account.get('api_key') or account.get('token') or '').strip()
+          if (not token_id or not token_secret) and '.' in combined:
+              token_id, token_secret = combined.split('.', 1)
+          if not token_id or not token_secret:
+              raise SystemExit('modal-47 credentials are incomplete')
+          env = dict(os.environ)
+          env['MODAL_TOKEN_ID'] = token_id
+          env['MODAL_TOKEN_SECRET'] = token_secret
+          env['SAGA_MODAL_WORKER_ID'] = 'ltx-standby-01'
+          env['SAGA_MODAL_WORKER_STATE_DICT'] = 'saga-ltx25-redgraft-worker-state'
+          env['SAGA_MODAL_WORKER_VOLUME'] = 'saga-ltx25-redgraft-cache'
+          code = (
+              "import modal, json; "
+              "fn=modal.Function.from_name('saga-ltx25-video', 'prefetch_ltx25'); "
+              "result=fn.remote(True); "
+              "print(json.dumps({'ready': bool(result.get('ready')), 'model': result.get('model')}))"
+          )
+          completed = subprocess.run([sys.executable, '-c', code], env=env, text=True)
+          raise SystemExit(completed.returncode)
+          PY
+      - name: Verify recovered gateway identity and health
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          from pathlib import Path
+          row = json.loads(Path('worker-maintenance.json').read_text(encoding='utf-8'))
+          with urllib.request.urlopen(row['gatewayUrl'].rstrip('/') + '/health', timeout=90) as response:
+              payload = json.loads(response.read().decode('utf-8'))
+          if payload.get('ready') is not True:
+              raise SystemExit(f"Gateway did not report ready: {payload}")
+          live = payload.get('worker') or {}
+          if live.get('worker_id') != 'ltx-standby-01':
+              raise SystemExit(f"Wrong worker identity after recovery: {live}")
+          if live.get('ecosystem') != 'ltx25-redgraft':
+              raise SystemExit(f"Wrong ecosystem after recovery: {live}")
+          print(json.dumps({'workerId': 'ltx-standby-01', 'ready': True, 'state': live.get('state'), 'cacheReset': False}))
+          PY
