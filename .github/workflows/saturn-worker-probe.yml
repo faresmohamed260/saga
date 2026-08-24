@@ -40,11 +40,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Saturn client
+      - name: Install current Saturn client
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --no-input saturn-client
+          python -m pip install --disable-pip-version-check --no-input \
+            'git+https://github.com/saturncloud/saturn-client.git@main'
+          python -m pip show saturn-client
 
       - name: Diagnose Saturn authentication
         id: saturn_auth
