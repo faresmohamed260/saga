@@ -51,7 +51,7 @@ export default function GalleryView({
       />
       <div className="gallery-toolbar">
         <div className="gallery-kind-tabs" role="group" aria-label="Media type filter">
-          {[['all', 'All'], ['image', 'Images'], ['video', 'Videos']].map(([value, label]) => <button key={value} className={kind === value ? 'selected' : ''} onClick={() => onKindChange(value)}>{label}</button>)}
+          {[['all', 'All'], ['image', 'Images'], ['video', 'Videos']].map(([value, label]) => <button key={value} className={kind === value ? 'selected' : ''} aria-pressed={kind === value} onClick={() => onKindChange(value)}>{label}</button>)}
         </div>
         <div className="gallery-toolbar-actions">
           <label className="gallery-search"><span className="sr-only">Search prompts</span><input type="search" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search prompts" aria-label="Search prompts" /></label>
@@ -61,7 +61,7 @@ export default function GalleryView({
             <button type="button" className={density === 'compact' ? 'selected' : ''} aria-pressed={density === 'compact'} onClick={() => changeDensity('compact')}>Compact</button>
             <button type="button" className={density === 'comfortable' ? 'selected' : ''} aria-pressed={density === 'comfortable'} onClick={() => changeDensity('comfortable')}>Comfortable</button>
           </div>
-          <button className={`secondary-button gallery-manage-trigger ${managing ? 'active' : ''}`} onClick={() => managing ? finishManaging() : setManaging(true)}>{managing ? <X size={17}/> : <Check size={17}/>} {managing ? 'Done' : 'Manage'}</button>
+          <button className={`secondary-button gallery-manage-trigger ${managing ? 'active' : ''}`} aria-pressed={managing} onClick={() => managing ? finishManaging() : setManaging(true)}>{managing ? <X size={17}/> : <Check size={17}/>} {managing ? 'Done' : 'Manage'}</button>
         </div>
       </div>
 
