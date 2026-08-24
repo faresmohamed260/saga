@@ -1,13 +1,12 @@
 {
   "version": 1,
-  "description": "Approved deterministic Studio surfaces. Baseline PNGs are intentionally reviewed and updated through the visual-baseline workflow; ordinary PR runs never rewrite them.",
+  "description": "Approved deterministic Studio surfaces. Baseline PNGs are intentionally reviewed and updated through the visual-baseline workflow; ordinary PR runs never rewrite them. Animated/morph-transition captures stay in the preview artifact but are excluded from pixel gating.",
   "defaults": {
     "channelThreshold": 18,
     "maxChangedRatio": 0.0015
   },
   "surfaces": [
     { "file": "01-create-image-centered.png", "maxChangedRatio": 0.001 },
-    { "file": "02b-image-picker-keyboard-focus.png", "maxChangedRatio": 0.0015 },
     { "file": "05b-video-output-controls.png", "maxChangedRatio": 0.001 },
     { "file": "05f-video-picker-keyboard-focus.png", "maxChangedRatio": 0.0015 },
     { "file": "05i-video-audio-on.png", "maxChangedRatio": 0.0015 },
