@@ -70,7 +70,7 @@ expect(createSource.includes('videoDeliveryDimensions(videoResolution, videoAspe
 
 // Exercise the worker's exact pure delivery functions by parsing only the safe
 // constants/functions from ltx23_app.py. This imports no Modal code and starts no GPU.
-const oddReferenceAspects = ['1179:2556', '2556:1179', '1001:777', '777:1001'];
+const oddReferenceAspects = ['1179:2556', '2556:1179', '1001:777', '777:1001', '481:480', '480:481'];
 const matrixAspects = [...supportedAspects, ...oddReferenceAspects];
 const frameRates = [24, 25, 30];
 const durations = Array.from({ length: 26 }, (_, index) => index + 5);

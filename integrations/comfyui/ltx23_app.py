@@ -365,7 +365,10 @@ def _parse_aspect_ratio(value: str) -> float:
 
 
 def _even(value: float) -> int:
-    return max(2, int(round(float(value) / 2.0)) * 2)
+    # Delivery dimensions are positive. Use explicit half-up rounding so exact
+    # odd-pixel ties match JavaScript Math.round in Studio instead of Python's
+    # bankers rounding (for example 481px -> 482px, not 480px).
+    return max(2, int(math.floor(float(value) / 2.0 + 0.5)) * 2)
 
 
 def _align64(value: int) -> int:
