@@ -2,6 +2,11 @@ name: Studio Visual Baseline Update
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - studio/video-gallery-ux
+    paths:
+      - .github/visual-baseline-refresh
 
 permissions:
   contents: write
