@@ -115,6 +115,13 @@ async function assertContained(locator, label, width, allowance = 1) {
   }
 }
 
+async function assertMinimumWidth(locator, label, width, minimum) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`${label} at ${width}px could not be measured`);
+  diagnostics.measurements.push({ label, width, type: 'minimum-width', minimum, box });
+  if (box.width < minimum) throw new Error(`${label} at ${width}px is too narrow (${box.width}px < ${minimum}px): ${JSON.stringify(box)}`);
+}
+
 async function assertNoOverlap(first, second, label, width, allowance = 1) {
   if (!(await first.isVisible().catch(() => false)) || !(await second.isVisible().catch(() => false))) return;
   const [firstBox, secondBox] = await Promise.all([first.boundingBox(), second.boundingBox()]);
@@ -170,11 +177,16 @@ try {
     const cards = page.locator('.gallery-grid .gallery-card');
     await cards.nth(5).waitFor({ state: 'visible', timeout: 10_000 });
     const search = page.getByRole('searchbox', { name: 'Search prompts' });
+    const modelSelect = page.locator('.gallery-model-filter select');
     await assertNoHorizontalOverflow(page, 'Gallery compact', width);
     await assertContained(page.locator('main.workspace'), 'Gallery workspace', width);
     await assertContained(search, 'Gallery search', width);
     await assertContained(page.locator('.gallery-grid'), 'Gallery grid', width);
     await assertNoOverlap(search, page.locator('.gallery-sort'), 'Gallery search / sort', width);
+    if (width <= 390) {
+      await assertMinimumWidth(search, 'Gallery search', width, 140);
+      await assertMinimumWidth(modelSelect, 'Gallery model filter', width, 90);
+    }
     const firstCard = await cards.first().boundingBox();
     if (!firstCard || firstCard.width < 120) throw new Error(`Gallery cards collapse below 120px at ${width}px: ${JSON.stringify(firstCard)}`);
     diagnostics.measurements.push({ label: 'Gallery first card', width, type: 'element', box: firstCard });
