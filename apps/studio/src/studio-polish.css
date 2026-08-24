@@ -1,5 +1,10 @@
 /* Final visual-polish layer for reusable Create and Gallery components. */
 
+/* Iteration 29 — size the Create stage against its actual workspace, not viewport math that double-counts the sidebar. */
+.workspace .saga-create-stage {
+  width: min(1080px, 100%);
+}
+
 .workspace .saga-video-option-menu {
   top: calc(100% + 8px);
   bottom: auto;
