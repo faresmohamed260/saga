@@ -159,8 +159,34 @@
 @media(hover:none){.history-card .media-actions-overlay{opacity:1;transform:none;pointer-events:auto}}
 @media(max-width:760px){
   .gallery-toolbar-actions{width:100%;justify-content:space-between}
-  .gallery-manager{flex-wrap:wrap;top:8px}
+  .gallery-manager{
+    position:fixed;
+    left:calc(12px + env(safe-area-inset-left));
+    right:calc(12px + env(safe-area-inset-right));
+    bottom:calc(12px + env(safe-area-inset-bottom));
+    top:auto;
+    z-index:80;
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:8px;
+    margin:0;
+    padding:10px;
+    border-radius:16px;
+  }
+  .gallery-manager strong{grid-column:1 / -1;min-width:0;font-size:12px}
+  .gallery-manager button{height:44px;min-width:0;padding:0 8px;font-size:0;border-radius:11px}
+  .gallery-manager button svg{width:18px;height:18px}
+  .gallery-manager button::after{font-size:10px;font-weight:700}
+  .gallery-manager button:nth-of-type(1)::after{content:'Visible'}
+  .gallery-manager button:nth-of-type(2)::after{content:'Clear'}
+  .gallery-manager button:nth-of-type(3)::after{content:'Favorite'}
+  .gallery-manager button:nth-of-type(4)::after{content:'Collection'}
+  .gallery-manager button:nth-of-type(5)::after{content:'Download'}
+  .gallery-manager button:nth-of-type(6)::after{content:'Delete'}
+  .gallery-manager button:nth-of-type(1),.gallery-manager button:nth-of-type(2){font-size:10px}
+  .gallery-manager button:nth-of-type(1)::after,.gallery-manager button:nth-of-type(2)::after{content:none}
   .gallery-manager-spacer{display:none}
+  .history-view:has(.gallery-manager){padding-bottom:150px}
   .history-view .history-grid{grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}
   .history-card .media-actions-overlay{height:46px;grid-template-columns:repeat(3,1fr);opacity:1;transform:none;pointer-events:auto;backdrop-filter:none}
   .history-card .media-action-desktop-download{display:none!important}
