@@ -244,7 +244,7 @@ try {
   await durationRange.fill('23');
   await desktop.keyboard.press('Escape');
   await expectHidden(durationPicker, 'Duration picker');
-  await expectFocused(durationTrigger, 'Duration trigger after Escape');
+  if ((await desktop.evaluate(() => document.activeElement?.getAttribute('aria-label') || '')) !== 'Video duration 23 seconds') throw new Error('Duration trigger did not regain focus after Escape');
 
   const audioToggle = desktop.locator('.saga-audio-toggle');
   if (!(await audioToggle.getAttribute('aria-pressed') === 'true')) throw new Error('Video audio should default on');
