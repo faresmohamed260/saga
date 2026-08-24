@@ -118,7 +118,7 @@
 }
 
 /* Gallery manager + dense media cards. */
-.gallery-toolbar-actions{display:flex;align-items:center;gap:10px}
+.gallery-toolbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .gallery-manage-trigger{min-height:42px!important;padding:0 14px!important}
 .gallery-manage-trigger.active{border-color:rgba(122,92,255,.52);background:rgba(100,78,222,.16)}
 .gallery-manager{
@@ -131,9 +131,13 @@
 .gallery-manager button.danger{color:#ffb2be;border-color:rgba(255,103,125,.22)}
 .gallery-manager-spacer{flex:1}
 .gallery-view .gallery-grid{grid-template-columns:repeat(auto-fill,minmax(180px,220px));justify-content:start;gap:12px}
+.gallery-density-comfortable .gallery-grid{grid-template-columns:repeat(auto-fill,minmax(250px,320px));gap:18px}
 .gallery-view .gallery-card{width:100%;transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
 .gallery-view .gallery-card.selected{border-color:rgba(129,102,255,.82);box-shadow:0 0 0 1px rgba(129,102,255,.22),0 8px 28px rgba(0,0,0,.22)}
 .gallery-view .gallery-card .media-frame{aspect-ratio:1;background:#0b0f15}
+.gallery-density-comfortable .gallery-card .history-copy{padding:12px 13px 14px}
+.gallery-density-comfortable .gallery-card .history-prompt{font-size:13px;line-height:1.45}
+.gallery-density-comfortable .gallery-card .history-meta{margin-top:9px;font-size:12px}
 .media-video-preview{width:100%;height:100%;display:block;object-fit:cover;background:#080b10}
 .gallery-card .media-actions-overlay{
   position:absolute;left:7px;right:7px;bottom:7px;z-index:5;height:40px;display:grid;grid-template-columns:repeat(4,1fr);align-items:center;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(10,13,18,.90);box-shadow:0 8px 24px rgba(0,0,0,.34);backdrop-filter:blur(12px);opacity:0;transform:translateY(5px);pointer-events:none;transition:opacity .16s ease,transform .16s ease
@@ -190,6 +194,7 @@
   .gallery-manager-spacer{display:none}
   .gallery-view:has(.gallery-manager){padding-bottom:150px}
   .gallery-view .gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}
+  .gallery-density-comfortable .gallery-grid{grid-template-columns:1fr;gap:16px}
   .gallery-card .media-actions-overlay{height:46px;grid-template-columns:repeat(3,1fr);opacity:1;transform:none;pointer-events:auto;backdrop-filter:none}
   .gallery-card .media-action-desktop-download{display:none!important}
   .gallery-card .media-overflow-download{display:flex!important}
@@ -205,4 +210,12 @@
 .gallery-search input:focus,.gallery-sort select:focus{border-color:#745cff}
 .gallery-sort{display:flex;align-items:center;gap:8px;color:#8f98a8;font-size:11px}
 .gallery-sort select{padding:0 30px 0 10px}
-@media (max-width:760px){.gallery-toolbar-actions{width:100%;display:grid;grid-template-columns:1fr auto;align-items:end}.gallery-search{grid-column:1/-1}.gallery-search input{width:100%}.gallery-sort{justify-content:flex-start}.gallery-model-filter{grid-column:1/-1}.gallery-manage-trigger{grid-column:2;grid-row:2}}
+
+/* Gallery density modes. */
+.gallery-density-control{display:inline-flex;align-items:center;height:42px;padding:4px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:#0d1118}
+.gallery-density-control button{height:32px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#8f98a8;font-size:11px;cursor:pointer}
+.gallery-density-control button:hover{color:#fff;background:#151a22}
+.gallery-density-control button.selected{color:#fff;background:rgba(100,78,222,.22);box-shadow:inset 0 0 0 1px rgba(122,92,255,.45)}
+.gallery-density-control button:focus-visible{outline:2px solid #9f8cff;outline-offset:1px}
+
+@media (max-width:760px){.gallery-toolbar-actions{width:100%;display:grid;grid-template-columns:1fr auto;align-items:end}.gallery-search{grid-column:1/-1}.gallery-search input{width:100%}.gallery-sort{justify-content:flex-start}.gallery-model-filter{grid-column:1/-1}.gallery-density-control{grid-column:1;justify-self:start}.gallery-manage-trigger{grid-column:2;grid-row:3}.gallery-density-control button{min-width:88px}}
