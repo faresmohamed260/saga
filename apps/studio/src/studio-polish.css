@@ -92,4 +92,4 @@
 
 /* Iteration 13 — keep the bulk collection action readable in the sticky manager. */
 .gallery-manager button{white-space:nowrap}
-@media(max-width:760px){.gallery-manager{overflow-x:auto}.gallery-manager-spacer{min-width:8px}}
+@media(max-width:760px){.gallery-manager{overflow:visible}.gallery-manager-spacer{min-width:0}}
