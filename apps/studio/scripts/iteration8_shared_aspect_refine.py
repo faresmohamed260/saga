@@ -32,10 +32,26 @@ def refine_component() -> None:
     if text.count(old_height) != 1:
         raise RuntimeError("Could not locate shared AspectPicker desired height")
     text = text.replace(old_height, new_height, 1)
-
     path.write_text(text)
+
+    video_path = ROOT / "apps/studio/src/features/create/VideoGenerationControls.jsx"
+    video = video_path.read_text()
+    old_auto_copy = "          : '16:9 default · Follows reference when attached'}\n"
+    new_auto_copy = "          : '16:9 · Follows reference'}\n"
+    if video.count(old_auto_copy) != 1:
+        raise RuntimeError("Could not locate Video Aspect Auto menu copy")
+    video_path.write_text(video.replace(old_auto_copy, new_auto_copy, 1))
+
+    css_path = ROOT / "apps/studio/src/studio-polish.css"
+    css = css_path.read_text()
+    marker = '''.workspace .saga-shared-aspect-picker .saga-morph-list {\n  overflow-y: auto;\n  overscroll-behavior: contain;\n  scrollbar-width: thin;\n}\n'''
+    replacement = marker + '''\n.workspace .saga-shared-aspect-picker .saga-morph-list button {\n  grid-template-columns: 54px minmax(0, 1fr) 18px;\n}\n'''
+    if css.count(marker) != 1:
+        raise RuntimeError("Could not locate shared AspectPicker list styling")
+    css_path.write_text(css.replace(marker, replacement, 1))
+
     base.validate_source()
-    print("Iteration 8 deterministic focus and overflow refinement applied")
+    print("Iteration 8 deterministic focus, overflow, and provenance refinement applied")
 
 
 if __name__ == '__main__':
