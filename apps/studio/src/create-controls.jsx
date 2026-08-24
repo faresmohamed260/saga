@@ -677,7 +677,7 @@ export default function CreateWorkspace({
   aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
   seed, setSeed, steps, setSteps, cfg, setCfg,
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
-  videoAspect = '16:9',
+  videoAspect = '16:9', videoToolbarSlot = null, composerStatusSlot = null,
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -854,6 +854,8 @@ export default function CreateWorkspace({
 
               <MediaModeToggle mode={mode} setMode={setMode} />
 
+              {isVideo && videoToolbarSlot}
+
               {isEdit && (
                 <button
                   type="button"
@@ -1001,6 +1003,7 @@ export default function CreateWorkspace({
               </button>
             </div>
           </div>
+          {composerStatusSlot}
         </section>
 
         {error && <div className="saga-composer-error">{error}</div>}
