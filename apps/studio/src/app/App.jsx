@@ -669,8 +669,39 @@ export default function App() {
   };
 
   const bulkDownload = async (selectedItems) => {
-    selectedItems.forEach((item) => downloadItem(item));
-    return true;
+    const candidates = selectedItems.filter((item) => item?.persisted && isUuid(item.id));
+    if (!candidates.length) {
+      window.alert('Only persisted generations can be downloaded as a batch.');
+      return false;
+    }
+    try {
+      const response = await fetch('/api/download-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: candidates.map((item) => item.id) }),
+      });
+      if (!response.ok) {
+        let detail = '';
+        try { const body = await response.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {}
+        throw new Error(`Batch download failed (${response.status})${detail}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || `saga-gallery-${new Date().toISOString().slice(0, 10)}.zip`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return true;
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not download selected media.');
+      return false;
+    }
   };
 
   const bulkDelete = async (selectedItems) => {
