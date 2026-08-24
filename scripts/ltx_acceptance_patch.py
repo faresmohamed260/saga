@@ -13,9 +13,19 @@ def once(old: str, new: str) -> None:
     text = text.replace(old, new, 1)
 
 
+# Paid GPU tiers are unavailable on the current credit workspaces. Keep A10 as
+# the deployable default, but let ComfyUI use normal smart-memory management.
 once(
     'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "H100,L40S,A100-40GB").split(",") if x.strip()]\n',
-    'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "L40S,A100-40GB").split(",") if x.strip()]\n',
+    'GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "A10").split(",") if x.strip()]\n',
+)
+once(
+    '            "--reserve-vram", "2", "--disable-auto-launch", "--preview-method", "none",\n',
+    '            "--reserve-vram", "0.5", "--disable-auto-launch", "--preview-method", "none",\n',
+)
+once(
+    '        if any(choice.upper() == "A10" for choice in GPU_CHOICES):\n            launch_command.append("--lowvram")\n',
+    '        if str(os.environ.get("MODAL_LTX25_LOWVRAM") or "").strip().lower() in {"1", "true", "yes"}:\n            launch_command.append("--lowvram")\n',
 )
 once(
     '        _wait_server()\n        self.started_seconds = round(time.perf_counter() - started, 3)\n        _set_worker_state("ready", startup_seconds=self.started_seconds)\n',
@@ -61,9 +71,8 @@ gone(
 )
 gateway.write_text(text, encoding='utf-8')
 
-# Probe A100 independently. Ordered lists fail deployment validation as soon as
-# a restricted GPU is present, so this must be tested by itself.
 github_env = os.environ.get('GITHUB_ENV')
 if github_env:
     with open(github_env, 'a', encoding='utf-8') as handle:
-        handle.write('MODAL_LTX25_GPU=A100-40GB\n')
+        handle.write('MODAL_LTX25_GPU=A10\n')
+        handle.write('MODAL_LTX25_LOWVRAM=0\n')
