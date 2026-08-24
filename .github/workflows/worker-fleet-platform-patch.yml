@@ -1,5 +1,6 @@
 name: Worker Fleet Platform Patch
 
+# Triggered after the workflow exists on the branch so the platform patch can run remotely.
 on:
   push:
     branches: [studio/video-gallery-ux]
