@@ -6,6 +6,7 @@ on:
     paths:
       - "scripts/worker_fleet_platform_patch.py"
       - "scripts/worker_fleet_refine_patch.py"
+      - "scripts/worker_fleet_generate_patch.py"
       - ".github/workflows/worker-fleet-platform-patch.yml"
   workflow_dispatch:
 
@@ -37,12 +38,15 @@ jobs:
           if [ -f scripts/worker_fleet_refine_patch.py ]; then
             python scripts/worker_fleet_refine_patch.py
           fi
+          if [ -f scripts/worker_fleet_generate_patch.py ]; then
+            python scripts/worker_fleet_generate_patch.py
+          fi
       - name: Commit patched platform
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py integrations/comfyui/ltx23_app.py apps/studio/scripts/check-worker-registry-contract.mjs
+          git add integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py integrations/comfyui/ltx23_app.py apps/studio/api/generate.js apps/studio/scripts/check-worker-registry-contract.mjs
           if git diff --cached --quiet; then
             echo "No worker fleet refinement changes to commit"
             exit 0
