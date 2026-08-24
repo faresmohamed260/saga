@@ -35,9 +35,13 @@ jobs:
             exit 0
           fi
           python scripts/worker_fleet_platform_patch.py
+          # Workflow-file writes require GitHub Apps with workflows permission. The
+          # platform patch is safe to land without the optional inventory workflow;
+          # that workflow is added separately through the connected GitHub app.
+          rm -f .github/workflows/modal-worker-inventory.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/studio-ui-polish-checklist.md config/modal-worker-ecosystems.json apps/studio/api/_worker-registry.js apps/studio/api/_worker-registry.generated.js apps/studio/api/_workflows.js apps/studio/api/_providers.js apps/studio/api/generate.js apps/studio/api/generate/result.js apps/studio/src/generation-client.js apps/studio/src/app/App.jsx apps/studio/src/features/create/CreateWorkspace.jsx apps/studio/src/features/create/VideoGenerationControls.jsx integrations/comfyui/flux2_klein_app.py integrations/comfyui/ltx23_app.py integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py apps/studio/scripts/check-worker-registry-contract.mjs apps/studio/package.json scripts/modal_worker_fleet.py .github/workflows/modal-worker-inventory.yml
+          git add docs/studio-ui-polish-checklist.md config/modal-worker-ecosystems.json apps/studio/api/_worker-registry.js apps/studio/api/_worker-registry.generated.js apps/studio/api/_workflows.js apps/studio/api/_providers.js apps/studio/api/generate.js apps/studio/api/generate/result.js apps/studio/src/generation-client.js apps/studio/src/app/App.jsx apps/studio/src/features/create/CreateWorkspace.jsx apps/studio/src/features/create/VideoGenerationControls.jsx integrations/comfyui/flux2_klein_app.py integrations/comfyui/ltx23_app.py integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py apps/studio/scripts/check-worker-registry-contract.mjs apps/studio/package.json scripts/modal_worker_fleet.py
           git commit -m "feat: add ecosystem-affine Modal worker fleet"
           git push origin HEAD:studio/video-gallery-ux
 
