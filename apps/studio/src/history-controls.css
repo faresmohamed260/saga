@@ -162,7 +162,9 @@
   .gallery-manager{
     position:fixed;
     left:calc(12px + env(safe-area-inset-left));
-    right:calc(12px + env(safe-area-inset-right));
+    right:auto;
+    width:calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-width:calc(100vw - 24px);
     bottom:calc(12px + env(safe-area-inset-bottom));
     top:auto;
     z-index:80;
