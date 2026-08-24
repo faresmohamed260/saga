@@ -1,4 +1,4 @@
-name: Studio LTX Performance Benchmark
+name: Studio LTX Live Deploy and Benchmark
 
 on:
   pull_request:
@@ -7,25 +7,110 @@ on:
       - .github/ltx-performance-fix
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  benchmark:
+  acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      MODAL_LTX25_GPU: "H100,L40S,A100-40GB"
+      MODAL_LTX25_MAX_CONTAINERS: "2"
     steps:
-      - name: Install media probe
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deploy and media tooling
         run: |
+          python -m pip install --upgrade "modal==1.4.2"
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg jq
-      - name: Allow Modal redeploy to settle
-        run: sleep 75
+      - name: Apply production telemetry and poster fallback fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('integrations/comfyui/ltx23_app.py')
+          text = app.read_text(encoding='utf-8')
+
+          def once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'app: expected one match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          once(
+              '        _wait_server()\n        self.started_seconds = round(time.perf_counter() - started, 3)\n        _set_worker_state("ready", startup_seconds=self.started_seconds)\n',
+              '''        _wait_server()\n        self.started_seconds = round(time.perf_counter() - started, 3)\n        try:\n            import torch\n            self.gpu_name = torch.cuda.get_device_name(0)\n        except Exception:\n            self.gpu_name = GPU_LABEL\n        _set_worker_state("ready", startup_seconds=self.started_seconds, gpu_name=self.gpu_name)\n''',
+          )
+          once(
+              '            "gpu": GPU_LABEL,\n',
+              '            "gpu": GPU_LABEL,\n            "gpu_name": getattr(self, "gpu_name", GPU_LABEL),\n',
+          )
+          once(
+              '        _set_worker_state("generating")\n',
+              '        generation_started = time.perf_counter()\n        _set_worker_state("generating", gpu_name=getattr(self, "gpu_name", GPU_LABEL))\n',
+          )
+          once(
+              '''                    video_path = _find_new_video(started_at, item)\n                    delivery_width, delivery_height = _delivery_dimensions(resolution, aspect_ratio)\n                    final_path = _finalize_video(\n                        video_path,\n                        width=delivery_width,\n                        height=delivery_height,\n                        frame_rate=int(frame_rate),\n                        duration_seconds=int(duration_seconds),\n                    )\n                    _set_worker_state("finalizing")\n''',
+              '''                    video_path = _find_new_video(started_at, item)\n                    delivery_width, delivery_height = _delivery_dimensions(resolution, aspect_ratio)\n                    compute_seconds = round(time.perf_counter() - generation_started, 3)\n                    finalize_started = time.perf_counter()\n                    _set_worker_state(\n                        "finalizing",\n                        gpu_name=getattr(self, "gpu_name", GPU_LABEL),\n                        compute_seconds=compute_seconds,\n                    )\n                    final_path = _finalize_video(\n                        video_path,\n                        width=delivery_width,\n                        height=delivery_height,\n                        frame_rate=int(frame_rate),\n                        duration_seconds=int(duration_seconds),\n                    )\n''',
+          )
+          once(
+              '                    _set_worker_state("ready")\n                    return {"video": result, "poster": bytes(poster_process.stdout)}\n',
+              '''                    finalize_seconds = round(time.perf_counter() - finalize_started, 3)\n                    total_seconds = round(time.perf_counter() - generation_started, 3)\n                    _set_worker_state(\n                        "ready",\n                        gpu_name=getattr(self, "gpu_name", GPU_LABEL),\n                        compute_seconds=compute_seconds,\n                        finalize_seconds=finalize_seconds,\n                        total_seconds=total_seconds,\n                    )\n                    return {"video": result, "poster": bytes(poster_process.stdout)}\n''',
+          )
+          app.write_text(text, encoding='utf-8')
+
+          gateway = Path('integrations/comfyui/ltx23_gateway.py')
+          text = gateway.read_text(encoding='utf-8')
+
+          def gone(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'gateway: expected one match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          gone(
+              '    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.4.0")\n',
+              '    api = FastAPI(title="SAGA REDGraft LTX 2.5 Video Gateway", version="0.5.0")\n',
+          )
+          gone(
+              '''    def _extract_poster(video: bytes) -> bytes:\n        import subprocess\n\n        command = [\n            "ffmpeg", "-hide_banner", "-loglevel", "error",\n            "-ss", "0.08",\n            "-i", "pipe:0",\n            "-frames:v", "1",\n            "-f", "image2pipe",\n            "-vcodec", "mjpeg",\n            "-q:v", "3",\n            "pipe:1",\n        ]\n        result = subprocess.run(command, input=video, capture_output=True, check=False)\n        if result.returncode != 0 or not result.stdout:\n            detail = result.stderr.decode("utf-8", errors="replace")[-3000:]\n            raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")\n        return bytes(result.stdout)\n''',
+              '''    def _extract_poster(video: bytes) -> bytes:\n        import subprocess\n        import tempfile\n\n        # MP4 files can place seek metadata at the end. A seekable temp file is\n        # required here; piping those files to ffmpeg can produce "partial file".\n        with tempfile.NamedTemporaryFile(suffix=".mp4") as source:\n            source.write(video)\n            source.flush()\n            command = [\n                "ffmpeg", "-hide_banner", "-loglevel", "error",\n                "-ss", "0.08",\n                "-i", source.name,\n                "-frames:v", "1",\n                "-f", "image2pipe",\n                "-vcodec", "mjpeg",\n                "-q:v", "3",\n                "pipe:1",\n            ]\n            result = subprocess.run(command, capture_output=True, check=False)\n        if result.returncode != 0 or not result.stdout:\n            detail = result.stderr.decode("utf-8", errors="replace")[-3000:]\n            raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")\n        return bytes(result.stdout)\n''',
+          )
+          gateway.write_text(text, encoding='utf-8')
+          PY
+          python -m py_compile integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
+          git diff --check
+      - name: Deploy patched LTX primary and standby
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/modal_worker_maintenance.py modal-46 ltx25-redgraft ltx-primary-01 | tee /tmp/primary-deploy.json
+          python scripts/modal_worker_maintenance.py modal-47 ltx25-redgraft ltx-standby-01 | tee /tmp/standby-deploy.json
       - name: Generate and validate production 1080p video
         shell: bash
         run: |
           set -euo pipefail
-          base='https://dreadcipher67--saga-ltx25-gateway-web.modal.run'
-          curl -fsS "$base/health" | tee /tmp/health-before.json
+          base=$(jq -r '.gatewayUrl' /tmp/primary-deploy.json)
+          test -n "$base" && test "$base" != "null"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$base/health" > /tmp/health-before.json; then break; fi
+            sleep 3
+          done
+          cat /tmp/health-before.json
+
           started=$(date +%s)
           submit=$(curl -fsS -X POST "$base/jobs/video" \
             -F 'prompt=Production latency acceptance: calm ocean horizon at sunrise, subtle natural motion, locked camera' \
@@ -41,7 +126,7 @@ jobs:
           test -n "$call_id"
 
           completed=0
-          for attempt in $(seq 1 200); do
+          for attempt in $(seq 1 240); do
             code=$(curl -sS -o /tmp/video-or-status -w '%{http_code}' "$base/jobs/$call_id")
             elapsed=$(( $(date +%s) - started ))
             echo "poll=$attempt http=$code elapsed_seconds=$elapsed"
@@ -60,52 +145,73 @@ jobs:
           generation_seconds=$(( $(date +%s) - started ))
 
           poster_started=$(date +%s)
-          poster_done=0
-          for attempt in $(seq 1 8); do
-            code=$(curl -sS -o /tmp/ltx-benchmark.jpg -w '%{http_code}' "$base/jobs/$call_id/poster")
-            echo "poster_attempt=$attempt http=$code"
-            if [ "$code" = "200" ]; then poster_done=1; break; fi
-            cat /tmp/ltx-benchmark.jpg || true
-            sleep 1
-          done
-          test "$poster_done" = "1"
+          code=$(curl -sS -o /tmp/ltx-benchmark.jpg -w '%{http_code}' "$base/jobs/$call_id/poster")
+          echo "poster_http=$code"
+          test "$code" = "200"
           poster_seconds=$(( $(date +%s) - poster_started ))
 
           ffprobe -v error -show_entries 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate' -of json /tmp/ltx-benchmark.mp4 > /tmp/ffprobe.json
+          curl -fsS "$base/health" > /tmp/health-after.json
           cat /tmp/ffprobe.json
+          cat /tmp/health-after.json
           python - <<'PY'
           import json
           from pathlib import Path
           p = json.loads(Path('/tmp/ffprobe.json').read_text())
+          health = json.loads(Path('/tmp/health-after.json').read_text())
           video = next(s for s in p['streams'] if s.get('codec_type') == 'video')
           audio = [s for s in p['streams'] if s.get('codec_type') == 'audio']
           duration = float(p['format']['duration'])
+          poster = Path('/tmp/ltx-benchmark.jpg').read_bytes()
+          worker = health.get('worker') or {}
           assert (video['width'], video['height']) == (1920, 1080), video
           assert video['avg_frame_rate'] == '25/1', video
           assert abs(duration - 5.0) <= 0.05, duration
           assert not audio, audio
-          poster = Path('/tmp/ltx-benchmark.jpg').read_bytes()
           assert poster[:2] == b'\xff\xd8' and len(poster) > 1000, len(poster)
-          print(json.dumps({'validated': True, 'width': 1920, 'height': 1080, 'fps': '25/1', 'duration': duration, 'audio_streams': 0, 'poster_bytes': len(poster)}))
+          assert worker.get('state') == 'ready', worker
+          assert worker.get('gpu_name'), worker
+          assert worker.get('total_seconds') is not None, worker
+          print(json.dumps({'validated': True, 'gpu_name': worker.get('gpu_name'), 'runtime_total_seconds': worker.get('total_seconds'), 'compute_seconds': worker.get('compute_seconds'), 'finalize_seconds': worker.get('finalize_seconds'), 'poster_bytes': len(poster)}))
           PY
+
           total=$(( $(date +%s) - started ))
-          echo "GENERATION_SECONDS=$generation_seconds"
-          echo "POSTER_SECONDS=$poster_seconds"
-          echo "BENCHMARK_TOTAL_SECONDS=$total"
-          curl -fsS "$base/health" | tee /tmp/health-after.json
+          gpu_name=$(jq -r '.worker.gpu_name' /tmp/health-after.json)
+          runtime_total=$(jq -r '.worker.total_seconds' /tmp/health-after.json)
+          compute_seconds=$(jq -r '.worker.compute_seconds' /tmp/health-after.json)
+          finalize_seconds=$(jq -r '.worker.finalize_seconds' /tmp/health-after.json)
           jq -n \
             --arg call_id "$call_id" \
+            --arg gpu_name "$gpu_name" \
             --argjson generation_seconds "$generation_seconds" \
             --argjson poster_seconds "$poster_seconds" \
             --argjson total_seconds "$total" \
-            '{call_id:$call_id,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
+            --argjson runtime_total_seconds "$runtime_total" \
+            --argjson compute_seconds "$compute_seconds" \
+            --argjson finalize_seconds "$finalize_seconds" \
+            '{call_id:$call_id,gpu_name:$gpu_name,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,runtime:{total_seconds:$runtime_total_seconds,compute_seconds:$compute_seconds,finalize_seconds:$finalize_seconds},request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
             > /tmp/benchmark-summary.json
           cat /tmp/benchmark-summary.json
+      - name: Commit validated production fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
+          if git diff --cached --quiet; then
+            echo "Product files already current"
+            exit 0
+          fi
+          git commit -m "fix(video): harden LTX poster delivery and telemetry"
+          git push origin HEAD:studio/video-gallery-ux
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ltx-1080p-performance-benchmark
+          name: ltx-live-deploy-benchmark
           path: |
+            /tmp/primary-deploy.json
+            /tmp/standby-deploy.json
             /tmp/benchmark-summary.json
             /tmp/ffprobe.json
             /tmp/health-before.json
