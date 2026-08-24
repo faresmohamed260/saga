@@ -1,0 +1,85 @@
+name: Iteration 30 Documentation Update
+
+on:
+  push:
+    branches:
+      - studio/video-gallery-ux
+    paths:
+      - .github/iteration30-doc-update
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/video-gallery-ux
+
+      - name: Close accepted polish checklist
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          checklist = Path('docs/studio-ui-polish-checklist.md')
+          text = checklist.read_text()
+          replacements = [
+              ('**P2 product polish — Item 29 complete**', '**P2 product polish — complete**'),
+              ('- Status: `[x]` Items **01–29** complete.', '- Status: `[x]` Items **01–30** complete.'),
+              ('- P2 polish is active; Items **21–29** are complete and **Item 30** is next.', '- P0/P1/P2 accepted polish scope is complete. No accepted checklist item remains; await explicit user direction for any new scope.'),
+              ('- [ ] **30. Expand deterministic video delivery-contract tests.** Cover all supported aspects/resolutions/FPS, odd reference ratios, even delivery dimensions, 64-aligned internal dimensions, exact aspect tolerance, exact duration, and canonical 1080p landscape/portrait dimensions without requiring GPU generation.', '- [x] **30. Expand deterministic video delivery-contract tests.** The normal Studio build now executes the production LTX worker\'s pure delivery math directly via a safe Python AST extraction, so the contract exercises the real `_delivery_dimensions`, `_internal_dimensions`, and `_frame_count` functions without importing Modal or starting a GPU. Coverage spans 204 resolution/aspect/FPS cases across all four enabled resolutions, all 11 product aspect presets, six odd/reference ratios (including exact rounding ties `481:480` and `480:481`), and 24/25/30 FPS, plus 78 duration/FPS cases covering every supported duration from 5–30 seconds. Assertions require even delivery dimensions, Studio/runtime parity, nearest-even flexible-edge quantization within 1 pixel, 64-aligned internal dimensions, 32-aligned half-resolution low-stage dimensions, LTX 8n+1 internal frame padding, exact delivered `duration × fps` frame count/finalizer wiring, exact duration math, and canonical 1080p `1920×1080` / `1080×1920` output. Professional review exposed a real Python-bankers-rounding mismatch for exact odd-pixel reference ratios; the worker now uses explicit positive half-up rounding to match JavaScript `Math.round`. A first strengthened run also proved a fixed 0.10% aspect threshold was mathematically invalid at 480p ties, so the test was corrected—not weakened—to the exact quantization bound of at most one flexible-edge pixel. Final product/test head `7808b2b001a6b1db3ae56b4067cc63c6817310d2` passed Studio CI `32774404109`, Studio Visual Preview `32774404096`, Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076`; visual artifact `9537419708` was downloaded and all eight approved baselines were pixel-identical. **Iteration 30 complete; accepted checklist complete.**'),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'Checklist replacement anchor missing: {old}')
+              text = text.replace(old, new, 1)
+
+          iteration30 = '''### Iteration 30 — deterministic video delivery contract\n\n- [x] Expanded the normal Studio build contract to execute the production LTX worker's pure delivery functions through AST extraction without importing Modal or starting GPU generation.\n- [x] Covered 204 resolution/aspect/FPS combinations: four enabled resolutions × 17 aspect cases (11 supported presets + six odd/reference ratios) × 24/25/30 FPS.\n- [x] Covered all 78 duration/FPS combinations for every supported duration from 5 through 30 seconds at 24/25/30 FPS.\n- [x] Enforced even delivery dimensions, Studio/runtime parity, <=1px nearest-even flexible-edge quantization, 64-aligned internal dimensions, 32-aligned half-resolution low-stage dimensions, LTX 8n+1 frame padding, exact delivered frame/duration math, and canonical 1080p landscape/portrait dimensions.\n- [x] Professional review found a real exact-tie bug: Python bankers rounding could disagree with Studio JavaScript rounding by 2px. Runtime `_even` now uses explicit positive half-up rounding and tie cases `481:480` / `480:481` are permanently covered.\n- [x] The first tie-case run also rejected an invalid blanket 0.10% aspect tolerance at 480p. The assertion was corrected to the exact physical quantization contract (flexible edge within one ideal pixel) instead of loosening a percentage threshold.\n- [x] Final Studio CI `32774404109` reported 204 matrix cases + 78 duration cases, worst-case tie delivery `482×480`, and canonical 1080p `1920×1080` / `1080×1920`. Studio Visual Preview `32774404096` / artifact `9537419708` passed all eight approved baselines with zero changed pixels.\n- [x] Final standard gates also passed: Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076`.\n\n'''
+          anchor = '## Completed iteration log\n\n'
+          if anchor not in text:
+              raise SystemExit('Checklist completed-log anchor missing')
+          text = text.replace(anchor, anchor + iteration30, 1)
+          checklist.write_text(text)
+
+          brief = Path('docs/studio-ui-polish-iteration-brief.md')
+          text = brief.read_text()
+          replacements = [
+              ('- Completed checklist items: **01–29**.', '- Completed checklist items: **01–30**.'),
+              ('- Next item: **30 — expand deterministic video delivery-contract tests**.', '- Next item: **none — accepted checklist complete**.'),
+              ('- Do not begin Item 30 until the user says **continue**.', '- Do not begin a new numbered item unless the user explicitly defines or approves new scope.'),
+              ('The implementation is a coherent product direction rather than a prototype. Items 01–29 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, a true screenshot-baseline regression gate, and responsive visual coverage across the full width matrix. Remaining accepted work is expanded deterministic video delivery-contract testing (Item 30).', 'The implementation is a coherent product direction rather than a prototype. Items 01–30 are complete, including exact video delivery, Gallery management and architecture cleanup, shared Create controls, lifecycle feedback, product-facing metadata, design tokens, accessibility polish, screenshot-baseline regression, full responsive coverage, and exhaustive deterministic video delivery-contract testing. No accepted checklist item remains.'),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'Brief replacement anchor missing: {old}')
+              text = text.replace(old, new, 1)
+
+          old_latest = '- Latest completed item is Iteration 29. The GitHub-only visual harness now covers Create/Video and Gallery at 320, 390, 768, 900, 1024, 1100, 1440, and 1920px, with Manage coverage through the 768–1100 transition range and hard assertions for overflow, containment, overlap, card collapse, and minimum mobile control widths. It caught and drove fixes for a real 1024px Create overflow and 320px Gallery filter collision. Final Studio Visual Preview `32771622937` passed the responsive matrix and all eight approved visual-regression surfaces with zero changed pixels; artifact `9536443571` was downloaded and inspected. Standard validation also passed: Studio CI `32771622957`, Backend Architecture CI `32771622891`, Modal Worker Inventory `32771622900`, Worker Fleet Live Smoke `32771622860`, and Required Check Compatibility `32771622922`.'
+          new_latest = '- Latest completed item is Iteration 30. The normal Studio build now executes the production LTX worker\'s pure delivery math through AST extraction without importing Modal or requiring GPU generation. The deterministic contract covers 204 resolution/aspect/FPS cases and all 78 supported duration/FPS combinations, including six odd/reference ratios and exact rounding ties. It enforces even delivery dimensions, Studio/runtime parity, <=1px nearest-even aspect quantization, 64-aligned internal dimensions, 32-aligned low-stage dimensions, LTX 8n+1 padding, exact delivered frame/duration math, and canonical 1080p landscape/portrait output. Professional review found and fixed a real Python-bankers-rounding mismatch. Final product/test head `7808b2b001a6b1db3ae56b4067cc63c6817310d2` passed Studio CI `32774404109`, Studio Visual Preview `32774404096`, Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076`; artifact `9537419708` was downloaded and all eight approved visual baselines had zero changed pixels.'
+          if old_latest not in text:
+              raise SystemExit('Brief latest-item anchor missing')
+          text = text.replace(old_latest, new_latest, 1)
+
+          text = text.replace('**Professional review:** Item 29 is complete with no remaining item-specific actionable comment. **Item 30 — expand deterministic video delivery-contract tests — is next and remains gated on explicit user approval.**', '**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **Items 01–30 and the accepted polish checklist are complete; no new numbered item should begin without explicit user scope.**')
+
+          iteration30 = '''### Iteration 30 — deterministic video delivery contract\n\n**Status:** complete; accepted checklist complete.\n\n**Implementation:** expanded `apps/studio/scripts/check-resolution-contract.mjs` so the standard `npm run build` contract AST-extracts and executes the production LTX worker's pure dimension/frame functions without importing Modal or starting a GPU. Coverage is 204 resolution/aspect/FPS cases (four enabled resolutions, 11 supported aspect presets, six odd/reference ratios, 24/25/30 FPS) plus 78 duration/FPS cases covering every 5–30 second duration. Assertions cover even delivery dimensions, exact Studio/runtime parity, one-pixel nearest-even aspect quantization, 64-aligned internal dimensions, 32-aligned half-resolution low-stage dimensions, 8n+1 LTX frame padding, exact delivery frame/duration math, ffmpeg finalizer wiring, and canonical 1080p landscape/portrait dimensions.\n\n**Professional review cycle:** the expanded test initially passed its broad matrix, then review added exact odd-pixel tie cases `481:480` / `480:481`. Those exposed a real cross-language defect: Python `round()` uses bankers rounding while Studio's JavaScript uses half-up `Math.round`, allowing a 2px UI/runtime mismatch. Runtime `_even` now performs explicit positive half-up rounding. The first tie-case run then exposed that a fixed 0.10% aspect threshold was impossible for a one-pixel quantization tie at 480p; rather than inflate the threshold, the contract was corrected to the exact physical rule that the flexible edge may differ from ideal by no more than one pixel, with relative tolerance derived per case.\n\n**Validation:** final product/test head before documentation `7808b2b001a6b1db3ae56b4067cc63c6817310d2`. Studio CI `32774404109` passed and reported `matrixCases: 204`, `durationCases: 78`, worst aspect case `480p 481:480 -> 482×480`, canonical landscape `1920×1080`, and portrait `1080×1920`. Studio Visual Preview `32774404096` passed; artifact `9537419708` was downloaded and `visual-regression-report.json` confirmed zero changed pixels on all eight approved surfaces. Backend Architecture CI `32774404083`, Modal Worker Inventory `32774404094`, Worker Fleet Live Smoke `32774404126`, and Required Check Compatibility `32774404076` all passed.\n\n**Professional review:** Item 30 is complete with no remaining item-specific actionable comment. **The accepted Items 01–30 polish checklist is complete. No new numbered item should begin without explicit user scope.**\n\n'''
+          anchor = '## Recent iteration log\n\n'
+          if anchor not in text:
+              raise SystemExit('Brief recent-log anchor missing')
+          text = text.replace(anchor, anchor + iteration30, 1)
+          brief.write_text(text)
+          PY
+
+      - name: Commit documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/studio-ui-polish-checklist.md docs/studio-ui-polish-iteration-brief.md
+          git diff --cached --check
+          git commit -m "docs(studio): complete iteration 30"
+          git push origin HEAD:studio/video-gallery-ux
