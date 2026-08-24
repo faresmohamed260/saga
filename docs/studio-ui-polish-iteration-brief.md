@@ -49,7 +49,7 @@ The pass is finished only when all accepted checklist items are complete, curren
 
 ## Professional-review baseline
 
-The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes shared Image/Video aspect-picker architecture, consistent resolution terminology, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
+The implementation is now a coherent product direction rather than a broken prototype. Completed work has materially improved video correctness, Gallery action density/touch safety, card accessibility semantics, picker keyboard behavior, and video-poster loading. Remaining high-value work includes consistent resolution terminology and delivery dimensions, stronger Generate/audio affordances, richer real lifecycle feedback, bulk-management improvements, Create composition refactoring, Gallery naming/internal cleanup, App.jsx responsibility reduction, card metadata simplification, search/sort, design-token consolidation, broader accessibility, and true screenshot-baseline regression testing.
 
 ## Iteration log
 
