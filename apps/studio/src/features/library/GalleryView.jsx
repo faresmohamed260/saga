@@ -9,12 +9,16 @@ export default function GalleryView({
   kind,
   model,
   models,
+  search,
+  sort,
   page,
   loading,
   appending,
   error,
   onKindChange,
   onModelChange,
+  onSearchChange,
+  onSortChange,
   onRefresh,
   onLoadMore,
   renderCard,
@@ -38,6 +42,8 @@ export default function GalleryView({
           {[['all', 'All'], ['image', 'Images'], ['video', 'Videos']].map(([value, label]) => <button key={value} className={kind === value ? 'selected' : ''} onClick={() => onKindChange(value)}>{label}</button>)}
         </div>
         <div className="gallery-toolbar-actions">
+          <label className="gallery-search"><span className="sr-only">Search prompts</span><input type="search" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search prompts" aria-label="Search prompts" /></label>
+          <label className="gallery-sort"><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value)}><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>
           <label className="gallery-model-filter"><span>Model</span><select value={model} onChange={(event) => onModelChange(event.target.value)}><option value="all">All models</option>{models.map((modelName) => <option key={modelName} value={modelName}>{modelDisplayName(modelName)}</option>)}</select></label>
           <button className={`secondary-button gallery-manage-trigger ${managing ? 'active' : ''}`} onClick={() => managing ? finishManaging() : setManaging(true)}>{managing ? <X size={17}/> : <Check size={17}/>} {managing ? 'Done' : 'Manage'}</button>
         </div>
