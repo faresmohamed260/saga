@@ -1,4 +1,4 @@
-name: Studio LTX Performance Patch
+name: Studio LTX Performance Benchmark
 
 on:
   pull_request:
@@ -7,25 +7,110 @@ on:
       - .github/ltx-performance-fix
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch:
+  benchmark:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: studio/video-gallery-ux
-          fetch-depth: 0
-      - name: Patch LTX runtime and gateway
+      - name: Install media probe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg jq
+      - name: Allow Modal redeploy to settle
+        run: sleep 75
+      - name: Generate and validate production 1080p video
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/ltx_performance_patch.py
-          python -m py_compile integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/comfyui/ltx23_app.py integrations/comfyui/ltx23_gateway.py
-          git commit -m "perf(video): accelerate LTX and return poster with result"
-          git push origin HEAD:studio/video-gallery-ux
+          base='https://dreadcipher67--saga-ltx25-gateway-web.modal.run'
+          curl -fsS "$base/health" | tee /tmp/health-before.json
+          started=$(date +%s)
+          submit=$(curl -fsS -X POST "$base/jobs/video" \
+            -F 'prompt=Production latency acceptance: calm ocean horizon at sunrise, subtle natural motion, locked camera' \
+            -F 'negative_prompt=' \
+            -F 'seed=260825' \
+            -F 'resolution=1080p' \
+            -F 'duration_seconds=5' \
+            -F 'audio_enabled=false' \
+            -F 'aspect_ratio=16:9' \
+            -F 'frame_rate=25')
+          echo "submit=$submit"
+          call_id=$(printf '%s' "$submit" | jq -r '.call_id // empty')
+          test -n "$call_id"
+
+          completed=0
+          for attempt in $(seq 1 200); do
+            code=$(curl -sS -o /tmp/video-or-status -w '%{http_code}' "$base/jobs/$call_id")
+            elapsed=$(( $(date +%s) - started ))
+            echo "poll=$attempt http=$code elapsed_seconds=$elapsed"
+            if [ "$code" = "200" ]; then
+              mv /tmp/video-or-status /tmp/ltx-benchmark.mp4
+              completed=1
+              break
+            fi
+            if [ "$code" != "202" ]; then
+              cat /tmp/video-or-status || true
+              exit 1
+            fi
+            sleep 3
+          done
+          test "$completed" = "1"
+          generation_seconds=$(( $(date +%s) - started ))
+
+          poster_started=$(date +%s)
+          poster_done=0
+          for attempt in $(seq 1 8); do
+            code=$(curl -sS -o /tmp/ltx-benchmark.jpg -w '%{http_code}' "$base/jobs/$call_id/poster")
+            echo "poster_attempt=$attempt http=$code"
+            if [ "$code" = "200" ]; then poster_done=1; break; fi
+            cat /tmp/ltx-benchmark.jpg || true
+            sleep 1
+          done
+          test "$poster_done" = "1"
+          poster_seconds=$(( $(date +%s) - poster_started ))
+
+          ffprobe -v error -show_entries 'format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate' -of json /tmp/ltx-benchmark.mp4 > /tmp/ffprobe.json
+          cat /tmp/ffprobe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path('/tmp/ffprobe.json').read_text())
+          video = next(s for s in p['streams'] if s.get('codec_type') == 'video')
+          audio = [s for s in p['streams'] if s.get('codec_type') == 'audio']
+          duration = float(p['format']['duration'])
+          assert (video['width'], video['height']) == (1920, 1080), video
+          assert video['avg_frame_rate'] == '25/1', video
+          assert abs(duration - 5.0) <= 0.05, duration
+          assert not audio, audio
+          poster = Path('/tmp/ltx-benchmark.jpg').read_bytes()
+          assert poster[:2] == b'\xff\xd8' and len(poster) > 1000, len(poster)
+          print(json.dumps({'validated': True, 'width': 1920, 'height': 1080, 'fps': '25/1', 'duration': duration, 'audio_streams': 0, 'poster_bytes': len(poster)}))
+          PY
+          total=$(( $(date +%s) - started ))
+          echo "GENERATION_SECONDS=$generation_seconds"
+          echo "POSTER_SECONDS=$poster_seconds"
+          echo "BENCHMARK_TOTAL_SECONDS=$total"
+          curl -fsS "$base/health" | tee /tmp/health-after.json
+          jq -n \
+            --arg call_id "$call_id" \
+            --argjson generation_seconds "$generation_seconds" \
+            --argjson poster_seconds "$poster_seconds" \
+            --argjson total_seconds "$total" \
+            '{call_id:$call_id,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
+            > /tmp/benchmark-summary.json
+          cat /tmp/benchmark-summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ltx-1080p-performance-benchmark
+          path: |
+            /tmp/benchmark-summary.json
+            /tmp/ffprobe.json
+            /tmp/health-before.json
+            /tmp/health-after.json
+            /tmp/ltx-benchmark.mp4
+            /tmp/ltx-benchmark.jpg
+          if-no-files-found: warn
+          retention-days: 1
