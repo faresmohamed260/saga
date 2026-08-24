@@ -23,12 +23,12 @@ INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
 DEFAULT_FPS = 24
 FRAME_RATES = {24, 25, 30}
-GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "L40S,A100-40GB").split(",") if x.strip()]
+GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "H100,L40S,A100-40GB").split(",") if x.strip()]
 GPU_REQUEST: str | list[str] = GPU_CHOICES[0] if len(GPU_CHOICES) == 1 else GPU_CHOICES
 GPU_LABEL = ",".join(GPU_CHOICES)
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_LTX25_IDLE_SECONDS", "180"))
 WORKER_MIN_CONTAINERS = 0
-WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_LTX25_MAX_CONTAINERS", "1"))
+WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_LTX25_MAX_CONTAINERS", "2"))
 ECOSYSTEM_ID = "ltx25-redgraft"
 WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
 STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-ltx25-redgraft-worker-state")
@@ -758,7 +758,7 @@ class LTX25Worker:
         aspect_ratio: str = "16:9",
         frame_rate: int = DEFAULT_FPS,
         source_image: bytes | None = None,
-    ) -> bytes:
+    ) -> dict[str, bytes]:
         del negative_prompt  # REDGraft reference recipe uses zeroed negative conditioning.
         prompt = (prompt or "").strip()
         if not prompt:
@@ -829,8 +829,21 @@ class LTX25Worker:
                         bytes=final_path.stat().st_size,
                     )
                     result = final_path.read_bytes()
+                    poster_process = subprocess.run(
+                        [
+                            "ffmpeg", "-hide_banner", "-loglevel", "error",
+                            "-ss", "0.08", "-i", str(final_path),
+                            "-frames:v", "1", "-f", "image2pipe",
+                            "-vcodec", "mjpeg", "-q:v", "3", "pipe:1",
+                        ],
+                        capture_output=True,
+                        check=False,
+                    )
+                    if poster_process.returncode != 0 or not poster_process.stdout:
+                        detail = poster_process.stderr.decode("utf-8", errors="replace")[-3000:]
+                        raise RuntimeError(f"ffmpeg poster extraction failed: {detail}")
                     _set_worker_state("ready")
-                    return result
+                    return {"video": result, "poster": bytes(poster_process.stdout)}
             time.sleep(2)
         _set_worker_state("failed")
         raise TimeoutError("REDGraft LTX 2.5 generation timed out")
@@ -848,7 +861,7 @@ class LTX25Worker:
         aspect_ratio: str = "16:9",
         frame_rate: int = DEFAULT_FPS,
         source_image: bytes | None = None,
-    ) -> bytes:
+    ) -> dict[str, bytes]:
         try:
             return self._generate_impl(
                 prompt=prompt,

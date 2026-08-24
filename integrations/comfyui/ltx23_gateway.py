@@ -202,9 +202,10 @@ def web():
             print({"event": "ltx25_gateway_poll_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             status_code, error_code, state, detail = _failure_payload(exc)
             return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID})
-        if not isinstance(result, (bytes, bytearray)) or not result:
+        video = result.get("video") if isinstance(result, dict) else result
+        if not isinstance(video, (bytes, bytearray)) or not video:
             raise HTTPException(status_code=502, detail="LTX 2.5 runtime returned an empty video")
-        return Response(content=bytes(result), media_type="video/mp4")
+        return Response(content=bytes(video), media_type="video/mp4")
 
     @api.get("/jobs/{call_id}/poster")
     async def poll_video_poster(call_id: str):
@@ -218,6 +219,11 @@ def web():
         except Exception as exc:  # noqa: BLE001
             print({"event": "ltx25_gateway_poster_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"LTX 2.5 poster fetch failed: {type(exc).__name__}: {exc}") from exc
+        if isinstance(result, dict):
+            poster = result.get("poster")
+            if isinstance(poster, (bytes, bytearray)) and poster:
+                return Response(content=bytes(poster), media_type="image/jpeg")
+            result = result.get("video")
         if not isinstance(result, (bytes, bytearray)) or not result:
             raise HTTPException(status_code=502, detail="LTX 2.5 runtime returned an empty video")
         try:
