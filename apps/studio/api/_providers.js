@@ -170,6 +170,60 @@ async function responseFailure(response, worker, label) {
   });
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const LTX_POSTER_RETRY_DELAYS_MS = [0, 750, 1500, 3000];
+
+async function fetchLtxPoster(worker, encodedJobId) {
+  let lastStatus = null;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < LTX_POSTER_RETRY_DELAYS_MS.length; attempt += 1) {
+    const delayMs = LTX_POSTER_RETRY_DELAYS_MS[attempt];
+    if (delayMs) await wait(delayMs);
+
+    try {
+      const posterResponse = await fetchWorker(worker, `/jobs/${encodedJobId}/poster`, { method: 'GET', headers: { Accept: 'image/*, application/json' } });
+      lastStatus = posterResponse.status;
+      if (posterResponse.ok) {
+        const candidateType = String(posterResponse.headers.get('content-type') || '').split(';')[0].trim();
+        if (!candidateType.startsWith('image/')) {
+          throw providerFailureError('REDGraft LTX 2.5 poster endpoint returned a non-image response', { status: 502, worker });
+        }
+        return {
+          bytes: Buffer.from(await posterResponse.arrayBuffer()),
+          contentType: candidateType,
+        };
+      }
+
+      if ([404, 410].includes(posterResponse.status)) {
+        await responseFailure(posterResponse, worker, 'REDGraft LTX 2.5 poster fetch failed');
+      }
+
+      const retryable = posterResponse.status === 202 || posterResponse.status >= 500;
+      if (!retryable) {
+        await responseFailure(posterResponse, worker, 'REDGraft LTX 2.5 poster fetch failed');
+      }
+      if (attempt === LTX_POSTER_RETRY_DELAYS_MS.length - 1) {
+        const parsed = await parseProviderError(posterResponse);
+        lastError = `HTTP ${posterResponse.status}${parsed.detail}`;
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt === LTX_POSTER_RETRY_DELAYS_MS.length - 1) break;
+    }
+  }
+
+  console.error('REDGraft LTX 2.5 poster was not ready after bounded retries', {
+    workerId: worker.id,
+    status: lastStatus,
+    error: lastError instanceof Error ? lastError.message : String(lastError || ''),
+  });
+  return null;
+}
+
 async function submitModalFlux2Klein(workflow, input, options = {}) {
   const accepted = await submitWithWorkerFailover(workflow, async (worker) => {
     const response = await fetchWorker(worker, '/jobs/edit', { method: 'POST', body: buildFluxForm(workflow, input) });
@@ -247,28 +301,20 @@ async function pollModalLtx25(workflow, providerJobId) {
     throw error;
   }
   const bytes = Buffer.from(await response.arrayBuffer());
-  let posterBytes = null;
-  let posterContentType = null;
-  try {
-    const posterResponse = await fetchWorker(worker, `/jobs/${encodedJobId}/poster`, { method: 'GET', headers: { Accept: 'image/*, application/json' } });
-    if (posterResponse.ok) {
-      const candidateType = String(posterResponse.headers.get('content-type') || '').split(';')[0].trim();
-      if (candidateType.startsWith('image/')) {
-        posterBytes = Buffer.from(await posterResponse.arrayBuffer());
-        posterContentType = candidateType;
-      }
-    } else if (![202, 404, 410].includes(posterResponse.status)) {
-      console.error(`REDGraft LTX 2.5 poster fetch failed (${posterResponse.status})`);
-    }
-  } catch (error) {
-    console.error('REDGraft LTX 2.5 poster fetch failed', error);
+  const poster = await fetchLtxPoster(worker, encodedJobId);
+  if (!poster) {
+    return {
+      status: 'running',
+      provider: workflow.provider,
+      worker: publicWorkerStatus(worker, 'finalizing'),
+    };
   }
   return {
     status: 'completed',
     bytes,
     contentType,
-    posterBytes,
-    posterContentType,
+    posterBytes: poster.bytes,
+    posterContentType: poster.contentType,
     provider: workflow.provider,
     worker: publicWorkerStatus(worker, 'finalizing'),
   };
