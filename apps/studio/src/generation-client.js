@@ -255,14 +255,16 @@ export async function submitVideoGeneration({
   return { job: payload.job, worker: payload.worker || null };
 }
 
-export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus, onWorkerStatus } = {}) {
+export async function waitForGeneration(jobId, { intervalMs = 2000, timeoutMs = 30 * 60 * 1000, onStatus, onWorkerStatus, signal } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
     if (onStatus) onStatus('running');
     const response = await fetch(`/api/generate/result?jobId=${encodeURIComponent(jobId)}`, {
       method: 'GET',
       headers: { Accept: 'application/json' },
       cache: 'no-store',
+      signal,
     });
     if (response.status === 202) {
       const pending = await response.json().catch(() => ({}));
@@ -286,6 +288,7 @@ export async function runImageEdit(input, options = {}) {
   const effectiveInput = await applyEditSizing(input);
   if (options.onStatus) options.onStatus('uploading');
   const submitted = await submitImageEdit(effectiveInput);
+  if (options.onJob) options.onJob(submitted.job);
   if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
   if (options.onStatus) options.onStatus('running');
   const result = await waitForGeneration(submitted.job.id, options);
@@ -295,6 +298,7 @@ export async function runImageEdit(input, options = {}) {
 export async function runVideoGeneration(input, options = {}) {
   if (options.onStatus) options.onStatus(input?.sourceFile ? 'uploading' : 'submitting');
   const submitted = await submitVideoGeneration(input);
+  if (options.onJob) options.onJob(submitted.job);
   if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
   if (options.onStatus) options.onStatus('running');
   const result = await waitForGeneration(submitted.job.id, {

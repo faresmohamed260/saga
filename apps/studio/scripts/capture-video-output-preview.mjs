@@ -38,6 +38,12 @@ try {
       }),
     });
   });
+  await page.route('**/api/job-actions', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ job: { id: '77777777-7777-4777-8777-777777777777', status: 'failed', metadata: { cancelled: true } }, action: 'cancelled' }) });
+  });
+  await page.route('**/api/jobs?**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jobs: [{ id: '77777777-7777-4777-8777-777777777777', status: 'running', prompt: 'A slow cinematic camera move through a sunlit coastal landscape', kind: 'video', mode: 'video', model: 'REDGraft LTX 2.5' }] }) });
+  });
   await page.route('**/api/generate/result?**', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ status: 'running' }) });
@@ -177,8 +183,24 @@ try {
   await page.waitForFunction(() => /Switching worker/i.test(document.querySelector('.saga-generation-progress')?.innerText || ''), null, { timeout: 5000 });
   const progressText = await progress.innerText();
   if (!/Switching worker/i.test(progressText) || !/reached its credit limit/i.test(progressText) || !/Standby/.test(progressText)) throw new Error(`Worker credit failover feedback is incomplete: ${progressText}`);
+  if (!/Changes to settings now apply to your next generation/i.test(progressText)) throw new Error(`Running-job settings guidance is missing: ${progressText}`);
+  if (await progress.getByRole('button', { name: 'View Job' }).count() !== 1) throw new Error('Running progress is missing View Job');
+  if (await progress.getByRole('button', { name: 'Cancel' }).count() !== 1) throw new Error('Running progress is missing Cancel');
   await page.screenshot({ path: path.join(outputDir, '05e-video-generation-progress.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05e-video-generation-progress.png');
+  await progress.getByRole('button', { name: 'View Job' }).click();
+  await page.waitForURL(/#\/jobs$/);
+  await page.getByText('Jobs & queue', { exact: true }).waitFor({ state: 'visible' });
+  await page.goto(createUrl, { waitUntil: 'domcontentloaded' });
+  await page.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
+  await page.locator('.saga-prompt-shell textarea').fill('A second lifecycle cancellation test');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: /Generate/i }).click();
+  const cancelProgress = page.locator('.saga-generation-progress');
+  await cancelProgress.getByRole('button', { name: 'Cancel' }).waitFor({ state: 'visible', timeout: 5000 });
+  await cancelProgress.getByRole('button', { name: 'Cancel' }).click();
+  await page.waitForFunction(() => /Generation cancelled/i.test(document.querySelector('.saga-generation-progress')?.innerText || ''), null, { timeout: 5000 });
+  if (!/Generation cancelled/i.test(await cancelProgress.innerText())) throw new Error('Cancelled job did not expose terminal cancellation feedback');
 
   if (diagnostics.pageErrors.length) throw new Error(`Video output page errors: ${diagnostics.pageErrors.join(' | ')}`);
 } finally {

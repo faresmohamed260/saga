@@ -24,7 +24,7 @@ function loadVideoOutputSettings() {
 }
 
 export default function CreateWorkspace(props) {
-  const { mode, references = [], busy, jobStatus, workerStatus, onGenerate } = props;
+  const { mode, references = [], busy, jobStatus, workerStatus, activeJob, cancelBusy, onGenerate, onViewJob, onCancelJob } = props;
   const initial = useMemo(loadVideoOutputSettings, []);
   const [autoAspect, setAutoAspect] = useState(initial.autoAspect);
   const [manualAspect, setManualAspect] = useState(initial.manualAspect);
@@ -79,7 +79,7 @@ export default function CreateWorkspace(props) {
         toolbarHost,
       )}
       {(mode === 'Video' || mode === 'Edit') && composerHost && createPortal(
-        <VideoGenerationProgress busy={busy} status={jobStatus} workerStatus={workerStatus} kind={mode === 'Video' ? 'video' : 'image'} />,
+        <VideoGenerationProgress busy={busy} status={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} onViewJob={onViewJob} onCancelJob={onCancelJob} kind={mode === 'Video' ? 'video' : 'image'} />,
         composerHost,
       )}
     </>

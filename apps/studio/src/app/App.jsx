@@ -112,6 +112,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [jobStatus, setJobStatus] = useState('');
   const [workerStatus, setWorkerStatus] = useState(null);
+  const [activeJob, setActiveJob] = useState(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const generationAbortRef = React.useRef(null);
   const [jobs, setJobs] = useState([]);
   const [jobsFilter, setJobsFilter] = useState('active');
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -330,7 +333,7 @@ export default function App() {
       steps,
       cfg,
       megapixels: autoEditInfo.megapixels,
-    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus });
+    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
 
     setJobStatus('completed');
     const item = {
@@ -372,7 +375,7 @@ export default function App() {
       aspectRatio: videoAspect,
       frameRate: videoFrameRate,
       seed: effectiveSeed,
-    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus });
+    }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
 
     setJobStatus('completed');
     const item = {
@@ -399,18 +402,58 @@ export default function App() {
 
   const generate = async (generationOptions = {}) => {
     if (busy) return;
-    setBusy(true); setError(''); setJobStatus(''); setWorkerStatus(null);
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
+    setBusy(true); setError(''); setJobStatus(''); setWorkerStatus(null); setActiveJob(null); setCancelBusy(false);
     try {
       if (isEdit) await runFluxEdit();
       else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
       else if (mode === 'Video') await runLtxVideo(generationOptions);
       else throw new Error('Choose Image, Video, or Edit to generate media.');
     } catch (err) {
-      setJobStatus('failed');
-      const terminalWorkerState = ['credit_exhausted', 'unavailable'].includes(String(err?.workerState || '')) ? String(err.workerState) : 'failed';
-      setWorkerStatus((current) => ({ ...(current || {}), ...(err?.worker || {}), state: terminalWorkerState, errorCode: err?.errorCode || null }));
-      setError(err instanceof Error ? err.message : 'Generation failed.');
-    } finally { setBusy(false); }
+      if (err?.name === 'AbortError') {
+        setJobStatus('cancelled');
+        setWorkerStatus((current) => ({ ...(current || {}), state: 'cancelled' }));
+        setError('');
+      } else {
+        setJobStatus('failed');
+        const terminalWorkerState = ['credit_exhausted', 'unavailable'].includes(String(err?.workerState || '')) ? String(err.workerState) : 'failed';
+        setWorkerStatus((current) => ({ ...(current || {}), ...(err?.worker || {}), state: terminalWorkerState, errorCode: err?.errorCode || null }));
+        setError(err instanceof Error ? err.message : 'Generation failed.');
+      }
+    } finally {
+      if (generationAbortRef.current === controller) generationAbortRef.current = null;
+      setBusy(false);
+      setCancelBusy(false);
+    }
+  };
+
+  const viewActiveJob = () => {
+    setJobsFilter('all');
+    setSection('Jobs');
+  };
+
+  const cancelActiveJob = async () => {
+    if (!busy || !activeJob?.id || cancelBusy) return;
+    if (!window.confirm('Cancel this generation? The provider job will be stopped if it is still running.')) return;
+    setCancelBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/job-actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: activeJob.id, action: 'cancel' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || `Cancel failed (${response.status})`);
+      setActiveJob(payload?.job || activeJob);
+      setJobStatus('cancelled');
+      setWorkerStatus((current) => ({ ...(current || {}), state: 'cancelled' }));
+      generationAbortRef.current?.abort();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to cancel generation.');
+      setCancelBusy(false);
+    }
   };
 
   const toggleFavorite = async (item) => {
@@ -649,7 +692,7 @@ export default function App() {
           : <CreateWorkspace
               mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else if (nextMode === 'Video') { setWorkflowId('video-planned'); setModelId('saga-video-auto'); } else if (nextMode === 'Image') { setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
-              error={error} jobStatus={jobStatus} workerStatus={workerStatus} busy={busy} onGenerate={generate} items={visibleItems} renderCard={renderCard}
+              error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
               outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
               seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, Gauge, LoaderCircle, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, ExternalLink, Gauge, LoaderCircle, X, XCircle } from 'lucide-react';
 import { AspectPicker } from './AspectPicker.jsx';
 
 export const VIDEO_FRAME_RATES = [24, 25, 30];
@@ -199,10 +199,11 @@ const STATUS_COPY = {
   credit_exhausted: ['Switching worker', 'The assigned worker reached its credit limit. A standby worker will be used when available.'],
   unavailable: ['Worker unavailable', 'The assigned worker is unavailable. A standby worker will be used when available.'],
   completed: ['Generation ready', 'The completed result has been saved to Gallery.'],
+  cancelled: ['Generation cancelled', 'The running provider job was stopped by request.'],
   failed: ['Generation failed', 'The request did not complete. See the message below for details.'],
 };
 
-export function VideoGenerationProgress({ busy, status, workerStatus, kind = 'video' }) {
+export function VideoGenerationProgress({ busy, status, workerStatus, activeJob, cancelBusy = false, onViewJob, onCancelJob, kind = 'video' }) {
   const [elapsed, setElapsed] = useState(0);
   const [showTerminal, setShowTerminal] = useState(false);
 
@@ -217,7 +218,7 @@ export function VideoGenerationProgress({ busy, status, workerStatus, kind = 'vi
 
   useEffect(() => {
     if (busy) return undefined;
-    if (status !== 'completed' && status !== 'failed') {
+    if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
       setShowTerminal(false);
       return undefined;
     }
@@ -249,7 +250,7 @@ export function VideoGenerationProgress({ busy, status, workerStatus, kind = 'vi
     title = 'Switching worker';
     detail = `The previous worker became unavailable. ${workerName ? `Starting ${workerName}.` : 'Starting a standby worker.'}`;
   }
-  const terminal = normalized === 'completed' || normalized === 'failed' || terminalError;
+  const terminal = normalized === 'completed' || normalized === 'failed' || normalized === 'cancelled' || terminalError;
   return (
     <div className={`saga-generation-progress is-${normalized}`} role="status" aria-live="polite">
       <div className="saga-generation-progress-icon">
@@ -261,6 +262,13 @@ export function VideoGenerationProgress({ busy, status, workerStatus, kind = 'vi
         <div className={`saga-generation-progress-track ${terminal ? 'terminal' : 'indeterminate'}`} aria-hidden="true">
           <span />
         </div>
+        {busy && <small className="saga-generation-next-note">Changes to settings now apply to your next generation.</small>}
+        {activeJob?.id && (
+          <div className="saga-generation-progress-actions" aria-label="Generation actions">
+            <button type="button" onClick={onViewJob}><ExternalLink size={14} /> View Job</button>
+            {busy && <button type="button" className="danger" disabled={cancelBusy} onClick={onCancelJob}>{cancelBusy ? <LoaderCircle className="spin" size={14} /> : <X size={14} />} {cancelBusy ? 'Cancelling…' : 'Cancel'}</button>}
+          </div>
+        )}
       </div>
     </div>
   );
