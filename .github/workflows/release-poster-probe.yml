@@ -72,7 +72,7 @@ jobs:
             build=$(jq -r '.runtime_build // empty' /tmp/runtime-health.json 2>/dev/null || true)
             gpu=$(jq -r '.gpu_name // .gpu // empty' /tmp/runtime-health.json 2>/dev/null || true)
             echo "runtime_build_attempt=$attempt http=$code build=${build:-missing} gpu=${gpu:-missing} expected=$expected"
-            if [ "$code" = "200" ] && [ "$build" = "$expected" ]; then
+            if [ "$code" = "200" ] && [ "$build" = "$expected" ] && [ -n "$gpu" ]; then
               runtime_ready=1
               break
             fi
@@ -135,38 +135,33 @@ jobs:
           import json, os
           from pathlib import Path
           p = json.loads(Path('/tmp/ffprobe.json').read_text())
-          health = json.loads(Path('/tmp/health-after.json').read_text())
+          gateway = json.loads(Path('/tmp/health-after.json').read_text())
+          runtime = json.loads(Path('/tmp/runtime-health.json').read_text())
           video = next(s for s in p['streams'] if s.get('codec_type') == 'video')
           audio = [s for s in p['streams'] if s.get('codec_type') == 'audio']
           duration = float(p['format']['duration'])
           poster = Path('/tmp/ltx-benchmark.jpg').read_bytes()
-          worker = health.get('worker') or {}
           expected = os.environ['LTX_ACCEPTANCE_BUILD']
-          assert health.get('build') == expected, health
-          assert worker.get('runtime_build') == expected, worker
+          assert gateway.get('build') == expected, gateway
+          assert runtime.get('runtime_build') == expected, runtime
+          assert runtime.get('gpu_name') == 'NVIDIA A10', runtime
           assert (video['width'], video['height']) == (1920, 1080), video
           assert video['avg_frame_rate'] == '25/1', video
           assert abs(duration - 5.0) <= 0.05, duration
           assert not audio, audio
           assert poster[:2] == b'\xff\xd8' and len(poster) > 1000, len(poster)
-          assert worker.get('state') == 'ready', worker
-          assert worker.get('gpu_name'), worker
-          assert worker.get('total_seconds') is not None, worker
-          print(json.dumps({'validated': True, 'gateway_build': health.get('build'), 'runtime_build': worker.get('runtime_build'), 'gpu_name': worker.get('gpu_name'), 'runtime_total_seconds': worker.get('total_seconds'), 'compute_seconds': worker.get('compute_seconds'), 'finalize_seconds': worker.get('finalize_seconds'), 'poster_bytes': len(poster)}))
+          print(json.dumps({'validated': True, 'gateway_build': gateway.get('build'), 'runtime_build': runtime.get('runtime_build'), 'gpu_name': runtime.get('gpu_name'), 'poster_bytes': len(poster)}))
           PY
 
           total=$(( $(date +%s) - started ))
           jq -n \
             --arg call_id "$call_id" \
             --arg build "$expected" \
-            --arg gpu_name "$(jq -r '.worker.gpu_name' /tmp/health-after.json)" \
+            --arg gpu_name "$(jq -r '.gpu_name // .gpu' /tmp/runtime-health.json)" \
             --argjson generation_seconds "$generation_seconds" \
             --argjson poster_seconds "$poster_seconds" \
             --argjson total_seconds "$total" \
-            --argjson runtime_total_seconds "$(jq -r '.worker.total_seconds' /tmp/health-after.json)" \
-            --argjson compute_seconds "$(jq -r '.worker.compute_seconds' /tmp/health-after.json)" \
-            --argjson finalize_seconds "$(jq -r '.worker.finalize_seconds' /tmp/health-after.json)" \
-            '{call_id:$call_id,build:$build,gpu_name:$gpu_name,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,runtime:{total_seconds:$runtime_total_seconds,compute_seconds:$compute_seconds,finalize_seconds:$finalize_seconds},request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
+            '{call_id:$call_id,build:$build,gpu_name:$gpu_name,generation_seconds:$generation_seconds,poster_seconds:$poster_seconds,total_seconds:$total_seconds,request:{resolution:"1080p",aspect_ratio:"16:9",frame_rate:25,duration_seconds:5,audio_enabled:false}}' \
             > /tmp/benchmark-summary.json
           cat /tmp/benchmark-summary.json
       - name: Commit validated production fixes
