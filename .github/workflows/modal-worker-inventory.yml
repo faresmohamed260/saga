@@ -1,6 +1,11 @@
 name: Modal Worker Inventory
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/modal-worker-inventory.yml"
+      - "scripts/modal_worker_fleet.py"
+      - "config/modal-worker-ecosystems.json"
   push:
     branches: [studio/video-gallery-ux]
     paths:
@@ -13,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: modal-worker-inventory
+  group: modal-worker-inventory-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
