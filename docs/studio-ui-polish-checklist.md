@@ -39,7 +39,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] **17. Replace repeated multi-file downloads with a scalable ZIP/download-batch flow.** Gallery bulk Download now makes one POST to `/api/download-batch`, which builds a single ZIP from persisted R2 originals (up to 100 items / 1 GB) and triggers one browser download instead of many independent downloads. Final artifact `9528710037` from Studio Visual Preview `32750178415` was manually inspected at desktop and 390px mobile Manage states: the Download ZIP action is readable and contained with no layout regression. Validated by Studio CI `32750178504`, Studio Visual Preview `32750178415`, Backend Architecture CI `32750178571`, Modal Worker Inventory `32750178430`, Worker Fleet Live Smoke `32750178518`, and Required Check Compatibility `32750178524`. **Iteration 17 complete.**
 - [x] **18. Replace CreateWorkspace portal/querySelector integration with explicit component slots/composition.** Legacy composer exposes explicit `videoToolbarSlot` and `composerStatusSlot` React slots; the feature wrapper passes VideoOutputControls and VideoGenerationProgress directly, with `createPortal` and CSS-class `document.querySelector` host discovery removed. Validation also hardened duration-control accessibility/test targeting after slot insertion changed sibling order. Final artifact `9529378543` from Studio Visual Preview `32751942189` was manually inspected across desktop video controls, 390px mobile controls, and generation-progress states: controls remain contained, ordered, readable, and progress placement is preserved with no visual regression. Validated by Studio CI `32751942243`, Studio Visual Preview `32751942189`, Backend Architecture CI `32751942113`, Modal Worker Inventory `32751942205`, Worker Fleet Live Smoke `32751942214`, and Required Check Compatibility `32751942236`. **Iteration 18 complete.**
 - [x] **19. Rename History internals to Gallery.** `GalleryView`, `galleryItems`, `loadGallery`, `gallery-*` CSS hooks, and `gallery-controls.css` now match the product terminology. The existing `/api/history` endpoint and legacy `#/history` route alias are intentionally retained as compatibility surfaces to avoid unnecessary migration risk. Final artifact `9529741150` from Studio Visual Preview `32752854888` was manually inspected at desktop, 390px mobile, and mobile Manage states: Gallery layout, filters, cards, and the bottom manager remain visually unchanged and contained. Validated by Studio CI `32752855009`, Studio Visual Preview `32752854888`, Backend Architecture CI `32752854626`, Modal Worker Inventory `32752854616`, Worker Fleet Live Smoke `32752854778`, and Required Check Compatibility `32752854618`. **Iteration 19 complete.**
-- [ ] **20. Split App.jsx responsibilities.** Extract generation, gallery, collections, media actions, and selection hooks/services; introduce a clear API layer.
+- [~] **20. Split App.jsx responsibilities.** Implementation in validation: generation lifecycle moved to `useGenerationController`, Gallery/Favorites/Collections state/loading moved to `useLibraryController`, Gallery selection moved to `useGallerySelection`, item/bulk/collection mutations moved to `useMediaActions`, and browser API calls are consolidated in `api/studioApi.js`.
 
 ## P2 — product polish and scale
 
@@ -123,47 +123,4 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` complete · `[-]` int
 - [x] Validation-generated screenshots and `package-lock.json` were removed from the product branch before final standard validation.
 - [x] Final standard Studio CI `32678441763`, Studio Visual Preview `32678441802`, Backend Architecture CI `32678441772`, and Required Check Compatibility `32678441777` passed on reviewed product head `26fc3501aaaef91fd2e831ec30d5bb41c2caf0da`.
 - [x] Final visual artifact `9503419570` was downloaded and all 31 screenshots were inspected across Image, Video, Edit, desktop/mobile Create, and Gallery states. No Item-09-specific visual or responsive regression remained.
-- [x] Accepted evidence: `02-image-resolution-picker.png`, `04-video-resolution-picker.png`, `05h-video-resolution-portrait.png`.
-- [x] REDGraft smoke `32678441765` successfully deployed the runtime, then failed at prefetch because Modal returned `ConflictError: workspace ... is disabled`; this is the existing external infrastructure blocker, not an Item 09 regression.
-- [x] Professional review result for Item 09: complete.
-
-### Iteration 10 — strengthen the Generate primary action
-
-- [x] Replaced the desktop icon-only submit affordance with an explicit high-contrast primary CTA: Image and Video show `Generate` plus the send arrow; Edit shows `Edit` plus the same arrow.
-- [x] Desktop CTA uses a promoted 112px-minimum rounded rectangle with bold verb text, restrained elevation, hover/active feedback, and a 2px `:focus-visible` outline instead of looking like another 36px utility icon.
-- [x] Preserved the existing mode-specific accessible names: `Generate image`, `Generate video`, and `Edit image`.
-- [x] Kept the 390px mobile treatment compact: the verb label collapses and the action remains a 36×36 circular arrow with its accessible name intact.
-- [x] Expanded `capture-ui-preview.mjs` to assert desktop CTA hierarchy/geometry, mode-specific visible verbs and accessible names, strong keyboard focus, and compact mobile behavior; added dedicated `01b-generate-primary.png` evidence.
-- [x] Added `check-generate-action-contract.mjs` to the normal Studio build so the visible verb, promoted desktop geometry, focus treatment, mobile collapse, and Playwright contract cannot silently regress.
-- [x] Initial successful GitHub product/visual refinement run `32713936104` passed build and the complete Playwright suite, uploaded artifact `9515188794`, and committed reviewed product implementation `eaec5e4528885b6012f1a43d5e9eb6b2c6d0192d` while restoring temporary workflow machinery.
-- [x] Professional visual review accepted Image `Generate`, Video `Generate`, Edit `Edit`, and compact mobile arrow treatments: the CTA is clearly primary without overpowering the composer, stays aligned with dense Video controls, and introduces no clipping or responsive regression.
-- [x] Final standard validation on reviewed product head `d66d1f3a40f94b80f153b5b74ed2aa2819874647`: Studio CI `32714238610`, Studio Visual Preview `32714238605`, Backend Architecture CI `32714238464`, and Required Check Compatibility `32714238492` all passed.
-- [x] Final standard visual artifact `9515300251` was downloaded and inspected across Create/Image, Video, Edit, 390px mobile, and Gallery desktop/mobile regression states. No Item-10-specific visual defect or Gallery regression remained; diagnostics recorded no page errors.
-- [x] REDGraft run `32714238545` deployed the runtime successfully and then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`; downstream GPU smoke/persistence stages were skipped. This is the existing external Modal account blocker, not an Item 10 regression.
-- [x] Professional review result for Item 10: complete. No new checklist item required.
-
-### Iteration 11 — explicit Audio state
-
-- [x] Kept the Audio action itself as a compact circular speaker control and added an adjacent textual state badge: `Audio On` / `Audio Off` on desktop and compact `On` / `Off` on 390px mobile.
-- [x] Preserved `aria-pressed` plus action-oriented accessible labels (`Disable audio` / `Enable audio`) and added a 2px keyboard `:focus-visible` ring.
-- [x] Added concise explanatory hover/focus copy: `Audio on · Generate with sound` and `Audio off · Generate without sound`.
-- [x] Added `check-audio-control-contract.mjs` to the normal Studio build and `capture-audio-state-preview.mjs` to Studio Visual Preview, covering explicit text, accessible state, keyboard focus, compact geometry, toolbar containment, On/Off toggling, and desktop/mobile screenshots.
-- [x] Professional review rejected an initial wide-pill implementation because it broke the established compact toolbar geometry; the final design restored the 36px/32px circular button and moved state wording into a separate adjacent badge.
-- [x] Validation also caught two stale/incorrect test assumptions around programmatic `:focus-visible` and tooltip transition timing; the tests were corrected to enter keyboard modality and wait for the real CSS transition without weakening the accessibility contract.
-- [x] Final reviewed product head: `b65d6cb48c100403e6643f00a32b35d9b12f836a`.
-- [x] Final standard Studio CI `32717092869`, Studio Visual Preview `32717093243`, Backend Architecture CI `32717092902`, and Required Check Compatibility `32717092821` all passed.
-- [x] Final visual artifact `9516351275` was downloaded and inspected. Accepted evidence includes `05i-video-audio-on.png`, `05j-video-audio-off.png`, `09b-mobile-video-audio-off.png`, and the wider Video/mobile regression captures. The Audio state is explicit without overpowering Generate, desktop controls remain balanced, mobile stays contained, and no Item-11-specific visual issue remains.
-- [x] REDGraft run `32717092793` deployed the runtime successfully, then failed at prefetch with `modal.exception.ConflictError: workspace ... is disabled`; gateway/GPU/persistence stages were skipped. This remains the existing external Modal account blocker, not an Item 11 regression.
-- [x] Professional review result for Item 11: complete. No new checklist item required. **Item 12 is next and remains gated on explicit user approval.**
-
-### Iteration 12 — generation lifecycle feedback
-
-- [x] Preserved real worker-backed lifecycle states from the Modal ecosystem fleet, including sleep/wake/load/ready/generating/finalizing plus unavailable, credit-exhausted, failover, completion, failure, and cancellation states.
-- [x] Added `View Job` from the active Create progress surface, routing directly to Jobs & queue without losing the active job record.
-- [x] Added provider-aware `Cancel` from Create using the same `/api/job-actions` cancellation path as Jobs; polling is abortable so user cancellation remains a distinct terminal state instead of becoming a later generic failure.
-- [x] Added explicit running-job guidance: `Changes to settings now apply to your next generation.`
-- [x] Added `check-generation-lifecycle-contract.mjs` to the normal Studio build and expanded Playwright coverage for failover feedback, View Job, cancellation, and settings guidance.
-- [x] Final standard validation on head `4a6a996c0bc4dcbccd98d335b411e88d91db2d21`: Studio CI `32744435239`, Studio Visual Preview `32744435348`, Backend Architecture CI `32744434517`, Modal Worker Inventory `32744435147`, Worker Fleet Live Smoke `32744434530`, and Required Check Compatibility `32744434697` all passed.
-- [x] Final visual artifact `9526513296` was produced successfully by the GitHub-only Playwright preview workflow; no Vercel Preview deployment was used.
-- [x] Professional review result for Item 12: complete. Item 13 is next.
-
+- [x] Accepted evidence: `02-image-resolution-picker.png`, `04-video-resolution-picker.png`, `05h-video-resolution-portrait.png`...
