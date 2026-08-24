@@ -6,6 +6,12 @@ on:
     branches: [studio/video-gallery-ux]
     paths:
       - ".github/workflows/modal-worker-provision.yml"
+      - "scripts/modal_worker_fleet.py"
+      - "config/modal-worker-ecosystems.json"
+      - "integrations/comfyui/flux2_klein_app.py"
+      - "integrations/comfyui/flux2_klein_gateway.py"
+      - "integrations/comfyui/ltx23_app.py"
+      - "integrations/comfyui/ltx23_gateway.py"
   workflow_dispatch:
 
 permissions:
@@ -53,6 +59,8 @@ jobs:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      MODAL_FLUX2_KLEIN_GPU: A10
+      MODAL_LTX25_GPU: A10
       ACCOUNT: ${{ matrix.account }}
       ECOSYSTEM: ${{ matrix.ecosystem }}
       WORKER_ID: ${{ matrix.worker_id }}
@@ -70,6 +78,12 @@ jobs:
         run: python -m pip install --upgrade "modal==1.4.2"
       - name: Clean dedicated worker account
         run: python scripts/modal_worker_fleet.py reset "$ACCOUNT"
+      - name: Apply credit-workspace runtime compatibility
+        shell: bash
+        run: |
+          if [ "$ECOSYSTEM" = "ltx25-redgraft" ]; then
+            sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+          fi
       - name: Deploy and prefetch ecosystem worker
         shell: bash
         run: |
