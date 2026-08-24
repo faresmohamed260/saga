@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-# Touchpoint for the LTX performance runtime redeploy; deployment remains cache-preserving.
+# Touchpoint for cache-preserving LTX runtime redeploys, including GPU/capacity changes.
 import argparse
 import json
 import sys
