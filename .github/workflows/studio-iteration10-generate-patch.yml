@@ -1,14 +1,15 @@
 name: Studio Iteration 10 Generate Patch
 
 on:
-  push:
-    branches: [studio/video-gallery-ux]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   refine-generate:
+    if: github.event.pull_request.head.ref == 'studio/video-gallery-ux'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
