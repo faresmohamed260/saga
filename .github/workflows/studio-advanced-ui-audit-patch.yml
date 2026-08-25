@@ -26,7 +26,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout origin/main -- .github/workflows/studio-advanced-ui-audit-patch.yml
-          git rm -f .github/workflows/studio-upload-plus-drag-drop-patch.yml scripts/studio_upload_affordance_patch.py
+          git rm -f scripts/studio_upload_affordance_patch.py
           git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/scripts/check-ui-audit-contract.mjs apps/studio/scripts/check-generate-action-contract.mjs apps/studio/scripts/capture-ui-preview.mjs .github/workflows/studio-advanced-ui-audit-patch.yml
           git diff --cached --check
           git commit -m "feat(studio): unify reference uploads and add drag drop"
