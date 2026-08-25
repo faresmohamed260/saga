@@ -63,46 +63,55 @@ jobs:
 
           controls = Path('apps/studio/src/create-controls.jsx')
           controls_text = controls.read_text(encoding='utf-8')
+
+          # Normalize patches so repeated workflow runs never stack JSX wrappers.
+          duplicate_guard = "                  {!(isEdit && editAuto) && (\n                  {!(isEdit && editAuto) && ("
+          single_guard = "                  {!(isEdit && editAuto) && ("
+          while duplicate_guard in controls_text:
+              controls_text = controls_text.replace(duplicate_guard, single_guard, 1)
+
           controls_text = controls_text.replace(
               '      aria-label={`${label} options`}',
               '      aria-label={label}',
           )
-          controls_text = controls_text.replace(
-              "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Escape' && open) {",
-              "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Enter' || event.key === ' ') {\n            event.preventDefault();\n            if (open) close(false);\n            else openMenu(selectedIndex);\n          } else if (event.key === 'Escape' && open) {",
-              1,
-          )
-          controls_text = controls_text.replace(
-              "\n\n              {isEdit && (\n                <button\n                  type=\"button\"\n                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}\n                  aria-pressed={editAuto}\n                  onClick={() => setEditAuto((current) => !current)}\n                >\n                  <Sparkles size={15} /><span>Auto</span>\n                </button>\n              )}\n",
-              "\n",
-          )
-          controls_text = controls_text.replace(
-              "                  <button\n                    ref={resolutionButtonRef}",
-              "                  {!(isEdit && editAuto) && (\n                  <button\n                    ref={resolutionButtonRef}",
-              1,
-          )
-          controls_text = controls_text.replace(
-              "                  </button>\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}",
-              "                  </button>\n                  )}\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}",
-              1,
-          )
-          controls_text = controls_text.replace(
-              "                    ariaLabel=\"Aspect ratio\"\n                    value={aspect}",
-              "                    ariaLabel=\"Aspect ratio\"\n                    triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}\n                    value={aspect}",
-              1,
-          )
-          controls_text = controls_text.replace(
-              "                    autoSelected={isEdit && editAuto}\n                    effectiveRatio={primaryRatio}",
-              "                    autoSelected={isEdit && editAuto}\n                    onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}\n                    effectiveRatio={primaryRatio}",
-              1,
-          )
+
+          old_keyboard = "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Escape' && open) {"
+          new_keyboard = "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Enter' || event.key === ' ') {\n            event.preventDefault();\n            if (open) close(false);\n            else openMenu(selectedIndex);\n          } else if (event.key === 'Escape' && open) {"
+          if old_keyboard in controls_text:
+              controls_text = controls_text.replace(old_keyboard, new_keyboard, 1)
+
+          standalone_auto = "\n\n              {isEdit && (\n                <button\n                  type=\"button\"\n                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}\n                  aria-pressed={editAuto}\n                  onClick={() => setEditAuto((current) => !current)}\n                >\n                  <Sparkles size={15} /><span>Auto</span>\n                </button>\n              )}\n"
+          controls_text = controls_text.replace(standalone_auto, "\n")
+
+          resolution_button = "                  <button\n                    ref={resolutionButtonRef}"
+          guarded_resolution = "                  {!(isEdit && editAuto) && (\n                  <button\n                    ref={resolutionButtonRef}"
+          if guarded_resolution not in controls_text and resolution_button in controls_text:
+              controls_text = controls_text.replace(resolution_button, guarded_resolution, 1)
+
+          close_then_aspect = "                  </button>\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}"
+          guarded_close_then_aspect = "                  </button>\n                  )}\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}"
+          if guarded_close_then_aspect not in controls_text and close_then_aspect in controls_text:
+              controls_text = controls_text.replace(close_then_aspect, guarded_close_then_aspect, 1)
+
+          if "triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}" not in controls_text:
+              controls_text = controls_text.replace(
+                  "                    ariaLabel=\"Aspect ratio\"\n                    value={aspect}",
+                  "                    ariaLabel=\"Aspect ratio\"\n                    triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}\n                    value={aspect}",
+                  1,
+              )
+          if "onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}" not in controls_text:
+              controls_text = controls_text.replace(
+                  "                    autoSelected={isEdit && editAuto}\n                    effectiveRatio={primaryRatio}",
+                  "                    autoSelected={isEdit && editAuto}\n                    onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}\n                    effectiveRatio={primaryRatio}",
+                  1,
+              )
           controls.write_text(controls_text, encoding='utf-8')
           PY
           if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx
-            git commit -m "fix(studio): simplify Edit sizing and keyboard media selectors"
+            git commit -m "fix(studio): normalize audited interaction patches"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
