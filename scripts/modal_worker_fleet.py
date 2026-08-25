@@ -89,6 +89,15 @@ def run(
     )
 
 
+def _combined_output(result: subprocess.CompletedProcess[str]) -> str:
+    parts = []
+    if result.stdout:
+        parts.append("STDOUT:\n" + result.stdout.rstrip())
+    if result.stderr:
+        parts.append("STDERR:\n" + result.stderr.rstrip())
+    return "\n".join(parts).strip()
+
+
 def json_command(account: Account, args: list[str], *, timeout: int = 90) -> tuple[Any, str]:
     try:
         result = run(account, args, timeout=timeout)
@@ -217,7 +226,7 @@ def deploy(account: Account, ecosystem_id: str, worker_id: str) -> dict[str, Any
     for entrypoint in (ecosystem["runtimeEntrypoint"], ecosystem["gatewayEntrypoint"]):
         result = run(account, ["modal", "deploy", entrypoint], extra=extra)
         if result.returncode != 0:
-            raise RuntimeError(f"Deploy failed for {entrypoint}: {(result.stderr or result.stdout)[-1200:]}")
+            raise RuntimeError(f"Deploy failed for {entrypoint}:\n{_combined_output(result)[-12000:]}")
 
     prefetch = str(ecosystem.get("prefetchFunction") or "").strip()
     if not prefetch:
@@ -231,7 +240,7 @@ def deploy(account: Account, ecosystem_id: str, worker_id: str) -> dict[str, Any
     )
     result = run(account, [sys.executable, "-c", code], extra=extra, timeout=7200)
     if result.returncode != 0:
-        raise RuntimeError(f"Prefetch failed: {(result.stderr or result.stdout)[-1200:]}")
+        raise RuntimeError(f"Prefetch failed:\n{_combined_output(result)[-12000:]}")
 
     url_code = (
         "import modal; "
@@ -240,7 +249,7 @@ def deploy(account: Account, ecosystem_id: str, worker_id: str) -> dict[str, Any
     )
     url_result = run(account, [sys.executable, "-c", url_code], extra=extra, timeout=120)
     if url_result.returncode != 0:
-        raise RuntimeError(f"Could not resolve gateway URL: {(url_result.stderr or url_result.stdout)[-800:]}")
+        raise RuntimeError(f"Could not resolve gateway URL:\n{_combined_output(url_result)[-8000:]}")
     return {
         "gatewayUrl": (url_result.stdout or "").strip().splitlines()[-1],
         "ecosystem": ecosystem_id,
