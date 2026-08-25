@@ -12,6 +12,12 @@ import uuid
 import zlib
 
 
+EXPECTED_MODEL = 'Qwen/Qwen-Image-Edit-2511'
+EXPECTED_PRECISION = 'civitai-bfloat16'
+EXPECTED_CHECKPOINT_VERSION_ID = 2553500
+EXPECTED_STEPS = 4
+
+
 def png(width: int = 256, height: int = 256) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         body = kind + data
@@ -43,7 +49,14 @@ def multipart(fields: dict[str, str], filename: str, payload: bytes) -> tuple[by
     return b''.join(parts), boundary
 
 
-def request_json(url: str, *, method: str = 'GET', data: bytes | None = None, headers: dict[str, str] | None = None, timeout: int = 120):
+def request_json(
+    url: str,
+    *,
+    method: str = 'GET',
+    data: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: int = 120,
+):
     req = urllib.request.Request(url, method=method, data=data, headers=headers or {})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -58,29 +71,37 @@ def request_json(url: str, *, method: str = 'GET', data: bytes | None = None, he
         return exc.code, exc.headers, body
 
 
+def validate_health(health: dict) -> None:
+    if health.get('model') != EXPECTED_MODEL or health.get('precision') != EXPECTED_PRECISION:
+        raise SystemExit(f'Qwen gateway reports wrong model/precision: {health}')
+    checkpoint = health.get('checkpoint') or {}
+    if int(checkpoint.get('version_id') or 0) != EXPECTED_CHECKPOINT_VERSION_ID:
+        raise SystemExit(f'Qwen gateway reports wrong Civitai checkpoint: {health}')
+    acceleration = health.get('acceleration') or {}
+    if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != EXPECTED_STEPS:
+        raise SystemExit(f'Qwen gateway is not serving the Lightning 4-step profile: {health}')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('gateway_url')
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--max-inference-seconds', type=float, default=300.0)
+    parser.add_argument('--health-log-interval', type=float, default=15.0)
     args = parser.parse_args()
     base = args.gateway_url.rstrip('/')
 
     status, _, health = request_json(base + '/health')
     if status != 200 or health.get('ready') is not True:
         raise SystemExit(f'Qwen gateway health failed: HTTP {status}: {health}')
-    if health.get('model') != 'Qwen/Qwen-Image-Edit-2511' or health.get('precision') != 'official-bfloat16':
-        raise SystemExit(f'Qwen gateway reports wrong model/precision: {health}')
-    acceleration = health.get('acceleration') or {}
-    if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != 8:
-        raise SystemExit(f'Qwen gateway is not serving the Lightning 8-step profile: {health}')
+    validate_health(health)
 
     body, boundary = multipart(
         {
             'prompt': 'Turn this simple gradient reference into a clean blue editorial poster with a centered white circle.',
             'negative_prompt': ' ',
             'seed': '42',
-            'steps': '8',
+            'steps': str(EXPECTED_STEPS),
             'cfg': '1.0',
             'megapixels': '0.25',
         },
@@ -97,14 +118,32 @@ def main() -> None:
     )
     if status != 200 or not submitted.get('call_id'):
         raise SystemExit(f'Qwen submit failed: HTTP {status}: {submitted}')
-    if submitted.get('inference_steps') != 8 or float(submitted.get('true_cfg_scale') or 0) != 1.0:
-        raise SystemExit(f'Qwen submit did not use Lightning 8-step settings: {submitted}')
+    if submitted.get('inference_steps') != EXPECTED_STEPS or float(submitted.get('true_cfg_scale') or 0) != 1.0:
+        raise SystemExit(f'Qwen submit did not use Lightning 4-step settings: {submitted}')
+
     call_id = submitted['call_id']
     started = time.monotonic()
     polls = 0
+    last_health_log = 0.0
+    last_state = None
+    state_timeline: list[dict[str, object]] = []
+
     while time.monotonic() - started < args.timeout:
         polls += 1
-        req = urllib.request.Request(base + '/jobs/' + urllib.parse.quote(call_id), headers={'Accept': 'image/*, application/json'})
+        elapsed = time.monotonic() - started
+        if elapsed - last_health_log >= args.health_log_interval or last_state is None:
+            health_status, _, current_health = request_json(base + '/health', timeout=60)
+            current_state = ((current_health.get('worker') or {}).get('state') if health_status == 200 else 'health-error') or 'unknown'
+            if current_state != last_state:
+                state_timeline.append({'state': current_state, 'seconds': round(elapsed, 3)})
+                print(json.dumps({'event': 'qwen-smoke-state', 'state': current_state, 'seconds': round(elapsed, 3)}), flush=True)
+                last_state = current_state
+            last_health_log = elapsed
+
+        req = urllib.request.Request(
+            base + '/jobs/' + urllib.parse.quote(call_id),
+            headers={'Accept': 'image/*, application/json'},
+        )
         try:
             with urllib.request.urlopen(req, timeout=180) as response:
                 raw = response.read()
@@ -117,6 +156,8 @@ def main() -> None:
                         raise SystemExit(f'Qwen returned non-PNG image bytes: {raw[:16]!r}')
                     inference_seconds = round(time.monotonic() - started, 3)
                     total_seconds = round(time.monotonic() - submit_started, 3)
+                    final_status, _, final_health = request_json(base + '/health', timeout=60)
+                    worker = final_health.get('worker') if final_status == 200 else {}
                     result = {
                         'ready': True,
                         'callId': call_id,
@@ -125,16 +166,21 @@ def main() -> None:
                         'contentType': content_type,
                         'workerId': submitted.get('worker_id'),
                         'ecosystem': submitted.get('ecosystem'),
+                        'checkpointVersionId': EXPECTED_CHECKPOINT_VERSION_ID,
                         'inferenceSteps': submitted.get('inference_steps'),
                         'trueCfgScale': submitted.get('true_cfg_scale'),
                         'acceleration': submitted.get('acceleration'),
                         'inferenceSeconds': inference_seconds,
                         'totalSeconds': total_seconds,
+                        'workerReportedGenerationSeconds': (worker or {}).get('last_generation_seconds'),
+                        'workerReportedStartupSeconds': (worker or {}).get('startup_seconds'),
+                        'workerReportedTransformerLoadSeconds': (worker or {}).get('transformer_load_seconds'),
+                        'stateTimeline': state_timeline,
                     }
-                    print(json.dumps(result))
+                    print(json.dumps(result), flush=True)
                     if inference_seconds > args.max_inference_seconds:
                         raise SystemExit(
-                            f'Qwen Lightning inference is still too slow: {inference_seconds}s > {args.max_inference_seconds}s threshold'
+                            f'Qwen fallback inference is still too slow: {inference_seconds}s > {args.max_inference_seconds}s threshold'
                         )
                     return
                 raise SystemExit(f'Unexpected Qwen poll response: HTTP {response.status} {content_type}: {raw[:500]!r}')
@@ -144,7 +190,10 @@ def main() -> None:
                 time.sleep(3)
                 continue
             raise SystemExit(f'Qwen poll failed: HTTP {exc.code}: {raw.decode("utf-8", errors="replace")}') from exc
-    raise SystemExit(f'Qwen smoke timed out after {args.timeout}s and {polls} polls')
+
+    raise SystemExit(
+        f'Qwen fallback smoke timed out after {args.timeout}s and {polls} polls; state timeline={json.dumps(state_timeline)}'
+    )
 
 
 if __name__ == '__main__':
