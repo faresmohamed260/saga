@@ -1,6 +1,6 @@
 import React from 'react';
 import useGallerySelection from '../../hooks/useGallerySelection.js';
-import { Check, Download, FolderPlus, Heart, LoaderCircle, Plus, RefreshCcw, Trash2, X } from 'lucide-react';
+import { Check, Download, FolderPlus, Heart, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 import { modelDisplayName } from '../../model-labels.js';
 
@@ -21,7 +21,6 @@ export default function GalleryView({
   onModelChange,
   onSearchChange,
   onSortChange,
-  onRefresh,
   onLoadMore,
   renderCard,
   onBulkFavorite,
@@ -46,8 +45,7 @@ export default function GalleryView({
       <LibraryHeader
         eyebrow="Library"
         title="Gallery"
-        description="Browse, preview, select, and manage your generated media."
-        action={<button className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>}
+        description="Browse, preview, select, and manage generated media. New results appear automatically."
       />
       <div className="gallery-toolbar">
         <div className="gallery-kind-tabs" role="group" aria-label="Media type filter">
