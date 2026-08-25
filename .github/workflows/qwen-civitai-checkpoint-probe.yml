@@ -1,0 +1,98 @@
+name: Qwen Civitai Checkpoint Probe
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-civitai-checkpoint-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      CIVITAI_MODEL_ID: "2246542"
+      REQUESTED_VERSION_ID: "2553500"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect available Qwen checkpoint versions
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          token = os.environ.get('CIVITAI_API_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('CIVITAI_API_TOKEN is missing')
+
+          model_id = os.environ['CIVITAI_MODEL_ID']
+          requested = int(os.environ['REQUESTED_VERSION_ID'])
+          req = urllib.request.Request(
+              f'https://civitai.com/api/v1/models/{model_id}',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/json',
+                  'User-Agent': 'saga-qwen-checkpoint-probe/1.0',
+              },
+          )
+          with urllib.request.urlopen(req, timeout=60) as response:
+              payload = json.load(response)
+
+          versions = []
+          selected = None
+          requested_row = None
+          for version in payload.get('modelVersions') or []:
+              files = []
+              for item in version.get('files') or []:
+                  metadata = item.get('metadata') or {}
+                  row = {
+                      'id': item.get('id'),
+                      'name': item.get('name'),
+                      'type': item.get('type'),
+                      'sizeKB': item.get('sizeKB'),
+                      'fp': metadata.get('fp'),
+                      'size': metadata.get('size'),
+                      'format': metadata.get('format'),
+                      'sha256': (item.get('hashes') or {}).get('SHA256'),
+                      'primary': bool(item.get('primary')),
+                  }
+                  files.append(row)
+              row = {
+                  'id': version.get('id'),
+                  'name': version.get('name'),
+                  'baseModel': version.get('baseModel'),
+                  'createdAt': version.get('createdAt'),
+                  'files': files,
+              }
+              versions.append(row)
+              if row['id'] == requested:
+                  requested_row = row
+              if selected is None and any(str(f.get('fp') or '').lower() == 'fp16' for f in files):
+                  selected = row
+
+          summary = {
+              'modelId': payload.get('id'),
+              'modelName': payload.get('name'),
+              'requestedVersion': requested_row,
+              'firstFp16Candidate': selected,
+              'versions': versions,
+          }
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          with open('civitai-qwen-checkpoint-metadata.json', 'w', encoding='utf-8') as fh:
+              json.dump(summary, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: civitai-qwen-checkpoint-metadata
+          path: civitai-qwen-checkpoint-metadata.json
+          if-no-files-found: error
+          retention-days: 3
