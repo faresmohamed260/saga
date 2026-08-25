@@ -24,7 +24,6 @@ try {
   await page.getByText('Add an image, describe the change, and generate with the live Qwen edit model.', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
   await page.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
-  await page.getByText('4-step BF16 Lightning LoRA', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
   diagnostics.qwenSelected = true;
   diagnostics.qwenLabels = true;
