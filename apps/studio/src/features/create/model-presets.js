@@ -1,5 +1,6 @@
 // Keep these UI defaults aligned with apps/studio/api/_workflows.js and the deployed worker recipes.
 // LTX `steps` is the fixed total across both stages (8 base + 3 refine), not an arbitrary sampler slider.
+// The gateway/worker reject any other LTX step count so the UI cannot imply unsupported sampling behavior.
 export const MODEL_ADVANCED_PRESETS = Object.freeze({
   'flux2-klein-9b': Object.freeze({
     modelId: 'flux2-klein-9b',
