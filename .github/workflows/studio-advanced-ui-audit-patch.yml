@@ -43,6 +43,10 @@ jobs:
               "  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');",
               "  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');",
           )
+          ui_text = ui_text.replace(
+              "  const autoToggle = desktop.locator('.saga-auto-toggle');\n  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not start enabled');\n  await autoToggle.click();\n  if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');\n  await autoToggle.click();\n  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');",
+              "  if (await desktop.locator('.saga-auto-toggle').count()) throw new Error('Edit exposes a duplicate standalone Auto control');\n  const editAspectTrigger = desktop.locator('.saga-shared-aspect-trigger');\n  await expectText(editAspectTrigger, 'Canvas · Auto', 'Edit automatic canvas trigger');\n  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Edit Auto should not expose a second resolution Auto control');\n  await editAspectTrigger.click();\n  const editAspectMenu = desktop.locator('.saga-aspect-picker');\n  await editAspectMenu.waitFor({ state: 'visible' });\n  await editAspectMenu.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();\n  await desktop.locator('.saga-resolution-trigger').waitFor({ state: 'visible' });\n  await editAspectTrigger.click();\n  await editAspectMenu.getByRole('menuitemradio', { name: /Auto/i }).click();\n  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Returning to Edit Auto did not collapse manual resolution control');",
+          )
           ui.write_text(ui_text, encoding='utf-8')
 
           gallery = Path('apps/studio/scripts/capture-gallery-preview.mjs')
@@ -63,13 +67,37 @@ jobs:
               '      aria-label={`${label} options`}',
               '      aria-label={label}',
           )
+          controls_text = controls_text.replace(
+              "\n\n              {isEdit && (\n                <button\n                  type=\"button\"\n                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}\n                  aria-pressed={editAuto}\n                  onClick={() => setEditAuto((current) => !current)}\n                >\n                  <Sparkles size={15} /><span>Auto</span>\n                </button>\n              )}\n",
+              "\n",
+          )
+          controls_text = controls_text.replace(
+              "                  <button\n                    ref={resolutionButtonRef}",
+              "                  {!(isEdit && editAuto) && (\n                  <button\n                    ref={resolutionButtonRef}",
+              1,
+          )
+          controls_text = controls_text.replace(
+              "                  </button>\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}",
+              "                  </button>\n                  )}\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}",
+              1,
+          )
+          controls_text = controls_text.replace(
+              "                    ariaLabel=\"Aspect ratio\"\n                    value={aspect}",
+              "                    ariaLabel=\"Aspect ratio\"\n                    triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}\n                    value={aspect}",
+              1,
+          )
+          controls_text = controls_text.replace(
+              "                    autoSelected={isEdit && editAuto}\n                    effectiveRatio={primaryRatio}",
+              "                    autoSelected={isEdit && editAuto}\n                    onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}\n                    effectiveRatio={primaryRatio}",
+              1,
+          )
           controls.write_text(controls_text, encoding='utf-8')
           PY
           if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx
-            git commit -m "fix(studio): align browser-facing media control semantics"
+            git commit -m "fix(studio): simplify reference-aware Edit sizing"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
