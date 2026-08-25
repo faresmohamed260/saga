@@ -62,6 +62,7 @@ try {
   await page.keyboard.press('ArrowDown');
   const aspectMenu = page.getByRole('menu', { name: 'Video aspect' });
   await aspectMenu.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
   await page.keyboard.press('Home');
   for (let index = 0; index < 5; index += 1) await page.keyboard.press('ArrowDown');
   if (!/9:16/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Video aspect keyboard navigation did not reach 9:16');
@@ -74,6 +75,7 @@ try {
   await page.keyboard.press('Space');
   const fpsListbox = page.getByRole('listbox', { name: 'Video frame rate' });
   await fpsListbox.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option', null, { timeout: 1500 });
   await page.keyboard.press('End');
   const fps30 = fpsListbox.getByRole('option', { name: '30 fps', exact: true });
   if (!(await fps30.evaluate((element) => element === document.activeElement))) throw new Error('Frame-rate keyboard navigation did not reach 30 fps');
