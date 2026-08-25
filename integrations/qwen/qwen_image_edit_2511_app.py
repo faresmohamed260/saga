@@ -34,24 +34,32 @@ for _name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
         _runtime_secret_values[_name] = _value
 RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
 
-# Qwen's official model card requires the latest Diffusers QwenImageEditPlusPipeline.
-# Keep Transformers below 5.x until the current Qwen multimodal token-type compatibility
-# fix is released across the stable stack; this does not alter model weights or precision.
+# Match Modal's production image-to-image CUDA pattern: a CUDA 12.8 base plus
+# CUDA-specific PyTorch wheels. Qwen's official model card requires a current
+# Diffusers QwenImageEditPlusPipeline. Transformers stays below 5.x because the
+# current Diffusers Qwen edit path has a known multimodal token compatibility
+# issue with Transformers 5.x; model weights and BF16 precision are unchanged.
 image = (
-    modal.Image.debian_slim(python_version=PYTHON_VERSION)
+    modal.Image.from_registry(
+        "nvidia/cuda:12.8.1-devel-ubuntu22.04",
+        add_python=PYTHON_VERSION,
+    )
+    .entrypoint([])
     .apt_install("git", "libgl1", "libglib2.0-0")
-    .pip_install(
+    .uv_pip_install(
         f"modal=={MODAL_VERSION}",
+        "Pillow~=11.2.1",
+        "accelerate~=1.8.1",
+        "git+https://github.com/huggingface/diffusers.git",
+        "huggingface-hub==0.36.0",
+        "safetensors==0.5.3",
+        "sentencepiece==0.2.0",
         "torch==2.7.1",
         "transformers>=4.57.0,<5.0.0",
-        "accelerate>=1.8.0",
-        "safetensors>=0.5.3",
-        "huggingface_hub[hf_transfer]>=0.36.0,<1.0",
-        "pillow>=11.0.0",
+        extra_options="--index-strategy unsafe-best-match",
+        extra_index_url="https://download.pytorch.org/whl/cu128",
     )
-    .run_commands("pip install --no-cache-dir git+https://github.com/huggingface/diffusers.git")
     .env({
-        "HF_HUB_ENABLE_HF_TRANSFER": "1",
         "HF_HUB_CACHE": CACHE_DIR,
         "PYTHONUTF8": "1",
         "PYTHONIOENCODING": "utf-8",
@@ -163,6 +171,7 @@ class QwenImageEdit2511Worker:
         cfg: float = 4.0,
         megapixels: float = 1.0,
     ) -> bytes:
+        import math
         import torch
         from PIL import Image
 
@@ -181,6 +190,12 @@ class QwenImageEdit2511Worker:
                 raise ValueError("reference image is empty")
             pil_images.append(Image.open(io.BytesIO(raw)).convert("RGB"))
 
+        first_width, first_height = pil_images[0].size
+        ratio = max(first_width, 1) / max(first_height, 1)
+        target_area = max(0.25, min(float(megapixels), 4.0)) * 1_000_000
+        target_width = max(32, round(math.sqrt(target_area * ratio) / 32) * 32)
+        target_height = max(32, round((target_width / ratio) / 32) * 32)
+
         generator = torch.Generator(device="cuda").manual_seed(int(seed))
         with torch.inference_mode():
             result = self.pipe(
@@ -192,11 +207,18 @@ class QwenImageEdit2511Worker:
                 guidance_scale=1.0,
                 num_inference_steps=max(1, min(int(steps), 80)),
                 num_images_per_prompt=1,
+                width=target_width,
+                height=target_height,
             ).images[0]
 
         _set_worker_state("finalizing")
         out = io.BytesIO()
         result.save(out, format="PNG", optimize=False)
         payload = out.getvalue()
-        _set_worker_state("ready", last_generation_seconds=round(time.perf_counter() - started, 3))
+        _set_worker_state(
+            "ready",
+            last_generation_seconds=round(time.perf_counter() - started, 3),
+            output_width=result.width,
+            output_height=result.height,
+        )
         return payload
