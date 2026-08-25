@@ -20,6 +20,11 @@ create index if not exists studio_uploads_display_name_idx on public.studio_uplo
 
 alter table public.studio_uploads enable row level security;
 
+drop policy if exists "studio_uploads_demo_select" on public.studio_uploads;
+drop policy if exists "studio_uploads_demo_insert" on public.studio_uploads;
+drop policy if exists "studio_uploads_demo_update" on public.studio_uploads;
+drop policy if exists "studio_uploads_demo_delete" on public.studio_uploads;
+
 create policy "studio_uploads_demo_select" on public.studio_uploads for select to anon using (true);
 create policy "studio_uploads_demo_insert" on public.studio_uploads for insert to anon with check (true);
 create policy "studio_uploads_demo_update" on public.studio_uploads for update to anon using (true) with check (true);
