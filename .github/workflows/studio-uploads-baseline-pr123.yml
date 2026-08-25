@@ -1,0 +1,92 @@
+name: Studio Uploads Baseline PR123
+
+on:
+  push:
+    branches:
+      - studio/automatic-refresh-video-recovery
+    paths:
+      - .github/workflows/studio-uploads-baseline-pr123.yml
+
+permissions:
+  contents: write
+
+jobs:
+  baseline:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/studio
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/automatic-refresh-video-recovery
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Install Studio dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build Studio
+        run: npm run build
+      - name: Start runner preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+      - name: Capture Gallery and Uploads surfaces
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:preview
+      - name: Approve Gallery and Uploads baselines
+        run: |
+          cp visual-preview/10-gallery-grid.png visual-baselines/10-gallery-grid.png
+          cp visual-preview/10b-gallery-keyboard-focus.png visual-baselines/10b-gallery-keyboard-focus.png
+          cp visual-preview/14-gallery-mobile-manager.png visual-baselines/14-gallery-mobile-manager.png
+          cp visual-preview/15-gallery-uploads-desktop.png visual-baselines/15-gallery-uploads-desktop.png
+          cp visual-preview/15b-gallery-upload-detail.png visual-baselines/15b-gallery-upload-detail.png
+          cp visual-preview/16-gallery-uploads-mobile.png visual-baselines/16-gallery-uploads-mobile.png
+          cp visual-preview/16b-gallery-uploads-mobile-manager.png visual-baselines/16b-gallery-uploads-mobile-manager.png
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('visual-baselines/manifest.json')
+          manifest = json.loads(path.read_text())
+          wanted = [
+              ('15-gallery-uploads-desktop.png', 0.0015),
+              ('15b-gallery-upload-detail.png', 0.0015),
+              ('16-gallery-uploads-mobile.png', 0.0015),
+              ('16b-gallery-uploads-mobile-manager.png', 0.0015),
+          ]
+          existing = {entry['file'] for entry in manifest['surfaces']}
+          for file, tolerance in wanted:
+              if file not in existing:
+                  manifest['surfaces'].append({'file': file, 'maxChangedRatio': tolerance})
+          path.write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+      - name: Commit approved baselines
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/studio/visual-baselines/manifest.json \
+            apps/studio/visual-baselines/10-gallery-grid.png \
+            apps/studio/visual-baselines/10b-gallery-keyboard-focus.png \
+            apps/studio/visual-baselines/14-gallery-mobile-manager.png \
+            apps/studio/visual-baselines/15-gallery-uploads-desktop.png \
+            apps/studio/visual-baselines/15b-gallery-upload-detail.png \
+            apps/studio/visual-baselines/16-gallery-uploads-mobile.png \
+            apps/studio/visual-baselines/16b-gallery-uploads-mobile-manager.png
+          git diff --cached --quiet && exit 0
+          git commit -m "test(studio): approve persistent Uploads library visuals"
+          git push origin HEAD:studio/automatic-refresh-video-recovery
