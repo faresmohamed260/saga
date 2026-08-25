@@ -277,7 +277,7 @@
 .workspace .saga-fancy-select.open>button{border-color:#5c4fb0;box-shadow:0 0 0 2px rgba(118,92,255,.1)}
 .workspace .saga-fancy-select>button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .workspace .saga-fancy-options{
-  position:absolute;z-index:40;top:calc(100% + 5px);left:0;right:0;padding:5px;border:1px solid #303743;border-radius:11px;background:#171c23;box-shadow:0 15px 40px rgba(0,0,0,.45);
+  position:fixed;z-index:2100;padding:5px;border:1px solid #303743;border-radius:11px;background:#171c23;box-shadow:0 15px 40px rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain;box-sizing:border-box;
 }
 .workspace .saga-fancy-options button{width:100%;height:34px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 9px;border:0;border-radius:8px;background:transparent;color:#bdc4cf;font-size:var(--saga-text-xs);text-align:left;cursor:pointer}
 .workspace .saga-fancy-options button:hover,.workspace .saga-fancy-options button[aria-selected=true]{background:#252a34;color:#fff}
@@ -293,6 +293,12 @@
 .workspace .saga-seed-input{display:flex;align-items:center;min-width:0;width:142px;height:34px;border:1px solid #2b323d;border-radius:var(--saga-radius-sm);background:#0d1117;overflow:hidden}
 .workspace .saga-seed-input input{min-width:0;flex:1;width:90px;border:0;outline:0;background:transparent;color:#fff;font:inherit;font-size:var(--saga-text-xs);padding:0 9px}
 .workspace .saga-seed-input button{width:33px;height:100%;border:0;border-left:1px solid #2b323d;background:transparent;color:#8993a2;cursor:pointer}
+.workspace .saga-negative-prompt{display:block;padding:11px 0 0}
+.workspace .saga-negative-prompt>span{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:7px}
+.workspace .saga-negative-prompt strong{font-size:var(--saga-text-xs);color:#dfe3e9}
+.workspace .saga-negative-prompt small{font-size:8px;color:#687383;text-align:right}
+.workspace .saga-negative-prompt textarea{width:100%;min-height:62px;max-height:140px;box-sizing:border-box;resize:vertical;border:1px solid #2a313b;border-radius:8px;background:#0d1117;color:#fff;font:inherit;font-size:var(--saga-text-xs);line-height:1.45;padding:8px 9px;outline:0}
+.workspace .saga-negative-prompt textarea:focus-visible{outline:var(--saga-focus-ring);outline-offset:2px}
 .workspace .saga-advanced-range{padding-top:11px}
 .workspace .saga-advanced-range-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
 .workspace .saga-advanced-range-head>div{display:flex;flex-direction:column;gap:2px}
@@ -304,8 +310,6 @@
 
 .workspace .saga-composer-error{width:min(820px,100%);margin:9px auto 0;padding:9px 12px;box-sizing:border-box;border:1px solid rgba(237,91,111,.25);border-radius:var(--saga-radius-md);background:rgba(126,33,47,.12);color:#f1a1ae;font-size:var(--saga-text-xs)}
 .workspace .saga-backend-status{width:min(820px,100%);margin:9px auto 0;color:#5f6b7c;font-size:var(--saga-text-2xs);text-align:center}
-.workspace .saga-more-panel{width:min(820px,100%);margin:0 auto;padding:24px;display:flex;gap:14px;border:1px solid #292f39;border-radius:18px;background:#11161c;color:#a89cff}
-.workspace .saga-more-panel strong{color:#fff}.workspace .saga-more-panel p{margin:4px 0 0;color:#738093;font-size:var(--saga-text-sm)}
 
 .workspace .saga-output-wall{
   width:min(780px,100%);
@@ -433,7 +437,6 @@
 .workspace .saga-fixed-setting>span{
   min-width:88px;padding:7px 9px;border:1px solid #323846;border-radius:9px;background:#171b22;color:#f1efff;font-size:12px;font-weight:800;text-align:center;
 }
-.workspace .saga-fixed-setting>span small{color:#8c94a2;font-size:9px;font-weight:700}
 .workspace .saga-video-advanced-output{overflow:visible}
 .workspace .saga-advanced-control-field{display:block;margin-top:10px}
 .workspace .saga-advanced-control-field .saga-shared-aspect-root,
@@ -444,3 +447,9 @@
 @media(max-width:720px){
   .workspace .saga-advanced-runtime{grid-template-columns:1fr}
 }
+
+.saga-recent-work { margin-top: 34px; }
+.saga-results-heading { margin-bottom: 14px; }
+.saga-results-heading h2 { font-size: clamp(18px, 2vw, 24px); margin: 3px 0 4px; }
+.saga-results-heading p { max-width: 680px; }
+@media (max-width: 760px) { .saga-recent-work { margin-top: 26px; } }

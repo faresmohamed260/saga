@@ -13,7 +13,7 @@ function imageDimensions(file) {
 }
 
 export default function useMediaActions({
-  section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
+  section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg,
   references, setReferences, setError, setItems, selectedMedia, setSelectedMedia,
   favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems,
   collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems,
@@ -85,8 +85,8 @@ export default function useMediaActions({
   const reuseSettings = (item) => {
     setPrompt(item.title || '');
     if (item.seed != null) setSeed(String(item.seed));
-    if (item.kind === 'video') { setMode('Video'); setSteps(11); setCfg(1); setWorkflowId('ltx25-redgraft-video'); setModelId('ltx25-redgraft'); }
-    else if (item.mode === 'edit') { setMode('Edit'); setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); }
+    if (item.kind === 'video') { setMode('Video'); setSteps(11); setCfg(1); }
+    else if (item.mode === 'edit') { setMode('Edit'); setSteps(4); setCfg(1); }
     else setMode('Image');
     setSection('Create');
     setError('');
@@ -108,9 +108,30 @@ export default function useMediaActions({
       setReferences([{ id: `gallery-${item.id}-${Date.now()}`, file, preview: URL.createObjectURL(blob), ...dimensions }]);
       setPrompt('');
       if (item.seed != null) setSeed(String(item.seed));
-      setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b');
+      setSteps(4); setCfg(1);
       setMode('Edit'); setSection('Create'); setError('');
     } catch (err) { window.alert(err instanceof Error ? err.message : 'Could not prepare this image for editing.'); }
+  };
+
+  const animateThis = async (item) => {
+    if (item.kind === 'video') return;
+    const mediaUrl = item.originalUrl || item.url;
+    if (!mediaUrl) return;
+    try {
+      const response = await fetch(mediaUrl);
+      if (!response.ok) throw new Error(`Media request failed (${response.status})`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Selected media is not an image.');
+      const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+      const file = new File([blob], `saga-video-reference-${item.id}.${extension}`, { type: blob.type || 'image/png' });
+      const dimensions = await imageDimensions(file);
+      references.forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
+      setReferences([{ id: `animate-${item.id}-${Date.now()}`, file, preview: URL.createObjectURL(blob), ...dimensions }]);
+      setPrompt('');
+      setMode('Video');
+      setSection('Create');
+      setError('');
+    } catch (err) { window.alert(err instanceof Error ? err.message : 'Could not prepare this image for video generation.'); }
   };
 
   const downloadItem = (item) => {
@@ -203,5 +224,5 @@ export default function useMediaActions({
     return { failedIds: [], succeededIds: [...succeededIds] };
   };
 
-  return { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete };
+  return { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, animateThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete };
 }

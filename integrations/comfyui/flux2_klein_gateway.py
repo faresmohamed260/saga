@@ -94,10 +94,6 @@ def web():
 
     def _submit_state():
         state = str(_state().get("state") or "").strip()
-        return "waking" if state in {"", "sleeping", "unknown"} else state
-
-    def _submit_state():
-        state = str(_state().get("state") or "").strip()
         if state in {"", "sleeping", "unknown"}:
             return "waking"
         if state in {"generating", "finalizing"}:

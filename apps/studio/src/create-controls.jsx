@@ -1,6 +1,7 @@
 import React, {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowUp, Check, ChevronDown, Clock3, Dice5, Image as ImageIcon, Plus,
   RotateCcw, SlidersHorizontal, Sparkles, Video, Volume2, VolumeX, X,
@@ -459,57 +460,91 @@ function DurationPicker({ open, setOpen, anchorRef, value, setValue }) {
 
 function FancySelect({ label, value, options, onChange }) {
   const [open, setOpen] = useState(false);
+  const [menuWidth, setMenuWidth] = useState(220);
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
   const optionRefs = useRef([]);
-  const selectedIndex = Math.max(0, options.findIndex((item) => String(item.value) === String(value)));
-  const [focusIndex, setFocusIndex] = useState(selectedIndex);
+  const pendingFocusIndexRef = useRef(0);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   const selected = options[selectedIndex] || options[0];
-  useOutsideDismiss(open, [rootRef], () => setOpen(false), triggerRef);
+  const menuHeight = Math.min(260, Math.max(46, options.length * 34 + 10));
+  const position = useAnchoredPosition(open, triggerRef, menuWidth, menuHeight);
 
+  const close = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.setTimeout(() => triggerRef.current?.focus(), 0);
+  };
+
+  const openMenu = (focusIndex = selectedIndex) => {
+    const width = triggerRef.current?.getBoundingClientRect().width;
+    setMenuWidth(Math.max(180, Math.round(width || 220)));
+    pendingFocusIndexRef.current = focusIndex;
+    setOpen(true);
+  };
+
+  const menuPositioned = Boolean(position);
   useEffect(() => {
-    if (!open) return undefined;
-    setFocusIndex(selectedIndex);
-    const frame = requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [open, selectedIndex, options.length]);
+    if (!open || !menuPositioned) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      optionRefs.current[pendingFocusIndexRef.current]?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, menuPositioned, options.length]);
 
-  const focusOption = (index) => {
+  useOutsideDismiss(open, [rootRef, popoverRef], () => close(false), triggerRef);
+
+  const move = (index) => {
     const normalized = (index + options.length) % options.length;
-    setFocusIndex(normalized);
     optionRefs.current[normalized]?.focus();
   };
 
-  const choose = (option) => {
-    onChange(option.value);
-    setOpen(false);
-    triggerRef.current?.focus();
+  const handleOptionKeyDown = (event, index) => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); move(index + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); move(index - 1); }
+    else if (event.key === 'Home') { event.preventDefault(); move(0); }
+    else if (event.key === 'End') { event.preventDefault(); move(options.length - 1); }
+    else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); }
+    else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onChange(options[index].value);
+      close(true);
+    } else if (event.key === 'Tab') close(false);
   };
 
-  const optionKeyDown = (event, index) => {
-    let next = null;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = index + 1;
-    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = index - 1;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = options.length - 1;
-    if (next != null) {
-      event.preventDefault();
-      focusOption(next);
-      return;
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      choose(options[index]);
-    }
-  };
+  const menu = open && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={popoverRef}
+      className="saga-fancy-options saga-fancy-options-portal"
+      role="listbox"
+      aria-label={label}
+      style={position ? { position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height } : { position: 'fixed', visibility: 'hidden' }}
+    >
+      {options.map((option, index) => (
+        <button
+          key={option.value}
+          ref={(node) => { optionRefs.current[index] = node; }}
+          type="button"
+          role="option"
+          aria-selected={option.value === value}
+          onKeyDown={(event) => handleOptionKeyDown(event, index)}
+          onClick={() => { onChange(option.value); close(true); }}
+        >
+          <span>{option.label}</span>{option.value === value && <Check size={14} />}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  ) : null;
 
   return (
     <div
       className={`saga-fancy-select ${open ? 'open' : ''}`}
       ref={rootRef}
       onBlurCapture={(event) => {
-        if (!open || rootRef.current?.contains(event.relatedTarget)) return;
-        setOpen(false);
+        const next = event.relatedTarget;
+        if (next && (rootRef.current?.contains(next) || popoverRef.current?.contains(next))) return;
+        if (open) close(false);
       }}
     >
       <button
@@ -519,34 +554,24 @@ function FancySelect({ label, value, options, onChange }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         onKeyDown={(event) => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-          event.preventDefault();
-          setOpen(true);
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            if (open) close(false);
+            else openMenu(selectedIndex);
+          } else if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            event.stopPropagation();
+            close(true);
+          }
         }}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => open ? close(false) : openMenu(selectedIndex)}
       >
-        <span>{selected?.label}</span><ChevronDown size={15} />
+        <span>{selected?.label}</span><ChevronDown size={14} />
       </button>
-      {open && (
-        <div className="saga-fancy-options" role="listbox" aria-label={label} aria-orientation="vertical">
-          {options.map((option, index) => (
-            <button
-              ref={(node) => { optionRefs.current[index] = node; }}
-              type="button"
-              role="option"
-              aria-selected={String(option.value) === String(value)}
-              tabIndex={index === focusIndex ? 0 : -1}
-              key={option.value}
-              onFocus={() => setFocusIndex(index)}
-              onKeyDown={(event) => optionKeyDown(event, index)}
-              onClick={() => choose(option)}
-            >
-              <span>{option.label}</span>
-              {String(option.value) === String(value) && <Check size={14} />}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
@@ -570,8 +595,8 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 }
 
 function AdvancedSettings({
-  open, onClose, anchorRef, mode, outputs, setOutputs, seed, setSeed, steps, setSteps,
-  cfg, setCfg, workflowId, setWorkflowId, modelId, setModelId,
+  open, onClose, anchorRef, mode, seed, setSeed, steps, setSteps,
+  cfg, setCfg, negativePrompt, setNegativePrompt,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
 }) {
@@ -611,12 +636,23 @@ function AdvancedSettings({
                   <button type="button" aria-label="Random seed" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={15} /></button>
                 </div>
               </div>
+              <label className="saga-negative-prompt">
+                <span><strong>Negative prompt</strong><small>Tell the active workflow what to avoid.</small></span>
+                <textarea
+                  value={negativePrompt}
+                  onChange={(event) => setNegativePrompt(event.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Optional exclusions…"
+                  aria-label="Negative prompt"
+                />
+              </label>
               {preset.stepsEditable ? (
                 <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} />
               ) : (
                 <div className="saga-fixed-setting" data-ltx-fixed-steps="11">
                   <div><strong>Steps</strong><small>Fixed distilled two-stage schedule</small></div>
-                  <span>11 <small>8 + 3</small></span>
+                  <span>11</span>
                 </div>
               )}
               <RangeField label="CFG" help={isVideo ? 'Distilled default is 1.0' : 'Prompt guidance strength'} value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1} />
@@ -664,8 +700,7 @@ function AdvancedSettings({
                 setSeed(preset.seed);
                 setSteps(preset.steps);
                 setCfg(preset.cfg);
-                setWorkflowId(preset.workflowId);
-                setModelId(preset.modelId);
+                setNegativePrompt(preset.negativePrompt || '');
                 if (isVideo) {
                   setVideoAutoAspect(true);
                   setVideoManualAspect('16:9');
@@ -691,7 +726,7 @@ function MediaModeToggle({ mode, setMode }) {
   const visualMode = mode === 'Video' ? 'Video' : 'Image';
   return (
     <div className="saga-media-toggle" role="group" aria-label="Media mode">
-      <button type="button" className={visualMode === 'Image' ? 'selected' : ''} aria-pressed={visualMode === 'Image'} onClick={() => setMode('Image')}>
+      <button type="button" className={visualMode === 'Image' ? 'selected' : ''} aria-pressed={visualMode === 'Image'} onClick={() => { if (visualMode !== 'Image') setMode('Image'); }}>
         <ImageIcon size={16} /><span>Image</span>
       </button>
       <button type="button" className={visualMode === 'Video' ? 'selected' : ''} aria-pressed={visualMode === 'Video'} onClick={() => setMode('Video')}>
@@ -702,13 +737,21 @@ function MediaModeToggle({ mode, setMode }) {
 }
 
 function OutputWall({ items, renderCard }) {
+  if (!items.length) return null;
   return (
-    <section className="saga-output-wall" aria-label="Generation outputs">
-      {items.map((item, index) => (
-        <div className={`saga-output-slot saga-output-slot-${index % 6}`} key={item.id}>
-          {renderCard(item, false)}
-        </div>
-      ))}
+    <section className="saga-recent-work" aria-label="Recent work">
+      <div className="saga-stage-heading saga-results-heading">
+        <span>RECENT WORK</span>
+        <h2>Your latest creations</h2>
+        <p>Current-session results appear first, followed by relevant Favorites for quick reuse.</p>
+      </div>
+      <div className="saga-output-wall">
+        {items.map((item, index) => (
+          <div className={`saga-output-slot saga-output-slot-${index % 6}`} key={item.id}>
+            {renderCard(item, false)}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -716,15 +759,16 @@ function OutputWall({ items, renderCard }) {
 export default function CreateWorkspace({
   mode, setMode, prompt, setPrompt, references, onAddReferences, onRemoveReference,
   error, jobStatus, busy, onGenerate, items, renderCard,
-  aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
-  seed, setSeed, steps, setSteps, cfg, setCfg,
-  workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
+  aspect, setAspect, imageResolution, setImageResolution,
+  seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,
+  settingsOpen, setSettingsOpen, autoEditInfo,
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
   videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
+  const isImageSetup = mode === 'Image';
   const referenceInputRef = useRef(null);
   const promptRef = useRef(null);
   const resolutionButtonRef = useRef(null);
@@ -732,6 +776,7 @@ export default function CreateWorkspace({
   const videoResolutionButtonRef = useRef(null);
   const durationButtonRef = useRef(null);
   const settingsButtonRef = useRef(null);
+  const modeEffectMountedRef = useRef(false);
 
   const [resolutionOpen, setResolutionOpen] = useState(false);
   const [aspectOpen, setAspectOpen] = useState(false);
@@ -749,7 +794,7 @@ export default function CreateWorkspace({
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
   const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
-  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'Creation tools' : 'Imagine worlds';
+  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Create from a reference';
 
   useEffect(() => {
     if (autoEditInfo) autoBaselineRef.current = { ...autoEditInfo };
@@ -758,16 +803,12 @@ export default function CreateWorkspace({
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      const savedMode = ['Image', 'Video', 'More'].includes(saved.mode) ? saved.mode : 'Image';
-      setMode(savedMode);
       if (ASPECT_PRESETS.some((item) => item.value === saved.aspect)) setAspect(saved.aspect);
       if (IMAGE_RESOLUTIONS.some((item) => item.value === Number(saved.imageResolution))) setImageResolution(Number(saved.imageResolution));
-      if ([1, 2, 4].includes(Number(saved.outputs))) setOutputs(Number(saved.outputs));
       if (saved.seed != null) setSeed(String(saved.seed));
       if (Number.isFinite(Number(saved.steps))) setSteps(Math.max(1, Math.min(50, Number(saved.steps))));
       if (Number.isFinite(Number(saved.cfg))) setCfg(Math.max(0, Math.min(20, Number(saved.cfg))));
-      if (typeof saved.workflowId === 'string') setWorkflowId(saved.workflowId);
-      if (typeof saved.modelId === 'string') setModelId(saved.modelId);
+      if (typeof saved.negativePrompt === 'string') setNegativePrompt(saved.negativePrompt.slice(0, 2000));
       if (typeof saved.editAuto === 'boolean') setEditAuto(saved.editAuto);
       if (VIDEO_RESOLUTIONS.some((item) => item.value === saved.videoResolution)) setVideoResolution(saved.videoResolution);
       if (Number.isFinite(Number(saved.videoDuration))) setVideoDuration(Math.max(5, Math.min(30, Math.round(Number(saved.videoDuration)))));
@@ -786,20 +827,18 @@ export default function CreateWorkspace({
       mode: persistedMode,
       aspect,
       imageResolution: Number(imageResolution),
-      outputs: Number(outputs),
       seed,
       steps: Number(steps),
       cfg: Number(cfg),
-      workflowId: isEdit ? 'default-image' : workflowId,
-      modelId: isEdit ? 'saga-image-auto' : modelId,
+      negativePrompt,
       editAuto,
       videoResolution,
       videoDuration,
       videoAudio,
     }));
   }, [
-    preferencesReady, mode, isEdit, aspect, imageResolution, outputs, seed, steps, cfg,
-    workflowId, modelId, editAuto, videoResolution, videoDuration, videoAudio,
+    preferencesReady, mode, isEdit, aspect, imageResolution, seed, steps, cfg, negativePrompt,
+    editAuto, videoResolution, videoDuration, videoAudio,
   ]);
 
   useEffect(() => {
@@ -824,7 +863,8 @@ export default function CreateWorkspace({
     setResolutionOpen(false);
     setVideoResolutionOpen(false);
     setDurationOpen(false);
-    setSettingsOpen(false);
+    if (modeEffectMountedRef.current) setSettingsOpen(false);
+    else modeEffectMountedRef.current = true;
   }, [mode]);
 
   const addReferenceFiles = (files) => {
@@ -837,14 +877,6 @@ export default function CreateWorkspace({
     setSettingsOpen(false);
   };
 
-  if (mode === 'More') {
-    return (
-      <div className="saga-create-stage">
-        <div className="saga-stage-heading"><span>STUDIO</span><h1>{heading}</h1><p>Additional creation workflows will live here without crowding the core Image and Video composer.</p></div>
-        <section className="saga-more-panel"><Sparkles size={24} /><div><strong>Additional tools</strong><p>Choose Create in the sidebar to return to the Image composer.</p></div></section>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -864,7 +896,7 @@ export default function CreateWorkspace({
         <div className="saga-stage-heading">
           <span>{isEdit ? 'EDIT' : isVideo ? 'VIDEO' : 'CREATE'}</span>
           <h1>{heading}</h1>
-          <p>{isEdit ? 'Click a reference to insert it exactly where your cursor is.' : isVideo ? 'Shape the shot, duration, resolution, and audio before generation.' : 'Describe an image, choose the canvas, and iterate.'}</p>
+          <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : 'Add an image, describe the change, and generate with the live FLUX edit model.'}</p>
         </div>
 
         <section className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''}`}>
@@ -883,7 +915,7 @@ export default function CreateWorkspace({
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Type to imagine'}
+                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Describe the change you want to make…'}
                 maxLength={2000}
                 disabled={busy}
               />
@@ -892,26 +924,18 @@ export default function CreateWorkspace({
 
           <div className="saga-toolbar">
             <div className="saga-toolbar-left">
+              {!isImageSetup && (
               <button type="button" className="saga-round-button" title="Upload reference images" aria-label="Upload reference images" onClick={() => referenceInputRef.current?.click()}>
                 <Plus size={21} />
               </button>
+              )}
 
               <MediaModeToggle mode={mode} setMode={setMode} />
 
 
-              {isEdit && (
-                <button
-                  type="button"
-                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}
-                  aria-pressed={editAuto}
-                  onClick={() => setEditAuto((current) => !current)}
-                >
-                  <Sparkles size={15} /><span>Auto</span>
-                </button>
-              )}
-
               {!isVideo ? (
                 <>
+                  {!(isEdit && editAuto) && (
                   <button
                     ref={resolutionButtonRef}
                     type="button"
@@ -937,6 +961,7 @@ export default function CreateWorkspace({
                     <span>{isEdit && editAuto ? 'Auto' : imageOption.label}</span>
                     <ChevronDown size={13} />
                   </button>
+                  )}
 
                   <AspectPicker
                     triggerRef={aspectButtonRef}
@@ -949,12 +974,14 @@ export default function CreateWorkspace({
                       }
                     }}
                     ariaLabel="Aspect ratio"
+                    triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}
                     value={aspect}
                     onValueChange={(value) => {
                       if (isEdit) setEditAuto(false);
                       setAspect(value);
                     }}
                     autoSelected={isEdit && editAuto}
+                    onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}
                     effectiveRatio={primaryRatio}
                     autoDetail={autoEditInfo?.ratioLabel || 'Primary reference canvas'}
                     fromReference={isEdit && editAuto && references.length > 0}
@@ -1037,13 +1064,19 @@ export default function CreateWorkspace({
               <button
                 type="button"
                 className="saga-submit"
-                title={isEdit ? 'Edit image' : isVideo ? 'Generate video' : 'Generate image'}
-                aria-label={isEdit ? 'Edit image' : isVideo ? 'Generate video' : 'Generate image'}
-                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
+                title={isImageSetup ? 'Add a reference image to start editing' : isEdit ? 'Edit image' : 'Generate video'}
+                aria-label={isImageSetup ? 'Add reference image' : isEdit ? 'Edit image' : 'Generate video'}
+                onClick={() => {
+                  if (isImageSetup) {
+                    referenceInputRef.current?.click();
+                    return;
+                  }
+                  onGenerate({ videoResolution, videoDuration, videoAudio });
+                }}
                 disabled={busy || (isEdit && references.length === 0)}
               >
-                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
-                <ArrowUp size={18} aria-hidden="true" />
+                <span className="saga-submit-label">{isImageSetup ? 'Add image' : isEdit ? 'Edit' : 'Generate'}</span>
+                {isImageSetup ? <Plus size={18} aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
               </button>
             </div>
           </div>
@@ -1088,18 +1121,14 @@ export default function CreateWorkspace({
           onClose={() => setSettingsOpen(false)}
           anchorRef={settingsButtonRef}
           mode={mode}
-          outputs={outputs}
-          setOutputs={setOutputs}
           seed={seed}
           setSeed={setSeed}
           steps={steps}
           setSteps={setSteps}
           cfg={cfg}
           setCfg={setCfg}
-          workflowId={workflowId}
-          setWorkflowId={setWorkflowId}
-          modelId={modelId}
-          setModelId={setModelId}
+          negativePrompt={negativePrompt}
+          setNegativePrompt={setNegativePrompt}
           videoAutoAspect={videoAutoAspect}
           setVideoAutoAspect={setVideoAutoAspect}
           videoManualAspect={videoManualAspect}

@@ -12,7 +12,6 @@ import {
   ListFilter,
   LoaderCircle,
   Search,
-  Shapes,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -105,7 +104,6 @@ export default function GalleryView({
         <div className="gallery-primary-tabs" role="tablist" aria-label="Asset libraries">
           <button type="button" role="tab" aria-selected={libraryTab === 'creatives'} className={libraryTab === 'creatives' ? 'selected' : ''} onClick={() => switchLibrary('creatives')}><Sparkles size={16}/><span>Creatives</span></button>
           <button type="button" role="tab" aria-selected={libraryTab === 'uploads'} className={libraryTab === 'uploads' ? 'selected' : ''} onClick={() => switchLibrary('uploads')}><Upload size={16}/><span>Uploads</span></button>
-          <button type="button" role="tab" aria-selected="false" aria-disabled="true" disabled title="Reusable Elements are not available yet"><Shapes size={16}/><span>Elements</span></button>
         </div>
 
         <label className="gallery-search gallery-search-desktop">

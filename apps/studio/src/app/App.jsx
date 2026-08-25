@@ -18,6 +18,17 @@ import { advancedPresetForMode } from '../features/create/model-presets.js';
 
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
+const CREATE_SETTINGS_STORAGE_KEY = 'saga-studio:create-settings:v6';
+
+function initialCreateMode() {
+  if (typeof window === 'undefined') return 'Image';
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(CREATE_SETTINGS_STORAGE_KEY) || '{}');
+    return ['Image', 'Video'].includes(saved.mode) ? saved.mode : 'Image';
+  } catch {
+    return 'Image';
+  }
+}
 
 function sectionFromLocation() {
   if (typeof window === 'undefined') return 'Create';
@@ -97,12 +108,10 @@ function promptAfterReferenceRemoval(value, removedIndex) {
 
 export default function App() {
   const [section, setSection] = useState(sectionFromLocation);
-  const [mode, setMode] = useState('Image');
+  const [mode, setMode] = useState(initialCreateMode);
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
   const [imageResolution, setImageResolution] = useState(1080);
-  const [outputs, setOutputs] = useState(4);
-  const [advanced, setAdvanced] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jobs, setJobs] = useState([]);
@@ -113,8 +122,7 @@ export default function App() {
   const [seed, setSeed] = useState('42');
   const [steps, setSteps] = useState(4);
   const [cfg, setCfg] = useState(1.0);
-  const [workflowId, setWorkflowId] = useState('default-image');
-  const [modelId, setModelId] = useState('saga-image-auto');
+  const [negativePrompt, setNegativePrompt] = useState('');
   const [references, setReferences] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -130,35 +138,31 @@ export default function App() {
     const sessionItems = items.filter(accepts);
     const seen = new Set(sessionItems.map((item) => String(item.id)));
     const favoriteFallback = favoriteItems.filter((item) => accepts(item) && !seen.has(String(item.id)));
-    return [...sessionItems, ...favoriteFallback].slice(0, mode === 'Edit' ? 4 : outputs);
-  }, [items, favoriteItems, mode, outputs]);
+    return [...sessionItems, ...favoriteFallback].slice(0, mode === 'Edit' ? 4 : 8);
+  }, [items, favoriteItems, mode]);
 
   const setCreateMode = (nextMode) => {
-    setMode(nextMode);
+    const resolvedMode = nextMode === 'Image' && references.length ? 'Edit' : nextMode;
+    const preserveSampling = resolvedMode === 'Edit' && mode === 'Image';
+    setMode(resolvedMode);
     setError('');
-    const preset = advancedPresetForMode(nextMode);
-    if (preset) {
+    const preset = advancedPresetForMode(resolvedMode);
+    if (preset && !preserveSampling) {
       setSeed(preset.seed);
       setSteps(preset.steps);
       setCfg(preset.cfg);
-      setWorkflowId(preset.workflowId);
-      setModelId(preset.modelId);
-      return;
-    }
-    if (nextMode === 'Image') {
-      setWorkflowId('default-image');
-      setModelId('saga-image-auto');
+      setNegativePrompt(preset.negativePrompt || '');
     }
   };
-  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
+  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, negativePrompt, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
   const mediaActions = useMediaActions({
-    section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
+    section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg,
     references, setReferences, setError, setItems, selectedMedia, setSelectedMedia,
     favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems,
     collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems,
     setLibraryError, loadGallery, loadFavorites, loadCollections, loadCollectionItems,
   });
-  const { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete } = mediaActions;
+  const { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, animateThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete } = mediaActions;
 
   React.useEffect(() => {
     const expectedHash = `#/${SECTION_HASHES[section] || 'create'}`;
@@ -277,8 +281,6 @@ export default function App() {
     setPrompt((current) => promptAfterReferenceRemoval(current, index));
     if (mode === 'Edit' && nextReferences.length === 0) {
       setMode('Image');
-      setWorkflowId('default-image');
-      setModelId('saga-image-auto');
       setError('');
     }
   };
@@ -294,6 +296,7 @@ export default function App() {
       onToggleFavorite={toggleFavorite}
       onReuseSettings={reuseSettings}
       onEdit={editThis}
+      onAnimate={animateThis}
       onDownload={downloadItem}
       onOpen={openMedia}
       onAddToCollection={addToCollection}
@@ -306,32 +309,27 @@ export default function App() {
     <div className="app-shell">
       <Sidebar
         section={section}
-        mode={mode}
         mobileOpen={mobileNav}
         onCloseMobile={() => setMobileNav(false)}
         onSectionChange={setSection}
-        onModeChange={setCreateMode}
-        onClearError={() => setError('')}
       />
 
       <main className="workspace">
-        <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => setSettingsOpen(true)} />
+        <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => { setSection('Create'); setSettingsOpen(true); }} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
           : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} date={galleryDate} favoritesOnly={galleryFavoritesOnly} collections={collections} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onDateChange={setGalleryDate} onFavoritesOnlyChange={setGalleryFavoritesOnly} onOpenCollection={async (collection) => { await loadCollectionItems(collection); setSection('Collections'); }} onOpenCollections={() => setSection('Collections')} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} onUseUploadReference={useUploadReference} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
-          : section === 'Models' ? <ModelsView />
-          : section === 'Workflows' ? <WorkflowsView />
+          : section === 'Models' ? <ModelsView onUseModel={(createMode) => { setCreateMode(createMode); setSection('Create'); }} />
+          : section === 'Workflows' ? <WorkflowsView onUseWorkflow={(createMode) => { setCreateMode(createMode); setSection('Create'); }} />
           : section === 'Settings' ? <SettingsView onOpenGenerationSettings={() => { setSection('Create'); setSettingsOpen(true); }} />
           : <CreateWorkspace
               mode={mode} setMode={setCreateMode}
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
               error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
-              outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
-              seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
-              workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
+              seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg} negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
               settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} autoEditInfo={autoEditInfo}
             />}
       </main>

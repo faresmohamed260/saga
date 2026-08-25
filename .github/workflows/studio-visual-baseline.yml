@@ -48,7 +48,7 @@ jobs:
         env:
           UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
           UI_PREVIEW_DIR: visual-preview
-        run: npm run visual:preview
+        run: npm run visual:capture
 
       - name: Update versioned baselines
         env:

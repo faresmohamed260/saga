@@ -22,8 +22,8 @@ function expect(condition, message) {
 
 expect(/'flux2-klein-9b'[\s\S]*?steps:\s*4[\s\S]*?cfg:\s*1\.0/.test(presets), 'FLUX preset must be 4 steps / CFG 1.0');
 expect(/'ltx25-redgraft'[\s\S]*?steps:\s*11[\s\S]*?cfg:\s*1\.0/.test(presets), 'LTX preset must be 11 total steps / CFG 1.0');
-expect(controls.includes('data-ltx-fixed-steps="11"'), 'LTX fixed 8+3 step recipe must be explicit in Advanced');
-expect(!controls.includes('if (isEdit) setOutputs(1)'), 'FLUX preset reset must not silently change output count');
+expect(controls.includes('data-ltx-fixed-steps="11"'), 'LTX fixed 11-step recipe must be explicit in Advanced');
+expect(!controls.includes('<small>8 + 3</small>'), 'LTX Steps value must not show internal stage arithmetic beside 11');
 expect(controls.includes('ariaLabel="Video aspect"'), 'Video aspect must live in Advanced');
 expect(controls.includes('label="Video frame rate"'), 'Video frame rate must live in Advanced');
 expect(controls.includes('aria-label={label}'), 'Advanced custom-select triggers must expose their accessible labels');
@@ -42,7 +42,10 @@ expect(!app.includes('const samples = ['), 'Create must not ship stock face/scen
 expect(app.includes('favoriteItems.filter'), 'Create output wall must draw from Favorites');
 expect(app.includes("setCreateMode('Edit')"), 'Uploading a reference must apply the FLUX preset when entering Edit');
 expect(library.includes("['Create', 'Gallery', 'Favorites', 'Collections']"), 'Favorites must refresh while Create is visible');
-expect(/item\.kind === 'video'[\s\S]*?setSteps\(11\)[\s\S]*?setCfg\(1\)[\s\S]*?ltx25-redgraft-video/.test(await readFile(new URL('src/hooks/useMediaActions.js', root), 'utf8')), 'Reusing a video must restore the LTX production preset');
+expect(/item\.kind === 'video'[\s\S]*?setSteps\(11\)[\s\S]*?setCfg\(1\)/.test(await readFile(new URL('src/hooks/useMediaActions.js', root), 'utf8')), 'Reusing a video must restore the LTX production sampling preset');
 expect(!audioCss.includes('.saga-audio-toggle::after'), 'Audio must render only the circular button');
 
-console.log('Create Advanced contract passed: production presets, live LTX CFG transport, fixed 8+3 recipe, moved video controls, single audio button, and Favorites-backed Create wall are wired.');
+expect(!app.includes('setWorkflowId') && !app.includes('setModelId') && !controls.includes('saved.workflowId') && !controls.includes('saved.modelId'), 'Dead workflow/model presentation state must stay removed from Create');
+expect(!app.includes('setOutputs') && !controls.includes('saved.outputs'), 'Dead output-count presentation state must stay removed from Create');
+expect(controls.includes('aria-label=\"Recent work\"') && controls.includes('Current-session results appear first'), 'Create results must explain session-first Recent work semantics');
+console.log('Create Advanced contract passed: production presets, live LTX CFG transport, fixed 11-step recipe, dead presentation plumbing removed, and Recent work is explicit.');

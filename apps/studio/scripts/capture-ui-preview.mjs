@@ -104,9 +104,9 @@ try {
     throw new Error(`Studio design token contract is incomplete: ${JSON.stringify(tokenContract)}`);
   }
 
-  // Core composition: no old mode navbar, centered composer, additional creation Tools live in the sidebar.
+  // Core composition: no old mode navbar or placeholder Tools surface; Image is a real FLUX setup state.
   if (await desktop.locator('.create-mode-tabs,.mode-tabs').count()) throw new Error('Old Create mode navbar is still rendered');
-  await desktop.getByRole('button', { name: 'Tools', exact: true }).waitFor({ state: 'visible' });
+  if (await desktop.getByRole('button', { name: 'Tools', exact: true }).count()) throw new Error('Placeholder Tools navigation is still rendered');
   const sidebar = desktop.locator('.sidebar');
   if ((await sidebar.innerText()).includes('FLUX.2 online')) throw new Error('Provider status leaked into persistent sidebar account chrome');
   await sidebar.getByText('Status in Jobs & Models', { exact: true }).waitFor({ state: 'visible' });
@@ -118,19 +118,19 @@ try {
   if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
   const primarySubmit = desktop.locator('.saga-submit');
   await primarySubmit.waitFor({ state: 'visible' });
-  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Desktop primary action does not expose the Generate verb');
-  if (await primarySubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Desktop primary action lost its mode-specific accessible name');
+  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Add image') throw new Error('Image setup primary action must request a real reference image');
+  if (await primarySubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Image setup primary action lost its accessible name');
   const primarySubmitBox = await primarySubmit.boundingBox();
-  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop Generate action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
+  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop primary action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
   const primarySubmitStyle = await primarySubmit.evaluate((element) => {
     const style = getComputedStyle(element);
     return { display: style.display, fontWeight: Number(style.fontWeight), borderRadius: style.borderRadius };
   });
-  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop Generate action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
+  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop primary action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
   await shot(desktop, '01-create-image-centered.png');
   await shot(desktop, '01b-generate-primary.png');
   await primarySubmit.focus();
-  await expectStrongFocus(primarySubmit, 'Generate primary action');
+  await expectStrongFocus(primarySubmit, 'Image setup primary action');
 
   // Image picker keyboard, morphing and outside dismissal.
   const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
@@ -202,7 +202,7 @@ try {
   await aspectTrigger.click();
   await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
 
-  // Advanced settings in original Image mode must not expose controls with no live workflow.
+  // Image setup Advanced must expose the real FLUX controls that will be used after a reference is attached.
   const settingsButton = desktop.getByRole('button', { name: 'Advanced settings', exact: true });
   await settingsButton.click();
   const advanced = desktop.locator('.saga-advanced-panel');
@@ -211,9 +211,10 @@ try {
   const panelBox = await advanced.boundingBox();
   const viewport = desktop.viewportSize();
   if (!panelBox || !viewport || panelBox.x < 8 || panelBox.y < 8 || panelBox.x + panelBox.width > viewport.width - 8 || panelBox.y + panelBox.height > viewport.height - 8) throw new Error(`Advanced panel out of viewport: ${JSON.stringify(panelBox)}`);
-  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });
-  if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('Disconnected Image mode still exposes Steps');
-  if (await advanced.locator('input[aria-label="CFG value"]').count()) throw new Error('Disconnected Image mode still exposes CFG');
+  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
+  await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
   await shot(desktop, '03-advanced-custom-dropdown.png');
   await settingsButton.click();
   await expectHidden(advanced, 'Advanced settings');
@@ -290,7 +291,7 @@ try {
   await expectText(desktop.getByRole('button', { name: 'Video duration 23 seconds', exact: true }), '23s', 'Persisted video duration');
   if (await desktop.locator('.saga-audio-toggle').getAttribute('aria-pressed') !== 'false') throw new Error('Persisted audio state did not remain muted');
 
-  // Switch back to Image and verify image canvas preferences persist while inert sampling stays hidden.
+  // Switch back to Image and verify canvas preferences persist while the live FLUX setup controls remain available.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
   await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');
   const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';
@@ -298,15 +299,21 @@ try {
   await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });
-  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
+  await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
+  if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');
   await settingsButton.click();
 
-  // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.
-  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  // The single primary Image CTA attaches the first reference; Edit then exposes + for additional references.
+  if (await desktop.getByRole('button', { name: 'Upload reference images', exact: true }).count()) throw new Error('Image setup exposes a duplicate secondary upload action');
   const chooserPromise = desktop.waitForEvent('filechooser');
-  await upload.click();
+  await primarySubmit.click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
+  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  await upload.waitFor({ state: 'visible' });
   const secondChooserPromise = desktop.waitForEvent('filechooser');
   await upload.click();
   const secondChooser = await secondChooserPromise;
@@ -326,12 +333,18 @@ try {
   if (await mentions.count() !== 2) throw new Error('Reference clicks did not insert both inline prompt tags');
   const promptText = (await richPrompt.innerText()).replace(/\s+/g, ' ').trim();
   if (!/Put\s+Image 1\s+beside\s+Image 2\s+behind the subject/i.test(promptText)) throw new Error(`Reference tags were not inserted at the caret: ${promptText}`);
-  const autoToggle = desktop.locator('.saga-auto-toggle');
-  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not start enabled');
-  await autoToggle.click();
-  if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');
-  await autoToggle.click();
-  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');
+  if (await desktop.locator('.saga-auto-toggle').count()) throw new Error('Edit exposes a duplicate standalone Auto control');
+  const editAspectTrigger = desktop.locator('.saga-shared-aspect-trigger');
+  await expectText(editAspectTrigger, 'Canvas · Auto', 'Edit automatic canvas trigger');
+  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Edit Auto should not expose a second resolution Auto control');
+  await editAspectTrigger.click();
+  const editAspectMenu = desktop.locator('.saga-aspect-picker');
+  await editAspectMenu.waitFor({ state: 'visible' });
+  await editAspectMenu.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
+  await desktop.locator('.saga-resolution-trigger').waitFor({ state: 'visible' });
+  await editAspectTrigger.click();
+  await editAspectMenu.getByRole('menuitemradio', { name: /Auto/i }).click();
+  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Returning to Edit Auto did not collapse manual resolution control');
 
   // FLUX Advanced defaults are real production values and Reset restores them.
   await settingsButton.click();
@@ -363,16 +376,7 @@ try {
   if (/@Image\s+\d+/i.test(cleanedPrompt)) throw new Error(`Stale reference tag remains after removing all references: ${cleanedPrompt}`);
   await shot(desktop, '06b-reference-removal-cleanup.png');
 
-  // Tools is the clarified sidebar destination for additional creation utilities, and Create returns to the compact image composer.
-  await desktop.getByRole('button', { name: 'Tools', exact: true }).click();
-  await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });
-  await desktop.getByRole('heading', { name: 'Creation tools', exact: true }).waitFor({ state: 'visible' });
-  await desktop.locator('.saga-more-panel').getByText('Additional tools', { exact: true }).waitFor({ state: 'visible' });
-  if ((await desktop.locator('.saga-create-stage').innerText()).includes('More tools')) throw new Error('Ambiguous More terminology remains on the Tools destination');
-  await shot(desktop, '07-tools-sidebar.png');
-  await desktop.getByRole('button', { name: 'Create', exact: true }).click();
-  await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
-
+  // Placeholder Tools navigation was removed; continue directly with the real Create output wall.
   // Output wall uses equal-width masonry cards, full-bleed frames and one-row aligned hover actions.
   const slots = desktop.locator('.saga-output-slot');
   if (await slots.count() < 4) throw new Error(`Output wall should render four review outputs, got ${await slots.count()}`);
@@ -406,6 +410,12 @@ try {
   }
   if (new Set(buttonYs).size > 1) throw new Error(`Output action buttons wrap to multiple rows: ${buttonYs.join(',')}`);
   await shot(desktop, '08-output-wall-hover.png');
+  const animateAction = cardActions.getByRole('button', { name: 'Animate this', exact: true });
+  await animateAction.waitFor({ state: 'visible' });
+  await animateAction.click();
+  await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible', timeout: 3000 });
+  await desktop.locator('.saga-reference-chip').waitFor({ state: 'visible', timeout: 3000 });
+  await shot(desktop, '08b-output-animate.png');
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(mobile, 'mobile');
@@ -413,9 +423,9 @@ try {
   const mobileSubmit = mobile.locator('.saga-submit');
   await mobileSubmit.waitFor({ state: 'visible' });
   if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
-  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');
+  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');
   const mobileSubmitBox = await mobileSubmit.boundingBox();
-  if (!mobileSubmitBox || mobileSubmitBox.width > 40 || mobileSubmitBox.height > 40 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action is not compact/circular: ${JSON.stringify(mobileSubmitBox)}`);
+  if (!mobileSubmitBox || mobileSubmitBox.width < 44 || mobileSubmitBox.height < 44 || mobileSubmitBox.width > 48 || mobileSubmitBox.height > 48 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action does not provide a compact 44px touch target: ${JSON.stringify(mobileSubmitBox)}`);
   await shot(mobile, '09-mobile-create.png');
 
   if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);

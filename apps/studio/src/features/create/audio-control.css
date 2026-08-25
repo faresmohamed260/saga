@@ -50,10 +50,11 @@
 
 @media (max-width: 720px) {
   .workspace .saga-toolbar .saga-audio-toggle {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    flex-basis: 32px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    flex: 0 0 44px;
   }
 
 

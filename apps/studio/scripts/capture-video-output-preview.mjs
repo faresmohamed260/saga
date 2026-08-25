@@ -61,7 +61,8 @@ try {
   const closeAdvanced = advanced.getByRole('button', { name: 'Close advanced settings', exact: true });
   await advanced.getByText('REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', { exact: true }).waitFor({ state: 'visible' });
   const fixedSteps = advanced.locator('[data-ltx-fixed-steps="11"]');
-  if (!/11\s+8 \+ 3/.test((await fixedSteps.innerText()).replace(/\s+/g, ' '))) throw new Error(`LTX fixed recipe is unclear: ${await fixedSteps.innerText()}`);
+  const fixedStepText = (await fixedSteps.innerText()).replace(/\s+/g, ' ');
+  if (!/Steps\s+Fixed distilled two-stage schedule\s+11/.test(fixedStepText) || /8\s*\+\s*3/.test(fixedStepText)) throw new Error(`LTX fixed recipe is unclear: ${await fixedSteps.innerText()}`);
   const cfg = advanced.locator('input[aria-label="CFG value"]');
   if (await cfg.inputValue() !== '1') throw new Error(`LTX CFG default is not 1.0: ${await cfg.inputValue()}`);
   if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('LTX exposes an editable Steps control despite its fixed custom-sigma recipe');

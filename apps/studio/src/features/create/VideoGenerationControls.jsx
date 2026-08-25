@@ -228,7 +228,8 @@ export function VideoGenerationProgress({ busy, status, workerStatus, activeJob,
   }, [busy, status]);
 
   if (!busy && !showTerminal) return null;
-  const normalized = workerStatus?.state || status || (busy ? 'submitting' : 'completed');
+  const terminalStatus = !busy && ['completed', 'failed', 'cancelled'].includes(status) ? status : '';
+  const normalized = terminalStatus || workerStatus?.state || status || (busy ? 'submitting' : 'completed');
   const [baseTitle, baseDetail] = STATUS_COPY[normalized] || STATUS_COPY.running;
   const workerName = workerStatus?.displayName || '';
   const failedWorkers = Array.isArray(workerStatus?.failedWorkers) ? workerStatus.failedWorkers : [];

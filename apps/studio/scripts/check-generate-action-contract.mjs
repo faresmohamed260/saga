@@ -13,7 +13,7 @@ function requireSource(source, needle, label) {
 
 requireSource(
   controls,
-  '<span className="saga-submit-label">{isEdit ? \'Edit\' : \'Generate\'}</span>',
+  '<span className="saga-submit-label">{isImageSetup ? \'Add image\' : isEdit ? \'Edit\' : \'Generate\'}</span>',
   'visible desktop verb markup',
 );
 requireSource(css, 'min-width:112px;height:38px', 'promoted desktop dimensions');
@@ -22,7 +22,7 @@ requireSource(css, '.workspace .saga-submit:focus-visible{outline:var(--saga-foc
 requireSource(tokens, '--saga-focus-ring: 2px solid var(--saga-color-accent-soft);', 'shared focus-ring token');
 requireSource(css, '.workspace .saga-submit-label{display:none}', 'compact mobile label collapse');
 requireSource(css, 'width:36px;height:36px;min-width:36px;flex-basis:36px', 'compact mobile submit geometry');
-requireSource(visual, "Desktop primary action does not expose the Generate verb", 'desktop Playwright assertion');
+requireSource(visual, "Image setup primary action must request a real reference image", 'desktop Playwright assertion');
 requireSource(visual, "Mobile Generate action should collapse its text label", 'mobile Playwright assertion');
 requireSource(visual, "Edit mode primary action does not expose its principal Edit verb", 'Edit-mode Playwright assertion');
 

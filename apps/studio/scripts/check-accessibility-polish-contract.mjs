@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 
-const [tokens, gallery, galleryView, polish] = await Promise.all([
+const [tokens, gallery, galleryView, polish, app] = await Promise.all([
   readFile(new URL('../src/design-tokens.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/gallery-controls.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/features/library/GalleryView.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/studio-polish.css', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/App.jsx', import.meta.url), 'utf8'),
 ]);
 
 function requireSource(source, needle, label) {
@@ -23,5 +24,6 @@ requireSource(galleryView, 'aria-label="Type"', 'media filter accessible naming'
 requireSource(galleryView, 'aria-pressed={managing}', 'Manage state semantics');
 requireSource(gallery, 'font-weight:700;', 'non-color selected-state emphasis');
 requireSource(gallery, 'box-shadow:inset 0 -2px 0 var(--saga-color-accent-soft)', 'selected-state shape cue');
+requireSource(app, "setSection('Create'); setSettingsOpen(true)", 'global generation-settings action routes to Create before opening Advanced');
 
 console.log('Typography, contrast, focus, and non-color state accessibility contract passed.');
