@@ -19,15 +19,23 @@ jobs:
       CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
       CIVITAI_MODEL_ID: "2246542"
       REQUESTED_VERSION_ID: "2553500"
+      REQUESTED_FILE_ID: "2443737"
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect available Qwen checkpoint versions
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install probe dependency
+        run: python -m pip install --upgrade "requests>=2.32,<3"
+      - name: Inspect available Qwen checkpoint versions and download routes
         shell: bash
         run: |
           python - <<'PY'
           import json
           import os
-          import urllib.request
+          from urllib.parse import urlsplit
+
+          import requests
 
           token = os.environ.get('CIVITAI_API_TOKEN', '').strip()
           if not token:
@@ -35,16 +43,27 @@ jobs:
 
           model_id = os.environ['CIVITAI_MODEL_ID']
           requested = int(os.environ['REQUESTED_VERSION_ID'])
-          req = urllib.request.Request(
+          requested_file_id = int(os.environ['REQUESTED_FILE_ID'])
+          session = requests.Session()
+          common_headers = {
+              'Accept': 'application/json',
+              'User-Agent': 'saga-qwen-checkpoint-probe/2.0',
+          }
+          model_response = session.get(
               f'https://civitai.com/api/v1/models/{model_id}',
-              headers={
-                  'Authorization': f'Bearer {token}',
-                  'Accept': 'application/json',
-                  'User-Agent': 'saga-qwen-checkpoint-probe/1.0',
-              },
+              headers={**common_headers, 'Authorization': f'Bearer {token}'},
+              timeout=60,
           )
-          with urllib.request.urlopen(req, timeout=60) as response:
-              payload = json.load(response)
+          model_response.raise_for_status()
+          payload = model_response.json()
+
+          version_response = session.get(
+              f'https://civitai.com/api/v1/model-versions/{requested}',
+              headers={**common_headers, 'Authorization': f'Bearer {token}'},
+              timeout=60,
+          )
+          version_response.raise_for_status()
+          version_payload = version_response.json()
 
           versions = []
           selected = None
@@ -62,6 +81,7 @@ jobs:
                       'size': metadata.get('size'),
                       'format': metadata.get('format'),
                       'sha256': (item.get('hashes') or {}).get('SHA256'),
+                      'downloadUrl': item.get('downloadUrl'),
                       'primary': bool(item.get('primary')),
                   }
                   files.append(row)
@@ -70,6 +90,7 @@ jobs:
                   'name': version.get('name'),
                   'baseModel': version.get('baseModel'),
                   'createdAt': version.get('createdAt'),
+                  'downloadUrl': version.get('downloadUrl'),
                   'files': files,
               }
               versions.append(row)
@@ -78,11 +99,86 @@ jobs:
               if selected is None and any(str(f.get('fp') or '').lower() == 'fp16' for f in files):
                   selected = row
 
+          current_files = []
+          requested_file = None
+          for item in version_payload.get('files') or []:
+              metadata = item.get('metadata') or {}
+              row = {
+                  'id': item.get('id'),
+                  'name': item.get('name'),
+                  'type': item.get('type'),
+                  'sizeKB': item.get('sizeKB'),
+                  'fp': metadata.get('fp'),
+                  'size': metadata.get('size'),
+                  'format': metadata.get('format'),
+                  'sha256': (item.get('hashes') or {}).get('SHA256'),
+                  'downloadUrl': item.get('downloadUrl'),
+                  'primary': bool(item.get('primary')),
+              }
+              current_files.append(row)
+              if row['id'] == requested_file_id:
+                  requested_file = row
+          if not requested_file:
+              raise SystemExit(f'Expected Civitai file id {requested_file_id} was not returned by the live version endpoint')
+
+          def clean_location(url):
+              parsed = urlsplit(str(url or ''))
+              return {'host': parsed.netloc, 'path': parsed.path}
+
+          def route_probe(name, url, headers):
+              try:
+                  response = requests.get(
+                      url,
+                      headers={**headers, 'Range': 'bytes=0-0', 'User-Agent': 'saga-qwen-checkpoint-probe/2.0'},
+                      stream=True,
+                      allow_redirects=True,
+                      timeout=(30, 90),
+                  )
+                  first = response.raw.read(1)
+                  history = [
+                      {'status': item.status_code, **clean_location(item.url)}
+                      for item in response.history
+                  ]
+                  result = {
+                      'name': name,
+                      'status': response.status_code,
+                      'final': clean_location(response.url),
+                      'history': history,
+                      'contentLength': response.headers.get('Content-Length'),
+                      'contentRange': response.headers.get('Content-Range'),
+                      'contentType': response.headers.get('Content-Type'),
+                      'contentDisposition': response.headers.get('Content-Disposition'),
+                      'acceptRanges': response.headers.get('Accept-Ranges'),
+                      'firstByteRead': len(first),
+                  }
+                  response.close()
+                  return result
+              except requests.RequestException as exc:
+                  return {
+                      'name': name,
+                      'errorType': type(exc).__name__,
+                      'status': getattr(getattr(exc, 'response', None), 'status_code', None),
+                  }
+
+          advertised = requested_file.get('downloadUrl') or version_payload.get('downloadUrl') or f'https://civitai.com/api/download/models/{requested}'
+          routes = [
+              route_probe('bearer-advertised-url', advertised, {'Authorization': f'Bearer {token}'}),
+              route_probe('query-token-advertised-url', f'{advertised}{"&" if "?" in advertised else "?"}token={token}', {}),
+          ]
+
           summary = {
               'modelId': payload.get('id'),
               'modelName': payload.get('name'),
               'requestedVersion': requested_row,
+              'liveRequestedVersion': {
+                  'id': version_payload.get('id'),
+                  'name': version_payload.get('name'),
+                  'downloadUrl': version_payload.get('downloadUrl'),
+                  'files': current_files,
+              },
+              'requestedFile': requested_file,
               'firstFp16Candidate': selected,
+              'routes': routes,
               'versions': versions,
           }
           print(json.dumps(summary, indent=2, sort_keys=True))
