@@ -2,14 +2,14 @@ import { readFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 const [ecosystemsRaw, workflows, presets, workspace, controller, client, runtime, gateway, registry] = await Promise.all([
-  readFile(new URL('../../../config/modal-worker-ecosystems.json', root), 'utf8'),
+  readFile(new URL('../../config/modal-worker-ecosystems.json', root), 'utf8'),
   readFile(new URL('api/_workflows.js', root), 'utf8'),
   readFile(new URL('src/features/create/model-presets.js', root), 'utf8'),
   readFile(new URL('src/features/create/CreateWorkspace.jsx', root), 'utf8'),
   readFile(new URL('src/hooks/useGenerationController.js', root), 'utf8'),
   readFile(new URL('src/features/create/qwen-generation-client.js', root), 'utf8'),
-  readFile(new URL('../../../integrations/qwen/qwen_image_edit_2511_app.py', root), 'utf8'),
-  readFile(new URL('../../../integrations/qwen/qwen_image_edit_2511_gateway.py', root), 'utf8'),
+  readFile(new URL('../../integrations/qwen/qwen_image_edit_2511_app.py', root), 'utf8'),
+  readFile(new URL('../../integrations/qwen/qwen_image_edit_2511_gateway.py', root), 'utf8'),
   readFile(new URL('api/_worker-registry.js', root), 'utf8'),
 ]);
 
@@ -24,8 +24,8 @@ expect(workflows.includes("'qwen-image-edit-2511'") && workflows.includes("ecosy
 expect(workflows.includes('steps: 40') && workflows.includes('cfg: 4.0'), 'Qwen workflow must use official 40-step / CFG 4 defaults');
 expect(presets.includes("modelLabel: 'Qwen Image Edit 2511 · Official BF16'") && presets.includes("stepsDetail: '40 official inference steps'"), 'Qwen UI preset must identify official BF16 recipe');
 expect(workspace.includes('aria-label="Image model"') && workspace.includes('>FLUX</button>') && workspace.includes('>Qwen</button>'), 'Image/Edit UI must expose FLUX and Qwen model selection');
-expect(workspace.includes("setActiveImageModel(nextModel)") && workspace.includes('imageModel,'), 'Selected image model must drive generation and Advanced settings');
-expect(controller.includes("runQwenImageEdit") && controller.includes("generationOptions.imageModel"), 'Generation controller must route Qwen explicitly');
+expect(workspace.includes('setActiveImageModel(nextModel)') && workspace.includes('imageModel,'), 'Selected image model must drive generation and Advanced settings');
+expect(controller.includes('runQwenImageEdit') && controller.includes('generationOptions.imageModel'), 'Generation controller must route Qwen explicitly');
 expect(client.includes("workflowId: 'qwen-image-edit-2511'"), 'Qwen client must submit the Qwen workflow id');
 expect(runtime.includes('MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"'), 'Qwen worker must use the official repository');
 expect(runtime.includes('QwenImageEditPlusPipeline') && runtime.includes('torch_dtype=torch.bfloat16'), 'Qwen worker must load the official BF16 Diffusers pipeline');
