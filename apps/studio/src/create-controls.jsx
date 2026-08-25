@@ -616,7 +616,7 @@ function AdvancedSettings({
               ) : (
                 <div className="saga-fixed-setting" data-ltx-fixed-steps="11">
                   <div><strong>Steps</strong><small>Fixed distilled two-stage schedule</small></div>
-                  <span>11 <small>8 + 3</small></span>
+                  <span>11</span>
                 </div>
               )}
               <RangeField label="CFG" help={isVideo ? 'Distilled default is 1.0' : 'Prompt guidance strength'} value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1} />
