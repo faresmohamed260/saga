@@ -1,0 +1,189 @@
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old not in text:
+        raise SystemExit(f"missing patch anchor: {label}")
+    return text.replace(old, new, 1)
+
+
+controls = Path("apps/studio/src/create-controls.jsx")
+text = controls.read_text(encoding="utf-8")
+text = replace_once(
+    text,
+    "  const settingsButtonRef = useRef(null);\n  const modeEffectMountedRef = useRef(false);",
+    "  const settingsButtonRef = useRef(null);\n  const modeEffectMountedRef = useRef(false);\n  const dragDepthRef = useRef(0);",
+    "drag depth ref",
+)
+text = replace_once(
+    text,
+    "  const [preferencesReady, setPreferencesReady] = useState(false);\n  const autoBaselineRef = useRef(null);",
+    "  const [preferencesReady, setPreferencesReady] = useState(false);\n  const [dragActive, setDragActive] = useState(false);\n  const autoBaselineRef = useRef(null);",
+    "drag active state",
+)
+text = replace_once(
+    text,
+    "  const addReferenceFiles = (files) => {\n    if (!files.length) return;\n    onAddReferences(files);\n    setAspectOpen(false);\n    setResolutionOpen(false);\n    setVideoResolutionOpen(false);\n    setDurationOpen(false);\n    setSettingsOpen(false);\n  };\n\n\n  return (",
+    "  const addReferenceFiles = (files) => {\n    const accepted = Array.from(files || []).filter((file) => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type));\n    if (!accepted.length) return;\n    onAddReferences(accepted);\n    setAspectOpen(false);\n    setResolutionOpen(false);\n    setVideoResolutionOpen(false);\n    setDurationOpen(false);\n    setSettingsOpen(false);\n  };\n\n  const hasDraggedFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');\n  const handleReferenceDragEnter = (event) => {\n    if (!hasDraggedFiles(event)) return;\n    event.preventDefault();\n    dragDepthRef.current += 1;\n    setDragActive(true);\n  };\n  const handleReferenceDragOver = (event) => {\n    if (!hasDraggedFiles(event)) return;\n    event.preventDefault();\n    event.dataTransfer.dropEffect = 'copy';\n  };\n  const handleReferenceDragLeave = (event) => {\n    if (!dragActive) return;\n    event.preventDefault();\n    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);\n    if (dragDepthRef.current === 0) setDragActive(false);\n  };\n  const handleReferenceDrop = (event) => {\n    if (!hasDraggedFiles(event)) return;\n    event.preventDefault();\n    dragDepthRef.current = 0;\n    setDragActive(false);\n    addReferenceFiles(event.dataTransfer?.files);\n  };\n\n\n  return (",
+    "drop handlers",
+)
+text = replace_once(
+    text,
+    "        <section className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''}`}>",
+    "        <section\n          className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''} ${dragActive ? 'is-dragging' : ''}`}\n          onDragEnter={handleReferenceDragEnter}\n          onDragOver={handleReferenceDragOver}\n          onDragLeave={handleReferenceDragLeave}\n          onDrop={handleReferenceDrop}\n        >\n          {dragActive && (\n            <div className=\"saga-drop-overlay\" aria-hidden=\"true\">\n              <Plus size={24} />\n              <strong>Drop images to upload</strong>\n              <span>PNG, JPG, or WebP</span>\n            </div>\n          )}",
+    "composer drop surface",
+)
+text = replace_once(
+    text,
+    "              {!isImageSetup && (\n              <button type=\"button\" className=\"saga-round-button\" title=\"Upload reference images\" aria-label=\"Upload reference images\" onClick={() => referenceInputRef.current?.click()}>\n                <Plus size={21} />\n              </button>\n              )}",
+    "              <button type=\"button\" className=\"saga-round-button\" title=\"Upload reference images\" aria-label=\"Upload reference images\" onClick={() => referenceInputRef.current?.click()}>\n                <Plus size={21} />\n              </button>",
+    "shared round plus",
+)
+old_submit = """              <button
+                type=\"button\"
+                className=\"saga-submit\"
+                title={isImageSetup ? 'Add a reference image to start editing' : isEdit ? 'Edit image' : 'Generate video'}
+                aria-label={isImageSetup ? 'Add reference image' : isEdit ? 'Edit image' : 'Generate video'}
+                onClick={() => {
+                  if (isImageSetup) {
+                    referenceInputRef.current?.click();
+                    return;
+                  }
+                  onGenerate({ videoResolution, videoDuration, videoAudio });
+                }}
+                disabled={busy || (isEdit && references.length === 0)}
+              >
+                <span className=\"saga-submit-label\">{isImageSetup ? 'Add image' : isEdit ? 'Edit' : 'Generate'}</span>
+                {isImageSetup ? <Plus size={18} aria-hidden=\"true\" /> : <ArrowUp size={18} aria-hidden=\"true\" />}
+              </button>"""
+new_submit = """              {!isImageSetup && (
+              <button
+                type=\"button\"
+                className=\"saga-submit\"
+                title={isEdit ? 'Edit image' : 'Generate video'}
+                aria-label={isEdit ? 'Edit image' : 'Generate video'}
+                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
+                disabled={busy || (isEdit && references.length === 0)}
+              >
+                <span className=\"saga-submit-label\">{isEdit ? 'Edit' : 'Generate'}</span>
+                <ArrowUp size={18} aria-hidden=\"true\" />
+              </button>
+              )}"""
+text = replace_once(text, old_submit, new_submit, "remove image add submit")
+controls.write_text(text, encoding="utf-8")
+
+css = Path("apps/studio/src/create-workspace-v2.css")
+css_text = css.read_text(encoding="utf-8")
+css_text = replace_once(
+    css_text,
+    ".workspace .saga-composer.is-edit{\n  border-color:#30294b;\n}\n.workspace .saga-prompt-shell{",
+    ".workspace .saga-composer.is-edit{\n  border-color:#30294b;\n}\n.workspace .saga-composer.is-dragging{\n  border-color:#7868d7;\n  box-shadow:0 18px 58px rgba(0,0,0,.34),0 0 0 2px rgba(137,113,255,.16);\n}\n.workspace .saga-drop-overlay{\n  position:absolute;\n  inset:0;\n  z-index:20;\n  display:flex;\n  flex-direction:column;\n  align-items:center;\n  justify-content:center;\n  gap:5px;\n  min-height:100%;\n  border-radius:inherit;\n  background:rgba(14,17,24,.9);\n  color:#f2efff;\n  pointer-events:none;\n  backdrop-filter:blur(7px);\n}\n.workspace .saga-drop-overlay svg{color:#a99aff}\n.workspace .saga-drop-overlay strong{font-size:var(--saga-text-base);font-weight:800}\n.workspace .saga-drop-overlay span{color:#8d96a7;font-size:var(--saga-text-xs)}\n.workspace .saga-prompt-shell{",
+    "drop overlay styles",
+)
+css.write_text(css_text, encoding="utf-8")
+
+audit = Path("apps/studio/scripts/check-ui-audit-contract.mjs")
+audit_text = audit.read_text(encoding="utf-8")
+audit_text = replace_once(
+    audit_text,
+    "expect(controls.includes(\"isImageSetup ? 'Add image'\"), 'Disconnected text-to-image Generate CTA must be replaced by a real add-reference action');",
+    "expect(!controls.includes(\"isImageSetup ? 'Add image'\"), 'Image setup must not use a wide Add image submit CTA');\nexpect(controls.includes('className=\"saga-round-button\"') && !controls.includes('{!isImageSetup && ('), 'Image and Video must share the circular upload affordance');\nexpect(controls.includes('onDrop={handleReferenceDrop}') && controls.includes('Drop images to upload'), 'Create composer must support image drag-and-drop');",
+    "audit upload contract",
+)
+audit.write_text(audit_text, encoding="utf-8")
+
+generate = Path("apps/studio/scripts/check-generate-action-contract.mjs")
+generate_text = generate.read_text(encoding="utf-8")
+old_req = """requireSource(
+  controls,
+  '<span className=\"saga-submit-label\">{isImageSetup ? \\'Add image\\' : isEdit ? \\'Edit\\' : \\'Generate\\'}</span>',
+  'visible desktop verb markup',
+);"""
+new_req = """requireSource(controls, 'className=\"saga-round-button\"', 'shared circular reference-upload action');
+requireSource(controls, 'onDrop={handleReferenceDrop}', 'composer file-drop handler');
+requireSource(controls, 'Drop images to upload', 'drag-over upload affordance');
+requireSource(controls, '<span className=\"saga-submit-label\">{isEdit ? \\'Edit\\' : \\'Generate\\'}</span>', 'connected generation verb markup');"""
+generate_text = replace_once(generate_text, old_req, new_req, "generate source contract")
+generate_text = generate_text.replace(
+    "requireSource(visual, \"Image setup primary action must request a real reference image\", 'desktop Playwright assertion');",
+    "requireSource(visual, \"Image setup circular upload action is missing\", 'desktop circular-upload assertion');",
+)
+generate_text = generate_text.replace(
+    "requireSource(visual, \"Mobile Generate action should collapse its text label\", 'mobile Playwright assertion');",
+    "requireSource(visual, \"Mobile circular upload action does not provide a 44px touch target\", 'mobile circular-upload assertion');",
+)
+generate.write_text(generate_text, encoding="utf-8")
+
+visual = Path("apps/studio/scripts/capture-ui-preview.mjs")
+visual_text = visual.read_text(encoding="utf-8")
+old_initial = """  const primarySubmit = desktop.locator('.saga-submit');
+  await primarySubmit.waitFor({ state: 'visible' });
+  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Add image') throw new Error('Image setup primary action must request a real reference image');
+  if (await primarySubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Image setup primary action lost its accessible name');
+  const primarySubmitBox = await primarySubmit.boundingBox();
+  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop primary action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
+  const primarySubmitStyle = await primarySubmit.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { display: style.display, fontWeight: Number(style.fontWeight), borderRadius: style.borderRadius };
+  });
+  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop primary action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
+  await shot(desktop, '01-create-image-centered.png');
+  await shot(desktop, '01b-generate-primary.png');
+  await primarySubmit.focus();
+  await expectStrongFocus(primarySubmit, 'Image setup primary action');"""
+new_initial = """  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  await upload.waitFor({ state: 'visible' });
+  if (await desktop.locator('.saga-submit').count()) throw new Error('Image setup still exposes a wide submit-style Add image action');
+  const uploadBox = await upload.boundingBox();
+  if (!uploadBox || Math.abs(uploadBox.width - uploadBox.height) > 1 || uploadBox.width < 36) throw new Error(`Image setup circular upload action is missing: ${JSON.stringify(uploadBox)}`);
+  await shot(desktop, '01-create-image-centered.png');
+  await shot(desktop, '01b-generate-primary.png');
+  await upload.focus();
+  await expectStrongFocus(upload, 'Image setup circular upload action');"""
+visual_text = replace_once(visual_text, old_initial, new_initial, "desktop initial upload assertion")
+old_attach = """  // The single primary Image CTA attaches the first reference; Edit then exposes + for additional references.
+  if (await desktop.getByRole('button', { name: 'Upload reference images', exact: true }).count()) throw new Error('Image setup exposes a duplicate secondary upload action');
+  const chooserPromise = desktop.waitForEvent('filechooser');
+  await primarySubmit.click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
+  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  await upload.waitFor({ state: 'visible' });
+  const secondChooserPromise = desktop.waitForEvent('filechooser');
+  await upload.click();"""
+new_attach = """  // Drag/drop attaches the first reference; the same circular + remains available for additional references.
+  const composer = desktop.locator('.saga-composer');
+  await composer.evaluate((element, encoded) => {
+    const bytes = Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+    const file = new File([bytes], 'reference.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    window.__sagaReferenceDropTransfer = transfer;
+    element.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, referencePng.toString('base64'));
+  await desktop.locator('.saga-drop-overlay').waitFor({ state: 'visible' });
+  await expectText(desktop.locator('.saga-drop-overlay'), 'Drop images to upload', 'Drag-over upload affordance');
+  await composer.evaluate((element) => {
+    element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__sagaReferenceDropTransfer }));
+    delete window.__sagaReferenceDropTransfer;
+  });
+  await desktop.locator('.saga-composer.is-edit').waitFor({ state: 'visible' });
+  await upload.waitFor({ state: 'visible' });
+  const secondChooserPromise = desktop.waitForEvent('filechooser');
+  await upload.click();"""
+visual_text = replace_once(visual_text, old_attach, new_attach, "real drag-drop browser flow")
+old_mobile = """  const mobileSubmit = mobile.locator('.saga-submit');
+  await mobileSubmit.waitFor({ state: 'visible' });
+  if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
+  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');
+  const mobileSubmitBox = await mobileSubmit.boundingBox();
+  if (!mobileSubmitBox || mobileSubmitBox.width < 44 || mobileSubmitBox.height < 44 || mobileSubmitBox.width > 48 || mobileSubmitBox.height > 48 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action does not provide a compact 44px touch target: ${JSON.stringify(mobileSubmitBox)}`);
+  await shot(mobile, '09-mobile-create.png');"""
+new_mobile = """  const mobileUpload = mobile.getByRole('button', { name: 'Upload reference images', exact: true });
+  await mobileUpload.waitFor({ state: 'visible' });
+  if (await mobile.locator('.saga-submit').count()) throw new Error('Mobile Image setup still exposes a separate Add image submit action');
+  const mobileUploadBox = await mobileUpload.boundingBox();
+  if (!mobileUploadBox || mobileUploadBox.width < 44 || mobileUploadBox.height < 44 || mobileUploadBox.width > 48 || mobileUploadBox.height > 48 || Math.abs(mobileUploadBox.width - mobileUploadBox.height) > 1) throw new Error(`Mobile circular upload action does not provide a 44px touch target: ${JSON.stringify(mobileUploadBox)}`);
+  await shot(mobile, '09-mobile-create.png');"""
+visual_text = replace_once(visual_text, old_mobile, new_mobile, "mobile circular upload assertion")
+visual.write_text(visual_text, encoding="utf-8")
