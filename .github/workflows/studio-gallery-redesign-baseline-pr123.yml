@@ -1,0 +1,71 @@
+name: Studio Gallery Redesign Baseline PR123
+
+on:
+  push:
+    branches:
+      - studio/automatic-refresh-video-recovery
+    paths:
+      - .github/workflows/studio-gallery-redesign-baseline-pr123.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/studio
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/automatic-refresh-video-recovery
+      - name: Remove legacy mobile manager pseudo-labels
+        run: |
+          if ! grep -q 'gallery-manager button::after{content:none!important}' src/gallery-library-redesign.css; then
+            printf '\n@media(max-width:760px){.gallery-manager button::after{content:none!important}}\n' >> src/gallery-library-redesign.css
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Install Studio dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build Studio
+        run: npm run build
+      - name: Start runner preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+      - name: Capture corrected Gallery surfaces
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:preview
+      - name: Approve Gallery redesign baselines
+        run: |
+          cp visual-preview/10-gallery-grid.png visual-baselines/10-gallery-grid.png
+          cp visual-preview/10b-gallery-keyboard-focus.png visual-baselines/10b-gallery-keyboard-focus.png
+          cp visual-preview/14-gallery-mobile-manager.png visual-baselines/14-gallery-mobile-manager.png
+      - name: Commit corrected Gallery UI and baselines
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/studio/src/gallery-library-redesign.css \
+            apps/studio/visual-baselines/10-gallery-grid.png \
+            apps/studio/visual-baselines/10b-gallery-keyboard-focus.png \
+            apps/studio/visual-baselines/14-gallery-mobile-manager.png
+          git diff --cached --quiet && exit 0
+          git commit -m "test(studio): approve responsive Gallery redesign"
+          git push origin HEAD:studio/automatic-refresh-video-recovery
