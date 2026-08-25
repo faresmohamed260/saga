@@ -52,8 +52,7 @@ try {
   if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('LTX exposes an editable Steps control despite its fixed custom-sigma recipe');
 
   const aspect = advanced.getByRole('button', { name: 'Video aspect', exact: true });
-  const fps = advanced.locator('.saga-fancy-select').filter({ has: advanced.getByRole('button', { name: 'Video frame rate', exact: true }) });
-  const fpsTrigger = fps.locator(':scope > button');
+  const fpsTrigger = advanced.getByRole('button', { name: 'Video frame rate', exact: true });
   if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`LTX Auto aspect default is wrong: ${await aspect.innerText()}`);
   if (!(await fpsTrigger.innerText()).includes('24 fps')) throw new Error(`LTX FPS default is not 24: ${await fpsTrigger.innerText()}`);
   await page.screenshot({ path: path.join(outputDir, '05b-video-output-controls.png'), fullPage: true, animations: 'disabled' });
