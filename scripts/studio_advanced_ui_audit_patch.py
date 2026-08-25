@@ -578,12 +578,11 @@ def phase_preview_contract() -> None:
             text = text.replace(marker, check + marker, 1)
     contract_path = "apps/studio/scripts/check-generate-action-contract.mjs"
     contract = read(contract_path)
-    contract = replace_once(
-        contract,
-        '<span className="saga-submit-label">{isEdit ? \'Edit\' : \'Generate\'}</span>',
-        '<span className="saga-submit-label">{isImageSetup ? \'Add image\' : isEdit ? \'Edit\' : \'Generate\'}</span>',
-        "update primary action source contract",
-    )
+    old_primary = "{isEdit ? \\'Edit\\' : \\'Generate\\'}"
+    new_primary = "{isImageSetup ? \\'Add image\\' : isEdit ? \\'Edit\\' : \\'Generate\\'}"
+    if contract.count(old_primary) != 1:
+        raise RuntimeError(f"update primary action source contract: expected one escaped markup match, found {contract.count(old_primary)}")
+    contract = contract.replace(old_primary, new_primary, 1)
     contract = replace_once(
         contract,
         "Desktop primary action does not expose the Generate verb",
