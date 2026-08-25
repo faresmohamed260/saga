@@ -34,11 +34,9 @@ for _name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
         _runtime_secret_values[_name] = _value
 RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
 
-# Match Modal's production image-to-image CUDA pattern: a CUDA 12.8 base plus
-# CUDA-specific PyTorch wheels. Qwen's official model card requires a current
-# Diffusers QwenImageEditPlusPipeline. Transformers stays below 5.x because the
-# current Diffusers Qwen edit path has a known multimodal token compatibility
-# issue with Transformers 5.x; model weights and BF16 precision are unchanged.
+# Use the released library versions matching the checkpoint's own serialization
+# metadata (Diffusers 0.36.x / Transformers 4.57.1) rather than tracking Git HEAD.
+# The model weights remain the official BF16 checkpoint.
 image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.8.1-devel-ubuntu22.04",
@@ -50,12 +48,12 @@ image = (
         f"modal=={MODAL_VERSION}",
         "Pillow~=11.2.1",
         "accelerate~=1.8.1",
-        "git+https://github.com/huggingface/diffusers.git",
+        "diffusers==0.36.0",
         "huggingface-hub==0.36.0",
         "safetensors>=0.8.0,<1.0.0",
         "sentencepiece==0.2.0",
         "torch==2.7.1",
-        "transformers>=4.57.0,<5.0.0",
+        "transformers==4.57.1",
         extra_options="--index-strategy unsafe-best-match",
         extra_index_url="https://download.pytorch.org/whl/cu128",
     )
