@@ -12,18 +12,33 @@ def replace_once(path: Path, old: str, new: str) -> None:
 legacy = Path("apps/studio/src/create-controls.jsx")
 replace_once(
     legacy,
-    "    videoSource, onVideoSourceChange, onClearVideoSource, autoPrefillInfo,\n    onVideoResolutionChange, onVideoDurationChange, onVideoFrameRateChange,\n",
-    "    videoSource, onVideoSourceChange, onClearVideoSource, autoPrefillInfo,\n    onVideoResolutionChange, onVideoDurationChange, onVideoFrameRateChange,\n    imageModelName = 'FLUX', imageModelLabel = 'FLUX.2 Klein 9B',\n",
+    "  videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},\n}) {",
+    "  videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},\n  imageModelName = 'FLUX', imageModelLabel = 'FLUX.2 Klein 9B',\n}) {",
 )
 replace_once(
     legacy,
-    "        ? 'Edit the selected Gallery asset with the live FLUX edit model.'\n        : 'Add an image, describe the change, and generate with the live FLUX edit model.'}",
-    "        ? `Edit the selected Gallery asset with the live ${imageModelName} edit model.`\n        : `Add an image, describe the change, and generate with the live ${imageModelName} edit model.`}",
+    "function AdvancedSettings({\n  open, onClose, anchorRef, mode, seed, setSeed, steps, setSteps,\n",
+    "function AdvancedSettings({\n  open, onClose, anchorRef, mode, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,\n",
 )
 replace_once(
     legacy,
-    "Live backend · FLUX.2 Klein 9B · {editAuto ? `Auto canvas · ${sourceCount} reference${sourceCount === 1 ? '' : 's'}` : advanced.resolution}",
-    "Live backend · {imageModelLabel} · {editAuto ? `Auto canvas · ${sourceCount} reference${sourceCount === 1 ? '' : 's'}` : advanced.resolution}",
+    "Reset to {isVideo ? 'LTX' : 'FLUX'} defaults",
+    "Reset to {isVideo ? 'LTX' : imageModelName} defaults",
+)
+replace_once(
+    legacy,
+    ": 'Add an image, describe the change, and generate with the live FLUX edit model.'}</p>",
+    ": `Add an image, describe the change, and generate with the live ${imageModelName} edit model.`}</p>",
+)
+replace_once(
+    legacy,
+    "{jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · FLUX.2 Klein 9B · {editAuto ? 'Auto canvas' : `${aspect} · ${imageDimensions.width}×${imageDimensions.height}`} · {references.length} reference{references.length === 1 ? '' : 's'}",
+    "{jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · {imageModelLabel} · {editAuto ? 'Auto canvas' : `${aspect} · ${imageDimensions.width}×${imageDimensions.height}`} · {references.length} reference{references.length === 1 ? '' : 's'}",
+)
+replace_once(
+    legacy,
+    "          mode={mode}\n          seed={seed}\n",
+    "          mode={mode}\n          imageModelName={imageModelName}\n          seed={seed}\n",
 )
 
 wrapper = Path("apps/studio/src/features/create/CreateWorkspace.jsx")
