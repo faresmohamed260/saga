@@ -80,6 +80,13 @@ async function assertTouchTargets(locator, minimum = 44) {
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  await page.addInitScript(() => {
+    const nativeMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      if (query !== '(hover: hover) and (pointer: fine)') return nativeMatchMedia(query);
+      return { matches: true, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } };
+    };
+  });
   page.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'desktop', text: error?.stack || error?.message || String(error) }));
   await mockHistory(page);
 
