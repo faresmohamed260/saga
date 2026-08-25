@@ -39,7 +39,7 @@ jobs:
           import urllib.request
 
           health_url = os.environ['QWEN_GATEWAY'].rstrip('/') + '/health'
-          deadline = time.monotonic() + 7200
+          deadline = time.monotonic() + 5400
           attempts = 0
           last = None
           while time.monotonic() < deadline:
@@ -72,7 +72,7 @@ jobs:
                   print(json.dumps({'event': 'qwen-deployment-wait-error', 'attempt': attempts, 'error': str(exc)}), flush=True)
               time.sleep(15)
           else:
-              raise SystemExit(f'Qwen fallback deployment did not become ready within 7200s; last={last}')
+              raise SystemExit(f'Qwen fallback deployment did not become ready within 5400s; last={last}')
           PY
       - name: Run pinned Civitai BF16 Qwen edit through live standby gateway
         run: >-
