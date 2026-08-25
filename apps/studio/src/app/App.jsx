@@ -18,6 +18,17 @@ import { advancedPresetForMode } from '../features/create/model-presets.js';
 
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
+const CREATE_SETTINGS_STORAGE_KEY = 'saga-studio:create-settings:v6';
+
+function initialCreateMode() {
+  if (typeof window === 'undefined') return 'Image';
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(CREATE_SETTINGS_STORAGE_KEY) || '{}');
+    return ['Image', 'Video'].includes(saved.mode) ? saved.mode : 'Image';
+  } catch {
+    return 'Image';
+  }
+}
 
 function sectionFromLocation() {
   if (typeof window === 'undefined') return 'Create';
@@ -97,7 +108,7 @@ function promptAfterReferenceRemoval(value, removedIndex) {
 
 export default function App() {
   const [section, setSection] = useState(sectionFromLocation);
-  const [mode, setMode] = useState('Image');
+  const [mode, setMode] = useState(initialCreateMode);
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
   const [imageResolution, setImageResolution] = useState(1080);

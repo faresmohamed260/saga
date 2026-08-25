@@ -59,20 +59,35 @@ async function runDesktop(browser) {
   if (!page.url().endsWith('#/create')) throw new Error('Settings generation action did not return to Create');
   await page.keyboard.press('Escape');
 
+  // User journey: a stored Video preference must not override an explicit Image-model launch.
+  await page.evaluate(() => {
+    const key = 'saga-studio:create-settings:v6';
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...saved, mode: 'Video' }));
+  });
   await page.getByRole('button', { name: 'Models', exact: true }).click();
   await expectDestination(page, 'Models', 'Production models');
   await page.getByRole('button', { name: 'Start image edit', exact: true }).click();
   await page.getByRole('heading', { name: /Create from a reference|Transform your references/ }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Model launch action did not enter Create');
-  diagnostics.continuation.push({ action: 'model-to-image-edit', url: page.url() });
+  if (await page.locator('.saga-composer.is-video').count()) throw new Error('Stored Video preference overrode explicit Image-model launch');
+  if (await page.getByRole('button', { name: 'Image', exact: true }).getAttribute('aria-pressed') !== 'true') throw new Error('Image launch did not activate the Image toggle');
+  diagnostics.continuation.push({ action: 'model-to-image-edit', url: page.url(), conflictingStoredMode: 'Video', visibleMode: 'Image' });
 
+  // User journey: a stored Image preference must not override an explicit Video-workflow launch.
+  await page.evaluate(() => {
+    const key = 'saga-studio:create-settings:v6';
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...saved, mode: 'Image' }));
+  });
   await page.getByRole('button', { name: 'Workflows', exact: true }).click();
   await expectDestination(page, 'Workflows', 'Production workflows');
   await page.getByRole('button', { name: 'Create video', exact: true }).click();
   await page.getByRole('heading', { name: 'Create motion', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Workflow launch action did not enter Video Create');
   if (!await page.locator('.saga-composer.is-video').count()) throw new Error('Workflow launch action did not activate Video mode');
-  diagnostics.continuation.push({ action: 'workflow-to-video', url: page.url() });
+  if (await page.getByRole('button', { name: 'Video', exact: true }).getAttribute('aria-pressed') !== 'true') throw new Error('Video launch did not activate the Video toggle');
+  diagnostics.continuation.push({ action: 'workflow-to-video', url: page.url(), conflictingStoredMode: 'Image', visibleMode: 'Video' });
 
   await context.close();
 }
@@ -102,6 +117,24 @@ async function runMobile(browser) {
   const dialogBox = await page.getByRole('dialog', { name: 'Advanced settings' }).boundingBox();
   if (!dialogBox || dialogBox.x < -1 || dialogBox.x + dialogBox.width > 391) throw new Error(`Mobile generation settings escape viewport: ${JSON.stringify(dialogBox)}`);
   await page.screenshot({ path: path.join(outputDir, 'navigation-settings-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.keyboard.press('Escape');
+
+  // Mobile user journey: launch Video through navigation and verify the actual composer state.
+  await page.evaluate(() => {
+    const key = 'saga-studio:create-settings:v6';
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...saved, mode: 'Image' }));
+  });
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  const mobileWorkflowNav = page.locator('.sidebar.open');
+  await mobileWorkflowNav.getByRole('button', { name: 'Workflows', exact: true }).click();
+  await expectDestination(page, 'Workflows', 'Production workflows');
+  await page.getByRole('button', { name: 'Create video', exact: true }).click();
+  await page.getByRole('heading', { name: 'Create motion', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
+  if (!await page.locator('.saga-composer.is-video').count()) throw new Error('Mobile workflow launch did not activate Video composer state');
+  if (await page.getByRole('button', { name: 'Video', exact: true }).getAttribute('aria-pressed') !== 'true') throw new Error('Mobile Video launch did not activate the Video toggle');
+  diagnostics.continuation.push({ action: 'mobile-workflow-to-video', url: page.url(), conflictingStoredMode: 'Image', visibleMode: 'Video' });
+  await page.screenshot({ path: path.join(outputDir, 'navigation-workflow-video-mobile.png'), fullPage: true, animations: 'disabled' });
 
   await context.close();
 }

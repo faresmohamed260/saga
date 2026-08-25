@@ -793,8 +793,6 @@ export default function CreateWorkspace({
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      const savedMode = ['Image', 'Video'].includes(saved.mode) ? saved.mode : 'Image';
-      setMode(savedMode);
       if (ASPECT_PRESETS.some((item) => item.value === saved.aspect)) setAspect(saved.aspect);
       if (IMAGE_RESOLUTIONS.some((item) => item.value === Number(saved.imageResolution))) setImageResolution(Number(saved.imageResolution));
       if (saved.seed != null) setSeed(String(saved.seed));
