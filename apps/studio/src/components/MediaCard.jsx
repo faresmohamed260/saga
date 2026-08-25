@@ -51,7 +51,8 @@ export default function MediaCard({
   const morePopoverRef = useRef(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMoreSheet, setMobileMoreSheet] = useState(false);
-  const [previewIntent, setPreviewIntent] = useState(false);
+  const [previewHoverIntent, setPreviewHoverIntent] = useState(false);
+  const [previewKeyboardIntent, setPreviewKeyboardIntent] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(!history);
   const [previewMotionAllowed, setPreviewMotionAllowed] = useState(false);
   const [previewHoverCapable, setPreviewHoverCapable] = useState(false);
@@ -59,12 +60,11 @@ export default function MediaCard({
   const videoSource = item.originalUrl || item.url || '';
   const itemLabel = item.title || 'media';
   const isGalleryVideo = history && item.kind === 'video' && Boolean(videoSource);
+  const hoverPreviewActive = previewVisible && previewHoverCapable && previewHoverIntent;
   const previewActive = isGalleryVideo
     && !selectable
-    && previewVisible
-    && previewIntent
     && previewMotionAllowed
-    && previewHoverCapable;
+    && (previewKeyboardIntent || hoverPreviewActive);
   const legacyFrameAttached = isGalleryVideo && !item.thumbnailUrl && previewVisible;
   const attachedVideoSource = history
     ? ((previewActive || legacyFrameAttached) ? videoSource : '')
@@ -154,8 +154,9 @@ export default function MediaCard({
 
   useEffect(() => {
     if (selectable && moreOpen) setMoreOpen(false);
-    if (selectable && previewIntent) setPreviewIntent(false);
-  }, [selectable, moreOpen, previewIntent]);
+    if (selectable && previewHoverIntent) setPreviewHoverIntent(false);
+    if (selectable && previewKeyboardIntent) setPreviewKeyboardIntent(false);
+  }, [selectable, moreOpen, previewHoverIntent, previewKeyboardIntent]);
 
   const favoriteLabel = favorite ? 'Remove from favorites' : 'Add to favorites';
   const collectionLabel = inCollection ? 'Remove from collection' : 'Add to collection';
@@ -256,16 +257,19 @@ export default function MediaCard({
         className={`media-frame ${item.kind === 'video' ? 'media-frame-video' : 'media-frame-image'} ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}
         style={item.url && item.kind !== 'video' ? { backgroundImage: `url(${item.url})` } : undefined}
         onMouseEnter={() => {
-          if (isGalleryVideo && !selectable) setPreviewIntent(true);
+          if (isGalleryVideo && !selectable) setPreviewHoverIntent(true);
         }}
         onMouseLeave={() => {
-          if (isGalleryVideo) setPreviewIntent(false);
+          if (isGalleryVideo) setPreviewHoverIntent(false);
         }}
-        onFocusCapture={() => {
-          if (isGalleryVideo && !selectable) setPreviewIntent(true);
+        onFocusCapture={(event) => {
+          if (!isGalleryVideo || selectable) return;
+          requestAnimationFrame(() => {
+            if (event.target?.matches?.(':focus-visible')) setPreviewKeyboardIntent(true);
+          });
         }}
         onBlurCapture={(event) => {
-          if (isGalleryVideo && !event.currentTarget.contains(event.relatedTarget)) setPreviewIntent(false);
+          if (isGalleryVideo && !event.currentTarget.contains(event.relatedTarget)) setPreviewKeyboardIntent(false);
         }}
       >
         {item.kind === 'video' && videoSource ? (
