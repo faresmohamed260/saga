@@ -1,0 +1,33 @@
+name: Studio Upload Affordance Patch
+
+on:
+  push:
+    branches:
+      - studio/upload-plus-drag-drop
+    paths:
+      - ".github/workflows/studio-advanced-ui-audit-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/upload-plus-drag-drop
+          fetch-depth: 0
+      - name: Apply patch
+        run: python scripts/studio_upload_affordance_patch.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/studio-advanced-ui-audit-patch.yml
+          git rm -f .github/workflows/studio-upload-plus-drag-drop-patch.yml scripts/studio_upload_affordance_patch.py
+          git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/scripts/check-ui-audit-contract.mjs apps/studio/scripts/check-generate-action-contract.mjs apps/studio/scripts/capture-ui-preview.mjs .github/workflows/studio-advanced-ui-audit-patch.yml
+          git diff --cached --check
+          git commit -m "feat(studio): unify reference uploads and add drag drop"
+          git push origin HEAD:studio/upload-plus-drag-drop
