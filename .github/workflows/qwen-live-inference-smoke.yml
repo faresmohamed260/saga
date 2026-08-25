@@ -20,11 +20,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  standby-live-inference:
+  live-inference:
+    name: ${{ matrix.role }}-live-inference
     runs-on: ubuntu-latest
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: primary
+            gateway: https://voidtrek--saga-qwen-image-edit-2511-gateway-web.modal.run
+          - role: standby
+            gateway: https://nyxprotocol--saga-qwen-image-edit-2511-gateway-web.modal.run
     env:
-      QWEN_GATEWAY: https://nyxprotocol--saga-qwen-image-edit-2511-gateway-web.modal.run
+      QWEN_GATEWAY: ${{ matrix.gateway }}
+      QWEN_ROLE: ${{ matrix.role }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,7 +42,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Wait for staged Civitai BF16 fallback worker
+      - name: Wait for staged Civitai BF16 worker
         shell: bash
         run: |
           python - <<'PY'
@@ -43,6 +53,7 @@ jobs:
           import urllib.request
 
           health_url = os.environ['QWEN_GATEWAY'].rstrip('/') + '/health'
+          role = os.environ['QWEN_ROLE']
           deadline = time.monotonic() + 5400
           attempts = 0
           last = None
@@ -55,6 +66,7 @@ jobs:
                   acceleration = payload.get('acceleration') or {}
                   worker = payload.get('worker') or {}
                   snapshot = {
+                      'role': role,
                       'precision': payload.get('precision'),
                       'checkpointVersionId': checkpoint.get('version_id'),
                       'acceleration': acceleration.get('type'),
@@ -83,12 +95,12 @@ jobs:
                       print(json.dumps({'event': 'qwen-deployment-ready', 'attempts': attempts, **snapshot}), flush=True)
                       break
               except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-                  print(json.dumps({'event': 'qwen-deployment-wait-error', 'attempt': attempts, 'error': str(exc)}), flush=True)
+                  print(json.dumps({'event': 'qwen-deployment-wait-error', 'attempt': attempts, 'role': role, 'error': str(exc)}), flush=True)
               time.sleep(15)
           else:
-              raise SystemExit(f'Qwen fallback worker did not become staged and ready within 5400s; last={last}')
+              raise SystemExit(f'Qwen {role} worker did not become staged and ready within 5400s; last={last}')
           PY
-      - name: Run pinned Civitai BF16 Qwen edit through live standby gateway
+      - name: Run pinned Civitai BF16 Qwen edit through live worker
         run: >-
           python scripts/qwen_image_edit_smoke.py
           "$QWEN_GATEWAY"
