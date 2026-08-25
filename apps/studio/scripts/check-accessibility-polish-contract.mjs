@@ -24,4 +24,5 @@ requireSource(galleryView, 'aria-pressed={managing}', 'Manage state semantics');
 requireSource(gallery, 'font-weight:700;', 'non-color selected-state emphasis');
 requireSource(gallery, 'box-shadow:inset 0 -2px 0 var(--saga-color-accent-soft)', 'selected-state shape cue');
 
+expect(app.includes("setSection('Create'); setSettingsOpen(true)"), 'Global generation-settings action must navigate to Create before opening Advanced');
 console.log('Typography, contrast, focus, and non-color state accessibility contract passed.');

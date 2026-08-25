@@ -766,6 +766,7 @@ export default function CreateWorkspace({
   const videoResolutionButtonRef = useRef(null);
   const durationButtonRef = useRef(null);
   const settingsButtonRef = useRef(null);
+  const modeEffectMountedRef = useRef(false);
 
   const [resolutionOpen, setResolutionOpen] = useState(false);
   const [aspectOpen, setAspectOpen] = useState(false);
@@ -854,7 +855,8 @@ export default function CreateWorkspace({
     setResolutionOpen(false);
     setVideoResolutionOpen(false);
     setDurationOpen(false);
-    setSettingsOpen(false);
+    if (modeEffectMountedRef.current) setSettingsOpen(false);
+    else modeEffectMountedRef.current = true;
   }, [mode]);
 
   const addReferenceFiles = (files) => {
