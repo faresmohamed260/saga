@@ -9,7 +9,7 @@
     "test:poster": "node scripts/check-video-poster-contract.mjs",
     "preview": "vite preview",
     "visual:responsive": "node scripts/capture-responsive-preview.mjs",
-    "visual:capture": "node scripts/capture-ui-preview.mjs && node scripts/capture-image-generation-preview.mjs && node scripts/capture-video-output-preview.mjs && node scripts/capture-audio-state-preview.mjs && node scripts/capture-gallery-preview.mjs && node scripts/capture-uploads-preview.mjs && node scripts/capture-jobs-preview.mjs && node scripts/capture-gallery-thumbnail-preview.mjs && node scripts/capture-navigation-preview.mjs && node scripts/capture-audit-widths.mjs && npm run visual:responsive",
+    "visual:capture": "node scripts/capture-ui-preview.mjs && node scripts/capture-qwen-model-selector-preview.mjs && node scripts/capture-image-generation-preview.mjs && node scripts/capture-video-output-preview.mjs && node scripts/capture-audio-state-preview.mjs && node scripts/capture-gallery-preview.mjs && node scripts/capture-uploads-preview.mjs && node scripts/capture-jobs-preview.mjs && node scripts/capture-gallery-thumbnail-preview.mjs && node scripts/capture-navigation-preview.mjs && node scripts/capture-audit-widths.mjs && npm run visual:responsive",
     "visual:preview": "npm run visual:capture && npm run visual:regression",
     "visual:regression": "node scripts/check-visual-regression.mjs"
   },
