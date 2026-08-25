@@ -14,7 +14,8 @@ PYTHON_VERSION = "3.11"
 CACHE_DIR = "/cache"
 MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
 MODEL_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511"
-GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "H100")
+GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "L40S")
+WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_TIMEOUT_SECONDS", "3600"))
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_IDLE_SECONDS", "300"))
 WORKER_MIN_CONTAINERS = 0
@@ -123,6 +124,7 @@ def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
 @app.cls(
     image=image,
     gpu=GPU_TYPE,
+    memory=WORKER_MEMORY_MB,
     timeout=FUNCTION_TIMEOUT_SECONDS,
     scaledown_window=CONTAINER_IDLE_SECONDS,
     min_containers=WORKER_MIN_CONTAINERS,
@@ -145,7 +147,10 @@ class QwenImageEdit2511Worker:
             torch_dtype=torch.bfloat16,
             local_files_only=True,
         )
-        self.pipe.to("cuda")
+        # Keep the official BF16 checkpoint intact. The 57.7 GB pipeline is
+        # larger than an L40S, so move whole components between CPU RAM and GPU
+        # on demand instead of quantizing or casting the weights.
+        self.pipe.enable_model_cpu_offload(device="cuda")
         self.pipe.set_progress_bar_config(disable=True)
         startup_seconds = round(time.perf_counter() - started, 3)
         _set_worker_state("ready", startup_seconds=startup_seconds)
@@ -154,6 +159,8 @@ class QwenImageEdit2511Worker:
             model=MODEL_REPO,
             precision="official-bfloat16",
             gpu=GPU_TYPE,
+            memory_mb=WORKER_MEMORY_MB,
+            offload="model_cpu_offload",
             startup_seconds=startup_seconds,
         )
 
