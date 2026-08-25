@@ -905,7 +905,7 @@ export default function CreateWorkspace({
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Type to imagine'}
+                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Describe the change you want to make…'}
                 maxLength={2000}
                 disabled={busy}
               />
@@ -914,9 +914,11 @@ export default function CreateWorkspace({
 
           <div className="saga-toolbar">
             <div className="saga-toolbar-left">
+              {!isImageSetup && (
               <button type="button" className="saga-round-button" title="Upload reference images" aria-label="Upload reference images" onClick={() => referenceInputRef.current?.click()}>
                 <Plus size={21} />
               </button>
+              )}
 
               <MediaModeToggle mode={mode} setMode={setMode} />
 

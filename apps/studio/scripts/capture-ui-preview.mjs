@@ -306,12 +306,14 @@ try {
   if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');
   await settingsButton.click();
 
-  // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.
-  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  // The single primary Image CTA attaches the first reference; Edit then exposes + for additional references.
+  if (await desktop.getByRole('button', { name: 'Upload reference images', exact: true }).count()) throw new Error('Image setup exposes a duplicate secondary upload action');
   const chooserPromise = desktop.waitForEvent('filechooser');
-  await upload.click();
+  await primarySubmit.click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
+  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  await upload.waitFor({ state: 'visible' });
   const secondChooserPromise = desktop.waitForEvent('filechooser');
   await upload.click();
   const secondChooser = await secondChooserPromise;
