@@ -12,13 +12,13 @@ const now = new Date().toISOString();
 const rows = [
   {
     id: '99999999-9999-4999-8999-999999999991', kind: 'image', mode: 'edit',
-    prompt: 'Portrait reference preserving the full vertical composition', model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
+    prompt: 'Portrait reference filling the square gallery card', model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
     resolution: '≈ 1088 × 1440 · 1.57 MP', width: 1088, height: 1440, seed: 42,
     media_url: '/mock/gallery-portrait.svg', thumbnail_url: null, metadata: { execution: {} }, created_at: now,
   },
   {
     id: '99999999-9999-4999-8999-999999999992', kind: 'image', mode: 'edit',
-    prompt: 'Wide reference preserving the full landscape composition', model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
+    prompt: 'Wide reference filling the square gallery card', model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS',
     resolution: '2048 × 1152 · Manual', width: 2048, height: 1152, seed: 73,
     media_url: '/mock/gallery-landscape.svg', thumbnail_url: null, metadata: { execution: {} }, created_at: now,
   },
@@ -35,8 +35,8 @@ try {
   await page.route('**/api/history?**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: rows, page: { offset: 0, limit: 24, nextOffset: null, hasMore: false }, facets: { models: [rows[0].model] } }) });
   });
-  await page.route('**/mock/gallery-portrait.svg', async (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg('FULL PORTRAIT', 1088, 1440) }));
-  await page.route('**/mock/gallery-landscape.svg', async (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg('FULL LANDSCAPE', 2048, 1152) }));
+  await page.route('**/mock/gallery-portrait.svg', async (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg('PORTRAIT COVER', 1088, 1440) }));
+  await page.route('**/mock/gallery-landscape.svg', async (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg('LANDSCAPE COVER', 2048, 1152) }));
 
   await page.goto(galleryUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
@@ -50,7 +50,7 @@ try {
       const computed = getComputedStyle(element);
       return { backgroundSize: computed.backgroundSize, backgroundRepeat: computed.backgroundRepeat, backgroundPosition: computed.backgroundPosition, backgroundImage: computed.backgroundImage };
     });
-    if (style.backgroundSize !== 'contain' || style.backgroundRepeat !== 'no-repeat') throw new Error(`${label} thumbnail is still cropped: ${JSON.stringify(style)}`);
+    if (style.backgroundSize !== 'cover' || style.backgroundRepeat !== 'no-repeat') throw new Error(`${label} thumbnail does not fill its gallery card: ${JSON.stringify(style)}`);
     if (!style.backgroundImage || style.backgroundImage === 'none') throw new Error(`${label} thumbnail image did not render`);
   }
 

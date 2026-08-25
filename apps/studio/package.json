@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/check-workflow-contract.mjs && node scripts/check-worker-registry-contract.mjs && node scripts/check-resolution-contract.mjs && node scripts/check-generate-action-contract.mjs && node scripts/check-audio-control-contract.mjs && node scripts/check-generation-lifecycle-contract.mjs && node scripts/check-accessibility-polish-contract.mjs && vite build",
+    "build": "node scripts/check-workflow-contract.mjs && node scripts/check-worker-registry-contract.mjs && node scripts/check-resolution-contract.mjs && node scripts/check-generate-action-contract.mjs && node scripts/check-audio-control-contract.mjs && node scripts/check-generation-lifecycle-contract.mjs && node scripts/check-accessibility-polish-contract.mjs && node scripts/check-uploads-library-contract.mjs && vite build",
     "test:poster": "node scripts/check-video-poster-contract.mjs",
     "preview": "vite preview",
     "visual:responsive": "node scripts/capture-responsive-preview.mjs",
-    "visual:preview": "node scripts/capture-ui-preview.mjs && node scripts/capture-video-output-preview.mjs && node scripts/capture-audio-state-preview.mjs && node scripts/capture-gallery-preview.mjs && node scripts/capture-jobs-preview.mjs && node scripts/capture-gallery-thumbnail-preview.mjs && npm run visual:responsive",
+    "visual:preview": "node scripts/capture-ui-preview.mjs && node scripts/capture-video-output-preview.mjs && node scripts/capture-audio-state-preview.mjs && node scripts/capture-gallery-preview.mjs && node scripts/capture-uploads-preview.mjs && node scripts/capture-jobs-preview.mjs && node scripts/capture-gallery-thumbnail-preview.mjs && npm run visual:responsive",
     "visual:regression": "node scripts/check-visual-regression.mjs"
   },
   "dependencies": {

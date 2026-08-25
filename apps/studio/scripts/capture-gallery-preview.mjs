@@ -80,6 +80,13 @@ async function assertTouchTargets(locator, minimum = 44) {
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  await page.addInitScript(() => {
+    const nativeMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      if (query !== '(hover: hover) and (pointer: fine)') return nativeMatchMedia(query);
+      return { matches: true, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } };
+    };
+  });
   page.on('pageerror', (error) => diagnostics.pageErrors.push({ label: 'desktop', text: error?.stack || error?.message || String(error) }));
   await mockHistory(page);
 
@@ -120,10 +127,10 @@ try {
   await searchInput.fill('shoreline');
   await page.waitForTimeout(250);
   if (!page.url().includes('#/gallery')) throw new Error('Gallery search unexpectedly changed navigation');
-  await page.getByLabel('Sort').selectOption('oldest');
+  await page.locator('.gallery-sort select').selectOption('oldest');
   await page.waitForTimeout(250);
   await searchInput.fill('');
-  await page.getByLabel('Sort').selectOption('newest');
+  await page.locator('.gallery-sort select').selectOption('newest');
 
   const compactDensity = page.getByRole('button', { name: 'Compact', exact: true });
   const comfortableDensity = page.getByRole('button', { name: 'Comfortable', exact: true });
@@ -233,7 +240,7 @@ try {
   await thirdSelectButton.press('Enter');
   if (await thirdSelectButton.getAttribute('aria-pressed') !== 'true') throw new Error('Enter did not select the third Gallery card');
   if (!(await manager.locator('strong').innerText()).includes('2 selected')) throw new Error('Gallery manager did not track two keyboard-selected items');
-  for (const label of ['Favorite', 'Download ZIP', 'Delete']) {
+  for (const label of ['Favorite', 'Download', 'Delete']) {
     const button = manager.getByRole('button', { name: label, exact: true });
     if (await button.isDisabled()) throw new Error(`${label} bulk action stayed disabled after selection`);
   }
@@ -288,7 +295,7 @@ try {
 
   await mobile.screenshot({ path: path.join(outputDir, '13-gallery-mobile.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('13-gallery-mobile.png');
-  await mobile.getByRole('button', { name: 'Comfortable', exact: true }).click();
+  await mobile.getByRole('button', { name: 'Gallery layout: compact', exact: true }).click();
   const mobileComfortableGrid = mobile.locator('.gallery-grid');
   if (await mobileComfortableGrid.getAttribute('data-density') !== 'comfortable') throw new Error('Mobile Comfortable density did not activate');
   const mobileComfortableFirst = await mobileCards.first().boundingBox();
@@ -298,7 +305,7 @@ try {
   }
   await mobile.screenshot({ path: path.join(outputDir, '13c-gallery-mobile-comfortable.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('13c-gallery-mobile-comfortable.png');
-  await mobile.getByRole('button', { name: 'Compact', exact: true }).click();
+  await mobile.getByRole('button', { name: 'Gallery layout: comfortable', exact: true }).click();
 
   await mobileOverlay.getByRole('button', { name: 'More actions', exact: true }).click();
   const mobileMore = mobileCards.first().locator('.media-actions-popover');

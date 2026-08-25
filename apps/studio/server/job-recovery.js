@@ -1,7 +1,7 @@
 import { getWorkflow } from '../api/_workflows.js';
 import { listGenerationJobs, transitionGenerationJob, updateGenerationWorkerAssignment } from '../api/_generation-jobs.js';
 import { pollWorkflow } from '../api/_providers.js';
-import { persistImageJobResult } from '../api/_result-persistence.js';
+import { persistImageJobResult, persistVideoJobResult } from '../api/_result-persistence.js';
 
 const STALE_WITHOUT_PROVIDER_MS = 2 * 60 * 1000;
 
@@ -35,6 +35,21 @@ async function persistRecoveredWorkerState(job, worker) {
   }
 }
 
+// Recovery uses the same persistence helpers as the foreground result poll so
+// a completed provider job reaches the same durable Gallery state after reloads.
+async function persistRecoveredResult(job, workflow, result) {
+  if (job.kind === 'video') {
+    return persistVideoJobResult(
+      job,
+      result.bytes,
+      result.contentType || workflow.outputMimeType,
+      result.posterBytes || null,
+      result.posterContentType || 'image/jpeg',
+    );
+  }
+  return persistImageJobResult(job, result.bytes, result.contentType || workflow.outputMimeType);
+}
+
 async function recoverJob(job) {
   if (!job?.id || !['queued', 'running'].includes(job.status)) return { id: job?.id, outcome: 'ignored' };
 
@@ -60,9 +75,13 @@ async function recoverJob(job) {
       await persistRecoveredWorkerState(job, result.worker || { state: 'generating' });
       return { id: job.id, outcome: 'running' };
     }
-    if (job.kind !== 'image') return { id: job.id, outcome: 'running' };
-    const completed = await persistImageJobResult(job, result.bytes, result.contentType || workflow.outputMimeType);
-    return { id: job.id, outcome: 'completed', mediaUrl: completed.media_url, thumbnailUrl: completed.thumbnail_url || null };
+    const completed = await persistRecoveredResult(job, workflow, result);
+    return {
+      id: job.id,
+      outcome: 'completed',
+      mediaUrl: completed.media_url,
+      thumbnailUrl: completed.thumbnail_url || null,
+    };
   } catch (error) {
     const statusCode = Number(error?.statusCode || 500);
     if (statusCode >= 400 && statusCode < 500 && statusCode !== 408 && statusCode !== 429) {

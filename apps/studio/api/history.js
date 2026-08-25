@@ -12,6 +12,12 @@ function clampOffset(value) {
   return Math.max(parsed, 0);
 }
 
+function cleanAfter(value) {
+  if (typeof value !== 'string' || !value) return '';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -25,6 +31,8 @@ export default async function handler(req, res) {
     const model = typeof req.query?.model === 'string' ? req.query.model : '';
     const search = typeof req.query?.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
     const sort = req.query?.sort === 'oldest' ? 'oldest' : 'newest';
+    const after = cleanAfter(req.query?.after);
+    const favoritesOnly = req.query?.favorite === 'true';
 
     const params = new URLSearchParams();
     params.set('select', 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,thumbnail_r2_key,thumbnail_url,mime_type,resolution,width,height,thumbnail_width,thumbnail_height,duration_ms,seed,workflow_id,provider,error_message,metadata,is_favorite,created_at,started_at,completed_at');
@@ -35,6 +43,8 @@ export default async function handler(req, res) {
     if (kind === 'image' || kind === 'video') params.set('kind', `eq.${kind}`);
     if (model) params.set('model', `eq.${model}`);
     if (search) params.set('prompt', `ilike.*${search.replace(/[*,]/g, ' ')}*`);
+    if (after) params.set('created_at', `gte.${after}`);
+    if (favoritesOnly) params.set('is_favorite', 'eq.true');
 
     const [rows, modelRows] = await Promise.all([
       supabaseRequest(`studio_generations?${params.toString()}`, { method: 'GET' }),

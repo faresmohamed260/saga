@@ -176,15 +176,22 @@ try {
     await page.getByRole('heading', { name: 'Gallery', exact: true }).waitFor({ state: 'visible', timeout: 20_000 });
     const cards = page.locator('.gallery-grid .gallery-card');
     await cards.nth(5).waitFor({ state: 'visible', timeout: 10_000 });
-    const search = page.getByRole('searchbox', { name: 'Search prompts' });
-    const modelSelect = page.locator('.gallery-model-filter select');
+    const search = width <= 760 ? page.getByRole('button', { name: 'Search Gallery', exact: true }) : page.locator('.gallery-search-desktop input');
+    const modelSelect = width <= 760 ? page.locator('.gallery-mobile-filter-panel .gallery-model-filter select') : page.locator('.gallery-model-filter select').first();
     await assertNoHorizontalOverflow(page, 'Gallery compact', width);
     await assertContained(page.locator('main.workspace'), 'Gallery workspace', width);
     await assertContained(search, 'Gallery search', width);
     await assertContained(page.locator('.gallery-grid'), 'Gallery grid', width);
     await assertNoOverlap(search, page.locator('.gallery-sort'), 'Gallery search / sort', width);
     if (width <= 390) {
-      await assertMinimumWidth(search, 'Gallery search', width, 140);
+      await search.click();
+      const mobileSearch = page.locator('.gallery-search-mobile input');
+      await mobileSearch.waitFor({ state: 'visible' });
+      await assertMinimumWidth(mobileSearch, 'Gallery search', width, 140);
+      await page.getByRole('button', { name: /^Filter/ }).click();
+      const mobileFilters = page.locator('.gallery-mobile-filter-panel');
+      await mobileFilters.waitFor({ state: 'visible' });
+      await assertContained(mobileFilters, 'Gallery mobile filters', width);
       await assertMinimumWidth(modelSelect, 'Gallery model filter', width, 90);
     }
     const firstCard = await cards.first().boundingBox();

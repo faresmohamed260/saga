@@ -6,13 +6,53 @@
     "maxChangedRatio": 0.0015
   },
   "surfaces": [
-    { "file": "01-create-image-centered.png", "maxChangedRatio": 0.001 },
-    { "file": "05b-video-output-controls.png", "maxChangedRatio": 0.001 },
-    { "file": "05f-video-picker-keyboard-focus.png", "maxChangedRatio": 0.0015 },
-    { "file": "05i-video-audio-on.png", "maxChangedRatio": 0.0015 },
-    { "file": "09-mobile-create.png", "maxChangedRatio": 0.0015 },
-    { "file": "10-gallery-grid.png", "maxChangedRatio": 0.001 },
-    { "file": "10b-gallery-keyboard-focus.png", "maxChangedRatio": 0.0015 },
-    { "file": "14-gallery-mobile-manager.png", "maxChangedRatio": 0.0015 }
+    {
+      "file": "01-create-image-centered.png",
+      "maxChangedRatio": 0.001
+    },
+    {
+      "file": "05b-video-output-controls.png",
+      "maxChangedRatio": 0.001
+    },
+    {
+      "file": "05f-video-picker-keyboard-focus.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "05i-video-audio-on.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "09-mobile-create.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "10-gallery-grid.png",
+      "maxChangedRatio": 0.001
+    },
+    {
+      "file": "10b-gallery-keyboard-focus.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "14-gallery-mobile-manager.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "15-gallery-uploads-desktop.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "15b-gallery-upload-detail.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "16-gallery-uploads-mobile.png",
+      "maxChangedRatio": 0.0015
+    },
+    {
+      "file": "16b-gallery-uploads-mobile-manager.png",
+      "maxChangedRatio": 0.0015
+    }
   ]
 }

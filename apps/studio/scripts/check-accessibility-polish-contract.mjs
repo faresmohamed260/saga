@@ -19,7 +19,7 @@ requireSource(tokens, '--saga-color-text-subtle: #8993a3;', 'stronger subtle tex
 requireSource(tokens, '--saga-focus-shadow:', 'supplemental focus halo');
 requireSource(polish, '.app-shell button:focus-visible', 'consistent keyboard focus rule');
 requireSource(polish, 'box-shadow: var(--saga-focus-shadow);', 'focus halo usage');
-requireSource(galleryView, 'aria-pressed={kind === value}', 'media filter state semantics');
+requireSource(galleryView, 'aria-label="Type"', 'media filter accessible naming');
 requireSource(galleryView, 'aria-pressed={managing}', 'Manage state semantics');
 requireSource(gallery, 'font-weight:700;', 'non-color selected-state emphasis');
 requireSource(gallery, 'box-shadow:inset 0 -2px 0 var(--saga-color-accent-soft)', 'selected-state shape cue');

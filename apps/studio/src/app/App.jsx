@@ -130,7 +130,7 @@ export default function App() {
   const autoEditInfo = useMemo(() => autoReferenceSizing(references[0]), [references]);
 
   const library = useLibraryController({ section, toGalleryItem });
-  const { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, gallerySearch, setGallerySearch, gallerySort, setGallerySort, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems } = library;
+  const { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, gallerySearch, setGallerySearch, gallerySort, setGallerySort, galleryDate, setGalleryDate, galleryFavoritesOnly, setGalleryFavoritesOnly, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems } = library;
   const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
   const mediaActions = useMediaActions({
     section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
@@ -196,7 +196,6 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [section, jobsFilter]);
 
-
   const addReferences = async (files) => {
     const valid = [];
     for (const file of files) {
@@ -221,6 +220,39 @@ export default function App() {
     }
   };
 
+  const useUploadReference = async (asset, targetMode = 'Edit') => {
+    if (!asset?.url) throw new Error('This upload is missing a readable asset URL.');
+    const response = await fetch(asset.url, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Could not prepare ${asset.name || 'upload'} as a reference (${response.status}).`);
+    const blob = await response.blob();
+    const contentType = asset.mimeType || blob.type || 'image/png';
+    const filename = asset.filename || `${asset.name || 'upload'}.${contentType === 'image/jpeg' ? 'jpg' : contentType === 'image/webp' ? 'webp' : 'png'}`;
+    const file = new File([blob], filename, { type: contentType, lastModified: Date.now() });
+    const dimensions = asset.width && asset.height ? { width: asset.width, height: asset.height } : await imageDimensions(file);
+    const reference = {
+      id: `upload-${asset.id}-${Date.now()}`,
+      file,
+      preview: URL.createObjectURL(file),
+      uploadId: asset.id,
+      ...dimensions,
+    };
+    setReferences((current) => {
+      current.forEach((item) => item.preview && URL.revokeObjectURL(item.preview));
+      return [reference];
+    });
+    if (targetMode === 'Video') {
+      setMode('Video');
+      setWorkflowId('video-planned');
+      setModelId('saga-video-auto');
+    } else {
+      setMode('Edit');
+      setWorkflowId('flux2-klein-image-edit');
+      setModelId('flux2-klein-9b');
+    }
+    setError('');
+    setSection('Create');
+  };
+
   const removeReference = (index) => {
     const target = references[index];
     if (!target) return;
@@ -235,10 +267,6 @@ export default function App() {
       setError('');
     }
   };
-
-
-
-
 
   const openMedia = (item) => setSelectedMedia(item);
   const renderCard = (item, history = false, inCollection = false) => (
@@ -275,7 +303,7 @@ export default function App() {
         <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => setSettingsOpen(true)} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
-          : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} />
+          : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} date={galleryDate} favoritesOnly={galleryFavoritesOnly} collections={collections} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onDateChange={setGalleryDate} onFavoritesOnlyChange={setGalleryFavoritesOnly} onOpenCollection={async (collection) => { await loadCollectionItems(collection); setSection('Collections'); }} onOpenCollections={() => setSection('Collections')} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} onUseUploadReference={useUploadReference} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
           : section === 'Models' ? <ModelsView />
