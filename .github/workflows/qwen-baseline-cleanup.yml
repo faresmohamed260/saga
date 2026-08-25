@@ -1,0 +1,35 @@
+name: Qwen Baseline Cleanup
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-baseline-cleanup.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/qwen-image-edit-2511
+          fetch-depth: 0
+      - name: Restore unrelated approved baselines
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout 8611bebea650a2090b5214bc888bb93a89604389 -- \
+            apps/studio/visual-baselines/05i-video-audio-on.png \
+            apps/studio/visual-baselines/10-gallery-grid.png \
+            apps/studio/visual-baselines/10b-gallery-keyboard-focus.png \
+            apps/studio/visual-baselines/15-gallery-uploads-desktop.png \
+            apps/studio/visual-baselines/16-gallery-uploads-mobile.png
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/visual-baselines
+          git commit -m "test(studio): keep only reviewed Qwen baselines"
+          git push origin HEAD:studio/qwen-image-edit-2511
