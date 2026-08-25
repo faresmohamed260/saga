@@ -10,7 +10,7 @@ on:
       - ".github/workflows/studio-advanced-ui-audit-patch.yml"
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
@@ -28,6 +28,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: studio/advanced-ui-audit
+          fetch-depth: 0
+
+      - name: Repair stale Image Advanced browser assertion
+        shell: bash
+        working-directory: .
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/studio/scripts/capture-ui-preview.mjs')
+          text = path.read_text(encoding='utf-8')
+          old = """  // Switch back to Image and verify image canvas preferences persist while inert sampling stays hidden.\n  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();\n  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');\n  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';\n  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);\n  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');\n  await settingsButton.click();\n  await advanced.waitFor({ state: 'visible' });\n  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });\n  await settingsButton.click();\n"""
+          new = """  // Switch back to Image and verify canvas preferences persist while the live FLUX setup controls remain available.\n  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();\n  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');\n  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';\n  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);\n  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');\n  await settingsButton.click();\n  await advanced.waitFor({ state: 'visible' });\n  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });\n  await advanced.locator('input[aria-label=\"Steps value\"]').waitFor({ state: 'visible' });\n  await advanced.locator('input[aria-label=\"CFG value\"]').waitFor({ state: 'visible' });\n  await advanced.locator('textarea[aria-label=\"Negative prompt\"]').waitFor({ state: 'visible' });\n  if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');\n  await settingsButton.click();\n"""
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          elif "Legacy disconnected Image Advanced message returned after reload" not in text:
+              raise SystemExit('Could not locate stale Image Advanced browser assertion')
+          PY
+          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add apps/studio/scripts/capture-ui-preview.mjs
+            git commit -m "test(studio): align browser review with live Image Advanced"
+            git push origin HEAD:studio/advanced-ui-audit
+          fi
 
       - uses: actions/setup-node@v5
         with:
@@ -57,6 +81,8 @@ jobs:
           exit 1
 
       - name: Run real-browser interaction and visual suite
+        env:
+          UI_PREVIEW_DIR: artifacts/browser-review
         run: npm run visual:preview
 
       - name: Upload browser-review screenshots
@@ -64,14 +90,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: studio-browser-ux-review
-          path: |
-            apps/studio/artifacts/ui-preview/**
-            apps/studio/artifacts/video-output-preview/**
-            apps/studio/artifacts/audio-state-preview/**
-            apps/studio/artifacts/gallery-preview/**
-            apps/studio/artifacts/uploads-preview/**
-            apps/studio/artifacts/jobs-preview/**
-            apps/studio/artifacts/gallery-thumbnail-preview/**
-            apps/studio/artifacts/responsive-preview/**
+          path: apps/studio/artifacts/browser-review/**
           if-no-files-found: warn
           retention-days: 7
