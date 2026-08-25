@@ -112,6 +112,8 @@ export default function CreateWorkspace(props) {
         videoReferenceInfo={referenceInfo}
         videoFrameRate={frameRate}
         setVideoFrameRate={setFrameRate}
+        imageModelName={imageModel === 'qwen-image-edit-2511' ? 'Qwen' : 'FLUX'}
+        imageModelLabel={imageModel === 'qwen-image-edit-2511' ? 'Qwen Image Edit 2511' : 'FLUX.2 Klein 9B'}
         onGenerate={handleGenerate}
         composerStatusSlot={composerStatusSlot}
       />
