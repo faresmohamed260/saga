@@ -508,7 +508,7 @@ function FancySelect({ label, value, options, onChange }) {
       className="saga-fancy-options saga-fancy-options-portal"
       role="listbox"
       aria-label={label}
-      style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height }}
+      style={position ? { position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height } : { position: 'fixed', visibility: 'hidden' }}
     >
       {options.map((option, index) => (
         <button
