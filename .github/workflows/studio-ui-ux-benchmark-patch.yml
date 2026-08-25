@@ -1,0 +1,65 @@
+name: Apply Studio UI UX Benchmark Patch
+
+on:
+  push:
+    branches:
+      - studio/advanced-ui-audit
+    paths:
+      - scripts/studio_ui_ux_benchmark_patch.py
+      - .github/workflows/studio-ui-ux-benchmark-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/advanced-ui-audit
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply UX benchmark patch
+        run: python scripts/studio_ui_ux_benchmark_patch.py
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+      - name: Build and contracts
+        working-directory: apps/studio
+        run: npm run build
+      - name: Install Chromium
+        working-directory: apps/studio
+        run: npx playwright install --with-deps chromium
+      - name: Run real-browser visual interaction suite
+        working-directory: apps/studio
+        run: npm run visual:preview
+      - name: Upload browser screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-ui-ux-benchmark-browser-review
+          path: |
+            apps/studio/artifacts/ui-preview/**
+            apps/studio/artifacts/video-output-preview/**
+            apps/studio/artifacts/audio-state-preview/**
+            apps/studio/artifacts/gallery-preview/**
+            apps/studio/artifacts/uploads-preview/**
+            apps/studio/artifacts/jobs-preview/**
+            apps/studio/artifacts/gallery-thumbnail-preview/**
+            apps/studio/artifacts/responsive-preview/**
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Commit validated UX changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src apps/studio/scripts apps/studio/package.json docs/studio-ui-ux-benchmark-audit.md
+          git rm scripts/studio_ui_ux_benchmark_patch.py .github/workflows/studio-ui-ux-benchmark-patch.yml
+          git commit -m "refactor(studio): remove misleading UI and improve real-user UX"
+          git push origin HEAD:studio/advanced-ui-audit
