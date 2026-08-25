@@ -10,6 +10,12 @@ ECOSYSTEM_ID = "qwen-image-edit-2511"
 WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
 STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-qwen-image-edit-2511-worker-state")
 worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
+LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"
+LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors"
+LIGHTNING_MIN_STEPS = 6
+LIGHTNING_MAX_STEPS = 8
+LIGHTNING_DEFAULT_STEPS = 8
+LIGHTNING_TRUE_CFG_SCALE = 1.0
 
 CREDIT_PATTERNS = ("credit", "credits", "quota", "budget", "billing", "payment", "insufficient", "spending limit", "workspace budget")
 UNAVAILABLE_PATTERNS = ("workspace is disabled", "workspace disabled", "unavailable", "not found", "stopped")
@@ -43,7 +49,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA Qwen Image Edit 2511 Gateway", version="1.0.0")
+    api = FastAPI(title="SAGA Qwen Image Edit 2511 Gateway", version="1.1.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -71,15 +77,15 @@ def web():
         if not prompt.strip():
             raise HTTPException(status_code=400, detail="prompt is required")
 
-    def _worker_call(images, prompt, negative_prompt, seed, steps, cfg, megapixels):
+    def _worker_call(images, prompt, negative_prompt, seed, steps, megapixels):
         worker_cls = modal.Cls.from_name(RUNTIME_APP_NAME, RUNTIME_CLASS_NAME)
         return worker_cls().edit.spawn(
             images=images,
             prompt=prompt.strip(),
             negative_prompt=negative_prompt,
             seed=int(seed),
-            steps=max(1, min(int(steps), 80)),
-            cfg=max(0.0, min(float(cfg), 20.0)),
+            steps=max(LIGHTNING_MIN_STEPS, min(int(steps), LIGHTNING_MAX_STEPS)),
+            cfg=LIGHTNING_TRUE_CFG_SCALE,
             megapixels=max(0.25, min(float(megapixels), 4.0)),
         )
 
@@ -109,6 +115,14 @@ def web():
             "multiple_references": True,
             "model": "Qwen/Qwen-Image-Edit-2511",
             "precision": "official-bfloat16",
+            "acceleration": {
+                "type": "lightning-lora",
+                "repo": LIGHTNING_REPO,
+                "weight": LIGHTNING_WEIGHT_NAME,
+                "steps": [LIGHTNING_MIN_STEPS, LIGHTNING_MAX_STEPS],
+                "default_steps": LIGHTNING_DEFAULT_STEPS,
+                "true_cfg_scale": LIGHTNING_TRUE_CFG_SCALE,
+            },
             "worker": _state(),
         }
 
@@ -118,8 +132,8 @@ def web():
         prompt: str = Form(...),
         negative_prompt: str = Form(""),
         seed: int = Form(42),
-        steps: int = Form(40),
-        cfg: float = Form(4.0),
+        steps: int = Form(LIGHTNING_DEFAULT_STEPS),
+        cfg: float = Form(LIGHTNING_TRUE_CFG_SCALE),
         megapixels: float = Form(1.0),
     ):
         if not image_files:
@@ -134,7 +148,8 @@ def web():
                 "content_type": image_file.content_type or "image/png",
             })
         try:
-            call = _worker_call(images, prompt, negative_prompt, seed, steps, cfg, megapixels)
+            effective_steps = max(LIGHTNING_MIN_STEPS, min(int(steps), LIGHTNING_MAX_STEPS))
+            call = _worker_call(images, prompt, negative_prompt, seed, effective_steps, megapixels)
             return {
                 "status": "queued",
                 "call_id": call.object_id,
@@ -142,6 +157,9 @@ def web():
                 "worker_state": _submit_state(),
                 "worker_id": WORKER_ID,
                 "ecosystem": ECOSYSTEM_ID,
+                "inference_steps": effective_steps,
+                "true_cfg_scale": LIGHTNING_TRUE_CFG_SCALE,
+                "acceleration": "lightning-lora-8step-bf16",
             }
         except Exception as exc:  # noqa: BLE001
             print({"event": "qwen_gateway_spawn_failed", "error": repr(exc)}, flush=True)
