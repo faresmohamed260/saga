@@ -52,6 +52,9 @@ jobs:
           for row in rows:
               state = str(row.get('state') or 'unknown')
               counts[state] = counts.get(state, 0) + 1
+          dedicated = {'modal-44', 'modal-45', 'modal-46', 'modal-47'}
+          available = [str(row.get('account')) for row in rows if row.get('state') == 'available']
+          qwen_candidates = [label for label in available if label not in dedicated]
           lines = [
               '## Modal worker account inventory',
               '',
@@ -60,9 +63,11 @@ jobs:
               f"- Credit exhausted: **{counts.get('credit_exhausted', 0)}**",
               f"- Disabled: **{counts.get('disabled', 0)}**",
               f"- Other/error: **{len(rows) - counts.get('available', 0) - counts.get('credit_exhausted', 0) - counts.get('disabled', 0)}**",
+              f"- Available accounts: `{', '.join(available) or 'none'}`",
+              f"- Qwen candidates (excluding modal-44..47): `{', '.join(qwen_candidates) or 'none'}`",
           ]
           Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('\n'.join(lines) + '\n', encoding='utf-8')
-          print(json.dumps({'count': len(rows), 'states': counts}, sort_keys=True))
+          print(json.dumps({'count': len(rows), 'states': counts, 'available': available, 'qwenCandidates': qwen_candidates}, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         with:
