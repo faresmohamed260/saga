@@ -6,6 +6,7 @@ import json
 import struct
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zlib
@@ -101,12 +102,15 @@ def main() -> None:
             with urllib.request.urlopen(req, timeout=180) as response:
                 raw = response.read()
                 content_type = str(response.headers.get('content-type') or '').lower()
+                if response.status == 202:
+                    time.sleep(5)
+                    continue
                 if response.status == 200 and content_type.startswith('image/'):
                     if not raw.startswith(b'\x89PNG\r\n\x1a\n'):
                         raise SystemExit(f'Qwen returned non-PNG image bytes: {raw[:16]!r}')
                     print(json.dumps({'ready': True, 'callId': call_id, 'polls': polls, 'bytes': len(raw), 'contentType': content_type, 'workerId': submitted.get('worker_id'), 'ecosystem': submitted.get('ecosystem')}))
                     return
-                raise SystemExit(f'Unexpected Qwen poll response: HTTP {response.status} {content_type}')
+                raise SystemExit(f'Unexpected Qwen poll response: HTTP {response.status} {content_type}: {raw[:500]!r}')
         except urllib.error.HTTPError as exc:
             raw = exc.read()
             if exc.code == 202:
@@ -117,5 +121,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    import urllib.parse
     main()
