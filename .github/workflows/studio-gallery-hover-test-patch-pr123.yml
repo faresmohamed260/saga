@@ -1,0 +1,57 @@
+name: Studio Gallery Hover Test Patch PR123
+
+on:
+  push:
+    branches:
+      - studio/automatic-refresh-video-recovery
+    paths:
+      - .github/workflows/studio-gallery-hover-test-patch-pr123.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/automatic-refresh-video-recovery
+      - name: Make desktop hover capability deterministic
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/studio/scripts/capture-gallery-preview.mjs')
+          text = path.read_text()
+          old = "  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });\n  page.on('pageerror',"
+          new = """  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
+  await page.addInitScript(() => {
+    const nativeMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      if (query !== '(hover: hover) and (pointer: fine)') return nativeMatchMedia(query);
+      return {
+        matches: true,
+        media: query,
+        onchange: null,
+        addListener() {},
+        removeListener() {},
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent() { return true; },
+      };
+    };
+  });
+  page.on('pageerror',"""
+          if old not in text:
+              raise SystemExit('Desktop Gallery page creation anchor not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit deterministic Gallery capture
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/scripts/capture-gallery-preview.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "test(studio): stabilize Gallery desktop pointer capability"
+          git push origin HEAD:studio/automatic-refresh-video-recovery
