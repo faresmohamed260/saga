@@ -207,7 +207,7 @@ export default function MediaCard({
         {moreOpen && (
           <div className="media-actions-popover" role="menu" aria-label="More media actions" onClick={(event) => event.stopPropagation()}>
             <button type="button" role="menuitem" onClick={menuAction(onReuseSettings)}><RefreshCcw size={15}/><span>Reuse settings</span></button>
-            <button type="button" role="menuitem" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>
+            {item.kind !== 'video' && <button type="button" role="menuitem" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>}
             <button type="button" role="menuitem" className="media-overflow-download" onClick={menuAction(onDownload)}><Download size={15}/><span>Download original</span></button>
             <button type="button" role="menuitem" onClick={menuAction(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={15}/><span>{collectionLabel}</span></button>
             <div className="media-actions-menu-divider" role="separator"/>
@@ -222,7 +222,7 @@ export default function MediaCard({
     <div className="card-actions">
       <button type="button" title={favoriteLabel} aria-label={favoriteLabel} className={favorite ? 'favorite active' : 'favorite'} onClick={action(onToggleFavorite)}><Heart size={17} fill={favorite ? 'currentColor' : 'none'}/></button>
       <button type="button" title="Reuse settings" aria-label="Reuse settings" onClick={action(onReuseSettings)}><RefreshCcw size={16}/></button>
-      <button type="button" title="Edit this" aria-label="Edit this" onClick={action(onEdit)}><Pencil size={16}/></button>
+      {item.kind !== 'video' && <button type="button" title="Edit this" aria-label="Edit this" onClick={action(onEdit)}><Pencil size={16}/></button>}
       <button type="button" title="Download original" aria-label="Download original" onClick={action(onDownload)}><Download size={16}/></button>
       <button type="button" title="Open full media" aria-label="Open full media" onClick={action(onOpen)}><ArrowUpRight size={17}/></button>
       <button type="button" title={collectionLabel} aria-label={collectionLabel} onClick={action(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={16}/></button>

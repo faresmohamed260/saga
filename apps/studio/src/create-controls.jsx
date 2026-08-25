@@ -773,7 +773,7 @@ export default function CreateWorkspace({
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
   const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
-  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Prepare an image edit';
+  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Create from a reference';
 
   useEffect(() => {
     if (autoEditInfo) autoBaselineRef.current = { ...autoEditInfo };
@@ -882,7 +882,7 @@ export default function CreateWorkspace({
         <div className="saga-stage-heading">
           <span>{isEdit ? 'EDIT' : isVideo ? 'VIDEO' : 'CREATE'}</span>
           <h1>{heading}</h1>
-          <p>{isEdit ? 'Click a reference to insert it exactly where your cursor is.' : isVideo ? 'Shape the shot, duration, resolution, and audio before generation.' : 'Set your image controls now, then add a reference to start the live FLUX edit workflow.'}</p>
+          <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : 'Add an image, describe the change, and generate with the live FLUX edit model.'}</p>
         </div>
 
         <section className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''}`}>

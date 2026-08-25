@@ -113,8 +113,8 @@ export default function App() {
   const [steps, setSteps] = useState(4);
   const [cfg, setCfg] = useState(1.0);
   const [negativePrompt, setNegativePrompt] = useState('');
-  const [workflowId, setWorkflowId] = useState('default-image');
-  const [modelId, setModelId] = useState('saga-image-auto');
+  const [workflowId, setWorkflowId] = useState('flux2-klein-image-edit');
+  const [modelId, setModelId] = useState('flux2-klein-9b');
   const [references, setReferences] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -277,8 +277,8 @@ export default function App() {
     setPrompt((current) => promptAfterReferenceRemoval(current, index));
     if (mode === 'Edit' && nextReferences.length === 0) {
       setMode('Image');
-      setWorkflowId('default-image');
-      setModelId('saga-image-auto');
+      setWorkflowId('flux2-klein-image-edit');
+      setModelId('flux2-klein-9b');
       setError('');
     }
   };
