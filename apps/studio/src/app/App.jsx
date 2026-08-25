@@ -101,7 +101,6 @@ export default function App() {
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
   const [imageResolution, setImageResolution] = useState(1080);
-  const [outputs, setOutputs] = useState(4);
   const [mobileNav, setMobileNav] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jobs, setJobs] = useState([]);
@@ -113,8 +112,6 @@ export default function App() {
   const [steps, setSteps] = useState(4);
   const [cfg, setCfg] = useState(1.0);
   const [negativePrompt, setNegativePrompt] = useState('');
-  const [workflowId, setWorkflowId] = useState('flux2-klein-image-edit');
-  const [modelId, setModelId] = useState('flux2-klein-9b');
   const [references, setReferences] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -130,8 +127,8 @@ export default function App() {
     const sessionItems = items.filter(accepts);
     const seen = new Set(sessionItems.map((item) => String(item.id)));
     const favoriteFallback = favoriteItems.filter((item) => accepts(item) && !seen.has(String(item.id)));
-    return [...sessionItems, ...favoriteFallback].slice(0, mode === 'Edit' ? 4 : outputs);
-  }, [items, favoriteItems, mode, outputs]);
+    return [...sessionItems, ...favoriteFallback].slice(0, mode === 'Edit' ? 4 : 8);
+  }, [items, favoriteItems, mode]);
 
   const setCreateMode = (nextMode) => {
     const resolvedMode = nextMode === 'Image' && references.length ? 'Edit' : nextMode;
@@ -139,20 +136,16 @@ export default function App() {
     setMode(resolvedMode);
     setError('');
     const preset = advancedPresetForMode(resolvedMode);
-    if (preset) {
-      if (!preserveSampling) {
-        setSeed(preset.seed);
-        setSteps(preset.steps);
-        setCfg(preset.cfg);
-        setNegativePrompt(preset.negativePrompt || '');
-      }
-      setWorkflowId(preset.workflowId);
-      setModelId(preset.modelId);
+    if (preset && !preserveSampling) {
+      setSeed(preset.seed);
+      setSteps(preset.steps);
+      setCfg(preset.cfg);
+      setNegativePrompt(preset.negativePrompt || '');
     }
   };
   const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, negativePrompt, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
   const mediaActions = useMediaActions({
-    section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
+    section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg,
     references, setReferences, setError, setItems, selectedMedia, setSelectedMedia,
     favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems,
     collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems,
@@ -277,8 +270,6 @@ export default function App() {
     setPrompt((current) => promptAfterReferenceRemoval(current, index));
     if (mode === 'Edit' && nextReferences.length === 0) {
       setMode('Image');
-      setWorkflowId('flux2-klein-image-edit');
-      setModelId('flux2-klein-9b');
       setError('');
     }
   };
@@ -326,9 +317,7 @@ export default function App() {
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
               error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
-              outputs={outputs} setOutputs={setOutputs}
               seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg} negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
-              workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
               settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} autoEditInfo={autoEditInfo}
             />}
       </main>
