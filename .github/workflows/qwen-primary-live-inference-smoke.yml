@@ -1,0 +1,75 @@
+name: Qwen Primary Live Inference Smoke
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-primary-live-inference-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qwen-primary-live-inference-smoke-2511
+  cancel-in-progress: true
+
+jobs:
+  primary-live-inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      QWEN_GATEWAY: https://voidtrek--saga-qwen-image-edit-2511-gateway-web.modal.run
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/qwen-image-edit-2511
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify staged Civitai BF16 primary worker
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          health_url = os.environ['QWEN_GATEWAY'].rstrip('/') + '/health'
+          with urllib.request.urlopen(health_url, timeout=60) as response:
+              payload = json.load(response)
+          checkpoint = payload.get('checkpoint') or {}
+          acceleration = payload.get('acceleration') or {}
+          worker = payload.get('worker') or {}
+          snapshot = {
+              'precision': payload.get('precision'),
+              'checkpointVersionId': checkpoint.get('version_id'),
+              'defaultSteps': acceleration.get('default_steps'),
+              'workerState': worker.get('state'),
+              'workerPrecision': worker.get('precision'),
+              'workerCheckpointVersionId': worker.get('checkpoint_version_id'),
+              'workerAcceleration': worker.get('acceleration'),
+              'workerAssetsCached': worker.get('assets_cached'),
+          }
+          print(json.dumps(snapshot, sort_keys=True))
+          if not (
+              payload.get('ready') is True
+              and payload.get('precision') == 'civitai-bfloat16'
+              and checkpoint.get('version_id') == 2553500
+              and acceleration.get('type') == 'lightning-lora'
+              and acceleration.get('default_steps') == 4
+              and worker.get('precision') == 'civitai-bfloat16'
+              and worker.get('checkpoint_version_id') == 2553500
+              and worker.get('acceleration') == 'lightning-lora-4step-bf16'
+              and worker.get('assets_cached') is True
+              and worker.get('state') in {'sleeping', 'ready'}
+          ):
+              raise SystemExit(f'Primary worker is not staged for the Civitai BF16 four-step benchmark: {snapshot}')
+          PY
+      - name: Run pinned Civitai BF16 Qwen edit through live primary gateway
+        run: >-
+          python scripts/qwen_image_edit_smoke.py
+          "$QWEN_GATEWAY"
+          --timeout 4800
+          --max-inference-seconds 300
