@@ -1,6 +1,11 @@
 name: Studio Visual Baseline Update
 
 on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/studio-visual-baseline.yml"
   workflow_dispatch:
 
 permissions:
