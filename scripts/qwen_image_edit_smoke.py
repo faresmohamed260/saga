@@ -62,6 +62,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('gateway_url')
     parser.add_argument('--timeout', type=int, default=1800)
+    parser.add_argument('--max-inference-seconds', type=float, default=300.0)
     args = parser.parse_args()
     base = args.gateway_url.rstrip('/')
 
@@ -70,19 +71,23 @@ def main() -> None:
         raise SystemExit(f'Qwen gateway health failed: HTTP {status}: {health}')
     if health.get('model') != 'Qwen/Qwen-Image-Edit-2511' or health.get('precision') != 'official-bfloat16':
         raise SystemExit(f'Qwen gateway reports wrong model/precision: {health}')
+    acceleration = health.get('acceleration') or {}
+    if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != 8:
+        raise SystemExit(f'Qwen gateway is not serving the Lightning 8-step profile: {health}')
 
     body, boundary = multipart(
         {
             'prompt': 'Turn this simple gradient reference into a clean blue editorial poster with a centered white circle.',
             'negative_prompt': ' ',
             'seed': '42',
-            'steps': '40',
-            'cfg': '4.0',
+            'steps': '8',
+            'cfg': '1.0',
             'megapixels': '0.25',
         },
         'qwen-smoke-reference.png',
         png(),
     )
+    submit_started = time.monotonic()
     status, _, submitted = request_json(
         base + '/jobs/edit',
         method='POST',
@@ -92,6 +97,8 @@ def main() -> None:
     )
     if status != 200 or not submitted.get('call_id'):
         raise SystemExit(f'Qwen submit failed: HTTP {status}: {submitted}')
+    if submitted.get('inference_steps') != 8 or float(submitted.get('true_cfg_scale') or 0) != 1.0:
+        raise SystemExit(f'Qwen submit did not use Lightning 8-step settings: {submitted}')
     call_id = submitted['call_id']
     started = time.monotonic()
     polls = 0
@@ -103,18 +110,38 @@ def main() -> None:
                 raw = response.read()
                 content_type = str(response.headers.get('content-type') or '').lower()
                 if response.status == 202:
-                    time.sleep(5)
+                    time.sleep(3)
                     continue
                 if response.status == 200 and content_type.startswith('image/'):
                     if not raw.startswith(b'\x89PNG\r\n\x1a\n'):
                         raise SystemExit(f'Qwen returned non-PNG image bytes: {raw[:16]!r}')
-                    print(json.dumps({'ready': True, 'callId': call_id, 'polls': polls, 'bytes': len(raw), 'contentType': content_type, 'workerId': submitted.get('worker_id'), 'ecosystem': submitted.get('ecosystem')}))
+                    inference_seconds = round(time.monotonic() - started, 3)
+                    total_seconds = round(time.monotonic() - submit_started, 3)
+                    result = {
+                        'ready': True,
+                        'callId': call_id,
+                        'polls': polls,
+                        'bytes': len(raw),
+                        'contentType': content_type,
+                        'workerId': submitted.get('worker_id'),
+                        'ecosystem': submitted.get('ecosystem'),
+                        'inferenceSteps': submitted.get('inference_steps'),
+                        'trueCfgScale': submitted.get('true_cfg_scale'),
+                        'acceleration': submitted.get('acceleration'),
+                        'inferenceSeconds': inference_seconds,
+                        'totalSeconds': total_seconds,
+                    }
+                    print(json.dumps(result))
+                    if inference_seconds > args.max_inference_seconds:
+                        raise SystemExit(
+                            f'Qwen Lightning inference is still too slow: {inference_seconds}s > {args.max_inference_seconds}s threshold'
+                        )
                     return
                 raise SystemExit(f'Unexpected Qwen poll response: HTTP {response.status} {content_type}: {raw[:500]!r}')
         except urllib.error.HTTPError as exc:
             raw = exc.read()
             if exc.code == 202:
-                time.sleep(5)
+                time.sleep(3)
                 continue
             raise SystemExit(f'Qwen poll failed: HTTP {exc.code}: {raw.decode("utf-8", errors="replace")}') from exc
     raise SystemExit(f'Qwen smoke timed out after {args.timeout}s and {polls} polls')
