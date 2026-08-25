@@ -195,6 +195,7 @@ export default async function handler(req, res) {
     const submittedAt = new Date().toISOString();
     const updatedJob = await updateGenerationWorkerAssignment(job.id, submitted.providerJobId, {
       assignedWorkerId: submitted.worker?.workerId || null,
+      workerRuntime: submitted.worker ? { ...submitted.worker, updatedAt: submittedAt } : null,
       workerFailoverHistory: submissionFailures.map((failure) => ({
         fromWorkerId: failure.workerId || null,
         reason: failure.kind || 'unavailable',
