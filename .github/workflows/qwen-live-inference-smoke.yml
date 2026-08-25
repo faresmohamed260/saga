@@ -6,6 +6,7 @@ on:
       - studio/qwen-image-edit-2511
     paths:
       - ".github/workflows/qwen-live-inference-smoke.yml"
+      - "scripts/qwen_image_edit_smoke.py"
   workflow_dispatch:
 
 permissions:
