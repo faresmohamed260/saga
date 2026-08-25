@@ -2,11 +2,6 @@ name: Studio Visual Baseline Update
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - studio/create-advanced-presets
-    paths:
-      - .github/workflows/studio-visual-baseline.yml
 
 permissions:
   contents: write
