@@ -48,8 +48,8 @@ try {
   const advanced = page.locator('.saga-advanced-panel');
   await advanced.getByText('Qwen Image Edit 2511 · Abliterated BF16 + Lightning', { exact: true }).waitFor({ state: 'visible' });
   await advanced.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
-  const steps = advanced.locator('input[aria-label="Steps value"]');
-  if (Number(await steps.inputValue()) !== 4) throw new Error('Qwen Advanced defaults did not switch to four steps');
+  await advanced.getByText('4-step BF16 Lightning LoRA', { exact: true }).waitFor({ state: 'visible' });
+  if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('Qwen fixed four-step recipe unexpectedly exposed an editable Steps input');
   const cfg = advanced.locator('input[aria-label="CFG value"]');
   if (Number(await cfg.inputValue()) !== 1) throw new Error('Qwen Advanced defaults did not switch to CFG 1');
   await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
