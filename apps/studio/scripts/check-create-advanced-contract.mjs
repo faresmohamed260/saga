@@ -38,7 +38,9 @@ expect(runtime.match(/"cfg": float\(cfg\)/g)?.length === 2, 'LTX CFG must drive 
 expect(runtime.includes('"separate_distill_lora": False'), 'LTX health contract must state that no separate distill LoRA is loaded');
 expect(!app.includes('const samples = ['), 'Create must not ship stock face/scene placeholders');
 expect(app.includes('favoriteItems.filter'), 'Create output wall must draw from Favorites');
+expect(app.includes("setCreateMode('Edit')"), 'Uploading a reference must apply the FLUX preset when entering Edit');
 expect(library.includes("['Create', 'Gallery', 'Favorites', 'Collections']"), 'Favorites must refresh while Create is visible');
+expect(/item\.kind === 'video'[\s\S]*?setSteps\(11\)[\s\S]*?setCfg\(1\)[\s\S]*?ltx25-redgraft-video/.test(await readFile(new URL('src/hooks/useMediaActions.js', root), 'utf8')), 'Reusing a video must restore the LTX production preset');
 expect(!audioCss.includes('.saga-audio-toggle::after'), 'Audio must render only the circular button');
 
 console.log('Create Advanced contract passed: production presets, live LTX CFG transport, fixed 8+3 recipe, moved video controls, single audio button, and Favorites-backed Create wall are wired.');

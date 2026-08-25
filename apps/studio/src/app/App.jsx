@@ -233,7 +233,7 @@ export default function App() {
         if (valid.length > 1) valid.slice(1).forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
       } else {
         setReferences((current) => [...current, ...valid]);
-        setMode('Edit');
+        setCreateMode('Edit');
       }
       setError('');
     }
@@ -310,7 +310,7 @@ export default function App() {
         mobileOpen={mobileNav}
         onCloseMobile={() => setMobileNav(false)}
         onSectionChange={setSection}
-        onModeChange={setMode}
+        onModeChange={setCreateMode}
         onClearError={() => setError('')}
       />
 

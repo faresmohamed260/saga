@@ -26,7 +26,7 @@ export default function useMediaActions({
     if (!item.persisted || !isUuid(id)) return;
     try {
       await updateFavorite(id, nextValue);
-      if (section === 'Favorites') loadFavorites();
+      if (section === 'Favorites' || section === 'Create') loadFavorites();
       setGalleryItems((current) => current.map((entry) => entry.id === id ? { ...entry, favorite: nextValue } : entry));
     } catch {
       setFavorites((current) => { const next = new Set(current); nextValue ? next.delete(id) : next.add(id); return next; });
@@ -85,7 +85,7 @@ export default function useMediaActions({
   const reuseSettings = (item) => {
     setPrompt(item.title || '');
     if (item.seed != null) setSeed(String(item.seed));
-    if (item.kind === 'video') setMode('Video');
+    if (item.kind === 'video') { setMode('Video'); setSteps(11); setCfg(1); setWorkflowId('ltx25-redgraft-video'); setModelId('ltx25-redgraft'); }
     else if (item.mode === 'edit') { setMode('Edit'); setSteps(4); setCfg(1); setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); }
     else setMode('Image');
     setSection('Create');
