@@ -7,6 +7,9 @@ on:
     paths:
       - ".github/workflows/qwen-live-inference-smoke.yml"
       - "scripts/qwen_image_edit_smoke.py"
+      - "integrations/qwen/qwen_image_edit_2511_app.py"
+      - "integrations/qwen/qwen_image_edit_2511_gateway.py"
+      - ".github/workflows/modal-worker-provision.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +18,9 @@ permissions:
 jobs:
   standby-live-inference:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
+    env:
+      QWEN_GATEWAY: https://nyxprotocol--saga-qwen-image-edit-2511-gateway-web.modal.run
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,8 +28,55 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run official BF16 Qwen edit through live standby gateway
+      - name: Wait for Civitai BF16 fallback deployment
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+
+          health_url = os.environ['QWEN_GATEWAY'].rstrip('/') + '/health'
+          deadline = time.monotonic() + 7200
+          attempts = 0
+          last = None
+          while time.monotonic() < deadline:
+              attempts += 1
+              try:
+                  with urllib.request.urlopen(health_url, timeout=60) as response:
+                      payload = json.load(response)
+                  checkpoint = payload.get('checkpoint') or {}
+                  acceleration = payload.get('acceleration') or {}
+                  snapshot = {
+                      'precision': payload.get('precision'),
+                      'checkpointVersionId': checkpoint.get('version_id'),
+                      'acceleration': acceleration.get('type'),
+                      'defaultSteps': acceleration.get('default_steps'),
+                      'workerState': (payload.get('worker') or {}).get('state'),
+                  }
+                  if snapshot != last:
+                      print(json.dumps({'event': 'qwen-deployment-wait', 'attempt': attempts, **snapshot}), flush=True)
+                      last = snapshot
+                  if (
+                      payload.get('ready') is True
+                      and payload.get('precision') == 'civitai-bfloat16'
+                      and checkpoint.get('version_id') == 2553500
+                      and acceleration.get('type') == 'lightning-lora'
+                      and acceleration.get('default_steps') == 4
+                  ):
+                      print(json.dumps({'event': 'qwen-deployment-ready', 'attempts': attempts, **snapshot}), flush=True)
+                      break
+              except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+                  print(json.dumps({'event': 'qwen-deployment-wait-error', 'attempt': attempts, 'error': str(exc)}), flush=True)
+              time.sleep(15)
+          else:
+              raise SystemExit(f'Qwen fallback deployment did not become ready within 7200s; last={last}')
+          PY
+      - name: Run pinned Civitai BF16 Qwen edit through live standby gateway
         run: >-
           python scripts/qwen_image_edit_smoke.py
-          https://nyxprotocol--saga-qwen-image-edit-2511-gateway-web.modal.run
+          "$QWEN_GATEWAY"
           --timeout 4800
+          --max-inference-seconds 300
