@@ -219,6 +219,8 @@ export async function submitVideoGeneration({
   aspectRatio = '16:9',
   frameRate = 24,
   seed = 42,
+  steps = 11,
+  cfg = 1.0,
 }) {
   let uploaded = null;
   if (sourceKey) {
@@ -247,6 +249,8 @@ export async function submitVideoGeneration({
       aspectRatio,
       frameRate,
       seed,
+      steps,
+      cfg,
     }),
   });
   if (response.status !== 202) throw await responseException(response, 'Could not submit video generation');

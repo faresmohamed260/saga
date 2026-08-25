@@ -16,9 +16,6 @@ async function waitForStudio(page, label) {
   await page.locator('.saga-composer.is-video').waitFor({ state: 'visible', timeout: 5_000 });
 }
 
-async function pseudoContent(locator, pseudo) {
-  return locator.evaluate((element, target) => getComputedStyle(element, target).content.replace(/^['"]|['"]$/g, ''), pseudo);
-}
 
 async function expectFocusRing(locator, label) {
   const result = await locator.evaluate((element) => {
@@ -63,10 +60,11 @@ try {
   if (await audio.getAttribute('aria-pressed') !== 'true') throw new Error('Audio should default to aria-pressed=true');
   if (await audio.getAttribute('aria-label') !== 'Disable audio') throw new Error('Audio On accessible action label is wrong');
   if (await audio.getAttribute('title') !== 'Audio enabled') throw new Error('Audio On native tooltip copy is wrong');
-  if (await pseudoContent(audio, '::after') !== 'Audio On') throw new Error('Desktop Audio On text is not visible');
+  const afterContent = await audio.evaluate((element) => getComputedStyle(element, '::after').content);
+  if (afterContent && afterContent !== 'none' && afterContent !== 'normal') throw new Error(`Audio renders a duplicate pseudo-button label: ${afterContent}`);
   await expectCircularButton(audio, 'Desktop Audio button', 38);
   const desktopMargin = Number.parseFloat(await audio.evaluate((element) => getComputedStyle(element).marginRight));
-  if (desktopMargin < 60) throw new Error(`Desktop Audio control does not reserve enough room for its explicit state badge: ${desktopMargin}`);
+  if (desktopMargin > 4) throw new Error(`Desktop Audio control still reserves space for a removed duplicate badge: ${desktopMargin}`);
   await expectToolbarContained(desktop, 'Desktop Video');
 
   // Enter focus through keyboard modality so :focus-visible is tested as users experience it.
@@ -75,7 +73,8 @@ try {
   await desktop.keyboard.press('Shift+Tab');
   if (!(await audio.evaluate((element) => document.activeElement === element))) throw new Error('Keyboard focus did not return to Audio control');
   await expectFocusRing(audio, 'Audio control');
-  if (await pseudoContent(audio, '::before') !== 'Audio on · Generate with sound') throw new Error('Focused Audio tooltip does not explain the On state');
+  const onTooltip = await audio.evaluate((element) => getComputedStyle(element, '::before').content.replace(/^['"]|['"]$/g, ''));
+  if (onTooltip !== 'Audio on · Generate with sound') throw new Error('Focused Audio tooltip does not explain the On state');
   await desktop.waitForTimeout(180);
   const tooltipOpacity = Number(await audio.evaluate((element) => getComputedStyle(element, '::before').opacity));
   if (tooltipOpacity < 0.9) throw new Error(`Audio tooltip should be visible on focus, opacity=${tooltipOpacity}`);
@@ -86,8 +85,8 @@ try {
   if (await audio.getAttribute('aria-pressed') !== 'false') throw new Error('Space did not toggle Audio Off');
   if (await audio.getAttribute('aria-label') !== 'Enable audio') throw new Error('Audio Off accessible action label is wrong');
   if (await audio.getAttribute('title') !== 'Audio disabled') throw new Error('Audio Off native tooltip copy is wrong');
-  if (await pseudoContent(audio, '::after') !== 'Audio Off') throw new Error('Desktop Audio Off text is not visible');
-  if (await pseudoContent(audio, '::before') !== 'Audio off · Generate without sound') throw new Error('Audio Off tooltip did not update with explanatory copy');
+  const offTooltip = await audio.evaluate((element) => getComputedStyle(element, '::before').content.replace(/^['"]|['"]$/g, ''));
+  if (offTooltip !== 'Audio off · Generate without sound') throw new Error('Audio Off tooltip did not update with explanatory copy');
   await desktop.screenshot({ path: path.join(outputDir, '05j-video-audio-off.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05j-video-audio-off.png');
 
@@ -95,15 +94,14 @@ try {
   await waitForStudio(mobile, 'mobile');
   const mobileAudio = mobile.locator('.saga-audio-toggle');
   await mobileAudio.waitFor({ state: 'visible' });
-  if (await pseudoContent(mobileAudio, '::after') !== 'On') throw new Error('Mobile Audio On state is not compact and explicit');
+  const mobileAfter = await mobileAudio.evaluate((element) => getComputedStyle(element, '::after').content);
+  if (mobileAfter && mobileAfter !== 'none' && mobileAfter !== 'normal') throw new Error(`Mobile Audio renders a duplicate pseudo-label: ${mobileAfter}`);
   await expectCircularButton(mobileAudio, 'Mobile Audio button', 34);
   const mobileMargin = Number.parseFloat(await mobileAudio.evaluate((element) => getComputedStyle(element).marginRight));
-  if (mobileMargin < 28 || mobileMargin > 40) throw new Error(`Mobile Audio state badge spacing is outside the intended compact range: ${mobileMargin}`);
+  if (mobileMargin > 4) throw new Error(`Mobile Audio still reserves room for a removed duplicate badge: ${mobileMargin}`);
   await expectToolbarContained(mobile, 'Mobile Video');
   await mobileAudio.click();
-  if (await mobileAudio.getAttribute('aria-pressed') !== 'false' || await pseudoContent(mobileAudio, '::after') !== 'Off') {
-    throw new Error('Mobile Audio Off state is not explicit after toggle');
-  }
+  if (await mobileAudio.getAttribute('aria-pressed') !== 'false') throw new Error('Mobile Audio did not toggle off');
   await mobile.screenshot({ path: path.join(outputDir, '09b-mobile-video-audio-off.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('09b-mobile-video-audio-off.png');
 

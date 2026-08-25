@@ -32,9 +32,9 @@ export default function useGenerationController({ mode, isEdit, prompt, referenc
     const videoFrameRate = [24, 25, 30].includes(requestedFrameRate) ? requestedFrameRate : 24;
     const sourceFile = references[0]?.file || null;
     setJobStatus(sourceFile ? 'uploading' : 'queued');
-    const { job, result } = await runVideoGeneration({ sourceFile, prompt: prompt.trim(), resolution: videoResolution, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate, seed: effectiveSeed }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
+    const { job, result } = await runVideoGeneration({ sourceFile, prompt: prompt.trim(), resolution: videoResolution, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate, seed: effectiveSeed, steps, cfg }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
     setJobStatus('completed');
-    setItems((current) => [{ id: result.generationId || job.id, title: prompt.trim(), url: result.thumbnailUrl || result.mediaUrl, originalUrl: result.mediaUrl, thumbnailUrl: result.thumbnailUrl || null, generated: true, model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', resolution: videoResolution, seed: effectiveSeed, kind: 'video', mode: sourceFile ? 'image-to-video' : 'video', persisted: true, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate }, ...current]);
+    setItems((current) => [{ id: result.generationId || job.id, title: prompt.trim(), url: result.thumbnailUrl || result.mediaUrl, originalUrl: result.mediaUrl, thumbnailUrl: result.thumbnailUrl || null, generated: true, model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', resolution: videoResolution, seed: effectiveSeed, kind: 'video', mode: sourceFile ? 'image-to-video' : 'video', persisted: true, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate, steps: Number(steps), cfg: Number(cfg) }, ...current]);
     if (section === 'Gallery') loadGallery({ append: false });
   };
 

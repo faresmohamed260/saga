@@ -37,7 +37,7 @@ const workflowRegistry = {
     defaults: {
       negativePrompt: '',
       seed: 42,
-      steps: 8,
+      steps: 11,
       cfg: 1.0,
       megapixels: 1.0,
       resolution: '480p',

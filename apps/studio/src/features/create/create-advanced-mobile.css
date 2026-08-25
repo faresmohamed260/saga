@@ -1,0 +1,16 @@
+@media (max-width: 720px) {
+  .workspace .saga-advanced-panel {
+    top: 12px !important;
+    right: 8px !important;
+    bottom: 12px !important;
+    left: 8px !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .workspace .saga-advanced-body {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+}

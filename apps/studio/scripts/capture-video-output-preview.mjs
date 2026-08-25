@@ -7,70 +7,69 @@ const baseUrl = process.env.UI_PREVIEW_URL || 'http://127.0.0.1:4173/#/create';
 const createUrl = /#\//.test(baseUrl) ? baseUrl.replace(/#\/.*$/, '#/create') : `${baseUrl.replace(/\/$/, '')}/#/create`;
 const outputDir = path.resolve(process.env.UI_PREVIEW_DIR || 'visual-preview');
 await mkdir(outputDir, { recursive: true });
-const diagnostics = { createUrl, generatedAt: new Date().toISOString(), screenshots: [], pageErrors: [] };
-
-const referencePng = await sharp({
-  create: { width: 800, height: 600, channels: 4, background: { r: 35, g: 38, b: 56, alpha: 1 } },
-}).png().toBuffer();
+const diagnostics = { createUrl, generatedAt: new Date().toISOString(), screenshots: [], pageErrors: [], submitted: null, sourceUpload: null };
+const referencePng = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 35, g: 38, b: 56, alpha: 1 } } }).png().toBuffer();
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
 try {
-  let page = await context.newPage();
+  const page = await context.newPage();
   page.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
-
+  await context.route('**/api/favorites', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }));
+  await context.route('**/api/uploads', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    diagnostics.sourceUpload = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        uploadUrl: '/__visual-test-upload/reference-4x3.png',
+        key: 'visual-tests/reference-4x3.png',
+        contentType: 'image/png',
+      }),
+    });
+  });
+  await context.route('**/__visual-test-upload/**', async (route) => route.fulfill({ status: 200, body: '' }));
   await context.route('**/api/generate', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    diagnostics.submitted = route.request().postDataJSON();
     await route.fulfill({
       status: 202,
       contentType: 'application/json',
       body: JSON.stringify({
         job: { id: '77777777-7777-4777-8777-777777777777' },
-        status: 'running',
-        workflow: 'ltx25-redgraft-video',
-        worker: {
-          workerId: 'ltx-standby-01',
-          ecosystem: 'ltx25-redgraft',
-          displayName: 'REDGraft LTX 2.5 · Standby',
-          state: 'waking',
-          failedWorkers: [{ workerId: 'ltx-primary-01', kind: 'credit_exhausted', code: 'WORKER_CREDIT_EXHAUSTED' }],
-        },
+        status: 'running', workflow: 'ltx25-redgraft-video',
+        worker: { workerId: 'ltx-standby-01', ecosystem: 'ltx25-redgraft', displayName: 'REDGraft LTX 2.5 · Standby', state: 'waking', failedWorkers: [] },
       }),
     });
   });
-  await context.route('**/api/job-actions', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ job: { id: '77777777-7777-4777-8777-777777777777', status: 'failed', metadata: { cancelled: true } }, action: 'cancelled' }) });
-  });
-  await context.route('**/api/jobs?**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jobs: [{ id: '77777777-7777-4777-8777-777777777777', status: 'running', prompt: 'A slow cinematic camera move through a sunlit coastal landscape', kind: 'video', mode: 'video', model: 'REDGraft LTX 2.5' }] }) });
-  });
-  await context.route('**/api/generate/result?**', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ status: 'running' }) });
-  });
+  await context.route('**/api/generate/result?**', async (route) => route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ status: 'running' }) }));
 
   await page.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('.saga-composer').waitFor({ state: 'visible', timeout: 20_000 });
   await page.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
   await page.locator('.saga-composer.is-video').waitFor({ state: 'visible' });
-  const extras = page.locator('.saga-video-extra-controls');
-  await extras.waitFor({ state: 'visible', timeout: 3000 });
 
-  if (await extras.locator('.saga-auto-toggle').count()) throw new Error('Video still exposes a separate Auto aspect button');
-  const pickers = extras.locator('.saga-control-pill');
-  if (await pickers.count() !== 2) throw new Error(`Video output controls should expose Aspect + FPS only, found ${await pickers.count()}`);
-  const aspect = pickers.nth(0);
-  const fps = pickers.nth(1);
-  const resolution = page.locator('.saga-video-resolution-trigger');
-  await resolution.waitFor({ state: 'visible' });
-  if ((await resolution.innerText()).trim() !== '1080p') throw new Error(`Video resolution trigger should use 1080p terminology: ${await resolution.innerText()}`);
-  if (!/1920×1080 at 16:9/.test(await resolution.getAttribute('title') || '')) throw new Error(`Default Video resolution context is not exact: ${await resolution.getAttribute('title')}`);
-  if (await aspect.getAttribute('data-shared-aspect-picker') !== 'true') throw new Error('Video mode is not using the shared AspectPicker trigger');
-  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Unified Aspect control does not show default Auto 16:9: ${await aspect.innerText()}`);
-  if (!/Follows an attached reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Default Aspect tooltip does not explain Auto behavior: ${await aspect.getAttribute('title')}`);
-  if (!(await fps.innerText()).includes('24 fps')) throw new Error(`Default video frame rate is not 24 fps: ${await fps.innerText()}`);
+  if (await page.locator('.saga-video-extra-controls').count()) throw new Error('Video Aspect/FPS still render in the prompt toolbar');
+  if (await page.locator('.saga-toolbar-left [data-shared-aspect-picker="true"]').count()) throw new Error('Inline Video Aspect trigger still exists');
+  if (await page.locator('.saga-toolbar-left .saga-fancy-select').count()) throw new Error('Inline Video FPS picker still exists');
 
+  const settings = page.getByRole('button', { name: 'Advanced settings', exact: true });
+  await settings.click();
+  const advanced = page.locator('.saga-advanced-panel');
+  await advanced.waitFor({ state: 'visible' });
+  const closeAdvanced = advanced.getByRole('button', { name: 'Close advanced settings', exact: true });
+  await advanced.getByText('REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', { exact: true }).waitFor({ state: 'visible' });
+  const fixedSteps = advanced.locator('[data-ltx-fixed-steps="11"]');
+  if (!/11\s+8 \+ 3/.test((await fixedSteps.innerText()).replace(/\s+/g, ' '))) throw new Error(`LTX fixed recipe is unclear: ${await fixedSteps.innerText()}`);
+  const cfg = advanced.locator('input[aria-label="CFG value"]');
+  if (await cfg.inputValue() !== '1') throw new Error(`LTX CFG default is not 1.0: ${await cfg.inputValue()}`);
+  if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('LTX exposes an editable Steps control despite its fixed custom-sigma recipe');
+
+  const aspect = advanced.getByRole('button', { name: 'Video aspect', exact: true });
+  const fpsTrigger = advanced.getByRole('button', { name: 'Video frame rate', exact: true });
+  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`LTX Auto aspect default is wrong: ${await aspect.innerText()}`);
+  if (!(await fpsTrigger.innerText()).includes('24 fps')) throw new Error(`LTX FPS default is not 24: ${await fpsTrigger.innerText()}`);
   await page.screenshot({ path: path.join(outputDir, '05b-video-output-controls.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05b-video-output-controls.png');
 
@@ -78,138 +77,81 @@ try {
   await page.keyboard.press('ArrowDown');
   const aspectMenu = page.getByRole('menu', { name: 'Video aspect' });
   await aspectMenu.waitFor({ state: 'visible' });
-  const sharedAspectSurface = page.locator('.saga-shared-aspect-picker');
-  if (await sharedAspectSurface.getAttribute('data-aspect-picker-surface') !== 'shared') throw new Error('Video aspect menu is not the shared AspectPicker surface');
-  if (await sharedAspectSurface.locator('.saga-picker-preview').count() !== 1) throw new Error('Video shared AspectPicker is missing the ratio preview panel');
   await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
-  const aspectOptions = aspectMenu.getByRole('menuitemradio');
-  const autoOption = aspectMenu.getByRole('menuitemradio').first();
-  if (await autoOption.getAttribute('aria-checked') !== 'true') throw new Error('Unified Aspect menu does not mark Auto as selected by default');
   await page.keyboard.press('Home');
-  for (let step = 0; step < 5; step += 1) await page.keyboard.press('ArrowDown');
+  for (let index = 0; index < 5; index += 1) await page.keyboard.press('ArrowDown');
   if (!/9:16/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Video aspect keyboard navigation did not reach 9:16');
   await page.keyboard.press('Enter');
-  if (/Auto/.test(await aspect.innerText())) throw new Error(`Choosing a manual aspect did not leave Auto mode: ${await aspect.innerText()}`);
-  if (!/Aspect\s*·\s*9:16/.test(await aspect.innerText())) throw new Error(`Manual video aspect did not update to 9:16: ${await aspect.innerText()}`);
-  if (!/1080×1920 at 9:16/.test(await resolution.getAttribute('title') || '')) throw new Error(`Portrait resolution context did not follow Aspect: ${await resolution.getAttribute('title')}`);
-  await resolution.click();
-  const resolutionMenu = page.getByRole('menu', { name: 'Video resolution' });
-  await resolutionMenu.waitFor({ state: 'visible' });
-  const resolutionSurface = page.locator('.saga-video-resolution-picker');
-  if ((await resolutionSurface.locator('.saga-picker-preview small').innerText()).trim() !== '1080×1920 at 9:16') throw new Error(`Portrait delivery preview is incorrect: ${await resolutionSurface.locator('.saga-picker-preview small').innerText()}`);
-  if (await resolutionMenu.getByRole('menuitemradio', { name: /4K/i }).count()) throw new Error('Video resolution menu exposes disabled 4K');
-  await page.screenshot({ path: path.join(outputDir, '05h-video-resolution-portrait.png'), fullPage: true, animations: 'disabled' });
-  diagnostics.screenshots.push('05h-video-resolution-portrait.png');
-  await page.keyboard.press('Escape');
+  if (!/Aspect\s*·\s*9:16/.test(await aspect.innerText())) throw new Error(`Manual Video aspect did not update: ${await aspect.innerText()}`);
+  const resolution = page.locator('.saga-video-resolution-trigger');
+  if (!/1080×1920 at 9:16/.test(await resolution.getAttribute('title') || '')) throw new Error(`Video resolution did not follow moved Aspect control: ${await resolution.getAttribute('title')}`);
 
-  await fps.focus();
+  await fpsTrigger.focus();
   await page.keyboard.press('Space');
-  const fpsMenu = page.getByRole('menu', { name: 'Video frame rate' });
-  await fpsMenu.waitFor({ state: 'visible' });
-  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
+  const fpsListbox = page.getByRole('listbox', { name: 'Video frame rate' });
+  await fpsListbox.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option', null, { timeout: 1500 });
   await page.keyboard.press('End');
-  const focusedFps = fpsMenu.getByRole('menuitemradio', { name: '30 fps', exact: true });
-  if (!(await focusedFps.evaluate((element) => element === document.activeElement && element.matches(':focus-visible')))) throw new Error('Video FPS End navigation/focus-visible failed');
-  const fpsOutline = await focusedFps.evaluate((element) => Number.parseFloat(getComputedStyle(element).outlineWidth));
-  if (fpsOutline < 2) throw new Error(`Video FPS focus indicator is too weak: ${fpsOutline}`);
+  const fps30 = fpsListbox.getByRole('option', { name: '30 fps', exact: true });
+  if (!(await fps30.evaluate((element) => element === document.activeElement))) throw new Error('Frame-rate keyboard navigation did not reach 30 fps');
   await page.screenshot({ path: path.join(outputDir, '05f-video-picker-keyboard-focus.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05f-video-picker-keyboard-focus.png');
   await page.keyboard.press('Enter');
-  if (!(await fps.innerText()).includes('30 fps')) throw new Error('Video frame-rate picker did not update to 30 fps');
-  if (!(await fps.evaluate((element) => document.activeElement === element))) throw new Error('Video FPS trigger did not regain focus after selection');
+  if (!(await fpsTrigger.innerText()).includes('30 fps')) throw new Error('Frame-rate selection did not update to 30 fps');
 
-  await aspect.focus();
-  await page.keyboard.press('Enter');
-  await aspectMenu.waitFor({ state: 'visible' });
-  const desktopMenuSize = await aspectMenu.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }));
-  if (desktopMenuSize.scrollHeight > desktopMenuSize.clientHeight + 1) throw new Error(`Desktop Video Aspect menu should expose all options without scrolling: ${JSON.stringify(desktopMenuSize)}`);
-  await page.screenshot({ path: path.join(outputDir, '05c-video-aspect-picker.png'), fullPage: true, animations: 'disabled' });
-  diagnostics.screenshots.push('05c-video-aspect-picker.png');
-  await page.keyboard.press('Escape');
-  if (!(await aspect.evaluate((element) => document.activeElement === element))) throw new Error('Video aspect trigger did not regain focus after Escape');
-
+  // Auto aspect remains reference-aware even though the control moved into Advanced.
+  await closeAdvanced.click();
+  await advanced.waitFor({ state: 'hidden' });
   const chooserPromise = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Upload reference images', exact: true }).click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'reference-4x3.png', mimeType: 'image/png', buffer: referencePng });
   await page.locator('.saga-reference-chip').waitFor({ state: 'visible', timeout: 5000 });
-  await aspect.focus();
-  await page.keyboard.press('Enter');
-  await aspectMenu.waitFor({ state: 'visible' });
-  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'menuitemradio', null, { timeout: 1500 });
-  await page.keyboard.press('Home');
-  if (!/^Auto/.test(await page.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the Auto aspect option');
-  await page.keyboard.press('Enter');
-  if (!/Aspect\s*·\s*Auto\s+4:3\s*·\s*From reference/.test(await aspect.innerText())) throw new Error(`Auto aspect did not visibly expose reference provenance: ${await aspect.innerText()}`);
-  if (!/From reference/.test(await aspect.getAttribute('title') || '')) throw new Error(`Reference provenance is not exposed by the unified Aspect control: ${await aspect.getAttribute('title')}`);
-  if (!/1440×1080 at 4:3/.test(await resolution.getAttribute('title') || '')) throw new Error(`Reference-derived resolution context is incorrect: ${await resolution.getAttribute('title')}`);
-  await page.screenshot({ path: path.join(outputDir, '05d-video-auto-reference-aspect.png'), fullPage: true, animations: 'disabled' });
-  diagnostics.screenshots.push('05d-video-auto-reference-aspect.png');
+  await settings.click();
+  await advanced.waitFor({ state: 'visible' });
+  const aspectWithReference = advanced.getByRole('button', { name: 'Video aspect', exact: true });
+  await aspectWithReference.click();
+  const autoOption = page.getByRole('menu', { name: 'Video aspect' }).getByRole('menuitemradio').first();
+  await autoOption.click();
+  if (!/Auto\s+4:3\s*·\s*From reference/.test(await aspectWithReference.innerText())) throw new Error(`Auto aspect did not follow 4:3 reference: ${await aspectWithReference.innerText()}`);
 
-  await page.locator('.saga-reference-chip .saga-reference-remove').click();
-  await page.locator('.saga-reference-chip').waitFor({ state: 'detached', timeout: 3000 });
-  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await aspect.innerText())) throw new Error(`Auto aspect did not fall back to 16:9 after removing the reference: ${await aspect.innerText()}`);
-  if (!/1920×1080 at 16:9/.test(await resolution.getAttribute('title') || '')) throw new Error(`Resolution context did not return to 16:9 after reference removal: ${await resolution.getAttribute('title')}`);
+  // CFG is editable and reaches the actual image-to-video request; fixed steps remain 11.
+  await cfg.fill('1.4');
+  await closeAdvanced.click();
+  await advanced.waitFor({ state: 'hidden' });
+  const prompt = page.locator('.saga-prompt-shell textarea');
+  await prompt.fill('A slow cinematic camera move through a sunlit coastal landscape');
+  await page.getByRole('button', { name: 'Generate video', exact: true }).click();
+  for (let attempt = 0; attempt < 40 && !diagnostics.submitted; attempt += 1) await page.waitForTimeout(50);
+  if (!diagnostics.sourceUpload) throw new Error('Image-to-video source upload ticket was not requested');
+  if (!diagnostics.submitted) throw new Error('Video generation request was not submitted');
+  if (Number(diagnostics.submitted.steps) !== 11) throw new Error(`Video request did not send fixed 11 steps: ${JSON.stringify(diagnostics.submitted)}`);
+  if (Number(diagnostics.submitted.cfg) !== 1.4) throw new Error(`Video request did not send edited CFG: ${JSON.stringify(diagnostics.submitted)}`);
+  if (Number(diagnostics.submitted.frameRate) !== 30) throw new Error(`Video request did not send selected 30 fps: ${JSON.stringify(diagnostics.submitted)}`);
+  if (diagnostics.submitted.aspectRatio !== '4:3') throw new Error(`Video request did not send Auto reference aspect: ${JSON.stringify(diagnostics.submitted)}`);
+  if (diagnostics.submitted.workflowId !== 'ltx25-redgraft-video') throw new Error(`Video request did not use the production LTX workflow: ${JSON.stringify(diagnostics.submitted)}`);
+  if (diagnostics.submitted.sourceKeys?.[0] !== 'visual-tests/reference-4x3.png') throw new Error(`Video request did not send uploaded reference key: ${JSON.stringify(diagnostics.submitted)}`);
 
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark', hasTouch: true, isMobile: true });
-  mobile.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
+  // Mobile: Aspect/FPS stay out of the composer and remain accessible in Advanced.
+  const mobile = await context.newPage();
+  await mobile.setViewportSize({ width: 390, height: 844 });
   await mobile.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await mobile.locator('.saga-composer').waitFor({ state: 'visible', timeout: 20_000 });
   await mobile.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
-  const mobileExtras = mobile.locator('.saga-video-extra-controls');
-  await mobileExtras.waitFor({ state: 'visible', timeout: 3000 });
-  if (await mobileExtras.locator('.saga-auto-toggle').count()) throw new Error('Mobile Video still exposes a separate Auto aspect button');
-  const mobileAspect = mobileExtras.locator('.saga-control-pill').first();
-  const mobileResolution = mobile.locator('.saga-video-resolution-trigger');
-  if ((await mobileResolution.innerText()).trim() !== '1080p') throw new Error(`Mobile Video resolution terminology is inconsistent: ${await mobileResolution.innerText()}`);
-  if (!/1920×1080 at 16:9/.test(await mobileResolution.getAttribute('title') || '')) throw new Error(`Mobile Video resolution context is incomplete: ${await mobileResolution.getAttribute('title')}`);
-  if (!/Aspect\s*·\s*Auto\s+16:9/.test(await mobileAspect.innerText())) throw new Error(`Mobile unified Aspect state is unclear: ${await mobileAspect.innerText()}`);
-  const mobileAspectBox = await mobileAspect.boundingBox();
-  if (!mobileAspectBox || mobileAspectBox.x < 0 || mobileAspectBox.x + mobileAspectBox.width > 390) throw new Error(`Mobile Aspect control is clipped: ${JSON.stringify(mobileAspectBox)}`);
-  await mobileAspect.click();
-  const mobileAspectMenu = mobile.getByRole('menu', { name: 'Video aspect' });
-  await mobileAspectMenu.waitFor({ state: 'visible' });
-  const mobileMenuBox = await mobileAspectMenu.boundingBox();
-  if (!mobileMenuBox || mobileMenuBox.y < 0 || mobileMenuBox.y + mobileMenuBox.height > 844) throw new Error(`Mobile Aspect menu leaves the viewport: ${JSON.stringify(mobileMenuBox)}`);
-  await mobile.keyboard.press('Escape');
+  if (await mobile.locator('.saga-toolbar-left [data-shared-aspect-picker="true"]').count()) throw new Error('Mobile Video still shows inline Aspect');
+  await mobile.getByRole('button', { name: 'Advanced settings', exact: true }).click();
+  const mobileAdvanced = mobile.locator('.saga-advanced-panel');
+  await mobileAdvanced.waitFor({ state: 'visible' });
+  const mobileBox = await mobileAdvanced.boundingBox();
+  if (!mobileBox || mobileBox.x < 0 || mobileBox.y < 0 || mobileBox.x + mobileBox.width > 390 || mobileBox.y + mobileBox.height > 844) throw new Error(`Mobile Advanced leaves viewport: ${JSON.stringify(mobileBox)}`);
+  await mobileAdvanced.getByRole('button', { name: 'Video aspect', exact: true }).waitFor({ state: 'visible' });
+  await mobileAdvanced.getByRole('button', { name: 'Video frame rate', exact: true }).waitFor({ state: 'visible' });
   await mobile.screenshot({ path: path.join(outputDir, '05g-video-output-controls-mobile.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('05g-video-output-controls-mobile.png');
-  await mobile.close();
 
-  const prompt = page.locator('.saga-prompt-shell textarea');
-  await prompt.fill('A slow cinematic camera move through a sunlit coastal landscape');
-  await page.getByRole('button', { name: /Generate/i }).click();
-  const progress = page.locator('.saga-generation-progress');
-  await progress.waitFor({ state: 'visible', timeout: 3000 });
-  await page.waitForFunction(() => /Switching worker/i.test(document.querySelector('.saga-generation-progress')?.innerText || ''), null, { timeout: 5000 });
-  const progressText = await progress.innerText();
-  if (!/Switching worker/i.test(progressText) || !/reached its credit limit/i.test(progressText) || !/Standby/.test(progressText)) throw new Error(`Worker credit failover feedback is incomplete: ${progressText}`);
-  if (!/Changes to settings now apply to your next generation/i.test(progressText)) throw new Error(`Running-job settings guidance is missing: ${progressText}`);
-  if (await progress.getByRole('button', { name: 'View Job' }).count() !== 1) throw new Error('Running progress is missing View Job');
-  if (await progress.getByRole('button', { name: 'Cancel' }).count() !== 1) throw new Error('Running progress is missing Cancel');
-  await page.screenshot({ path: path.join(outputDir, '05e-video-generation-progress.png'), fullPage: true, animations: 'disabled' });
-  diagnostics.screenshots.push('05e-video-generation-progress.png');
-  await progress.getByRole('button', { name: 'View Job' }).click();
-  await page.waitForURL(/#\/jobs$/);
-  await page.getByText('Jobs & queue', { exact: true }).waitFor({ state: 'visible' });
-  // Reloading the SPA preserves the in-flight generation promise, which can keep Create disabled.
-  // Use a fresh page for the independent cancellation scenario instead.
-  await page.close();
-  page = await context.newPage();
-  page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message));
-  await page.goto(createUrl, { waitUntil: 'domcontentloaded' });
-  await page.locator('.saga-media-toggle button').filter({ hasText: 'Video' }).click();
-  await page.locator('.saga-prompt-shell textarea').fill('A second lifecycle cancellation test');
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: /Generate/i }).click();
-  const cancelProgress = page.locator('.saga-generation-progress');
-  await cancelProgress.getByRole('button', { name: 'Cancel' }).waitFor({ state: 'visible', timeout: 5000 });
-  await cancelProgress.getByRole('button', { name: 'Cancel' }).click();
-  await page.waitForFunction(() => /Generation cancelled/i.test(document.querySelector('.saga-generation-progress')?.innerText || ''), null, { timeout: 5000 });
-  if (!/Generation cancelled/i.test(await cancelProgress.innerText())) throw new Error('Cancelled job did not expose terminal cancellation feedback');
-
-  if (diagnostics.pageErrors.length) throw new Error(`Video output page errors: ${diagnostics.pageErrors.join(' | ')}`);
+  if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.join(' | ')}`);
 } finally {
   await writeFile(path.join(outputDir, 'video-output-diagnostics.json'), JSON.stringify(diagnostics, null, 2));
+  await context.close();
   await browser.close();
 }

@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: studio/video-gallery-ux
+          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-node@v5
         with:
@@ -70,4 +70,4 @@ jobs:
             exit 0
           fi
           git commit -m "test(studio): refresh approved visual baselines"
-          git push origin HEAD:studio/video-gallery-ux
+          git push origin "HEAD:${{ github.ref_name }}"

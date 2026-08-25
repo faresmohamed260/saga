@@ -23,6 +23,9 @@ OUTPUT_DIR = COMFY_DIR / "output"
 INPUT_DIR = COMFY_DIR / "input"
 SERVER = "127.0.0.1:8188"
 DEFAULT_FPS = 24
+DEFAULT_TOTAL_STEPS = 11
+LOW_STAGE_STEPS = 8
+HIGH_STAGE_STEPS = 3
 FRAME_RATES = {24, 25, 30}
 GPU_CHOICES = [x.strip() for x in os.environ.get("MODAL_LTX25_GPU", "A10").split(",") if x.strip()]
 GPU_REQUEST: str | list[str] = GPU_CHOICES[0] if len(GPU_CHOICES) == 1 else GPU_CHOICES
@@ -406,6 +409,7 @@ def _workflow(
     *,
     prompt: str,
     seed: int,
+    cfg: float,
     resolution: str,
     duration_seconds: int,
     audio_enabled: bool,
@@ -445,7 +449,7 @@ def _workflow(
         "13": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed)}},
         "14": {
             "class_type": "CFGGuider",
-            "inputs": {"model": ["1", 0], "positive": ["8", 0], "negative": ["8", 1], "cfg": 1.0},
+            "inputs": {"model": ["1", 0], "positive": ["8", 0], "negative": ["8", 1], "cfg": float(cfg)},
         },
         "15": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
         "16": {"class_type": "ManualSigmas", "inputs": {"sigmas": LOW_STAGE_SIGMAS}},
@@ -476,7 +480,7 @@ def _workflow(
         "24": {"class_type": "RandomNoise", "inputs": {"noise_seed": int(seed) + 1}},
         "25": {
             "class_type": "CFGGuider",
-            "inputs": {"model": ["1", 0], "positive": ["19", 0], "negative": ["19", 1], "cfg": 1.0},
+            "inputs": {"model": ["1", 0], "positive": ["19", 0], "negative": ["19", 1], "cfg": float(cfg)},
         },
         "26": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
         "27": {"class_type": "ManualSigmas", "inputs": {"sigmas": HIGH_STAGE_SIGMAS}},
@@ -726,6 +730,10 @@ class LTX25Worker:
                 "low_stage_sigmas": LOW_STAGE_SIGMAS,
                 "high_stage_sigmas": HIGH_STAGE_SIGMAS,
                 "cfg": 1.0,
+                "steps_total": DEFAULT_TOTAL_STEPS,
+                "stage_1_steps": LOW_STAGE_STEPS,
+                "stage_2_steps": HIGH_STAGE_STEPS,
+                "separate_distill_lora": False,
                 "sampler": "euler",
                 "two_stage_latent_upscale": True,
             },
@@ -760,6 +768,8 @@ class LTX25Worker:
         prompt: str,
         negative_prompt: str = "",
         seed: int = 42,
+        steps: int = DEFAULT_TOTAL_STEPS,
+        cfg: float = 1.0,
         resolution: str = "480p",
         duration_seconds: int = 5,
         audio_enabled: bool = True,
@@ -771,6 +781,10 @@ class LTX25Worker:
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("prompt is required")
+        if int(steps) != DEFAULT_TOTAL_STEPS:
+            raise ValueError(f"REDGraft LTX uses {DEFAULT_TOTAL_STEPS} total steps ({LOW_STAGE_STEPS} base + {HIGH_STAGE_STEPS} refine)")
+        if not 0.0 <= float(cfg) <= 20.0:
+            raise ValueError("cfg must be between 0 and 20")
         if resolution not in RESOLUTIONS:
             raise ValueError(f"unsupported resolution: {resolution}")
         if resolution not in ENABLED_RESOLUTIONS:
@@ -788,6 +802,7 @@ class LTX25Worker:
         graph = _workflow(
             prompt=prompt,
             seed=int(seed),
+            cfg=float(cfg),
             resolution=resolution,
             duration_seconds=int(duration_seconds),
             audio_enabled=bool(audio_enabled),
@@ -878,6 +893,8 @@ class LTX25Worker:
         prompt: str,
         negative_prompt: str = "",
         seed: int = 42,
+        steps: int = DEFAULT_TOTAL_STEPS,
+        cfg: float = 1.0,
         resolution: str = "480p",
         duration_seconds: int = 5,
         audio_enabled: bool = True,
@@ -890,6 +907,8 @@ class LTX25Worker:
                 prompt=prompt,
                 negative_prompt=negative_prompt,
                 seed=seed,
+                steps=steps,
+                cfg=cfg,
                 resolution=resolution,
                 duration_seconds=duration_seconds,
                 audio_enabled=audio_enabled,

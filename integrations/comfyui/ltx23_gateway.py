@@ -139,6 +139,8 @@ def web():
         prompt: str = Form(...),
         negative_prompt: str = Form(""),
         seed: int = Form(42),
+        steps: int = Form(11),
+        cfg: float = Form(1.0),
         resolution: str = Form("480p"),
         duration_seconds: int = Form(5),
         audio_enabled: bool = Form(True),
@@ -149,6 +151,10 @@ def web():
         prompt = prompt.strip()
         if not prompt:
             raise HTTPException(status_code=400, detail="prompt is required")
+        if int(steps) != 11:
+            raise HTTPException(status_code=400, detail="REDGraft LTX uses a fixed 11-step two-stage recipe (8 base + 3 refine)")
+        if not 0.0 <= float(cfg) <= 20.0:
+            raise HTTPException(status_code=400, detail="cfg must be between 0 and 20")
         if resolution not in {"480p", "720p", "1080p", "2K", "4K"}:
             raise HTTPException(status_code=400, detail="unsupported video resolution")
         if not 5 <= int(duration_seconds) <= 30:
@@ -179,6 +185,8 @@ def web():
                 prompt=prompt,
                 negative_prompt=negative_prompt,
                 seed=int(seed),
+                steps=int(steps),
+                cfg=float(cfg),
                 resolution=resolution,
                 duration_seconds=int(duration_seconds),
                 audio_enabled=bool(audio_enabled),
@@ -193,6 +201,8 @@ def web():
                 "mode": "image-to-video" if image_bytes else "text-to-video",
                 "model": "REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot",
                 "resolution": resolution,
+                "steps": int(steps),
+                "cfg": float(cfg),
                 "aspect_ratio": normalized_aspect,
                 "frame_rate": normalized_frame_rate,
                 "worker_state": _submit_state(),
