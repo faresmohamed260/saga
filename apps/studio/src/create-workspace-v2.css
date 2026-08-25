@@ -277,7 +277,7 @@
 .workspace .saga-fancy-select.open>button{border-color:#5c4fb0;box-shadow:0 0 0 2px rgba(118,92,255,.1)}
 .workspace .saga-fancy-select>button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .workspace .saga-fancy-options{
-  position:absolute;z-index:40;top:calc(100% + 5px);left:0;right:0;padding:5px;border:1px solid #303743;border-radius:11px;background:#171c23;box-shadow:0 15px 40px rgba(0,0,0,.45);
+  position:fixed;z-index:2100;padding:5px;border:1px solid #303743;border-radius:11px;background:#171c23;box-shadow:0 15px 40px rgba(0,0,0,.45);overflow:auto;overscroll-behavior:contain;box-sizing:border-box;
 }
 .workspace .saga-fancy-options button{width:100%;height:34px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 9px;border:0;border-radius:8px;background:transparent;color:#bdc4cf;font-size:var(--saga-text-xs);text-align:left;cursor:pointer}
 .workspace .saga-fancy-options button:hover,.workspace .saga-fancy-options button[aria-selected=true]{background:#252a34;color:#fff}

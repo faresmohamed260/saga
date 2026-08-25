@@ -1,6 +1,7 @@
 import React, {
   forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowUp, Check, ChevronDown, Clock3, Dice5, Image as ImageIcon, Plus,
   RotateCcw, SlidersHorizontal, Sparkles, Video, Volume2, VolumeX, X,
@@ -459,57 +460,81 @@ function DurationPicker({ open, setOpen, anchorRef, value, setValue }) {
 
 function FancySelect({ label, value, options, onChange }) {
   const [open, setOpen] = useState(false);
+  const [menuWidth, setMenuWidth] = useState(220);
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
   const optionRefs = useRef([]);
-  const selectedIndex = Math.max(0, options.findIndex((item) => String(item.value) === String(value)));
-  const [focusIndex, setFocusIndex] = useState(selectedIndex);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   const selected = options[selectedIndex] || options[0];
-  useOutsideDismiss(open, [rootRef], () => setOpen(false), triggerRef);
+  const menuHeight = Math.min(260, Math.max(46, options.length * 34 + 10));
+  const position = useAnchoredPosition(open, triggerRef, menuWidth, menuHeight);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    setFocusIndex(selectedIndex);
-    const frame = requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [open, selectedIndex, options.length]);
+  const close = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.setTimeout(() => triggerRef.current?.focus(), 0);
+  };
 
-  const focusOption = (index) => {
+  const openMenu = (focusIndex = selectedIndex) => {
+    const width = triggerRef.current?.getBoundingClientRect().width;
+    setMenuWidth(Math.max(180, Math.round(width || 220)));
+    setOpen(true);
+    window.setTimeout(() => optionRefs.current[focusIndex]?.focus(), 0);
+  };
+
+  useOutsideDismiss(open, [rootRef, popoverRef], () => close(false), triggerRef);
+
+  const move = (index) => {
     const normalized = (index + options.length) % options.length;
-    setFocusIndex(normalized);
     optionRefs.current[normalized]?.focus();
   };
 
-  const choose = (option) => {
-    onChange(option.value);
-    setOpen(false);
-    triggerRef.current?.focus();
+  const handleOptionKeyDown = (event, index) => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); move(index + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); move(index - 1); }
+    else if (event.key === 'Home') { event.preventDefault(); move(0); }
+    else if (event.key === 'End') { event.preventDefault(); move(options.length - 1); }
+    else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); }
+    else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onChange(options[index].value);
+      close(true);
+    } else if (event.key === 'Tab') close(false);
   };
 
-  const optionKeyDown = (event, index) => {
-    let next = null;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = index + 1;
-    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = index - 1;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = options.length - 1;
-    if (next != null) {
-      event.preventDefault();
-      focusOption(next);
-      return;
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      choose(options[index]);
-    }
-  };
+  const menu = open && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={popoverRef}
+      className="saga-fancy-options saga-fancy-options-portal"
+      role="listbox"
+      aria-label={`${label} options`}
+      style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height }}
+    >
+      {options.map((option, index) => (
+        <button
+          key={option.value}
+          ref={(node) => { optionRefs.current[index] = node; }}
+          type="button"
+          role="option"
+          aria-selected={option.value === value}
+          onKeyDown={(event) => handleOptionKeyDown(event, index)}
+          onClick={() => { onChange(option.value); close(true); }}
+        >
+          <span>{option.label}</span>{option.value === value && <Check size={14} />}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  ) : null;
 
   return (
     <div
       className={`saga-fancy-select ${open ? 'open' : ''}`}
       ref={rootRef}
       onBlurCapture={(event) => {
-        if (!open || rootRef.current?.contains(event.relatedTarget)) return;
-        setOpen(false);
+        const next = event.relatedTarget;
+        if (next && (rootRef.current?.contains(next) || popoverRef.current?.contains(next))) return;
+        if (open) close(false);
       }}
     >
       <button
@@ -519,34 +544,20 @@ function FancySelect({ label, value, options, onChange }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         onKeyDown={(event) => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-          event.preventDefault();
-          setOpen(true);
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);
+          } else if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            event.stopPropagation();
+            close(true);
+          }
         }}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => open ? close(false) : openMenu(selectedIndex)}
       >
-        <span>{selected?.label}</span><ChevronDown size={15} />
+        <span>{selected?.label}</span><ChevronDown size={14} />
       </button>
-      {open && (
-        <div className="saga-fancy-options" role="listbox" aria-label={label} aria-orientation="vertical">
-          {options.map((option, index) => (
-            <button
-              ref={(node) => { optionRefs.current[index] = node; }}
-              type="button"
-              role="option"
-              aria-selected={String(option.value) === String(value)}
-              tabIndex={index === focusIndex ? 0 : -1}
-              key={option.value}
-              onFocus={() => setFocusIndex(index)}
-              onKeyDown={(event) => optionKeyDown(event, index)}
-              onClick={() => choose(option)}
-            >
-              <span>{option.label}</span>
-              {String(option.value) === String(value) && <Check size={14} />}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
