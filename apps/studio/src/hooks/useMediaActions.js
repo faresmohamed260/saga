@@ -113,6 +113,27 @@ export default function useMediaActions({
     } catch (err) { window.alert(err instanceof Error ? err.message : 'Could not prepare this image for editing.'); }
   };
 
+  const animateThis = async (item) => {
+    if (item.kind === 'video') return;
+    const mediaUrl = item.originalUrl || item.url;
+    if (!mediaUrl) return;
+    try {
+      const response = await fetch(mediaUrl);
+      if (!response.ok) throw new Error(`Media request failed (${response.status})`);
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Selected media is not an image.');
+      const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+      const file = new File([blob], `saga-video-reference-${item.id}.${extension}`, { type: blob.type || 'image/png' });
+      const dimensions = await imageDimensions(file);
+      references.forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
+      setReferences([{ id: `animate-${item.id}-${Date.now()}`, file, preview: URL.createObjectURL(blob), ...dimensions }]);
+      setPrompt('');
+      setMode('Video');
+      setSection('Create');
+      setError('');
+    } catch (err) { window.alert(err instanceof Error ? err.message : 'Could not prepare this image for video generation.'); }
+  };
+
   const downloadItem = (item) => {
     const mediaUrl = item.originalUrl || item.url;
     if (!mediaUrl) return;
@@ -203,5 +224,5 @@ export default function useMediaActions({
     return { failedIds: [], succeededIds: [...succeededIds] };
   };
 
-  return { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete };
+  return { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, animateThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete };
 }

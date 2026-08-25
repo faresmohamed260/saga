@@ -151,7 +151,7 @@ export default function App() {
     collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems,
     setLibraryError, loadGallery, loadFavorites, loadCollections, loadCollectionItems,
   });
-  const { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete } = mediaActions;
+  const { toggleFavorite, createCollection, renameCollection, deleteCollection, addToCollection, removeFromCollection, reuseSettings, editThis, animateThis, downloadItem, deleteGeneration, bulkFavorite, bulkAddToCollection, bulkDownload, bulkDelete } = mediaActions;
 
   React.useEffect(() => {
     const expectedHash = `#/${SECTION_HASHES[section] || 'create'}`;
@@ -285,6 +285,7 @@ export default function App() {
       onToggleFavorite={toggleFavorite}
       onReuseSettings={reuseSettings}
       onEdit={editThis}
+      onAnimate={animateThis}
       onDownload={downloadItem}
       onOpen={openMedia}
       onAddToCollection={addToCollection}
@@ -309,8 +310,8 @@ export default function App() {
           : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} date={galleryDate} favoritesOnly={galleryFavoritesOnly} collections={collections} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onDateChange={setGalleryDate} onFavoritesOnlyChange={setGalleryFavoritesOnly} onOpenCollection={async (collection) => { await loadCollectionItems(collection); setSection('Collections'); }} onOpenCollections={() => setSection('Collections')} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} onUseUploadReference={useUploadReference} />
           : section === 'Favorites' ? <FavoritesView items={favoriteItems} loading={libraryLoading} error={libraryError} onRefresh={loadFavorites} renderCard={renderCard} />
           : section === 'Collections' ? <CollectionsView collections={collections} selectedCollection={selectedCollection} items={collectionItems} loading={libraryLoading} error={libraryError} onCreate={createCollection} onBack={() => { setSelectedCollection(null); setCollectionItems([]); }} onOpen={loadCollectionItems} onRename={renameCollection} onDelete={deleteCollection} renderCard={renderCard} />
-          : section === 'Models' ? <ModelsView />
-          : section === 'Workflows' ? <WorkflowsView />
+          : section === 'Models' ? <ModelsView onUseModel={(createMode) => { setCreateMode(createMode); setSection('Create'); }} />
+          : section === 'Workflows' ? <WorkflowsView onUseWorkflow={(createMode) => { setCreateMode(createMode); setSection('Create'); }} />
           : section === 'Settings' ? <SettingsView onOpenGenerationSettings={() => { setSection('Create'); setSettingsOpen(true); }} />
           : <CreateWorkspace
               mode={mode} setMode={setCreateMode}

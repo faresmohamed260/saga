@@ -410,6 +410,12 @@ try {
   }
   if (new Set(buttonYs).size > 1) throw new Error(`Output action buttons wrap to multiple rows: ${buttonYs.join(',')}`);
   await shot(desktop, '08-output-wall-hover.png');
+  const animateAction = cardActions.getByRole('button', { name: 'Animate this', exact: true });
+  await animateAction.waitFor({ state: 'visible' });
+  await animateAction.click();
+  await desktop.locator('.saga-composer.is-video').waitFor({ state: 'visible', timeout: 3000 });
+  await desktop.locator('.saga-reference-chip').waitFor({ state: 'visible', timeout: 3000 });
+  await shot(desktop, '08b-output-animate.png');
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(mobile, 'mobile');
@@ -419,7 +425,7 @@ try {
   if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
   if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');
   const mobileSubmitBox = await mobileSubmit.boundingBox();
-  if (!mobileSubmitBox || mobileSubmitBox.width > 40 || mobileSubmitBox.height > 40 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action is not compact/circular: ${JSON.stringify(mobileSubmitBox)}`);
+  if (!mobileSubmitBox || mobileSubmitBox.width < 44 || mobileSubmitBox.height < 44 || mobileSubmitBox.width > 48 || mobileSubmitBox.height > 48 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action does not provide a compact 44px touch target: ${JSON.stringify(mobileSubmitBox)}`);
   await shot(mobile, '09-mobile-create.png');
 
   if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);
