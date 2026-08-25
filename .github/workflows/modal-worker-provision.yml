@@ -44,6 +44,7 @@ jobs:
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
       MODAL_QWEN_IMAGE_EDIT_GPU: A10:4
       MODAL_QWEN_IMAGE_EDIT_MEMORY_MB: "98304"
       MODAL_QWEN_IMAGE_EDIT_MAX_CONTAINERS: "1"
@@ -76,7 +77,7 @@ jobs:
               'displayName': os.environ['WORKER_DISPLAY_NAME'],
               'accountLabel': os.environ['ACCOUNT'],
               'enabled': True,
-              'version': 'qwen-2511-v1',
+              'version': 'qwen-2511-civitai-bf16-v1',
           })
           Path('worker.json').write_text(json.dumps(row, indent=2) + '\n', encoding='utf-8')
           print(json.dumps({k: row[k] for k in ('workerId', 'ecosystem', 'accountLabel', 'role', 'gatewayUrl')}))
@@ -94,15 +95,29 @@ jobs:
               raise SystemExit(f"Gateway did not report ready: {payload}")
           if payload.get('model') != 'Qwen/Qwen-Image-Edit-2511':
               raise SystemExit(f"Wrong model reported by Qwen gateway: {payload}")
-          if payload.get('precision') != 'official-bfloat16':
+          if payload.get('precision') != 'civitai-bfloat16':
               raise SystemExit(f"Wrong Qwen precision: {payload}")
+          checkpoint = payload.get('checkpoint') or {}
+          if checkpoint.get('source') != 'civitai' or int(checkpoint.get('version_id') or 0) != 2553500:
+              raise SystemExit(f"Wrong Qwen fallback checkpoint: {payload}")
+          acceleration = payload.get('acceleration') or {}
+          if acceleration.get('type') != 'lightning-lora' or int(acceleration.get('default_steps') or 0) != 4:
+              raise SystemExit(f"Wrong Qwen acceleration profile: {payload}")
           worker = payload.get('worker') or {}
           if worker.get('worker_id') != row['workerId']:
               raise SystemExit(f"Wrong worker identity: {payload}")
           state = str(worker.get('state') or 'unknown')
           if state in {'generating', 'finalizing'}:
               raise SystemExit(f"Health check unexpectedly found active GPU state: {state}")
-          print(json.dumps({'workerId': row['workerId'], 'gatewayReady': True, 'workerState': state, 'model': payload.get('model'), 'precision': payload.get('precision')}))
+          print(json.dumps({
+              'workerId': row['workerId'],
+              'gatewayReady': True,
+              'workerState': state,
+              'model': payload.get('model'),
+              'precision': payload.get('precision'),
+              'checkpointVersionId': checkpoint.get('version_id'),
+              'defaultSteps': acceleration.get('default_steps'),
+          }))
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -149,7 +164,7 @@ jobs:
                   'role': row['role'],
                   'enabled': True,
                   'order': int(row['order']),
-                  'version': row.get('version') or 'qwen-2511-v1',
+                  'version': row.get('version') or 'qwen-2511-civitai-bf16-v1',
               })
           if len(qwen) != 2 or {row['role'] for row in qwen} != {'primary', 'standby'}:
               raise SystemExit(f'Expected Qwen primary + standby, found {qwen}')
