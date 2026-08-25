@@ -120,10 +120,10 @@ try {
   await searchInput.fill('shoreline');
   await page.waitForTimeout(250);
   if (!page.url().includes('#/gallery')) throw new Error('Gallery search unexpectedly changed navigation');
-  await page.getByLabel('Sort').selectOption('oldest');
+  await page.locator('.gallery-sort select').selectOption('oldest');
   await page.waitForTimeout(250);
   await searchInput.fill('');
-  await page.getByLabel('Sort').selectOption('newest');
+  await page.locator('.gallery-sort select').selectOption('newest');
 
   const compactDensity = page.getByRole('button', { name: 'Compact', exact: true });
   const comfortableDensity = page.getByRole('button', { name: 'Comfortable', exact: true });

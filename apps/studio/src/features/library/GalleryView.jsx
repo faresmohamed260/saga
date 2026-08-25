@@ -167,7 +167,7 @@ export default function GalleryView({
       <div className="gallery-mobile-controls" aria-label="Gallery controls">
         <button type="button" className={collectionsOpen ? 'active' : ''} aria-expanded={collectionsOpen} onClick={() => setCollectionsOpen((value) => !value)}><Folder size={19}/><span>Collections</span></button>
         <button type="button" className={mobileFiltersOpen || hasActiveFilters ? 'active' : ''} aria-expanded={mobileFiltersOpen} onClick={() => setMobileFiltersOpen((value) => !value)}><SlidersHorizontal size={19}/><span>Filter{hasActiveFilters ? ' •' : ''}</span></button>
-        <label className="gallery-mobile-select"><ArrowDownUp size={19}/><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort"><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>
+        <label className="gallery-mobile-select"><ArrowDownUp size={19}/><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Mobile sort"><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>
         <button type="button" onClick={() => changeDensity(density === 'compact' ? 'comfortable' : 'compact')} aria-label={`Gallery layout: ${density}`}><LayoutGrid size={19}/><span>Layout</span></button>
         <button type="button" className={managing ? 'active' : ''} aria-label={managing ? 'Done' : 'Manage'} aria-pressed={managing} onClick={toggleManaging}>{managing ? <X size={19}/> : <Check size={19}/>}<span>{managing ? 'Done' : 'Manage'}</span></button>
       </div>
