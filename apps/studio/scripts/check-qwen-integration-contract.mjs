@@ -30,7 +30,9 @@ expect(client.includes("workflowId: 'qwen-image-edit-2511'"), 'Qwen client must 
 expect(runtime.includes('MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"'), 'Qwen worker must use the official repository');
 expect(runtime.includes('QwenImageEditPlusPipeline') && runtime.includes('torch_dtype=torch.bfloat16'), 'Qwen worker must load the official BF16 Diffusers pipeline');
 expect(!/quantiz|int8|fp8|gguf/i.test(runtime), 'Qwen runtime must not use a quantized checkpoint');
-expect(runtime.includes('GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "H100")'), 'Qwen full precision worker must have an independent H100-class default');
+expect(runtime.includes('GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10")'), 'Qwen worker must default to the entitled A10 production tier');
+expect(runtime.includes('WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))'), 'Qwen worker must reserve 96GB host RAM for full-BF16 offload');
+expect(runtime.includes('enable_sequential_cpu_offload(device="cuda")'), 'Qwen full-BF16 worker must use sequential CPU offload on A10 instead of quantization');
 expect(runtime.includes('true_cfg_scale=float(cfg)') && runtime.includes('guidance_scale=1.0'), 'Qwen worker must preserve the official guidance recipe');
 expect(gateway.includes('@api.post("/jobs/edit")') && gateway.includes('@api.get("/jobs/{call_id}")') && gateway.includes('@api.delete("/jobs/{call_id}")'), 'Qwen gateway must preserve async image-edit lifecycle behavior');
 expect(gateway.includes('multiple_references') && gateway.includes('WORKER_CREDIT_EXHAUSTED'), 'Qwen gateway must preserve multi-reference and worker-failover behavior');
