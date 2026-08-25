@@ -1,0 +1,32 @@
+name: Qwen UI Label Patch
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - "scripts/qwen_ui_label_patch.py"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/qwen-image-edit-2511
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply model-aware UI labels
+        run: python scripts/qwen_ui_label_patch.py
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src/create-controls.jsx apps/studio/src/features/create/CreateWorkspace.jsx
+          git commit -m "fix(qwen): show selected image model labels" || exit 0
+          git push origin HEAD:studio/qwen-image-edit-2511
