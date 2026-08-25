@@ -44,6 +44,7 @@ try {
   await settings.click();
   const advanced = page.locator('.saga-advanced-panel');
   await advanced.waitFor({ state: 'visible' });
+  const closeAdvanced = advanced.getByRole('button', { name: 'Close advanced settings', exact: true });
   await advanced.getByText('REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', { exact: true }).waitFor({ state: 'visible' });
   const fixedSteps = advanced.locator('[data-ltx-fixed-steps="11"]');
   if (!/11\s+8 \+ 3/.test((await fixedSteps.innerText()).replace(/\s+/g, ' '))) throw new Error(`LTX fixed recipe is unclear: ${await fixedSteps.innerText()}`);
@@ -85,7 +86,8 @@ try {
   if (!(await fpsTrigger.innerText()).includes('30 fps')) throw new Error('Frame-rate selection did not update to 30 fps');
 
   // Auto aspect remains reference-aware even though the control moved into Advanced.
-  await settings.click();
+  await closeAdvanced.click();
+  await advanced.waitFor({ state: 'hidden' });
   const chooserPromise = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Upload reference images', exact: true }).click();
   const chooser = await chooserPromise;
@@ -101,7 +103,8 @@ try {
 
   // CFG is editable and reaches the actual generation request; fixed steps remain 11.
   await cfg.fill('1.4');
-  await settings.click();
+  await closeAdvanced.click();
+  await advanced.waitFor({ state: 'hidden' });
   const prompt = page.locator('.saga-prompt-shell textarea');
   await prompt.fill('A slow cinematic camera move through a sunlit coastal landscape');
   await page.getByRole('button', { name: 'Generate video', exact: true }).click();
