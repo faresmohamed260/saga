@@ -219,8 +219,10 @@ def deploy(account: Account, ecosystem_id: str, worker_id: str) -> dict[str, Any
         if result.returncode != 0:
             raise RuntimeError(f"Deploy failed for {entrypoint}: {(result.stderr or result.stdout)[-1200:]}")
 
-    prefetch = "prefetch_klein" if ecosystem_id == "flux2-klein-9b" else "prefetch_ltx25"
-    prefetch_argument = "False" if ecosystem_id == "flux2-klein-9b" else "True"
+    prefetch = str(ecosystem.get("prefetchFunction") or "").strip()
+    if not prefetch:
+        raise RuntimeError(f"Ecosystem {ecosystem_id} is missing prefetchFunction")
+    prefetch_argument = "True" if bool(ecosystem.get("prefetchArgument")) else "False"
     code = (
         "import modal, json; "
         f"fn=modal.Function.from_name({ecosystem['runtimeApp']!r}, {prefetch!r}); "
