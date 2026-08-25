@@ -414,3 +414,5 @@
   .gallery-manager{grid-template-columns:1.1fr repeat(4,minmax(0,1fr)) 34px!important;left:8px!important;right:8px!important}
   .gallery-manager button span{max-width:54px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+
+@media(max-width:760px){.gallery-manager button::after{content:none!important}}
