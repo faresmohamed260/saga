@@ -14,12 +14,21 @@ PYTHON_VERSION = "3.11"
 CACHE_DIR = "/cache"
 MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
 MODEL_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511"
+CIVITAI_MODEL_ID = 2246542
+CIVITAI_VERSION_ID = 2553500
+CIVITAI_MODEL_NAME = "Qwn-Image-Edit-abliterated"
+CIVITAI_VERSION_NAME = "v1.6-bf16"
+CIVITAI_WEIGHT_NAME = "qwnImageEdit_v16Bf16.safetensors"
+CIVITAI_WEIGHT_SHA256 = "4F8CA1242C7FDBE6CFD1835833C66E9CDBCF23EA27C7B811B43BDA316F30A6DA"
+CIVITAI_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511-civitai-v16-bf16"
+CIVITAI_WEIGHT_PATH = CIVITAI_DIR / CIVITAI_WEIGHT_NAME
+CIVITAI_HASH_MARKER = CIVITAI_DIR / f"{CIVITAI_WEIGHT_NAME}.sha256"
 LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"
-LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors"
+LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
 LIGHTNING_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511-lightning"
-LIGHTNING_MIN_STEPS = 6
-LIGHTNING_MAX_STEPS = 8
-LIGHTNING_DEFAULT_STEPS = 8
+LIGHTNING_MIN_STEPS = 4
+LIGHTNING_MAX_STEPS = 4
+LIGHTNING_DEFAULT_STEPS = 4
 LIGHTNING_TRUE_CFG_SCALE = 1.0
 GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")
 WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))
@@ -36,15 +45,14 @@ cache_volume = modal.Volume.from_name(CACHE_VOLUME_NAME, create_if_missing=True)
 worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
 
 _runtime_secret_values: dict[str, str] = {}
-for _name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+for _name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "CIVITAI_API_TOKEN"):
     _value = str(os.environ.get(_name) or "").strip()
     if _value:
         _runtime_secret_values[_name] = _value
 RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
 
-# Use the released library versions matching the checkpoint's own serialization
-# metadata (Diffusers 0.36.x / Transformers 4.57.1) rather than tracking Git HEAD.
-# The base model and Lightning adapter both remain BF16.
+# Keep the released Diffusers/Transformers versions that support Qwen Image Edit
+# single-file transformer loading. The Civitai fallback is pinned by version and SHA.
 image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.8.1-devel-ubuntu22.04",
@@ -99,10 +107,18 @@ def _hf_token() -> str | None:
     return str(os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or "").strip() or None
 
 
+def _civitai_token() -> str:
+    token = str(os.environ.get("CIVITAI_API_TOKEN") or "").strip()
+    if not token:
+        raise RuntimeError("CIVITAI_API_TOKEN is required for the pinned Qwen fallback checkpoint")
+    return token
+
+
 def _snapshot_download() -> Path:
     marker = MODEL_DIR / "model_index.json"
     if marker.is_file():
         return MODEL_DIR
+
     from huggingface_hub import snapshot_download
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -111,16 +127,89 @@ def _snapshot_download() -> Path:
         repo_id=MODEL_REPO,
         local_dir=str(MODEL_DIR),
         token=_hf_token(),
+        ignore_patterns=[
+            "transformer/*.safetensors",
+            "transformer/*.bin",
+        ],
     )
     cache_volume.commit()
-    _log("qwen_image_edit_checkpoint_downloaded", repo=MODEL_REPO, elapsed_seconds=round(time.perf_counter() - started, 3))
+    _log(
+        "qwen_image_edit_base_components_downloaded",
+        repo=MODEL_REPO,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
     return MODEL_DIR
+
+
+def _civitai_checkpoint_download() -> Path:
+    import hashlib
+    import urllib.request
+
+    expected = CIVITAI_WEIGHT_SHA256.upper()
+    if CIVITAI_WEIGHT_PATH.is_file() and CIVITAI_HASH_MARKER.is_file():
+        marker = CIVITAI_HASH_MARKER.read_text(encoding="utf-8").strip().upper()
+        if marker == expected:
+            return CIVITAI_WEIGHT_PATH
+
+    CIVITAI_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = CIVITAI_WEIGHT_PATH.with_suffix(CIVITAI_WEIGHT_PATH.suffix + ".partial")
+    if temporary.exists():
+        temporary.unlink()
+
+    request = urllib.request.Request(
+        f"https://civitai.com/api/download/models/{CIVITAI_VERSION_ID}",
+        headers={
+            "Authorization": f"Bearer {_civitai_token()}",
+            "Accept": "application/octet-stream",
+            "User-Agent": "saga-qwen-image-edit-worker/1.0",
+        },
+    )
+    started = time.perf_counter()
+    digest = hashlib.sha256()
+    downloaded = 0
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as output:
+            while True:
+                chunk = response.read(8 * 1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                digest.update(chunk)
+                downloaded += len(chunk)
+    except Exception:
+        if temporary.exists():
+            temporary.unlink()
+        raise
+
+    actual = digest.hexdigest().upper()
+    if actual != expected:
+        if temporary.exists():
+            temporary.unlink()
+        raise RuntimeError(
+            f"Civitai checkpoint SHA256 mismatch for version {CIVITAI_VERSION_ID}: expected {expected}, got {actual}"
+        )
+
+    temporary.replace(CIVITAI_WEIGHT_PATH)
+    CIVITAI_HASH_MARKER.write_text(expected + "\n", encoding="utf-8")
+    cache_volume.commit()
+    _log(
+        "qwen_image_edit_civitai_checkpoint_downloaded",
+        model_id=CIVITAI_MODEL_ID,
+        version_id=CIVITAI_VERSION_ID,
+        version=CIVITAI_VERSION_NAME,
+        weight=CIVITAI_WEIGHT_NAME,
+        bytes=downloaded,
+        sha256=expected,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
+    return CIVITAI_WEIGHT_PATH
 
 
 def _lightning_download() -> Path:
     weight = LIGHTNING_DIR / LIGHTNING_WEIGHT_NAME
     if weight.is_file():
         return LIGHTNING_DIR
+
     from huggingface_hub import snapshot_download
 
     LIGHTNING_DIR.mkdir(parents=True, exist_ok=True)
@@ -145,25 +234,35 @@ def _lightning_download() -> Path:
 def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
     if force:
         import shutil
-        for path in (MODEL_DIR, LIGHTNING_DIR):
+
+        for path in (MODEL_DIR, CIVITAI_DIR, LIGHTNING_DIR):
             if path.exists():
                 shutil.rmtree(path)
     model_path = _snapshot_download()
+    checkpoint_path = _civitai_checkpoint_download()
     lightning_path = _lightning_download()
     _set_worker_state(
         "sleeping",
         assets_cached=True,
-        acceleration="lightning-lora-8step-bf16",
-        lightning_steps=f"{LIGHTNING_MIN_STEPS}-{LIGHTNING_MAX_STEPS}",
+        checkpoint_source="civitai",
+        checkpoint_version_id=CIVITAI_VERSION_ID,
+        precision="civitai-bfloat16",
+        acceleration="lightning-lora-4step-bf16",
+        lightning_steps=str(LIGHTNING_DEFAULT_STEPS),
     )
     return {
         "ready": True,
         "model": MODEL_REPO,
         "path": str(model_path),
-        "precision": "official-bfloat16",
+        "precision": "civitai-bfloat16",
+        "checkpointModelId": CIVITAI_MODEL_ID,
+        "checkpointVersionId": CIVITAI_VERSION_ID,
+        "checkpointVersion": CIVITAI_VERSION_NAME,
+        "checkpointPath": str(checkpoint_path),
+        "checkpointSha256": CIVITAI_WEIGHT_SHA256,
         "lightningRepo": LIGHTNING_REPO,
         "lightningPath": str(lightning_path / LIGHTNING_WEIGHT_NAME),
-        "lightningSteps": [LIGHTNING_MIN_STEPS, LIGHTNING_MAX_STEPS],
+        "lightningSteps": [LIGHTNING_DEFAULT_STEPS],
         "defaultSteps": LIGHTNING_DEFAULT_STEPS,
         "trueCfgScale": LIGHTNING_TRUE_CFG_SCALE,
     }
@@ -185,18 +284,44 @@ class QwenImageEdit2511Worker:
     @modal.enter()
     def load(self) -> None:
         import torch
-        from diffusers import QwenImageEditPlusPipeline
+        from diffusers import QwenImageEditPlusPipeline, QwenImageTransformer2DModel
 
-        _set_worker_state("loading")
+        _set_worker_state(
+            "loading",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            precision="civitai-bfloat16",
+        )
         started = time.perf_counter()
         model_path = _snapshot_download()
+        checkpoint_path = _civitai_checkpoint_download()
         lightning_path = _lightning_download()
         gpu_count = torch.cuda.device_count()
         if gpu_count < 2:
             raise RuntimeError(f"Qwen Image Edit requires a multi-GPU worker; visible CUDA devices={gpu_count}")
         max_memory = {index: "22GB" for index in range(gpu_count)}
+
+        transformer_started = time.perf_counter()
+        transformer = QwenImageTransformer2DModel.from_single_file(
+            str(checkpoint_path),
+            config=MODEL_REPO,
+            subfolder="transformer",
+            torch_dtype=torch.bfloat16,
+            device_map="balanced",
+            max_memory=max_memory,
+        )
+        transformer_load_seconds = round(time.perf_counter() - transformer_started, 3)
+        _set_worker_state(
+            "loading",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            precision="civitai-bfloat16",
+            transformer_load_seconds=transformer_load_seconds,
+        )
+
         self.pipe = QwenImageEditPlusPipeline.from_pretrained(
             str(model_path),
+            transformer=transformer,
             torch_dtype=torch.bfloat16,
             local_files_only=True,
             device_map="balanced",
@@ -205,33 +330,42 @@ class QwenImageEdit2511Worker:
         self.pipe.load_lora_weights(
             str(lightning_path),
             weight_name=LIGHTNING_WEIGHT_NAME,
-            adapter_name="lightning_8step",
+            adapter_name="lightning_4step",
         )
-        self.pipe.set_adapters("lightning_8step", adapter_weights=1.0)
+        self.pipe.set_adapters("lightning_4step", adapter_weights=1.0)
         self.pipe.set_progress_bar_config(disable=True)
         startup_seconds = round(time.perf_counter() - started, 3)
         device_map = getattr(self.pipe, "hf_device_map", None)
         _set_worker_state(
             "ready",
             startup_seconds=startup_seconds,
+            transformer_load_seconds=transformer_load_seconds,
             gpu_count=gpu_count,
             placement="balanced-multi-gpu",
-            acceleration="lightning-lora-8step-bf16",
-            lightning_steps=f"{LIGHTNING_MIN_STEPS}-{LIGHTNING_MAX_STEPS}",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            precision="civitai-bfloat16",
+            acceleration="lightning-lora-4step-bf16",
+            lightning_steps=str(LIGHTNING_DEFAULT_STEPS),
         )
         _log(
             "qwen_image_edit_worker_ready",
             model=MODEL_REPO,
-            precision="official-bfloat16",
+            checkpoint_model=CIVITAI_MODEL_NAME,
+            checkpoint_version=CIVITAI_VERSION_NAME,
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_sha256=CIVITAI_WEIGHT_SHA256,
+            precision="civitai-bfloat16",
             lightning_repo=LIGHTNING_REPO,
             lightning_weight=LIGHTNING_WEIGHT_NAME,
-            lightning_steps=f"{LIGHTNING_MIN_STEPS}-{LIGHTNING_MAX_STEPS}",
+            lightning_steps=LIGHTNING_DEFAULT_STEPS,
             true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
             gpu=GPU_TYPE,
             gpu_count=gpu_count,
             memory_mb=WORKER_MEMORY_MB,
             placement="balanced-multi-gpu",
             device_map=device_map,
+            transformer_load_seconds=transformer_load_seconds,
             startup_seconds=startup_seconds,
         )
 
@@ -248,6 +382,7 @@ class QwenImageEdit2511Worker:
         megapixels: float = 1.0,
     ) -> bytes:
         import math
+
         import torch
         from PIL import Image
 
@@ -260,7 +395,10 @@ class QwenImageEdit2511Worker:
         lightning_steps = max(LIGHTNING_MIN_STEPS, min(int(steps), LIGHTNING_MAX_STEPS))
         _set_worker_state(
             "generating",
-            acceleration="lightning-lora-8step-bf16",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            precision="civitai-bfloat16",
+            acceleration="lightning-lora-4step-bf16",
             inference_steps=lightning_steps,
             true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
         )
@@ -304,6 +442,9 @@ class QwenImageEdit2511Worker:
             output_height=result.height,
             inference_steps=lightning_steps,
             true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
-            acceleration="lightning-lora-8step-bf16",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            precision="civitai-bfloat16",
+            acceleration="lightning-lora-4step-bf16",
         )
         return payload
