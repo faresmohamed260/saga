@@ -72,8 +72,8 @@ def phase_framerate_popover() -> None:
     if "from 'react-dom'" not in controls:
         controls = replace_once(
             controls,
-            "import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';",
-            "import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';\nimport { createPortal } from 'react-dom';",
+            "} from 'react';",
+            "} from 'react';\nimport { createPortal } from 'react-dom';",
             "import createPortal",
         )
 
