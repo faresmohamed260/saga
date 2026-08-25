@@ -917,19 +917,9 @@ export default function CreateWorkspace({
               <MediaModeToggle mode={mode} setMode={setMode} />
 
 
-              {isEdit && (
-                <button
-                  type="button"
-                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}
-                  aria-pressed={editAuto}
-                  onClick={() => setEditAuto((current) => !current)}
-                >
-                  <Sparkles size={15} /><span>Auto</span>
-                </button>
-              )}
-
               {!isVideo ? (
                 <>
+                  {!(isEdit && editAuto) && (
                   <button
                     ref={resolutionButtonRef}
                     type="button"
@@ -955,6 +945,7 @@ export default function CreateWorkspace({
                     <span>{isEdit && editAuto ? 'Auto' : imageOption.label}</span>
                     <ChevronDown size={13} />
                   </button>
+                  )}
 
                   <AspectPicker
                     triggerRef={aspectButtonRef}
@@ -967,12 +958,14 @@ export default function CreateWorkspace({
                       }
                     }}
                     ariaLabel="Aspect ratio"
+                    triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}
                     value={aspect}
                     onValueChange={(value) => {
                       if (isEdit) setEditAuto(false);
                       setAspect(value);
                     }}
                     autoSelected={isEdit && editAuto}
+                    onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}
                     effectiveRatio={primaryRatio}
                     autoDetail={autoEditInfo?.ratioLabel || 'Primary reference canvas'}
                     fromReference={isEdit && editAuto && references.length > 0}

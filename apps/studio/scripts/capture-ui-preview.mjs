@@ -331,12 +331,18 @@ try {
   if (await mentions.count() !== 2) throw new Error('Reference clicks did not insert both inline prompt tags');
   const promptText = (await richPrompt.innerText()).replace(/\s+/g, ' ').trim();
   if (!/Put\s+Image 1\s+beside\s+Image 2\s+behind the subject/i.test(promptText)) throw new Error(`Reference tags were not inserted at the caret: ${promptText}`);
-  const autoToggle = desktop.locator('.saga-auto-toggle');
-  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not start enabled');
-  await autoToggle.click();
-  if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');
-  await autoToggle.click();
-  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');
+  if (await desktop.locator('.saga-auto-toggle').count()) throw new Error('Edit exposes a duplicate standalone Auto control');
+  const editAspectTrigger = desktop.locator('.saga-shared-aspect-trigger');
+  await expectText(editAspectTrigger, 'Canvas · Auto', 'Edit automatic canvas trigger');
+  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Edit Auto should not expose a second resolution Auto control');
+  await editAspectTrigger.click();
+  const editAspectMenu = desktop.locator('.saga-aspect-picker');
+  await editAspectMenu.waitFor({ state: 'visible' });
+  await editAspectMenu.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
+  await desktop.locator('.saga-resolution-trigger').waitFor({ state: 'visible' });
+  await editAspectTrigger.click();
+  await editAspectMenu.getByRole('menuitemradio', { name: /Auto/i }).click();
+  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Returning to Edit Auto did not collapse manual resolution control');
 
   // FLUX Advanced defaults are real production values and Reset restores them.
   await settingsButton.click();
