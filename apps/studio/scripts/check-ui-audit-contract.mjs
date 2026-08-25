@@ -25,7 +25,11 @@ expect(/if \(mode === 'Image' \|\| mode === 'Edit'\)/.test(presets), 'Image setu
 expect(controls.includes('aria-label="Negative prompt"'), 'Advanced must expose the backend negative-prompt parameter');
 expect(controller.includes('negativePrompt, resolution:') && controller.includes('prompt: prompt.trim(), negativePrompt, resolution: videoResolution'), 'Negative prompt must reach both connected workflows');
 expect(client.includes('negativePrompt') && client.includes('negativePrompt,'), 'Generation client must transport negative prompt');
-expect(controls.includes("isImageSetup ? 'Add image'"), 'Disconnected text-to-image Generate CTA must be replaced by a real add-reference action');
+expect(!controls.includes("isImageSetup ? 'Add image'"), 'Image setup must not use a wide Add image submit CTA');
+// Image setup, Edit, and Video intentionally share this one circular reference-upload control.
+const roundUploadMarkup = '<button type="button" className="saga-round-button" title="Upload reference images" aria-label="Upload reference images"';
+expect(controls.includes(roundUploadMarkup) && !controls.includes(`{!isImageSetup && (\n              ${roundUploadMarkup}`), 'Image and Video must share the circular upload affordance');
+expect(controls.includes('onDrop={handleReferenceDrop}') && controls.includes('Drop images to upload'), 'Create composer must support image drag-and-drop');
 expect(!controls.includes("mode === 'More'") && !sidebar.includes('Additional creation tools') && !sidebar.includes('label="Tools"'), 'Placeholder Tools mode must be removed');
 expect(!models.includes('PLANNED') && !models.includes('SAGA Image'), 'Models page must contain only live production models');
 expect(models.includes('Start image edit') && models.includes('Create video') && models.includes('onUseModel'), 'Models page must launch its live production paths');

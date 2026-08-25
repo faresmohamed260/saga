@@ -105,7 +105,7 @@ try {
   await page.locator('.saga-composer').waitFor({ state: 'visible', timeout: 20_000 });
   await page.getByRole('heading', { name: 'Create from a reference', exact: true }).waitFor({ state: 'visible' });
 
-  const addImage = page.getByRole('button', { name: 'Add reference image', exact: true });
+  const addImage = page.getByRole('button', { name: 'Upload reference images', exact: true });
   const chooserPromise = page.waitForEvent('filechooser');
   await addImage.click();
   const chooser = await chooserPromise;
