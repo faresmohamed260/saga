@@ -1,0 +1,63 @@
+name: Studio Gallery Contract Patch PR123
+
+on:
+  push:
+    branches:
+      - studio/automatic-refresh-video-recovery
+    paths:
+      - .github/workflows/studio-gallery-contract-patch-pr123.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/automatic-refresh-video-recovery
+      - name: Update responsive Gallery contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          gallery = Path('apps/studio/src/features/library/GalleryView.jsx')
+          text = gallery.read_text()
+          old = '<label className="gallery-mobile-select"><ArrowDownUp size={19}/><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort">'
+          new = '<label className="gallery-mobile-select"><ArrowDownUp size={19}/><span>Sort</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Mobile sort">'
+          if old not in text:
+              raise SystemExit('Mobile Sort anchor not found')
+          gallery.write_text(text.replace(old, new, 1))
+
+          preview = Path('apps/studio/scripts/capture-gallery-preview.mjs')
+          text = preview.read_text()
+          if "page.getByLabel('Sort')" not in text:
+              raise SystemExit('Desktop Sort test anchor not found')
+          preview.write_text(text.replace("page.getByLabel('Sort')", "page.locator('.gallery-sort select')"))
+
+          responsive = Path('apps/studio/scripts/capture-responsive-preview.mjs')
+          text = responsive.read_text()
+          old = "    const search = page.getByRole('searchbox', { name: 'Search prompts' });\n    const modelSelect = page.locator('.gallery-model-filter select');"
+          new = "    const search = width <= 760 ? page.getByRole('button', { name: 'Search Gallery', exact: true }) : page.locator('.gallery-search-desktop input');\n    const modelSelect = width <= 760 ? page.locator('.gallery-mobile-filter-panel .gallery-model-filter select') : page.locator('.gallery-model-filter select').first();"
+          if old not in text:
+              raise SystemExit('Responsive Gallery locator anchor not found')
+          text = text.replace(old, new, 1)
+          old = "    if (width <= 390) {\n      await assertMinimumWidth(search, 'Gallery search', width, 140);\n      await assertMinimumWidth(modelSelect, 'Gallery model filter', width, 90);\n    }"
+          new = "    if (width <= 390) {\n      await search.click();\n      const mobileSearch = page.locator('.gallery-search-mobile input');\n      await mobileSearch.waitFor({ state: 'visible' });\n      await assertMinimumWidth(mobileSearch, 'Gallery search', width, 140);\n      await page.getByRole('button', { name: /^Filter/ }).click();\n      const mobileFilters = page.locator('.gallery-mobile-filter-panel');\n      await mobileFilters.waitFor({ state: 'visible' });\n      await assertContained(mobileFilters, 'Gallery mobile filters', width);\n      await assertMinimumWidth(modelSelect, 'Gallery model filter', width, 90);\n    }"
+          if old not in text:
+              raise SystemExit('Responsive mobile assertions anchor not found')
+          responsive.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit contract update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/studio/src/features/library/GalleryView.jsx \
+            apps/studio/scripts/capture-gallery-preview.mjs \
+            apps/studio/scripts/capture-responsive-preview.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "test(studio): cover responsive Gallery asset manager"
+          git push origin HEAD:studio/automatic-refresh-video-recovery
