@@ -8,6 +8,8 @@ on:
       - ".github/workflows/modal-worker-provision.yml"
       - "integrations/qwen/qwen_image_edit_2511_app.py"
       - "integrations/qwen/qwen_image_edit_2511_gateway.py"
+      - "integrations/qwen/qwen_civitai_prefetch.py"
+      - "scripts/qwen_civitai_prefetch.py"
       - "scripts/modal_worker_fleet.py"
       - "config/modal-worker-ecosystems.json"
   workflow_dispatch:
@@ -45,6 +47,7 @@ jobs:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      SAGA_MODAL_WORKER_VOLUME: saga-qwen-image-edit-2511-cache
       MODAL_QWEN_IMAGE_EDIT_GPU: A10:4
       MODAL_QWEN_IMAGE_EDIT_MEMORY_MB: "98304"
       MODAL_QWEN_IMAGE_EDIT_MAX_CONTAINERS: "1"
@@ -63,6 +66,9 @@ jobs:
           python-version: "3.11"
       - name: Install Modal runtime CLI
         run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Stage pinned Civitai checkpoint into Modal volume
+        shell: bash
+        run: python scripts/qwen_civitai_prefetch.py "$ACCOUNT"
       - name: Deploy and prefetch Qwen worker
         shell: bash
         run: |
