@@ -254,11 +254,10 @@ def phase_image_advanced_and_backend_controls() -> None:
                   aria-label="Negative prompt"
                 />
               </label>'''
-    controls = sub_once(
+    controls = replace_once(
         controls,
-        r'(              <div className="saga-seed-row">.*?
-              </div>)',
-        lambda match: match.group(1) + negative_block,
+        "              </div>\n              {preset.stepsEditable ? (",
+        "              </div>" + negative_block + "\n              {preset.stepsEditable ? (",
         "render backend negative prompt control",
     )
     controls = replace_once(controls, "    setCfg(preset.cfg);\n    setWorkflowId(preset.workflowId);", "    setCfg(preset.cfg);\n    setNegativePrompt(preset.negativePrompt || '');\n    setWorkflowId(preset.workflowId);", "reset negative prompt")
