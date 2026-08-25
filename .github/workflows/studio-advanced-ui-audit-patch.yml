@@ -56,12 +56,20 @@ jobs:
               "  for (const label of ['Reuse settings', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }\n  if (await mobileMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in mobile Gallery');",
           )
           gallery.write_text(gallery_text, encoding='utf-8')
+
+          controls = Path('apps/studio/src/create-controls.jsx')
+          controls_text = controls.read_text(encoding='utf-8')
+          controls_text = controls_text.replace(
+              '      aria-label={`${label} options`}',
+              '      aria-label={label}',
+          )
+          controls.write_text(controls_text, encoding='utf-8')
           PY
-          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs; then
+          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs
-            git commit -m "test(studio): align browser contracts with functional media actions"
+            git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx
+            git commit -m "fix(studio): align browser-facing media control semantics"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
