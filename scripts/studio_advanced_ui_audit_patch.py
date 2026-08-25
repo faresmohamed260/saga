@@ -260,7 +260,7 @@ def phase_image_advanced_and_backend_controls() -> None:
         "              </div>" + negative_block + "\n              {preset.stepsEditable ? (",
         "render backend negative prompt control",
     )
-    controls = replace_once(controls, "    setCfg(preset.cfg);\n    setWorkflowId(preset.workflowId);", "    setCfg(preset.cfg);\n    setNegativePrompt(preset.negativePrompt || '');\n    setWorkflowId(preset.workflowId);", "reset negative prompt")
+    controls = replace_once(controls, "                setCfg(preset.cfg);\n                setWorkflowId(preset.workflowId);", "                setCfg(preset.cfg);\n                setNegativePrompt(preset.negativePrompt || '');\n                setWorkflowId(preset.workflowId);", "reset negative prompt")
     controls = replace_once(controls, "  seed, setSeed, steps, setSteps, cfg, setCfg,\n  workflowId", "  seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,\n  workflowId", "legacy workspace negative prompt props")
     controls = replace_once(controls, "  const isVideo = mode === 'Video';\n  const referenceInputRef", "  const isVideo = mode === 'Video';\n  const isImageSetup = mode === 'Image';\n  const referenceInputRef", "Image setup state")
     controls = replace_once(controls, "  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'Creation tools' : 'Imagine worlds';", "  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Prepare an image edit';", "accurate Image heading")
