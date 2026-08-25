@@ -65,17 +65,34 @@ jobs:
                   checkpoint = payload.get('checkpoint') or {}
                   acceleration = payload.get('acceleration') or {}
                   worker = payload.get('worker') or {}
+                  state = str(worker.get('state') or 'unknown')
+                  exact_worker = (
+                      worker.get('precision') == 'civitai-bfloat16'
+                      and worker.get('checkpoint_version_id') == 2553500
+                      and worker.get('checkpoint_file_id') == 2443737
+                  )
+                  sleeping_cache_ready = (
+                      state == 'sleeping'
+                      and worker.get('assets_cached') is True
+                      and worker.get('acceleration') == 'lightning-lora-4step-bf16'
+                  )
+                  loaded_runtime_ready = (
+                      state == 'ready'
+                      and worker.get('acceleration') == 'lightning-lora-4step-bf16'
+                  )
                   snapshot = {
                       'role': role,
                       'precision': payload.get('precision'),
                       'checkpointVersionId': checkpoint.get('version_id'),
                       'acceleration': acceleration.get('type'),
                       'defaultSteps': acceleration.get('default_steps'),
-                      'workerState': worker.get('state'),
+                      'workerState': state,
                       'workerPrecision': worker.get('precision'),
                       'workerCheckpointVersionId': worker.get('checkpoint_version_id'),
+                      'workerCheckpointFileId': worker.get('checkpoint_file_id'),
                       'workerAcceleration': worker.get('acceleration'),
                       'workerAssetsCached': worker.get('assets_cached'),
+                      'workerStartupSeconds': worker.get('startup_seconds'),
                   }
                   if snapshot != last:
                       print(json.dumps({'event': 'qwen-deployment-wait', 'attempt': attempts, **snapshot}), flush=True)
@@ -86,11 +103,8 @@ jobs:
                       and checkpoint.get('version_id') == 2553500
                       and acceleration.get('type') == 'lightning-lora'
                       and acceleration.get('default_steps') == 4
-                      and worker.get('precision') == 'civitai-bfloat16'
-                      and worker.get('checkpoint_version_id') == 2553500
-                      and worker.get('acceleration') == 'lightning-lora-4step-bf16'
-                      and worker.get('assets_cached') is True
-                      and worker.get('state') in {'sleeping', 'ready'}
+                      and exact_worker
+                      and (sleeping_cache_ready or loaded_runtime_ready)
                   ):
                       print(json.dumps({'event': 'qwen-deployment-ready', 'attempts': attempts, **snapshot}), flush=True)
                       break
