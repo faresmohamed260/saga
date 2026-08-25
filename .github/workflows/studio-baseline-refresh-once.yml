@@ -1,0 +1,74 @@
+name: Studio Reviewed Baseline Refresh Once
+
+on:
+  push:
+    branches:
+      - studio/advanced-ui-audit
+    paths:
+      - .github/workflows/studio-baseline-refresh-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/studio
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/advanced-ui-audit
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Studio dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Studio
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start built Studio preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+
+      - name: Capture reviewed surfaces
+        env:
+          UI_PREVIEW_URL: http://127.0.0.1:4173/#/create
+          UI_PREVIEW_DIR: visual-preview
+        run: npm run visual:capture
+
+      - name: Promote reviewed baseline surfaces
+        env:
+          UI_PREVIEW_DIR: visual-preview
+          UI_BASELINE_DIR: visual-baselines
+          UPDATE_VISUAL_BASELINES: "1"
+        run: npm run visual:regression
+
+      - name: Commit baselines and self-clean
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/visual-baselines
+          git rm .github/workflows/studio-baseline-refresh-once.yml
+          git commit -m "test(studio): refresh reviewed visual baselines"
+          git push origin HEAD:studio/advanced-ui-audit
