@@ -1,5 +1,5 @@
 import { getWorkflow } from '../api/_workflows.js';
-import { listGenerationJobs, transitionGenerationJob } from '../api/_generation-jobs.js';
+import { listGenerationJobs, transitionGenerationJob, updateGenerationWorkerAssignment } from '../api/_generation-jobs.js';
 import { pollWorkflow } from '../api/_providers.js';
 import { persistImageJobResult } from '../api/_result-persistence.js';
 
@@ -16,6 +16,22 @@ async function failInterrupted(job, message) {
   } catch (error) {
     if (error?.statusCode === 409) return null;
     throw error;
+  }
+}
+
+async function persistRecoveredWorkerState(job, worker) {
+  if (!job?.id || !job?.provider_job_id || !worker?.state) return;
+  const current = job.metadata?.workerRuntime && typeof job.metadata.workerRuntime === 'object'
+    ? job.metadata.workerRuntime
+    : {};
+  if (current.state === worker.state && current.workerId === worker.workerId) return;
+  try {
+    await updateGenerationWorkerAssignment(job.id, job.provider_job_id, {
+      assignedWorkerId: worker.workerId || job.metadata?.assignedWorkerId || null,
+      workerRuntime: { ...worker, updatedAt: new Date().toISOString() },
+    });
+  } catch (error) {
+    if (error?.statusCode !== 409) throw error;
   }
 }
 
@@ -40,7 +56,10 @@ async function recoverJob(job) {
 
   try {
     const result = await pollWorkflow(workflow, job.provider_job_id);
-    if (result.status !== 'completed') return { id: job.id, outcome: 'running' };
+    if (result.status !== 'completed') {
+      await persistRecoveredWorkerState(job, result.worker || { state: 'generating' });
+      return { id: job.id, outcome: 'running' };
+    }
     if (job.kind !== 'image') return { id: job.id, outcome: 'running' };
     const completed = await persistImageJobResult(job, result.bytes, result.contentType || workflow.outputMimeType);
     return { id: job.id, outcome: 'completed', mediaUrl: completed.media_url, thumbnailUrl: completed.thumbnail_url || null };

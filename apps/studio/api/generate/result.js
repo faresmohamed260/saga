@@ -35,6 +35,26 @@ function shouldReassignWorker(error) {
   );
 }
 
+async function persistWorkerRuntime(job, worker, extra = {}) {
+  if (!job?.id || !job?.provider_job_id) return;
+  const next = { ...objectValue(worker), ...objectValue(extra) };
+  if (!next.state) return;
+  const current = objectValue(objectValue(job.metadata).workerRuntime);
+  const sameState = current.state === next.state;
+  const sameWorker = current.workerId === next.workerId;
+  const sameFailover = current.failoverReason === next.failoverReason && current.failoverFrom === next.failoverFrom;
+  if (sameState && sameWorker && sameFailover) return;
+  const updatedAt = new Date().toISOString();
+  try {
+    await updateGenerationWorkerAssignment(job.id, job.provider_job_id, {
+      assignedWorkerId: next.workerId || objectValue(job.metadata).assignedWorkerId || null,
+      workerRuntime: { ...next, updatedAt },
+    });
+  } catch (error) {
+    if (error?.statusCode !== 409) console.error('Could not persist generation worker runtime state', error);
+  }
+}
+
 async function rebuildSources(job, workflow) {
   const metadata = objectValue(job?.metadata);
   const keys = arrayValue(metadata.sourceR2Keys).filter(Boolean);
@@ -114,19 +134,21 @@ async function reassignToStandby(job, workflow, error) {
       at,
     })),
   ].slice(-MAX_WORKER_FAILOVERS);
+  const nextWorker = {
+    ...objectValue(submitted.worker),
+    state: submitted.worker?.state === 'sleeping' ? 'waking' : (submitted.worker?.state || 'waking'),
+    failoverFrom: current.workerId,
+    failoverReason: error.workerState || 'unavailable',
+  };
 
   await updateGenerationWorkerAssignment(job.id, submitted.providerJobId, {
     workerFailoverHistory: nextHistory,
     assignedWorkerId: submitted.worker?.workerId || null,
     lastWorkerFailoverAt: at,
+    workerRuntime: { ...nextWorker, updatedAt: at },
   });
 
-  return {
-    ...submitted.worker,
-    state: submitted.worker?.state === 'sleeping' ? 'waking' : (submitted.worker?.state || 'waking'),
-    failoverFrom: current.workerId,
-    failoverReason: error.workerState || 'unavailable',
-  };
+  return nextWorker;
 }
 
 export default async function handler(req, res) {
@@ -162,10 +184,12 @@ export default async function handler(req, res) {
 
     const result = await pollWorkflow(workflow, job.provider_job_id);
     if (result.status !== 'completed') {
+      const worker = result.worker || { state: 'generating' };
+      await persistWorkerRuntime(job, worker);
       return res.status(202).json({
         status: 'running',
-        workerState: result.worker?.state || 'generating',
-        worker: result.worker || null,
+        workerState: worker.state || 'generating',
+        worker,
         ecosystem: workflow.ecosystem || null,
       });
     }
