@@ -25,24 +25,18 @@ jobs:
           path = Path('apps/studio/scripts/capture-gallery-preview.mjs')
           text = path.read_text()
           old = "  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });\n  page.on('pageerror',"
-          new = """  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
-  await page.addInitScript(() => {
-    const nativeMatchMedia = window.matchMedia.bind(window);
-    window.matchMedia = (query) => {
-      if (query !== '(hover: hover) and (pointer: fine)') return nativeMatchMedia(query);
-      return {
-        matches: true,
-        media: query,
-        onchange: null,
-        addListener() {},
-        removeListener() {},
-        addEventListener() {},
-        removeEventListener() {},
-        dispatchEvent() { return true; },
-      };
-    };
-  });
-  page.on('pageerror',"""
+          lines = [
+              "  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });",
+              "  await page.addInitScript(() => {",
+              "    const nativeMatchMedia = window.matchMedia.bind(window);",
+              "    window.matchMedia = (query) => {",
+              "      if (query !== '(hover: hover) and (pointer: fine)') return nativeMatchMedia(query);",
+              "      return { matches: true, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } };",
+              "    };",
+              "  });",
+              "  page.on('pageerror',",
+          ]
+          new = "\n".join(lines)
           if old not in text:
               raise SystemExit('Desktop Gallery page creation anchor not found')
           path.write_text(text.replace(old, new, 1))
