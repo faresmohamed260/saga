@@ -1,15 +1,18 @@
 name: Provision Modal Worker Fleet
 
-# Full provisioning is intentionally manual. It resets dedicated accounts and
-# rebuilds model caches; routine runtime/gateway fixes use modal-worker-maintenance.yml.
 on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/modal-worker-provision.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: modal-worker-provision
+  group: modal-worker-provision-qwen-2511
   cancel-in-progress: false
 
 jobs:
@@ -19,41 +22,26 @@ jobs:
     timeout-minutes: 180
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         include:
-          - account: modal-44
-            ecosystem: flux2-klein-9b
-            worker_id: flux-primary-01
+          - account: modal-42
+            ecosystem: qwen-image-edit-2511
+            worker_id: qwen-primary-01
             role: primary
             order: 0
-            display_name: FLUX.2 Klein 9B · Primary
-          - account: modal-45
-            ecosystem: flux2-klein-9b
-            worker_id: flux-standby-01
+            display_name: Qwen Image Edit 2511 · Primary
+          - account: modal-43
+            ecosystem: qwen-image-edit-2511
+            worker_id: qwen-standby-01
             role: standby
             order: 1
-            display_name: FLUX.2 Klein 9B · Standby
-          - account: modal-46
-            ecosystem: ltx25-redgraft
-            worker_id: ltx-primary-01
-            role: primary
-            order: 0
-            display_name: REDGraft LTX 2.5 · Primary
-          - account: modal-47
-            ecosystem: ltx25-redgraft
-            worker_id: ltx-standby-01
-            role: standby
-            order: 1
-            display_name: REDGraft LTX 2.5 · Standby
+            display_name: Qwen Image Edit 2511 · Standby
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
-      MODAL_FLUX2_KLEIN_GPU: A10
-      MODAL_LTX25_GPU: A10
-      MODAL_LTX25_MAX_CONTAINERS: "2"
-      MODAL_LTX25_LOWVRAM: "0"
+      MODAL_QWEN_IMAGE_EDIT_GPU: H100
+      MODAL_QWEN_IMAGE_EDIT_MAX_CONTAINERS: "1"
       ACCOUNT: ${{ matrix.account }}
       ECOSYSTEM: ${{ matrix.ecosystem }}
       WORKER_ID: ${{ matrix.worker_id }}
@@ -63,21 +51,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: studio/video-gallery-ux
+          ref: studio/qwen-image-edit-2511
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install Modal runtime CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Clean dedicated worker account
-        run: python scripts/modal_worker_fleet.py reset "$ACCOUNT"
-      - name: Apply credit-workspace runtime compatibility
-        shell: bash
-        run: |
-          if [ "$ECOSYSTEM" = "ltx25-redgraft" ]; then
-            sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
-          fi
-      - name: Deploy and prefetch ecosystem worker
+      - name: Deploy and prefetch Qwen worker
         shell: bash
         run: |
           python scripts/modal_worker_fleet.py deploy "$ACCOUNT" "$ECOSYSTEM" "$WORKER_ID" > worker-base.json
@@ -91,12 +71,12 @@ jobs:
               'displayName': os.environ['WORKER_DISPLAY_NAME'],
               'accountLabel': os.environ['ACCOUNT'],
               'enabled': True,
-              'version': 'fleet-v1',
+              'version': 'qwen-2511-v1',
           })
           Path('worker.json').write_text(json.dumps(row, indent=2) + '\n', encoding='utf-8')
           print(json.dumps({k: row[k] for k in ('workerId', 'ecosystem', 'accountLabel', 'role', 'gatewayUrl')}))
           PY
-      - name: Verify gateway health without waking GPU compute
+      - name: Verify Qwen gateway health without waking GPU compute
         shell: bash
         run: |
           python - <<'PY'
@@ -107,10 +87,17 @@ jobs:
               payload = json.loads(response.read().decode('utf-8'))
           if payload.get('ready') is not True:
               raise SystemExit(f"Gateway did not report ready: {payload}")
-          state = str((payload.get('worker') or {}).get('state') or 'unknown')
+          if payload.get('model') != 'Qwen/Qwen-Image-Edit-2511':
+              raise SystemExit(f"Wrong model reported by Qwen gateway: {payload}")
+          if payload.get('precision') != 'official-bfloat16':
+              raise SystemExit(f"Wrong Qwen precision: {payload}")
+          worker = payload.get('worker') or {}
+          if worker.get('worker_id') != row['workerId']:
+              raise SystemExit(f"Wrong worker identity: {payload}")
+          state = str(worker.get('state') or 'unknown')
           if state in {'generating', 'finalizing'}:
               raise SystemExit(f"Health check unexpectedly found active GPU state: {state}")
-          print(json.dumps({'workerId': row['workerId'], 'gatewayReady': True, 'workerState': state}))
+          print(json.dumps({'workerId': row['workerId'], 'gatewayReady': True, 'workerState': state, 'model': payload.get('model'), 'precision': payload.get('precision')}))
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -126,25 +113,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: studio/video-gallery-ux
+          ref: studio/qwen-image-edit-2511
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
-          pattern: worker-*
+          pattern: worker-qwen-*
           path: worker-artifacts
-      - name: Build public worker registry
+      - name: Merge Qwen workers into public registry
         shell: bash
         run: |
           python - <<'PY'
-          import json
+          import json, re
           from pathlib import Path
-          rows = []
+          target = Path('apps/studio/api/_worker-registry.generated.js')
+          text = target.read_text(encoding='utf-8')
+          match = re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[[\s\S]*\])\s*;', text)
+          if not match:
+              raise SystemExit('Could not parse existing worker registry')
+          rows = json.loads(match.group(1))
+          rows = [row for row in rows if row.get('ecosystem') != 'qwen-image-edit-2511']
+          qwen = []
           for path in sorted(Path('worker-artifacts').rglob('worker.json')):
-              rows.append(json.loads(path.read_text(encoding='utf-8')))
-          if len(rows) != 4:
-              raise SystemExit(f'Expected 4 provisioned workers, found {len(rows)}')
-          normalized = []
-          for row in rows:
-              normalized.append({
+              row = json.loads(path.read_text(encoding='utf-8'))
+              qwen.append({
                   'id': row['workerId'],
                   'ecosystem': row['ecosystem'],
                   'gatewayUrl': row['gatewayUrl'],
@@ -153,36 +144,27 @@ jobs:
                   'role': row['role'],
                   'enabled': True,
                   'order': int(row['order']),
-                  'version': row.get('version') or 'fleet-v1',
+                  'version': row.get('version') or 'qwen-2511-v1',
               })
-          normalized.sort(key=lambda row: (row['ecosystem'], 0 if row['role'] == 'primary' else 1, row['order'], row['id']))
-          ecosystems = {}
-          for row in normalized:
-              ecosystems.setdefault(row['ecosystem'], []).append(row)
-          for ecosystem in ('flux2-klein-9b', 'ltx25-redgraft'):
-              workers = ecosystems.get(ecosystem, [])
-              if len(workers) != 2 or {worker['role'] for worker in workers} != {'primary', 'standby'}:
-                  raise SystemExit(f'Invalid worker set for {ecosystem}: {workers}')
-          target = Path('apps/studio/api/_worker-registry.generated.js')
+          if len(qwen) != 2 or {row['role'] for row in qwen} != {'primary', 'standby'}:
+              raise SystemExit(f'Expected Qwen primary + standby, found {qwen}')
+          rows.extend(qwen)
+          rows.sort(key=lambda row: (row['ecosystem'], 0 if row['role'] == 'primary' else 1, int(row.get('order') or 0), row['id']))
           target.write_text(
               '// Generated by the Modal worker provisioning workflow. Public routing metadata only; no credentials.\n'
               + 'export const GENERATED_MODAL_WORKERS = '
-              + json.dumps(normalized, indent=2)
+              + json.dumps(rows, indent=2)
               + ';\n',
               encoding='utf-8',
           )
-          print(json.dumps({'workers': len(normalized), 'ecosystems': {key: len(value) for key, value in ecosystems.items()}}, sort_keys=True))
+          print(json.dumps({'workers': len(rows), 'qwenWorkers': len(qwen)}, sort_keys=True))
           PY
-      - name: Commit public registry
+      - name: Commit Qwen routing metadata
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --ff-only origin studio/video-gallery-ux
+          git pull --ff-only origin studio/qwen-image-edit-2511
           git add apps/studio/api/_worker-registry.generated.js
-          if git diff --cached --quiet; then
-            echo "Worker registry already current"
-            exit 0
-          fi
-          git commit -m "ops: register provisioned Modal ecosystem workers"
-          git push origin HEAD:studio/video-gallery-ux
+          git commit -m "ops(qwen): register Qwen Image Edit workers" || exit 0
+          git push origin HEAD:studio/qwen-image-edit-2511
