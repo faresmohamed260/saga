@@ -44,7 +44,7 @@ jobs:
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      MODAL_QWEN_IMAGE_EDIT_GPU: A10
+      MODAL_QWEN_IMAGE_EDIT_GPU: A10:4
       MODAL_QWEN_IMAGE_EDIT_MEMORY_MB: "98304"
       MODAL_QWEN_IMAGE_EDIT_MAX_CONTAINERS: "1"
       ACCOUNT: ${{ matrix.account }}
