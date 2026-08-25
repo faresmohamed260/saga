@@ -10,11 +10,19 @@ ECOSYSTEM_ID = "qwen-image-edit-2511"
 WORKER_ID = os.environ.get("SAGA_MODAL_WORKER_ID", f"{ECOSYSTEM_ID}-worker")
 STATE_DICT_NAME = os.environ.get("SAGA_MODAL_WORKER_STATE_DICT", "saga-qwen-image-edit-2511-worker-state")
 worker_state = modal.Dict.from_name(STATE_DICT_NAME, create_if_missing=True)
+
+BASE_MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
+CIVITAI_MODEL_ID = 2246542
+CIVITAI_VERSION_ID = 2553500
+CIVITAI_MODEL_NAME = "Qwn-Image-Edit-abliterated"
+CIVITAI_VERSION_NAME = "v1.6-bf16"
+CIVITAI_WEIGHT_NAME = "qwnImageEdit_v16Bf16.safetensors"
+CIVITAI_WEIGHT_SHA256 = "4F8CA1242C7FDBE6CFD1835833C66E9CDBCF23EA27C7B811B43BDA316F30A6DA"
 LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"
-LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors"
-LIGHTNING_MIN_STEPS = 6
-LIGHTNING_MAX_STEPS = 8
-LIGHTNING_DEFAULT_STEPS = 8
+LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+LIGHTNING_MIN_STEPS = 4
+LIGHTNING_MAX_STEPS = 4
+LIGHTNING_DEFAULT_STEPS = 4
 LIGHTNING_TRUE_CFG_SCALE = 1.0
 
 CREDIT_PATTERNS = ("credit", "credits", "quota", "budget", "billing", "payment", "insufficient", "spending limit", "workspace budget")
@@ -49,7 +57,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
 
-    api = FastAPI(title="SAGA Qwen Image Edit 2511 Gateway", version="1.1.0")
+    api = FastAPI(title="SAGA Qwen Image Edit 2511 Gateway", version="1.2.0")
     origins = [
         origin.strip()
         for origin in os.environ.get(
@@ -113,13 +121,22 @@ def web():
             "async_jobs": True,
             "cancel_jobs": True,
             "multiple_references": True,
-            "model": "Qwen/Qwen-Image-Edit-2511",
-            "precision": "official-bfloat16",
+            "model": BASE_MODEL_REPO,
+            "precision": "civitai-bfloat16",
+            "checkpoint": {
+                "source": "civitai",
+                "model_id": CIVITAI_MODEL_ID,
+                "version_id": CIVITAI_VERSION_ID,
+                "model_name": CIVITAI_MODEL_NAME,
+                "version_name": CIVITAI_VERSION_NAME,
+                "weight": CIVITAI_WEIGHT_NAME,
+                "sha256": CIVITAI_WEIGHT_SHA256,
+            },
             "acceleration": {
                 "type": "lightning-lora",
                 "repo": LIGHTNING_REPO,
                 "weight": LIGHTNING_WEIGHT_NAME,
-                "steps": [LIGHTNING_MIN_STEPS, LIGHTNING_MAX_STEPS],
+                "steps": [LIGHTNING_DEFAULT_STEPS],
                 "default_steps": LIGHTNING_DEFAULT_STEPS,
                 "true_cfg_scale": LIGHTNING_TRUE_CFG_SCALE,
             },
@@ -159,7 +176,8 @@ def web():
                 "ecosystem": ECOSYSTEM_ID,
                 "inference_steps": effective_steps,
                 "true_cfg_scale": LIGHTNING_TRUE_CFG_SCALE,
-                "acceleration": "lightning-lora-8step-bf16",
+                "checkpoint_version_id": CIVITAI_VERSION_ID,
+                "acceleration": "lightning-lora-4step-bf16",
             }
         except Exception as exc:  # noqa: BLE001
             print({"event": "qwen_gateway_spawn_failed", "error": repr(exc)}, flush=True)
