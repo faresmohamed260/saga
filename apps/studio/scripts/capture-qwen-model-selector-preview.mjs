@@ -20,10 +20,11 @@ try {
   if (await flux.getAttribute('aria-pressed') !== 'true') throw new Error('FLUX must be the initial image model');
   await qwen.click();
   if (await qwen.getAttribute('aria-pressed') !== 'true') throw new Error('Qwen model selection did not activate');
-  await page.getByText('Qwen Image Edit 2511 · Official BF16', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('Qwen Image Edit 2511 · Abliterated BF16 + Lightning', { exact: true }).waitFor({ state: 'visible' });
   await page.getByText('Add an image, describe the change, and generate with the live Qwen edit model.', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
   await page.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('4-step BF16 Lightning LoRA', { exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
   diagnostics.qwenSelected = true;
   diagnostics.qwenLabels = true;
