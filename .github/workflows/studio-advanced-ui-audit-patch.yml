@@ -15,7 +15,7 @@ concurrency:
   group: studio-advanced-ui-audit-patch
   cancel-in-progress: false
 
-# This helper is temporary; it publishes validated component-level commits only.
+# Temporary remote-only patch runner; iteration 3 uses hardened source targets.
 jobs:
   apply:
     runs-on: ubuntu-latest
