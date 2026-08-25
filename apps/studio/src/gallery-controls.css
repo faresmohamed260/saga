@@ -137,6 +137,7 @@
 .gallery-view .gallery-card{width:100%;transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
 .gallery-view .gallery-card.selected{border-color:rgba(129,102,255,.82);box-shadow:0 0 0 2px rgba(177,163,255,.38),0 8px 28px rgba(0,0,0,.22)}
 .gallery-view .gallery-card .media-frame{aspect-ratio:1;background:#0b0f15}
+.gallery-view .gallery-card .media-frame-image{background-size:contain;background-repeat:no-repeat;background-position:center}
 .gallery-density-comfortable .gallery-card .history-copy{padding:12px 13px 14px}
 .gallery-density-comfortable .gallery-card .history-prompt{font-size:var(--saga-text-lg);line-height:1.45}
 .gallery-density-comfortable .gallery-card .history-meta{margin-top:9px;font-size:var(--saga-text-md)}
