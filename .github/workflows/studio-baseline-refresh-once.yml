@@ -72,3 +72,5 @@ jobs:
           git rm .github/workflows/studio-baseline-refresh-once.yml
           git commit -m "test(studio): refresh reviewed visual baselines"
           git push origin HEAD:studio/advanced-ui-audit
+
+# Retry after visual-capture contract update.
