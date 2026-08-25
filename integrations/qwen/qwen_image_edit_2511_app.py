@@ -71,6 +71,7 @@ image = (
         "safetensors>=0.8.0,<1.0.0",
         "sentencepiece==0.2.0",
         "torch==2.7.1",
+        "torchvision==0.22.1",
         "transformers==4.57.1",
         extra_options="--index-strategy unsafe-best-match",
         extra_index_url="https://download.pytorch.org/whl/cu128",
