@@ -68,6 +68,11 @@ jobs:
               '      aria-label={label}',
           )
           controls_text = controls_text.replace(
+              "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Escape' && open) {",
+              "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Enter' || event.key === ' ') {\n            event.preventDefault();\n            if (open) close(false);\n            else openMenu(selectedIndex);\n          } else if (event.key === 'Escape' && open) {",
+              1,
+          )
+          controls_text = controls_text.replace(
               "\n\n              {isEdit && (\n                <button\n                  type=\"button\"\n                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}\n                  aria-pressed={editAuto}\n                  onClick={() => setEditAuto((current) => !current)}\n                >\n                  <Sparkles size={15} /><span>Auto</span>\n                </button>\n              )}\n",
               "\n",
           )
@@ -97,7 +102,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx
-            git commit -m "fix(studio): simplify reference-aware Edit sizing"
+            git commit -m "fix(studio): simplify Edit sizing and keyboard media selectors"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
