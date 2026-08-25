@@ -924,7 +924,6 @@ export default function CreateWorkspace({
               {!isVideo ? (
                 <>
                   {!(isEdit && editAuto) && (
-                  {!(isEdit && editAuto) && (
                   <button
                     ref={resolutionButtonRef}
                     type="button"
