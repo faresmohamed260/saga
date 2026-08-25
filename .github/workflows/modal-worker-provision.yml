@@ -6,6 +6,10 @@ on:
       - studio/qwen-image-edit-2511
     paths:
       - ".github/workflows/modal-worker-provision.yml"
+      - "integrations/qwen/qwen_image_edit_2511_app.py"
+      - "integrations/qwen/qwen_image_edit_2511_gateway.py"
+      - "scripts/modal_worker_fleet.py"
+      - "config/modal-worker-ecosystems.json"
   workflow_dispatch:
 
 permissions:
