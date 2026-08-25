@@ -1,0 +1,24 @@
+@media (max-width: 760px) {
+  .workspace .saga-round-button,
+  .workspace .saga-settings-button,
+  .workspace .saga-audio-toggle {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex-basis: 44px;
+  }
+
+  .workspace .saga-submit {
+    min-width: 44px;
+    width: auto;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .workspace .saga-media-toggle button,
+  .workspace .saga-control-pill,
+  .workspace .saga-auto-toggle {
+    min-height: 44px;
+  }
+}
