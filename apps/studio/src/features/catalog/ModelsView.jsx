@@ -1,26 +1,17 @@
 import React from 'react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 
+const models = [
+  { name: 'FLUX.2 Klein 9B', detail: 'Reference-based image editing with manual/automatic canvas sizing and multi-reference conditioning.' },
+  { name: 'REDGraft LTX 2.5', detail: 'Text-to-video and image-to-video generation with resolution, duration, audio, aspect ratio, frame rate, seed, and CFG controls.' },
+];
+
 export default function ModelsView() {
   return (
     <section className="history-view">
-      <LibraryHeader eyebrow="Studio" title="Models" description="Models exposed to the generation registry. Only live backends are selectable in production." />
+      <LibraryHeader eyebrow="Studio" title="Models" description="Production models currently exposed by the Studio generation registry." />
       <div className="collection-grid">
-        <article className="collection-card" style={{ padding: 18 }}>
-          <div className="history-eyebrow">LIVE</div>
-          <h3 style={{ margin: '8px 0' }}>FLUX.2 Klein 9B</h3>
-          <p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>Image editing with automatic output sizing and multi-reference conditioning.</p>
-        </article>
-        <article className="collection-card" style={{ padding: 18 }}>
-          <div className="history-eyebrow">LIVE</div>
-          <h3 style={{ margin: '8px 0' }}>LTX Video 2.5</h3>
-          <p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>Text-to-video and image-to-video generation with configurable aspect, frame rate, duration, and audio.</p>
-        </article>
-        <article className="collection-card" style={{ padding: 18 }}>
-          <div className="history-eyebrow">PLANNED</div>
-          <h3 style={{ margin: '8px 0' }}>SAGA Image</h3>
-          <p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>Original image generation UI presets are ready; the production workflow will be connected separately.</p>
-        </article>
+        {models.map((model) => <article className="collection-card" style={{ padding: 18 }} key={model.name}><div className="history-eyebrow">LIVE</div><h3 style={{ margin: '8px 0' }}>{model.name}</h3><p style={{ color: '#8f98a8', fontSize: 12, lineHeight: 1.6 }}>{model.detail}</p></article>)}
       </div>
     </section>
   );

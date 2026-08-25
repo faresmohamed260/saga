@@ -39,7 +39,6 @@ const workflowRegistry = {
       seed: 42,
       steps: 11,
       cfg: 1.0,
-      megapixels: 1.0,
       resolution: '480p',
       durationSeconds: 5,
       audioEnabled: true,

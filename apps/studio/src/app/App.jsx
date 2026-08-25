@@ -102,7 +102,6 @@ export default function App() {
   const [aspect, setAspect] = useState('1:1');
   const [imageResolution, setImageResolution] = useState(1080);
   const [outputs, setOutputs] = useState(4);
-  const [advanced, setAdvanced] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jobs, setJobs] = useState([]);
@@ -307,12 +306,9 @@ export default function App() {
     <div className="app-shell">
       <Sidebar
         section={section}
-        mode={mode}
         mobileOpen={mobileNav}
         onCloseMobile={() => setMobileNav(false)}
         onSectionChange={setSection}
-        onModeChange={setCreateMode}
-        onClearError={() => setError('')}
       />
 
       <main className="workspace">
@@ -330,7 +326,7 @@ export default function App() {
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
               error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
-              outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
+              outputs={outputs} setOutputs={setOutputs}
               seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg} negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
               workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
               settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} autoEditInfo={autoEditInfo}

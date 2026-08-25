@@ -310,8 +310,6 @@
 
 .workspace .saga-composer-error{width:min(820px,100%);margin:9px auto 0;padding:9px 12px;box-sizing:border-box;border:1px solid rgba(237,91,111,.25);border-radius:var(--saga-radius-md);background:rgba(126,33,47,.12);color:#f1a1ae;font-size:var(--saga-text-xs)}
 .workspace .saga-backend-status{width:min(820px,100%);margin:9px auto 0;color:#5f6b7c;font-size:var(--saga-text-2xs);text-align:center}
-.workspace .saga-more-panel{width:min(820px,100%);margin:0 auto;padding:24px;display:flex;gap:14px;border:1px solid #292f39;border-radius:18px;background:#11161c;color:#a89cff}
-.workspace .saga-more-panel strong{color:#fff}.workspace .saga-more-panel p{margin:4px 0 0;color:#738093;font-size:var(--saga-text-sm)}
 
 .workspace .saga-output-wall{
   width:min(780px,100%);
@@ -439,7 +437,6 @@
 .workspace .saga-fixed-setting>span{
   min-width:88px;padding:7px 9px;border:1px solid #323846;border-radius:9px;background:#171b22;color:#f1efff;font-size:12px;font-weight:800;text-align:center;
 }
-.workspace .saga-fixed-setting>span small{color:#8c94a2;font-size:9px;font-weight:700}
 .workspace .saga-video-advanced-output{overflow:visible}
 .workspace .saga-advanced-control-field{display:block;margin-top:10px}
 .workspace .saga-advanced-control-field .saga-shared-aspect-root,
