@@ -1,0 +1,29 @@
+name: Qwen Live Inference Smoke
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-live-inference-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  standby-live-inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/qwen-image-edit-2511
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run official BF16 Qwen edit through live standby gateway
+        run: >-
+          python scripts/qwen_image_edit_smoke.py
+          https://nyxprotocol--saga-qwen-image-edit-2511-gateway-web.modal.run
+          --timeout 4800
