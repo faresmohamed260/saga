@@ -291,7 +291,7 @@ try {
   await expectText(desktop.getByRole('button', { name: 'Video duration 23 seconds', exact: true }), '23s', 'Persisted video duration');
   if (await desktop.locator('.saga-audio-toggle').getAttribute('aria-pressed') !== 'false') throw new Error('Persisted audio state did not remain muted');
 
-  // Switch back to Image and verify image canvas preferences persist while inert sampling stays hidden.
+  // Switch back to Image and verify canvas preferences persist while the live FLUX setup controls remain available.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
   await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');
   const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';
@@ -299,7 +299,11 @@ try {
   await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });
-  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
+  await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
+  if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');
   await settingsButton.click();
 
   // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.
