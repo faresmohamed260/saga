@@ -1,5 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, Download, Folder, Heart, Maximize2, MoreHorizontal, Pencil, RefreshCcw, Sparkles, Trash2, Video } from 'lucide-react';
+import { IMAGE_RESOLUTIONS } from '../features/create/ResolutionPresets.js';
+
+function imagePresetLabel(item) {
+  let width = Number(item?.width) || 0;
+  let height = Number(item?.height) || 0;
+  if (!width || !height) {
+    const match = String(item?.resolution || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
+    if (match) {
+      width = Number(match[1]) || 0;
+      height = Number(match[2]) || 0;
+    }
+  }
+  const longEdge = Math.max(width, height);
+  if (!longEdge) return 'Image';
+  return IMAGE_RESOLUTIONS.reduce((nearest, preset) => (
+    Math.abs(Number(preset.value) - longEdge) < Math.abs(Number(nearest.value) - longEdge) ? preset : nearest
+  ), IMAGE_RESOLUTIONS[0]).label;
+}
 
 export default function MediaCard({
   item,
@@ -122,8 +140,11 @@ export default function MediaCard({
 
   const favoriteLabel = favorite ? 'Remove from favorites' : 'Add to favorites';
   const collectionLabel = inCollection ? 'Remove from collection' : 'Add to collection';
+  const displayResolution = item.kind === 'image'
+    ? imagePresetLabel(item)
+    : item.resolution || 'Video';
   const conciseMeta = [
-    item.resolution || null,
+    displayResolution,
     item.aspectRatio || null,
     item.frameRate ? `${item.frameRate}fps` : null,
   ].filter(Boolean).join(' · ');
@@ -206,7 +227,7 @@ export default function MediaCard({
     <article className={`media-card ${history ? 'gallery-card' : ''} ${selected ? 'selected' : ''} ${selectable ? 'selectable' : ''}`}>
       <div
         ref={frameRef}
-        className={`media-frame ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}
+        className={`media-frame ${item.kind === 'video' ? 'media-frame-video' : 'media-frame-image'} ${!item.url && !videoSource ? 'media-frame-empty' : ''}`}
         style={item.url && item.kind !== 'video' ? { backgroundImage: `url(${item.url})` } : undefined}
         onMouseEnter={() => {
           if (isGalleryVideo && !selectable) setPreviewIntent(true);
@@ -255,7 +276,7 @@ export default function MediaCard({
           <span className="sr-only">{primaryLabel}</span>
         </button>
 
-        <div className="size-badge">{item.kind === 'video' ? <Video size={12}/> : <Sparkles size={12}/>} {item.generated ? `${item.resolution || (item.kind === 'video' ? 'Video' : 'Image')}${history ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
+        <div className="size-badge">{item.kind === 'video' ? <Video size={12}/> : <Sparkles size={12}/>} {item.generated ? `${displayResolution}${history || item.kind === 'video' ? '' : ' · Klein 9B'}` : '1024 × 1024'}</div>
         {selectable && (
           <span
             className={`media-select-toggle ${selected ? 'selected' : ''}`}
