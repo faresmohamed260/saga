@@ -104,9 +104,9 @@ try {
     throw new Error(`Studio design token contract is incomplete: ${JSON.stringify(tokenContract)}`);
   }
 
-  // Core composition: no old mode navbar, centered composer, additional creation Tools live in the sidebar.
+  // Core composition: no old mode navbar or placeholder Tools surface; Image is a real FLUX setup state.
   if (await desktop.locator('.create-mode-tabs,.mode-tabs').count()) throw new Error('Old Create mode navbar is still rendered');
-  await desktop.getByRole('button', { name: 'Tools', exact: true }).waitFor({ state: 'visible' });
+  if (await desktop.getByRole('button', { name: 'Tools', exact: true }).count()) throw new Error('Placeholder Tools navigation is still rendered');
   const sidebar = desktop.locator('.sidebar');
   if ((await sidebar.innerText()).includes('FLUX.2 online')) throw new Error('Provider status leaked into persistent sidebar account chrome');
   await sidebar.getByText('Status in Jobs & Models', { exact: true }).waitFor({ state: 'visible' });
@@ -118,19 +118,19 @@ try {
   if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
   const primarySubmit = desktop.locator('.saga-submit');
   await primarySubmit.waitFor({ state: 'visible' });
-  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Desktop primary action does not expose the Generate verb');
-  if (await primarySubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Desktop primary action lost its mode-specific accessible name');
+  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Add image') throw new Error('Image setup primary action must request a real reference image');
+  if (await primarySubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Image setup primary action lost its accessible name');
   const primarySubmitBox = await primarySubmit.boundingBox();
-  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop Generate action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
+  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop primary action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
   const primarySubmitStyle = await primarySubmit.evaluate((element) => {
     const style = getComputedStyle(element);
     return { display: style.display, fontWeight: Number(style.fontWeight), borderRadius: style.borderRadius };
   });
-  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop Generate action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
+  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop primary action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
   await shot(desktop, '01-create-image-centered.png');
   await shot(desktop, '01b-generate-primary.png');
   await primarySubmit.focus();
-  await expectStrongFocus(primarySubmit, 'Generate primary action');
+  await expectStrongFocus(primarySubmit, 'Image setup primary action');
 
   // Image picker keyboard, morphing and outside dismissal.
   const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
@@ -202,7 +202,7 @@ try {
   await aspectTrigger.click();
   await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
 
-  // Advanced settings in original Image mode must not expose controls with no live workflow.
+  // Image setup Advanced must expose the real FLUX controls that will be used after a reference is attached.
   const settingsButton = desktop.getByRole('button', { name: 'Advanced settings', exact: true });
   await settingsButton.click();
   const advanced = desktop.locator('.saga-advanced-panel');
@@ -211,9 +211,10 @@ try {
   const panelBox = await advanced.boundingBox();
   const viewport = desktop.viewportSize();
   if (!panelBox || !viewport || panelBox.x < 8 || panelBox.y < 8 || panelBox.x + panelBox.width > viewport.width - 8 || panelBox.y + panelBox.height > viewport.height - 8) throw new Error(`Advanced panel out of viewport: ${JSON.stringify(panelBox)}`);
-  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });
-  if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('Disconnected Image mode still exposes Steps');
-  if (await advanced.locator('input[aria-label="CFG value"]').count()) throw new Error('Disconnected Image mode still exposes CFG');
+  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
+  await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
+  await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
   await shot(desktop, '03-advanced-custom-dropdown.png');
   await settingsButton.click();
   await expectHidden(advanced, 'Advanced settings');
