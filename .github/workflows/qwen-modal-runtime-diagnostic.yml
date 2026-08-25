@@ -1,0 +1,69 @@
+name: Qwen Modal Runtime Diagnostic
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-modal-runtime-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        account: [modal-42, modal-43]
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal CLI
+        run: python -m pip install --quiet "modal==1.4.2"
+      - name: Select masked Modal credentials
+        shell: bash
+        env:
+          ACCOUNT: ${{ matrix.account }}
+        run: |
+          python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          rows = payload.get('accounts') or payload.get('tokens') or payload.get('roster') or [] if isinstance(payload, dict) else payload
+          account = os.environ['ACCOUNT']
+          for index, row in enumerate(rows or [], start=1):
+              if not isinstance(row, dict):
+                  continue
+              label = str(row.get('label') or row.get('name') or row.get('account') or f'modal-{index:02d}').strip()
+              if label != account:
+                  continue
+              token_id = str(row.get('token_id') or '').strip()
+              token_secret = str(row.get('token_secret') or '').strip()
+              combined = str(row.get('api_key') or row.get('token') or '').strip()
+              if (not token_id or not token_secret) and '.' in combined:
+                  token_id, token_secret = combined.split('.', 1)
+              if not token_id or not token_secret:
+                  raise SystemExit(f'{account} credentials are incomplete')
+              print(f'::add-mask::{token_id}')
+              print(f'::add-mask::{token_secret}')
+              with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+                  handle.write(f'MODAL_TOKEN_ID={token_id}\n')
+                  handle.write(f'MODAL_TOKEN_SECRET={token_secret}\n')
+              break
+          else:
+              raise SystemExit(f'{account} credentials not found')
+          PY
+      - name: Fetch recent Qwen runtime logs
+        run: >-
+          modal app logs saga-qwen-image-edit-2511
+          --since 15m
+          --tail 1200
+          --timestamps
+          --show-function-id
+          --show-container-id
