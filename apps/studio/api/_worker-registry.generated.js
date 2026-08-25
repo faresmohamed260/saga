@@ -53,7 +53,7 @@ export const GENERATED_MODAL_WORKERS = [
     "role": "primary",
     "enabled": true,
     "order": 0,
-    "version": "qwen-2511-v1"
+    "version": "qwen-2511-civitai-bf16-v1"
   },
   {
     "id": "qwen-standby-01",
@@ -64,6 +64,6 @@ export const GENERATED_MODAL_WORKERS = [
     "role": "standby",
     "enabled": true,
     "order": 1,
-    "version": "qwen-2511-v1"
+    "version": "qwen-2511-civitai-bf16-v1"
   }
 ];
