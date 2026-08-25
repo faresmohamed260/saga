@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "postinstall": "python scripts/apply-final-audit-cleanup.py",
     "dev": "vite",
     "build": "node scripts/check-workflow-contract.mjs && node scripts/check-worker-registry-contract.mjs && node scripts/check-resolution-contract.mjs && node scripts/check-generate-action-contract.mjs && node scripts/check-audio-control-contract.mjs && node scripts/check-create-advanced-contract.mjs && node scripts/check-ui-audit-contract.mjs && node scripts/check-ui-ux-benchmark-contract.mjs && node scripts/check-generation-lifecycle-contract.mjs && node scripts/check-accessibility-polish-contract.mjs && node scripts/check-uploads-library-contract.mjs && vite build",
     "test:poster": "node scripts/check-video-poster-contract.mjs",

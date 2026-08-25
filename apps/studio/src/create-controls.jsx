@@ -585,8 +585,8 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 }
 
 function AdvancedSettings({
-  open, onClose, anchorRef, mode, outputs, setOutputs, seed, setSeed, steps, setSteps,
-  cfg, setCfg, negativePrompt, setNegativePrompt, workflowId, setWorkflowId, modelId, setModelId,
+  open, onClose, anchorRef, mode, seed, setSeed, steps, setSteps,
+  cfg, setCfg, negativePrompt, setNegativePrompt,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
 }) {
@@ -691,8 +691,6 @@ function AdvancedSettings({
                 setSteps(preset.steps);
                 setCfg(preset.cfg);
                 setNegativePrompt(preset.negativePrompt || '');
-                setWorkflowId(preset.workflowId);
-                setModelId(preset.modelId);
                 if (isVideo) {
                   setVideoAutoAspect(true);
                   setVideoManualAspect('16:9');
@@ -729,13 +727,21 @@ function MediaModeToggle({ mode, setMode }) {
 }
 
 function OutputWall({ items, renderCard }) {
+  if (!items.length) return null;
   return (
-    <section className="saga-output-wall" aria-label="Generation outputs">
-      {items.map((item, index) => (
-        <div className={`saga-output-slot saga-output-slot-${index % 6}`} key={item.id}>
-          {renderCard(item, false)}
-        </div>
-      ))}
+    <section className="saga-recent-work" aria-label="Recent work">
+      <div className="saga-stage-heading saga-results-heading">
+        <span>RECENT WORK</span>
+        <h2>Your latest creations</h2>
+        <p>Current-session results appear first, followed by relevant Favorites for quick reuse.</p>
+      </div>
+      <div className="saga-output-wall">
+        {items.map((item, index) => (
+          <div className={`saga-output-slot saga-output-slot-${index % 6}`} key={item.id}>
+            {renderCard(item, false)}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -743,9 +749,9 @@ function OutputWall({ items, renderCard }) {
 export default function CreateWorkspace({
   mode, setMode, prompt, setPrompt, references, onAddReferences, onRemoveReference,
   error, jobStatus, busy, onGenerate, items, renderCard,
-  aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
+  aspect, setAspect, imageResolution, setImageResolution,
   seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,
-  workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
+  settingsOpen, setSettingsOpen, autoEditInfo,
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
   videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},
@@ -790,13 +796,10 @@ export default function CreateWorkspace({
       setMode(savedMode);
       if (ASPECT_PRESETS.some((item) => item.value === saved.aspect)) setAspect(saved.aspect);
       if (IMAGE_RESOLUTIONS.some((item) => item.value === Number(saved.imageResolution))) setImageResolution(Number(saved.imageResolution));
-      if ([1, 2, 4].includes(Number(saved.outputs))) setOutputs(Number(saved.outputs));
       if (saved.seed != null) setSeed(String(saved.seed));
       if (Number.isFinite(Number(saved.steps))) setSteps(Math.max(1, Math.min(50, Number(saved.steps))));
       if (Number.isFinite(Number(saved.cfg))) setCfg(Math.max(0, Math.min(20, Number(saved.cfg))));
       if (typeof saved.negativePrompt === 'string') setNegativePrompt(saved.negativePrompt.slice(0, 2000));
-      if (typeof saved.workflowId === 'string') setWorkflowId(saved.workflowId);
-      if (typeof saved.modelId === 'string') setModelId(saved.modelId);
       if (typeof saved.editAuto === 'boolean') setEditAuto(saved.editAuto);
       if (VIDEO_RESOLUTIONS.some((item) => item.value === saved.videoResolution)) setVideoResolution(saved.videoResolution);
       if (Number.isFinite(Number(saved.videoDuration))) setVideoDuration(Math.max(5, Math.min(30, Math.round(Number(saved.videoDuration)))));
@@ -815,21 +818,18 @@ export default function CreateWorkspace({
       mode: persistedMode,
       aspect,
       imageResolution: Number(imageResolution),
-      outputs: Number(outputs),
       seed,
       steps: Number(steps),
       cfg: Number(cfg),
       negativePrompt,
-      workflowId: isEdit ? 'default-image' : workflowId,
-      modelId: isEdit ? 'saga-image-auto' : modelId,
       editAuto,
       videoResolution,
       videoDuration,
       videoAudio,
     }));
   }, [
-    preferencesReady, mode, isEdit, aspect, imageResolution, outputs, seed, steps, cfg, negativePrompt,
-    workflowId, modelId, editAuto, videoResolution, videoDuration, videoAudio,
+    preferencesReady, mode, isEdit, aspect, imageResolution, seed, steps, cfg, negativePrompt,
+    editAuto, videoResolution, videoDuration, videoAudio,
   ]);
 
   useEffect(() => {
@@ -1111,8 +1111,6 @@ export default function CreateWorkspace({
           onClose={() => setSettingsOpen(false)}
           anchorRef={settingsButtonRef}
           mode={mode}
-          outputs={outputs}
-          setOutputs={setOutputs}
           seed={seed}
           setSeed={setSeed}
           steps={steps}
@@ -1121,10 +1119,6 @@ export default function CreateWorkspace({
           setCfg={setCfg}
           negativePrompt={negativePrompt}
           setNegativePrompt={setNegativePrompt}
-          workflowId={workflowId}
-          setWorkflowId={setWorkflowId}
-          modelId={modelId}
-          setModelId={setModelId}
           videoAutoAspect={videoAutoAspect}
           setVideoAutoAspect={setVideoAutoAspect}
           videoManualAspect={videoManualAspect}

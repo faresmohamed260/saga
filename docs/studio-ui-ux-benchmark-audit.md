@@ -1,6 +1,6 @@
 # Studio UI/UX Benchmark & Real-User Audit
 
-Status: **ACTIVE**  
+Status: **ACTIVE — final audit phase**  
 Working branch: `studio/advanced-ui-audit`  
 Purpose: persistent handoff document for continuing the Studio UI/UX overhaul across chat sessions.
 
@@ -138,4 +138,6 @@ This audit is complete only when:
 
 ## Progress log
 
+- 2026-08-25: Studio Browser UX Review #19 passed production build/contracts and the Chromium interaction/visual suite, covering Create/Edit/Video/Advanced, Gallery and manager, Uploads, Jobs, keyboard interactions, responsive widths, reduced motion and touch behavior. The workflow cleanup commit advanced the branch beyond its original trigger.
+- 2026-08-25: Removed dead Create `outputs`, `workflowId`, and `modelId` React/localStorage plumbing that did not control production execution. Create now labels its mixed session/Favorites surface as Recent work, with session results first. Jobs keeps status/model/progress primary and moves provider/timestamps into Technical details.
 - 2026-08-25: Created persistent benchmark/audit tracker after first Advanced-controls repair pass. Initial build/contracts were green on `studio/advanced-ui-audit` at commit `c338ebc02e503eb3ab293b349ad7a9fc8f29052b` before this tracker commit.

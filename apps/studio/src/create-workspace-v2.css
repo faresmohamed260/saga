@@ -447,3 +447,9 @@
 @media(max-width:720px){
   .workspace .saga-advanced-runtime{grid-template-columns:1fr}
 }
+
+.saga-recent-work { margin-top: 34px; }
+.saga-results-heading { margin-bottom: 14px; }
+.saga-results-heading h2 { font-size: clamp(18px, 2vw, 24px); margin: 3px 0 4px; }
+.saga-results-heading p { max-width: 680px; }
+@media (max-width: 760px) { .saga-recent-work { margin-top: 26px; } }
