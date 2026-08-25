@@ -64,7 +64,6 @@ jobs:
           controls = Path('apps/studio/src/create-controls.jsx')
           controls_text = controls.read_text(encoding='utf-8')
 
-          # Normalize patches so repeated workflow runs never stack JSX wrappers.
           duplicate_guard = "                  {!(isEdit && editAuto) && (\n                  {!(isEdit && editAuto) && ("
           single_guard = "                  {!(isEdit && editAuto) && ("
           while duplicate_guard in controls_text:
@@ -74,6 +73,10 @@ jobs:
               '      aria-label={`${label} options`}',
               '      aria-label={label}',
           )
+
+          old_portal_style = "      style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height }}"
+          new_portal_style = "      style={position ? { position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height } : { position: 'fixed', visibility: 'hidden' }}"
+          controls_text = controls_text.replace(old_portal_style, new_portal_style, 1)
 
           old_keyboard = "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Escape' && open) {"
           new_keyboard = "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Enter' || event.key === ' ') {\n            event.preventDefault();\n            if (open) close(false);\n            else openMenu(selectedIndex);\n          } else if (event.key === 'Escape' && open) {"
@@ -111,7 +114,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx
-            git commit -m "fix(studio): normalize audited interaction patches"
+            git commit -m "fix(studio): stabilize portal selectors and audited interactions"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
