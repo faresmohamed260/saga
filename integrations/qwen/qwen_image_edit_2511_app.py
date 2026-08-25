@@ -14,9 +14,9 @@ PYTHON_VERSION = "3.11"
 CACHE_DIR = "/cache"
 MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
 MODEL_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511"
-GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "L40S")
+GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10")
 WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))
-FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_TIMEOUT_SECONDS", "3600"))
+FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_TIMEOUT_SECONDS", "7200"))
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_IDLE_SECONDS", "300"))
 WORKER_MIN_CONTAINERS = 0
 WORKER_MAX_CONTAINERS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MAX_CONTAINERS", "1"))
@@ -147,10 +147,11 @@ class QwenImageEdit2511Worker:
             torch_dtype=torch.bfloat16,
             local_files_only=True,
         )
-        # Keep the official BF16 checkpoint intact. The 57.7 GB pipeline is
-        # larger than an L40S, so move whole components between CPU RAM and GPU
-        # on demand instead of quantizing or casting the weights.
-        self.pipe.enable_model_cpu_offload(device="cuda")
+        # A10 is the highest GPU tier available on the current credit-only
+        # Modal accounts. Sequential CPU offload keeps the official BF16
+        # weights unchanged while loading only the active leaf modules onto
+        # the accelerator, trading latency for lower VRAM usage.
+        self.pipe.enable_sequential_cpu_offload(device="cuda")
         self.pipe.set_progress_bar_config(disable=True)
         startup_seconds = round(time.perf_counter() - started, 3)
         _set_worker_state("ready", startup_seconds=startup_seconds)
@@ -160,7 +161,7 @@ class QwenImageEdit2511Worker:
             precision="official-bfloat16",
             gpu=GPU_TYPE,
             memory_mb=WORKER_MEMORY_MB,
-            offload="model_cpu_offload",
+            offload="sequential_cpu_offload",
             startup_seconds=startup_seconds,
         )
 
