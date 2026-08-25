@@ -5,14 +5,21 @@ import { IMAGE_RESOLUTIONS } from '../features/create/ResolutionPresets.js';
 function imagePresetLabel(item) {
   let width = Number(item?.width) || 0;
   let height = Number(item?.height) || 0;
+  const resolution = String(item?.resolution || '').trim();
   if (!width || !height) {
-    const match = String(item?.resolution || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
+    const match = resolution.match(/(\d+)\s*[×x]\s*(\d+)/i);
     if (match) {
       width = Number(match[1]) || 0;
       height = Number(match[2]) || 0;
     }
   }
-  const longEdge = Math.max(width, height);
+  let longEdge = Math.max(width, height);
+  if (!longEdge) {
+    const numeric = resolution.match(/^(\d+)\s*(?:p|px)?$/i);
+    if (numeric) longEdge = Number(numeric[1]) || 0;
+    else if (/^2k$/i.test(resolution)) longEdge = 2048;
+    else if (/^4k$/i.test(resolution)) longEdge = 3840;
+  }
   if (!longEdge) return 'Image';
   return IMAGE_RESOLUTIONS.reduce((nearest, preset) => (
     Math.abs(Number(preset.value) - longEdge) < Math.abs(Number(nearest.value) - longEdge) ? preset : nearest
@@ -144,7 +151,7 @@ export default function MediaCard({
     ? imagePresetLabel(item)
     : item.resolution || 'Video';
   const conciseMeta = [
-    displayResolution,
+    item.resolution || (item.kind === 'video' ? 'Video' : 'Image'),
     item.aspectRatio || null,
     item.frameRate ? `${item.frameRate}fps` : null,
   ].filter(Boolean).join(' · ');
