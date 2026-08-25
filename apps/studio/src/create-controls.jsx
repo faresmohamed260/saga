@@ -507,7 +507,7 @@ function FancySelect({ label, value, options, onChange }) {
       ref={popoverRef}
       className="saga-fancy-options saga-fancy-options-portal"
       role="listbox"
-      aria-label={`${label} options`}
+      aria-label={label}
       style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height }}
     >
       {options.map((option, index) => (
