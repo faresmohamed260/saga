@@ -68,6 +68,7 @@ image = (
         "accelerate~=1.8.1",
         "diffusers==0.36.0",
         "huggingface-hub==0.36.0",
+        "peft==0.17.1",
         "safetensors>=0.8.0,<1.0.0",
         "sentencepiece==0.2.0",
         "torch==2.7.1",
