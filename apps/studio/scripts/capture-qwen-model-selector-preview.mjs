@@ -7,7 +7,7 @@ const createUrl = /#\//.test(baseUrl) ? baseUrl.replace(/#\/.*$/, '#/create') : 
 const outputDir = path.resolve(process.env.UI_PREVIEW_DIR || 'visual-preview');
 await mkdir(outputDir, { recursive: true });
 
-const diagnostics = { createUrl, generatedAt: new Date().toISOString(), qwenSelected: false, fluxRestored: false };
+const diagnostics = { createUrl, generatedAt: new Date().toISOString(), qwenSelected: false, qwenLabels: false, fluxRestored: false };
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
 try {
@@ -21,10 +21,16 @@ try {
   await qwen.click();
   if (await qwen.getAttribute('aria-pressed') !== 'true') throw new Error('Qwen model selection did not activate');
   await page.getByText('Qwen Image Edit 2511 · Official BF16', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByText('Add an image, describe the change, and generate with the live Qwen edit model.', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
+  await page.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
   diagnostics.qwenSelected = true;
+  diagnostics.qwenLabels = true;
   await page.screenshot({ path: path.join(outputDir, 'qwen-model-selector.png'), fullPage: true, animations: 'disabled' });
   await flux.click();
   if (await flux.getAttribute('aria-pressed') !== 'true') throw new Error('FLUX model selection did not restore');
+  await page.getByText('Add an image, describe the change, and generate with the live FLUX edit model.', { exact: true }).waitFor({ state: 'visible' });
   diagnostics.fluxRestored = true;
 } finally {
   await writeFile(path.join(outputDir, 'qwen-model-selector-diagnostics.json'), JSON.stringify(diagnostics, null, 2));
