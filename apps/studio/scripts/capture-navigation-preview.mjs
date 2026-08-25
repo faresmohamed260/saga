@@ -7,7 +7,7 @@ const createUrl = /#\//.test(baseUrl) ? baseUrl.replace(/#\/.*$/, '#/create') : 
 const outputDir = path.resolve(process.env.UI_PREVIEW_DIR || 'visual-preview');
 await mkdir(outputDir, { recursive: true });
 
-const diagnostics = { generatedAt: new Date().toISOString(), desktop: [], mobile: [], consoleErrors: [], pageErrors: [] };
+const diagnostics = { generatedAt: new Date().toISOString(), desktop: [], mobile: [], continuation: [], consoleErrors: [], pageErrors: [] };
 const destinations = [
   ['Create', /Create from a reference|Transform your references|Create motion/],
   ['Jobs', 'Jobs & queue'],
@@ -57,6 +57,22 @@ async function runDesktop(browser) {
   await settingsAction.click();
   await page.getByRole('dialog', { name: 'Advanced settings' }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Settings generation action did not return to Create');
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: 'Models', exact: true }).click();
+  await expectDestination(page, 'Models', 'Production models');
+  await page.getByRole('button', { name: 'Start image edit', exact: true }).click();
+  await page.getByRole('heading', { name: /Create from a reference|Transform your references/ }).waitFor({ state: 'visible', timeout: 5000 });
+  if (!page.url().endsWith('#/create')) throw new Error('Model launch action did not enter Create');
+  diagnostics.continuation.push({ action: 'model-to-image-edit', url: page.url() });
+
+  await page.getByRole('button', { name: 'Workflows', exact: true }).click();
+  await expectDestination(page, 'Workflows', 'Production workflows');
+  await page.getByRole('button', { name: 'Create video', exact: true }).click();
+  await page.getByRole('heading', { name: 'Create motion', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
+  if (!page.url().endsWith('#/create')) throw new Error('Workflow launch action did not enter Video Create');
+  if (!await page.locator('.saga-composer.is-video').count()) throw new Error('Workflow launch action did not activate Video mode');
+  diagnostics.continuation.push({ action: 'workflow-to-video', url: page.url() });
 
   await context.close();
 }
