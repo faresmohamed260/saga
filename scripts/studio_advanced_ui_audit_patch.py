@@ -576,8 +576,23 @@ def phase_preview_contract() -> None:
   await desktop.keyboard.press('Escape');
 '''
             text = text.replace(marker, check + marker, 1)
+    contract_path = "apps/studio/scripts/check-generate-action-contract.mjs"
+    contract = read(contract_path)
+    contract = replace_once(
+        contract,
+        '<span className="saga-submit-label">{isEdit ? \'Edit\' : \'Generate\'}</span>',
+        '<span className="saga-submit-label">{isImageSetup ? \'Add image\' : isEdit ? \'Edit\' : \'Generate\'}</span>',
+        "update primary action source contract",
+    )
+    contract = replace_once(
+        contract,
+        "Desktop primary action does not expose the Generate verb",
+        "Image setup primary action must request a real reference image",
+        "update primary action visual contract",
+    )
+    write(contract_path, contract)
     write(path, text)
-    commit("test(studio): cover repaired Advanced interactions", path)
+    commit("test(studio): cover repaired Advanced interactions", path, contract_path)
 
 
 def main() -> None:
