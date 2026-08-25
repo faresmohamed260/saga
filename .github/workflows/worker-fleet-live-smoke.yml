@@ -71,8 +71,14 @@ jobs:
               if live_worker.get('ecosystem') != worker['ecosystem']:
                   raise SystemExit(f"{worker['id']} reports wrong ecosystem: {live_worker}")
               if worker['ecosystem'] == 'qwen-image-edit-2511':
-                  if payload.get('model') != 'Qwen/Qwen-Image-Edit-2511' or payload.get('precision') != 'official-bfloat16':
+                  if payload.get('model') != 'Qwen/Qwen-Image-Edit-2511' or payload.get('precision') != 'civitai-bfloat16':
                       raise SystemExit(f"{worker['id']} reports wrong Qwen model/precision: {payload}")
+                  checkpoint = payload.get('checkpoint') or {}
+                  if checkpoint.get('source') != 'civitai' or int(checkpoint.get('version_id') or 0) != 2553500:
+                      raise SystemExit(f"{worker['id']} reports wrong Qwen checkpoint: {payload}")
+                  acceleration = payload.get('acceleration') or {}
+                  if acceleration.get('type') != 'lightning-lora' or int(acceleration.get('default_steps') or 0) != 4:
+                      raise SystemExit(f"{worker['id']} reports wrong Qwen acceleration: {payload}")
               print({'worker': worker['id'], 'role': worker['role'], 'state': live_worker.get('state'), 'ready': True})
           PY
 
