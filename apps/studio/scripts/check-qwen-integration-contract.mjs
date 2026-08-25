@@ -40,6 +40,7 @@ expect(civitaiPrefetch.includes('"fileId": CIVITAI_FILE_ID') && civitaiPrefetch.
 expect(civitaiPrefetch.includes('downloaded != CIVITAI_EXPECTED_BYTES') && civitaiPrefetch.includes('actual != expected'), 'Qwen staging helper must enforce exact size and SHA before committing the Modal volume');
 expect(runtime.includes('QwenImageTransformer2DModel.from_single_file') && runtime.includes('torch_dtype=torch.bfloat16'), 'Qwen worker must load the Civitai BF16 transformer through the Qwen Diffusers pipeline');
 expect(runtime.includes('"torch==2.7.1"') && runtime.includes('"torchvision==0.22.1"'), 'Qwen worker image must install the matched PyTorch/Torchvision runtime pair required by QwenImageEditPlusPipeline processors');
+expect(runtime.includes('"peft==0.17.1"'), 'Qwen worker image must install the PEFT backend required for Diffusers LoRA loading');
 expect(runtime.includes('LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"'), 'Qwen worker must use the Qwen 2511 Lightning LoRA repository');
 expect(runtime.includes('Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors'), 'Qwen worker must use the BF16 four-step Lightning adapter');
 expect(runtime.includes('load_lora_weights') && runtime.includes('set_adapters("lightning_4step"'), 'Qwen worker must load and activate the four-step Lightning adapter');
