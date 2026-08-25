@@ -665,7 +665,6 @@ function AdvancedSettings({
                 setCfg(preset.cfg);
                 setWorkflowId(preset.workflowId);
                 setModelId(preset.modelId);
-                if (isEdit) setOutputs(1);
                 if (isVideo) {
                   setVideoAutoAspect(true);
                   setVideoManualAspect('16:9');

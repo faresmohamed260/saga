@@ -23,6 +23,7 @@ function expect(condition, message) {
 expect(/'flux2-klein-9b'[\s\S]*?steps:\s*4[\s\S]*?cfg:\s*1\.0/.test(presets), 'FLUX preset must be 4 steps / CFG 1.0');
 expect(/'ltx25-redgraft'[\s\S]*?steps:\s*11[\s\S]*?cfg:\s*1\.0/.test(presets), 'LTX preset must be 11 total steps / CFG 1.0');
 expect(controls.includes('data-ltx-fixed-steps="11"'), 'LTX fixed 8+3 step recipe must be explicit in Advanced');
+expect(!controls.includes('if (isEdit) setOutputs(1)'), 'FLUX preset reset must not silently change output count');
 expect(controls.includes('ariaLabel="Video aspect"'), 'Video aspect must live in Advanced');
 expect(controls.includes('label="Video frame rate"'), 'Video frame rate must live in Advanced');
 expect(!controls.includes('{isVideo && videoToolbarSlot}'), 'Video aspect/FPS must not remain in the prompt toolbar');
