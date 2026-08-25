@@ -113,6 +113,7 @@ export default function App() {
   const [seed, setSeed] = useState('42');
   const [steps, setSteps] = useState(4);
   const [cfg, setCfg] = useState(1.0);
+  const [negativePrompt, setNegativePrompt] = useState('');
   const [workflowId, setWorkflowId] = useState('default-image');
   const [modelId, setModelId] = useState('saga-image-auto');
   const [references, setReferences] = useState([]);
@@ -134,23 +135,23 @@ export default function App() {
   }, [items, favoriteItems, mode, outputs]);
 
   const setCreateMode = (nextMode) => {
-    setMode(nextMode);
+    const resolvedMode = nextMode === 'Image' && references.length ? 'Edit' : nextMode;
+    const preserveSampling = resolvedMode === 'Edit' && mode === 'Image';
+    setMode(resolvedMode);
     setError('');
-    const preset = advancedPresetForMode(nextMode);
+    const preset = advancedPresetForMode(resolvedMode);
     if (preset) {
-      setSeed(preset.seed);
-      setSteps(preset.steps);
-      setCfg(preset.cfg);
+      if (!preserveSampling) {
+        setSeed(preset.seed);
+        setSteps(preset.steps);
+        setCfg(preset.cfg);
+        setNegativePrompt(preset.negativePrompt || '');
+      }
       setWorkflowId(preset.workflowId);
       setModelId(preset.modelId);
-      return;
-    }
-    if (nextMode === 'Image') {
-      setWorkflowId('default-image');
-      setModelId('saga-image-auto');
     }
   };
-  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
+  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, negativePrompt, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
   const mediaActions = useMediaActions({
     section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
     references, setReferences, setError, setItems, selectedMedia, setSelectedMedia,
@@ -330,7 +331,7 @@ export default function App() {
               error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
               outputs={outputs} setOutputs={setOutputs} advanced={advanced} setAdvanced={setAdvanced}
-              seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg}
+              seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg} negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
               workflowId={workflowId} setWorkflowId={setWorkflowId} modelId={modelId} setModelId={setModelId}
               settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} autoEditInfo={autoEditInfo}
             />}

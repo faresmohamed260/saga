@@ -582,7 +582,7 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 
 function AdvancedSettings({
   open, onClose, anchorRef, mode, outputs, setOutputs, seed, setSeed, steps, setSteps,
-  cfg, setCfg, workflowId, setWorkflowId, modelId, setModelId,
+  cfg, setCfg, negativePrompt, setNegativePrompt, workflowId, setWorkflowId, modelId, setModelId,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
 }) {
@@ -622,6 +622,17 @@ function AdvancedSettings({
                   <button type="button" aria-label="Random seed" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={15} /></button>
                 </div>
               </div>
+              <label className="saga-negative-prompt">
+                <span><strong>Negative prompt</strong><small>Tell the active workflow what to avoid.</small></span>
+                <textarea
+                  value={negativePrompt}
+                  onChange={(event) => setNegativePrompt(event.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Optional exclusions…"
+                  aria-label="Negative prompt"
+                />
+              </label>
               {preset.stepsEditable ? (
                 <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} />
               ) : (
@@ -675,6 +686,7 @@ function AdvancedSettings({
                 setSeed(preset.seed);
                 setSteps(preset.steps);
                 setCfg(preset.cfg);
+                setNegativePrompt(preset.negativePrompt || '');
                 setWorkflowId(preset.workflowId);
                 setModelId(preset.modelId);
                 if (isVideo) {
@@ -702,7 +714,7 @@ function MediaModeToggle({ mode, setMode }) {
   const visualMode = mode === 'Video' ? 'Video' : 'Image';
   return (
     <div className="saga-media-toggle" role="group" aria-label="Media mode">
-      <button type="button" className={visualMode === 'Image' ? 'selected' : ''} aria-pressed={visualMode === 'Image'} onClick={() => setMode('Image')}>
+      <button type="button" className={visualMode === 'Image' ? 'selected' : ''} aria-pressed={visualMode === 'Image'} onClick={() => { if (visualMode !== 'Image') setMode('Image'); }}>
         <ImageIcon size={16} /><span>Image</span>
       </button>
       <button type="button" className={visualMode === 'Video' ? 'selected' : ''} aria-pressed={visualMode === 'Video'} onClick={() => setMode('Video')}>
@@ -728,7 +740,7 @@ export default function CreateWorkspace({
   mode, setMode, prompt, setPrompt, references, onAddReferences, onRemoveReference,
   error, jobStatus, busy, onGenerate, items, renderCard,
   aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
-  seed, setSeed, steps, setSteps, cfg, setCfg,
+  seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
@@ -736,6 +748,7 @@ export default function CreateWorkspace({
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
+  const isImageSetup = mode === 'Image';
   const referenceInputRef = useRef(null);
   const promptRef = useRef(null);
   const resolutionButtonRef = useRef(null);
@@ -760,7 +773,7 @@ export default function CreateWorkspace({
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
   const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
-  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'Creation tools' : 'Imagine worlds';
+  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Prepare an image edit';
 
   useEffect(() => {
     if (autoEditInfo) autoBaselineRef.current = { ...autoEditInfo };
@@ -769,7 +782,7 @@ export default function CreateWorkspace({
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      const savedMode = ['Image', 'Video', 'More'].includes(saved.mode) ? saved.mode : 'Image';
+      const savedMode = ['Image', 'Video'].includes(saved.mode) ? saved.mode : 'Image';
       setMode(savedMode);
       if (ASPECT_PRESETS.some((item) => item.value === saved.aspect)) setAspect(saved.aspect);
       if (IMAGE_RESOLUTIONS.some((item) => item.value === Number(saved.imageResolution))) setImageResolution(Number(saved.imageResolution));
@@ -777,6 +790,7 @@ export default function CreateWorkspace({
       if (saved.seed != null) setSeed(String(saved.seed));
       if (Number.isFinite(Number(saved.steps))) setSteps(Math.max(1, Math.min(50, Number(saved.steps))));
       if (Number.isFinite(Number(saved.cfg))) setCfg(Math.max(0, Math.min(20, Number(saved.cfg))));
+      if (typeof saved.negativePrompt === 'string') setNegativePrompt(saved.negativePrompt.slice(0, 2000));
       if (typeof saved.workflowId === 'string') setWorkflowId(saved.workflowId);
       if (typeof saved.modelId === 'string') setModelId(saved.modelId);
       if (typeof saved.editAuto === 'boolean') setEditAuto(saved.editAuto);
@@ -801,6 +815,7 @@ export default function CreateWorkspace({
       seed,
       steps: Number(steps),
       cfg: Number(cfg),
+      negativePrompt,
       workflowId: isEdit ? 'default-image' : workflowId,
       modelId: isEdit ? 'saga-image-auto' : modelId,
       editAuto,
@@ -809,7 +824,7 @@ export default function CreateWorkspace({
       videoAudio,
     }));
   }, [
-    preferencesReady, mode, isEdit, aspect, imageResolution, outputs, seed, steps, cfg,
+    preferencesReady, mode, isEdit, aspect, imageResolution, outputs, seed, steps, cfg, negativePrompt,
     workflowId, modelId, editAuto, videoResolution, videoDuration, videoAudio,
   ]);
 
@@ -848,14 +863,6 @@ export default function CreateWorkspace({
     setSettingsOpen(false);
   };
 
-  if (mode === 'More') {
-    return (
-      <div className="saga-create-stage">
-        <div className="saga-stage-heading"><span>STUDIO</span><h1>{heading}</h1><p>Additional creation workflows will live here without crowding the core Image and Video composer.</p></div>
-        <section className="saga-more-panel"><Sparkles size={24} /><div><strong>Additional tools</strong><p>Choose Create in the sidebar to return to the Image composer.</p></div></section>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -875,7 +882,7 @@ export default function CreateWorkspace({
         <div className="saga-stage-heading">
           <span>{isEdit ? 'EDIT' : isVideo ? 'VIDEO' : 'CREATE'}</span>
           <h1>{heading}</h1>
-          <p>{isEdit ? 'Click a reference to insert it exactly where your cursor is.' : isVideo ? 'Shape the shot, duration, resolution, and audio before generation.' : 'Describe an image, choose the canvas, and iterate.'}</p>
+          <p>{isEdit ? 'Click a reference to insert it exactly where your cursor is.' : isVideo ? 'Shape the shot, duration, resolution, and audio before generation.' : 'Set your image controls now, then add a reference to start the live FLUX edit workflow.'}</p>
         </div>
 
         <section className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''}`}>
@@ -1048,13 +1055,19 @@ export default function CreateWorkspace({
               <button
                 type="button"
                 className="saga-submit"
-                title={isEdit ? 'Edit image' : isVideo ? 'Generate video' : 'Generate image'}
-                aria-label={isEdit ? 'Edit image' : isVideo ? 'Generate video' : 'Generate image'}
-                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
+                title={isImageSetup ? 'Add a reference image to start editing' : isEdit ? 'Edit image' : 'Generate video'}
+                aria-label={isImageSetup ? 'Add reference image' : isEdit ? 'Edit image' : 'Generate video'}
+                onClick={() => {
+                  if (isImageSetup) {
+                    referenceInputRef.current?.click();
+                    return;
+                  }
+                  onGenerate({ videoResolution, videoDuration, videoAudio });
+                }}
                 disabled={busy || (isEdit && references.length === 0)}
               >
-                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
-                <ArrowUp size={18} aria-hidden="true" />
+                <span className="saga-submit-label">{isImageSetup ? 'Add image' : isEdit ? 'Edit' : 'Generate'}</span>
+                {isImageSetup ? <Plus size={18} aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
               </button>
             </div>
           </div>
@@ -1107,6 +1120,8 @@ export default function CreateWorkspace({
           setSteps={setSteps}
           cfg={cfg}
           setCfg={setCfg}
+          negativePrompt={negativePrompt}
+          setNegativePrompt={setNegativePrompt}
           workflowId={workflowId}
           setWorkflowId={setWorkflowId}
           modelId={modelId}

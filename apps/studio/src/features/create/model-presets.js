@@ -10,6 +10,7 @@ export const MODEL_ADVANCED_PRESETS = Object.freeze({
     seed: '42',
     steps: 4,
     cfg: 1.0,
+    negativePrompt: '',
     stepsEditable: true,
     stepsDetail: '4 sampling iterations',
   }),
@@ -21,13 +22,14 @@ export const MODEL_ADVANCED_PRESETS = Object.freeze({
     seed: '42',
     steps: 11,
     cfg: 1.0,
+    negativePrompt: '',
     stepsEditable: false,
     stepsDetail: '11 total · 8 base + 3 refine',
   }),
 });
 
 export function advancedPresetForMode(mode) {
-  if (mode === 'Edit') return MODEL_ADVANCED_PRESETS['flux2-klein-9b'];
+  if (mode === 'Image' || mode === 'Edit') return MODEL_ADVANCED_PRESETS['flux2-klein-9b'];
   if (mode === 'Video') return MODEL_ADVANCED_PRESETS['ltx25-redgraft'];
   return null;
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { runImageEdit, runVideoGeneration } from '../generation-client.js';
 import { runJobAction } from '../api/studioApi.js';
 
-export default function useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter }) {
+export default function useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, negativePrompt, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter }) {
   const [busy, setBusy] = React.useState(false);
   const [jobStatus, setJobStatus] = React.useState('');
   const [workerStatus, setWorkerStatus] = React.useState(null);
@@ -15,7 +15,7 @@ export default function useGenerationController({ mode, isEdit, prompt, referenc
     if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
     const effectiveSeed = Number(seed) || 42;
     setJobStatus('queued');
-    const { job, result } = await runImageEdit({ sourceFiles: references.map((reference) => reference.file), prompt: prompt.trim(), negativePrompt: '', resolution: autoEditInfo.detail, seed: effectiveSeed, steps, cfg, megapixels: autoEditInfo.megapixels }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
+    const { job, result } = await runImageEdit({ sourceFiles: references.map((reference) => reference.file), prompt: prompt.trim(), negativePrompt, resolution: autoEditInfo.detail, seed: effectiveSeed, steps, cfg, megapixels: autoEditInfo.megapixels }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
     setJobStatus('completed');
     setItems((current) => [{ id: result.generationId || job.id, title: prompt.trim(), url: result.thumbnailUrl || result.mediaUrl, originalUrl: result.mediaUrl, thumbnailUrl: result.thumbnailUrl || null, generated: true, model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS', resolution: autoEditInfo.detail, seed: effectiveSeed, kind: 'image', mode: 'edit', persisted: true }, ...current]);
     if (section === 'Gallery') loadGallery({ append: false });
@@ -32,7 +32,7 @@ export default function useGenerationController({ mode, isEdit, prompt, referenc
     const videoFrameRate = [24, 25, 30].includes(requestedFrameRate) ? requestedFrameRate : 24;
     const sourceFile = references[0]?.file || null;
     setJobStatus(sourceFile ? 'uploading' : 'queued');
-    const { job, result } = await runVideoGeneration({ sourceFile, prompt: prompt.trim(), resolution: videoResolution, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate, seed: effectiveSeed, steps, cfg }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
+    const { job, result } = await runVideoGeneration({ sourceFile, prompt: prompt.trim(), negativePrompt, resolution: videoResolution, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate, seed: effectiveSeed, steps, cfg }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
     setJobStatus('completed');
     setItems((current) => [{ id: result.generationId || job.id, title: prompt.trim(), url: result.thumbnailUrl || result.mediaUrl, originalUrl: result.mediaUrl, thumbnailUrl: result.thumbnailUrl || null, generated: true, model: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', resolution: videoResolution, seed: effectiveSeed, kind: 'video', mode: sourceFile ? 'image-to-video' : 'video', persisted: true, durationSeconds: videoDuration, audioEnabled: videoAudio, aspectRatio: videoAspect, frameRate: videoFrameRate, steps: Number(steps), cfg: Number(cfg) }, ...current]);
     if (section === 'Gallery') loadGallery({ append: false });
