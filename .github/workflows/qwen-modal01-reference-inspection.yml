@@ -80,6 +80,12 @@ jobs:
           model_rows = [row for row in rows if row["path"].startswith("studio-models/") and row["type"] == "1"]
           print(json.dumps({"event": "modal01-studio-model-files", "files": model_rows}, indent=2), flush=True)
 
+          try:
+              manifest = b"".join(volume.read_file("studio-models/manifest.json")).decode("utf-8", errors="replace")
+              print(json.dumps({"event": "modal01-studio-model-manifest", "manifest": json.loads(manifest)}, indent=2, ensure_ascii=False), flush=True)
+          except Exception as exc:
+              print(json.dumps({"event": "modal01-studio-model-manifest-error", "error": f"{type(exc).__name__}: {exc}"}), flush=True)
+
           workflow_rows = [row for row in rows if row["path"].startswith("workflows/") and row["path"].endswith(".json") and row["size"] < 2_000_000]
           workflows = []
           for row in workflow_rows:
@@ -95,21 +101,16 @@ jobs:
                   for node_id, node in obj.items():
                       if not isinstance(node, dict):
                           continue
-                      nodes.append({
-                          "node": str(node_id),
-                          "class_type": node.get("class_type"),
-                          "inputs": node.get("inputs"),
-                      })
+                      nodes.append({"node": str(node_id), "class_type": node.get("class_type"), "inputs": node.get("inputs")})
               workflows.append({"path": path, "nodes": nodes})
           print(json.dumps({"event": "modal01-workflow-graphs", "workflows": workflows}, indent=2, ensure_ascii=False), flush=True)
-
-          try:
-              fn = modal.Function.from_name("saga-image-runtime", "workflow_catalog")
-              print(json.dumps({"event": "modal01-workflow-catalog", "result": fn.remote()}, indent=2, default=str), flush=True)
-          except Exception as exc:
-              print(json.dumps({"event": "modal01-workflow-catalog-error", "error": f"{type(exc).__name__}: {exc}"}), flush=True)
           PY
-      - name: Show modal-01 deployed apps
+      - name: Show modal-01 deployment history and Qwen logs
         shell: bash
         run: |
-          modal app list | sed -n '1,120p'
+          echo '=== APPS ==='
+          modal app list --json || true
+          echo '=== SAGA IMAGE RUNTIME HISTORY ==='
+          modal app history saga-image-runtime --json || true
+          echo '=== QWEN LOG HITS ==='
+          modal app logs saga-image-runtime --tail 1000 --search Qwen --timestamps || true
