@@ -97,7 +97,7 @@ jobs:
           git rm .github/workflows/studio-professional-parity-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/studio/src/app/App.jsx apps/studio/src/hooks/useMediaActions.js apps/studio/src/components/MediaCard.jsx apps/studio/scripts/capture-ui-preview.mjs .github/workflows/studio-professional-parity-patch.yml
+          git add apps/studio/src/app/App.jsx apps/studio/src/hooks/useMediaActions.js apps/studio/src/components/MediaCard.jsx apps/studio/scripts/capture-ui-preview.mjs
           if ! git diff --cached --quiet; then
             git commit -m "feat(studio): add professional continuation flows"
             git push origin HEAD:studio/advanced-ui-audit
