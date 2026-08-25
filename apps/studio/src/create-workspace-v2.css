@@ -408,3 +408,39 @@
 @keyframes saga-progress-slide{0%{transform:translateX(-115%)}50%{transform:translateX(110%)}100%{transform:translateX(280%)}}
 @media(max-width:760px){.workspace .saga-video-extra-controls{flex-wrap:wrap}.workspace .saga-video-option-menu{bottom:auto;top:calc(100% + 8px)}}
 @media(prefers-reduced-motion:reduce){.workspace .saga-generation-progress-track.indeterminate span{animation:none;width:100%;opacity:.55}}
+
+
+/* Model-aware Advanced settings */
+.workspace .saga-advanced-runtime{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+}
+.workspace .saga-advanced-runtime>div{
+  min-width:0;padding:10px 11px;border:1px solid #2b313b;border-radius:11px;background:#12161c;
+}
+.workspace .saga-advanced-runtime span,
+.workspace .saga-advanced-control-field>span{
+  display:block;margin-bottom:5px;color:#697587;font-size:9px;font-weight:800;letter-spacing:.09em;
+}
+.workspace .saga-advanced-runtime strong{
+  display:block;color:#e9ebef;font-size:11px;line-height:1.35;white-space:normal;
+}
+.workspace .saga-fixed-setting{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;
+}
+.workspace .saga-fixed-setting>div{display:flex;flex-direction:column;gap:2px}
+.workspace .saga-fixed-setting>div strong{font-size:12px;color:#e8eaf0}
+.workspace .saga-fixed-setting>div small{font-size:9px;color:#727d8d}
+.workspace .saga-fixed-setting>span{
+  min-width:88px;padding:7px 9px;border:1px solid #323846;border-radius:9px;background:#171b22;color:#f1efff;font-size:12px;font-weight:800;text-align:center;
+}
+.workspace .saga-fixed-setting>span small{color:#8c94a2;font-size:9px;font-weight:700}
+.workspace .saga-video-advanced-output{overflow:visible}
+.workspace .saga-advanced-control-field{display:block;margin-top:10px}
+.workspace .saga-advanced-control-field .saga-shared-aspect-root,
+.workspace .saga-advanced-control-field .saga-fancy-select{width:100%}
+.workspace .saga-advanced-control-field .saga-control-pill,
+.workspace .saga-advanced-control-field .saga-fancy-select>button{width:100%;justify-content:space-between}
+.workspace .saga-advanced-unavailable p{margin:0;color:#8490a2;font-size:11px;line-height:1.55}
+@media(max-width:720px){
+  .workspace .saga-advanced-runtime{grid-template-columns:1fr}
+}

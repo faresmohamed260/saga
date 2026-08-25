@@ -14,6 +14,7 @@ import SettingsView from '../features/settings/SettingsView.jsx';
 import useLibraryController from '../hooks/useLibraryController.js';
 import useGenerationController from '../hooks/useGenerationController.js';
 import useMediaActions from '../hooks/useMediaActions.js';
+import { advancedPresetForMode } from '../features/create/model-presets.js';
 
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
@@ -24,12 +25,6 @@ function sectionFromLocation() {
   return HASH_SECTIONS[hash] || 'Create';
 }
 
-const samples = [
-  { id: 1, title: 'Forest refuge', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=85' },
-  { id: 2, title: 'Orbital horizon', url: 'https://images.unsplash.com/photo-1446776877081-d282a0f896e2?auto=format&fit=crop&w=1200&q=85' },
-  { id: 3, title: 'Neon portrait', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=85' },
-  { id: 4, title: 'Future city', url: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=1200&q=85' },
-];
 
 function isUuid(value) { return /^[0-9a-f-]{36}$/i.test(String(value || '')); }
 function toGalleryItem(row) {
@@ -116,21 +111,45 @@ export default function App() {
   const [jobsError, setJobsError] = useState('');
   const [jobActionBusy, setJobActionBusy] = useState('');
   const [seed, setSeed] = useState('42');
-  const [steps, setSteps] = useState(30);
-  const [cfg, setCfg] = useState(7);
+  const [steps, setSteps] = useState(4);
+  const [cfg, setCfg] = useState(1.0);
   const [workflowId, setWorkflowId] = useState('default-image');
   const [modelId, setModelId] = useState('saga-image-auto');
   const [references, setReferences] = useState([]);
-  const [items, setItems] = useState(samples);
+  const [items, setItems] = useState([]);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [error, setError] = useState('');
 
-  const visibleItems = useMemo(() => items.slice(0, mode === 'Edit' ? 4 : outputs), [items, outputs, mode]);
   const isEdit = mode === 'Edit';
   const autoEditInfo = useMemo(() => autoReferenceSizing(references[0]), [references]);
 
   const library = useLibraryController({ section, toGalleryItem });
   const { favorites, setFavorites, favoriteItems, setFavoriteItems, galleryItems, setGalleryItems, galleryLoading, galleryAppending, galleryError, galleryKind, setGalleryKind, galleryModel, setGalleryModel, gallerySearch, setGallerySearch, gallerySort, setGallerySort, galleryDate, setGalleryDate, galleryFavoritesOnly, setGalleryFavoritesOnly, galleryModels, galleryPage, libraryLoading, libraryError, setLibraryError, collections, setCollections, selectedCollection, setSelectedCollection, collectionItems, setCollectionItems, loadGallery, loadFavorites, loadCollections, loadCollectionItems } = library;
+  const visibleItems = useMemo(() => {
+    const accepts = (item) => mode === 'Video' ? item?.kind === 'video' : item?.kind !== 'video';
+    const sessionItems = items.filter(accepts);
+    const seen = new Set(sessionItems.map((item) => String(item.id)));
+    const favoriteFallback = favoriteItems.filter((item) => accepts(item) && !seen.has(String(item.id)));
+    return [...sessionItems, ...favoriteFallback].slice(0, mode === 'Edit' ? 4 : outputs);
+  }, [items, favoriteItems, mode, outputs]);
+
+  const setCreateMode = (nextMode) => {
+    setMode(nextMode);
+    setError('');
+    const preset = advancedPresetForMode(nextMode);
+    if (preset) {
+      setSeed(preset.seed);
+      setSteps(preset.steps);
+      setCfg(preset.cfg);
+      setWorkflowId(preset.workflowId);
+      setModelId(preset.modelId);
+      return;
+    }
+    if (nextMode === 'Image') {
+      setWorkflowId('default-image');
+      setModelId('saga-image-auto');
+    }
+  };
   const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
   const mediaActions = useMediaActions({
     section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg, setWorkflowId, setModelId,
@@ -241,13 +260,9 @@ export default function App() {
       return [reference];
     });
     if (targetMode === 'Video') {
-      setMode('Video');
-      setWorkflowId('video-planned');
-      setModelId('saga-video-auto');
+      setCreateMode('Video');
     } else {
-      setMode('Edit');
-      setWorkflowId('flux2-klein-image-edit');
-      setModelId('flux2-klein-9b');
+      setCreateMode('Edit');
     }
     setError('');
     setSection('Create');
@@ -310,7 +325,7 @@ export default function App() {
           : section === 'Workflows' ? <WorkflowsView />
           : section === 'Settings' ? <SettingsView onOpenGenerationSettings={() => { setSection('Create'); setSettingsOpen(true); }} />
           : <CreateWorkspace
-              mode={mode} setMode={(nextMode) => { setMode(nextMode); setError(''); if (nextMode === 'Edit') { setWorkflowId('flux2-klein-image-edit'); setModelId('flux2-klein-9b'); } else if (nextMode === 'Video') { setWorkflowId('video-planned'); setModelId('saga-video-auto'); } else if (nextMode === 'Image') { setWorkflowId('default-image'); setModelId('saga-image-auto'); } }}
+              mode={mode} setMode={setCreateMode}
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
               error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}

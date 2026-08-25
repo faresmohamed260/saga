@@ -2,11 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import LegacyCreateWorkspace from '../../create-controls.jsx';
 import {
   VideoGenerationProgress,
-  VideoOutputControls,
   referenceAspect,
 } from './VideoGenerationControls.jsx';
 
-const VIDEO_OUTPUT_STORAGE_KEY = 'saga-studio:video-output:v1';
+const VIDEO_OUTPUT_STORAGE_KEY = 'saga-studio:video-output:v2';
 
 function loadVideoOutputSettings() {
   if (typeof window === 'undefined') return { autoAspect: true, manualAspect: '16:9', frameRate: 24 };
@@ -46,19 +45,6 @@ export default function CreateWorkspace(props) {
     videoFrameRate: frameRate,
   }), [onGenerate, effectiveAspect, autoAspect, frameRate]);
 
-  const videoToolbarSlot = mode === 'Video' ? (
-    <VideoOutputControls
-      autoAspect={autoAspect}
-      setAutoAspect={setAutoAspect}
-      manualAspect={manualAspect}
-      setManualAspect={setManualAspect}
-      effectiveAspect={effectiveAspect}
-      referenceInfo={referenceInfo}
-      frameRate={frameRate}
-      setFrameRate={setFrameRate}
-    />
-  ) : null;
-
   const composerStatusSlot = mode === 'Video' || mode === 'Edit' ? (
     <VideoGenerationProgress
       busy={busy}
@@ -76,8 +62,14 @@ export default function CreateWorkspace(props) {
     <LegacyCreateWorkspace
       {...props}
       videoAspect={effectiveAspect}
+      videoAutoAspect={autoAspect}
+      setVideoAutoAspect={setAutoAspect}
+      videoManualAspect={manualAspect}
+      setVideoManualAspect={setManualAspect}
+      videoReferenceInfo={referenceInfo}
+      videoFrameRate={frameRate}
+      setVideoFrameRate={setFrameRate}
       onGenerate={handleGenerate}
-      videoToolbarSlot={videoToolbarSlot}
       composerStatusSlot={composerStatusSlot}
     />
   );

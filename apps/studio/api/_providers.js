@@ -63,6 +63,8 @@ function buildLtx25Form(workflow, input) {
   form.append('prompt', input.prompt);
   form.append('negative_prompt', input.negativePrompt || workflow.defaults.negativePrompt);
   form.append('seed', String(input.seed));
+  form.append('steps', String(input.steps));
+  form.append('cfg', String(input.cfg));
   form.append('resolution', input.resolution);
   form.append('duration_seconds', String(input.durationSeconds));
   form.append('audio_enabled', String(input.audioEnabled));

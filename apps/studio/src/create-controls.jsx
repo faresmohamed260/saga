@@ -10,11 +10,12 @@ import { AspectPicker, ASPECT_PRESETS } from './features/create/AspectPicker.jsx
 import {
   IMAGE_RESOLUTIONS, VIDEO_RESOLUTIONS, dimensionsForPreset, formatDimensions, videoDeliveryDimensions,
 } from './features/create/ResolutionPresets.js';
+import { advancedPresetForMode } from './features/create/model-presets.js';
 import './create-workspace-v2.css';
 
 export { IMAGE_RESOLUTIONS, dimensionsForPreset };
 
-const STORAGE_KEY = 'saga-studio:create-settings:v5';
+const STORAGE_KEY = 'saga-studio:create-settings:v6';
 
 function parseAutoDimensions(detail) {
   const match = String(detail || '').match(/(\d+)\s*[×x]\s*(\d+)/i);
@@ -570,23 +571,16 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 function AdvancedSettings({
   open, onClose, anchorRef, mode, outputs, setOutputs, seed, setSeed, steps, setSteps,
   cfg, setCfg, workflowId, setWorkflowId, modelId, setModelId,
+  videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
+  videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
 }) {
   const panelRef = useRef(null);
-  const position = useAnchoredPosition(open, anchorRef, 430, 610);
+  const position = useAnchoredPosition(open, anchorRef, 450, 690);
   useOutsideDismiss(open, [anchorRef, panelRef], onClose, anchorRef, true);
   if (!open) return null;
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
-  const modelOptions = isEdit
-    ? [{ value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B · DarkBeast V2' }]
-    : isVideo
-      ? [{ value: 'saga-video-auto', label: 'SAGA Video · Auto' }]
-      : [{ value: 'saga-image-auto', label: 'SAGA Image · Auto' }];
-  const workflowOptions = isEdit
-    ? [{ value: 'flux2-klein-image-edit', label: 'Klein Multi-Reference Edit' }]
-    : isVideo
-      ? [{ value: 'video-planned', label: 'Video workflow · planned' }]
-      : [{ value: 'default-image', label: 'Default Image' }];
+  const preset = advancedPresetForMode(mode);
 
   return (
     <div ref={panelRef} className="saga-advanced-panel" style={position || { visibility: 'hidden' }} role="dialog" aria-label="Advanced settings">
@@ -594,52 +588,100 @@ function AdvancedSettings({
         <div>
           <span>GENERATION CONTROLS</span>
           <h2>Advanced</h2>
-          <p>Fine-tune sampling and execution without duplicating canvas controls.</p>
+          <p>{preset ? 'Model-aware defaults with controls that reach the production worker.' : 'Advanced controls appear only for connected production workflows.'}</p>
         </div>
         <button type="button" aria-label="Close advanced settings" onClick={onClose}><X size={17} /></button>
       </header>
 
       <div className="saga-advanced-body">
-        <div className="saga-advanced-top">
-          <label><span>MODEL</span><FancySelect label="Model" value={modelId} options={modelOptions} onChange={setModelId} /></label>
-          {!isEdit && !isVideo && (
-            <label><span>OUTPUTS</span><FancySelect label="Outputs" value={outputs} options={[1, 2, 4].map((n) => ({ value: n, label: `${n} output${n === 1 ? '' : 's'}` }))} onChange={(v) => setOutputs(Number(v))} /></label>
-          )}
-        </div>
-
-        <section className="saga-advanced-card">
-          <div className="saga-card-title"><strong>Sampling</strong><small>Precise controls for reproducibility.</small></div>
-          <div className="saga-seed-row">
-            <div><strong>Seed</strong><small>Reuse a seed to reproduce a result.</small></div>
-            <div className="saga-seed-input">
-              <input aria-label="Seed" inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9-]/g, ''))} />
-              <button type="button" aria-label="Random seed" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={15} /></button>
+        {preset ? (
+          <>
+            <div className="saga-advanced-runtime" aria-label="Active production model">
+              <div><span>MODEL</span><strong>{preset.modelLabel}</strong></div>
+              <div><span>WORKFLOW</span><strong>{preset.workflowLabel}</strong></div>
             </div>
-          </div>
-          <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} />
-          <RangeField label="CFG" help="Prompt guidance strength" value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1} />
-        </section>
 
-        <section className="saga-advanced-card">
-          <div className="saga-card-title"><strong>Execution</strong><small>Backend path for this mode.</small></div>
-          <FancySelect label="Workflow" value={workflowOptions.some((o) => o.value === workflowId) ? workflowId : workflowOptions[0].value} options={workflowOptions} onChange={setWorkflowId} />
-          {isVideo && <p className="saga-planned-note">Video controls are ready for the upcoming production workflow; no backend capability is being simulated here.</p>}
-        </section>
+            <section className="saga-advanced-card">
+              <div className="saga-card-title"><strong>Sampling</strong><small>Defaults are tuned per production model.</small></div>
+              <div className="saga-seed-row">
+                <div><strong>Seed</strong><small>Reuse a seed to reproduce a result.</small></div>
+                <div className="saga-seed-input">
+                  <input aria-label="Seed" inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9-]/g, ''))} />
+                  <button type="button" aria-label="Random seed" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={15} /></button>
+                </div>
+              </div>
+              {preset.stepsEditable ? (
+                <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} />
+              ) : (
+                <div className="saga-fixed-setting" data-ltx-fixed-steps="11">
+                  <div><strong>Steps</strong><small>Fixed distilled two-stage schedule</small></div>
+                  <span>11 <small>8 + 3</small></span>
+                </div>
+              )}
+              <RangeField label="CFG" help={isVideo ? 'Distilled default is 1.0' : 'Prompt guidance strength'} value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1} />
+            </section>
 
-        <button
-          type="button"
-          className="saga-reset"
-          onClick={() => {
-            setOutputs(isEdit ? 1 : 4);
-            setSeed('42');
-            setSteps(isEdit ? 4 : 30);
-            setCfg(isEdit ? 1 : 7);
-            setWorkflowId(isEdit ? 'flux2-klein-image-edit' : isVideo ? 'video-planned' : 'default-image');
-            setModelId(isEdit ? 'flux2-klein-9b' : isVideo ? 'saga-video-auto' : 'saga-image-auto');
-          }}
-        >
-          <RotateCcw size={16} /> Reset advanced settings
-        </button>
+            {isVideo && (
+              <section className="saga-advanced-card saga-video-advanced-output">
+                <div className="saga-card-title"><strong>Video output</strong><small>Canvas and timing controls sent to LTX.</small></div>
+                <div className="saga-advanced-control-field">
+                  <span>ASPECT RATIO</span>
+                  <AspectPicker
+                    ariaLabel="Video aspect"
+                    triggerPrefix="Aspect"
+                    value={videoManualAspect}
+                    onValueChange={(value) => {
+                      setVideoManualAspect(value);
+                      setVideoAutoAspect(false);
+                    }}
+                    autoSelected={videoAutoAspect}
+                    onAutoChoose={() => setVideoAutoAspect(true)}
+                    effectiveValue={videoAspect}
+                    effectiveRatio={videoReferenceInfo?.ratio || undefined}
+                    autoDetail={videoReferenceInfo?.fromReference
+                      ? `${videoReferenceInfo.value} · From reference`
+                      : '16:9 · Follows reference when attached'}
+                    fromReference={videoAutoAspect && Boolean(videoReferenceInfo?.fromReference)}
+                  />
+                </div>
+                <label className="saga-advanced-control-field">
+                  <span>FRAME RATE</span>
+                  <FancySelect
+                    label="Video frame rate"
+                    value={videoFrameRate}
+                    options={[24, 25, 30].map((fps) => ({ value: fps, label: `${fps} fps` }))}
+                    onChange={(value) => setVideoFrameRate(Number(value))}
+                  />
+                </label>
+              </section>
+            )}
+
+            <button
+              type="button"
+              className="saga-reset"
+              onClick={() => {
+                setSeed(preset.seed);
+                setSteps(preset.steps);
+                setCfg(preset.cfg);
+                setWorkflowId(preset.workflowId);
+                setModelId(preset.modelId);
+                if (isEdit) setOutputs(1);
+                if (isVideo) {
+                  setVideoAutoAspect(true);
+                  setVideoManualAspect('16:9');
+                  setVideoFrameRate(24);
+                }
+              }}
+            >
+              <RotateCcw size={16} /> Reset to {isVideo ? 'LTX' : 'FLUX'} defaults
+            </button>
+          </>
+        ) : (
+          <section className="saga-advanced-card saga-advanced-unavailable">
+            <div className="saga-card-title"><strong>No production image workflow connected</strong></div>
+            <p>Original image generation is not live yet, so Studio does not expose sampling controls that would have no backend effect. Add a reference image to use FLUX.2 Klein editing, or switch to Video for LTX.</p>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -677,7 +719,9 @@ export default function CreateWorkspace({
   aspect, setAspect, imageResolution, setImageResolution, outputs, setOutputs,
   seed, setSeed, steps, setSteps, cfg, setCfg,
   workflowId, setWorkflowId, modelId, setModelId, settingsOpen, setSettingsOpen, autoEditInfo,
-  videoAspect = '16:9', videoToolbarSlot = null, composerStatusSlot = null,
+  videoAspect = '16:9', composerStatusSlot = null,
+  videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
+  videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -854,7 +898,6 @@ export default function CreateWorkspace({
 
               <MediaModeToggle mode={mode} setMode={setMode} />
 
-              {isVideo && videoToolbarSlot}
 
               {isEdit && (
                 <button
@@ -1057,6 +1100,14 @@ export default function CreateWorkspace({
           setWorkflowId={setWorkflowId}
           modelId={modelId}
           setModelId={setModelId}
+          videoAutoAspect={videoAutoAspect}
+          setVideoAutoAspect={setVideoAutoAspect}
+          videoManualAspect={videoManualAspect}
+          setVideoManualAspect={setVideoManualAspect}
+          videoAspect={videoAspect}
+          videoReferenceInfo={videoReferenceInfo}
+          videoFrameRate={videoFrameRate}
+          setVideoFrameRate={setVideoFrameRate}
         />
 
         <OutputWall items={items} renderCard={renderCard} />

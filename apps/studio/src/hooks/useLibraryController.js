@@ -144,7 +144,7 @@ export default function useLibraryController({ section, toGalleryItem }) {
   };
 
   React.useEffect(() => {
-    if (!['Gallery', 'Favorites', 'Collections'].includes(section)) return undefined;
+    if (!['Create', 'Gallery', 'Favorites', 'Collections'].includes(section)) return undefined;
 
     let disposed = false;
     const refresh = async ({ initial = false } = {}) => {
@@ -167,7 +167,7 @@ export default function useLibraryController({ section, toGalleryItem }) {
             }),
             loadCollections({ silent: true }),
           ]);
-        } else if (section === 'Favorites') {
+        } else if (section === 'Create' || section === 'Favorites') {
           await loadFavorites({ silent: !initial });
         } else if (section === 'Collections') {
           const nextCollections = await loadCollections({ silent: !initial });
