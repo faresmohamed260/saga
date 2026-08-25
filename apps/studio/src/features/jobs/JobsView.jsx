@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, LoaderCircle, RefreshCcw, RotateCcw, X, XCircle } from 'lucide-react';
+import { CheckCircle2, LoaderCircle, RotateCcw, X, XCircle } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 
 const STATUS_COPY = {
@@ -76,10 +76,10 @@ function runtimePresentation(job) {
   };
 }
 
-export default function JobsView({ jobs, filter, loading, error, actionBusyId, onFilterChange, onRefresh, onJobAction }) {
+export default function JobsView({ jobs, filter, loading, error, actionBusyId, onFilterChange, onJobAction }) {
   return (
     <section className="history-view">
-      <LibraryHeader eyebrow="Execution" title="Jobs & queue" description="Live generation lifecycle. This page polls while open; completed media stays in Gallery." action={<button className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? <LoaderCircle className="spin" size={18}/> : <RefreshCcw size={18}/>} Refresh</button>} />
+      <LibraryHeader eyebrow="Execution" title="Jobs & queue" description="Live generation lifecycle. Jobs update automatically while this page is open; completed media moves to Gallery." />
       <div className="gallery-toolbar" style={{ justifyContent: 'flex-start' }}>
         <div className="gallery-kind-tabs" role="group" aria-label="Job status filter">
           {[['active', 'Active'], ['queued', 'Queued'], ['running', 'Running'], ['failed', 'Failed'], ['completed', 'Completed'], ['all', 'Recent']].map(([value, label]) => (
