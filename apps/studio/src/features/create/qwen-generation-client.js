@@ -31,7 +31,7 @@ export async function runQwenImageEdit(input, options = {}) {
       negativePrompt: input.negativePrompt || '',
       resolution: input.resolution,
       seed: input.seed,
-      steps: input.steps ?? 8,
+      steps: input.steps ?? 4,
       cfg: input.cfg ?? 1.0,
       megapixels: input.megapixels ?? 1.0,
     }),
