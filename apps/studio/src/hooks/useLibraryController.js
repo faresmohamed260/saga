@@ -15,6 +15,8 @@ export default function useLibraryController({ section, toGalleryItem }) {
   const [galleryModel, setGalleryModel] = React.useState('all');
   const [gallerySearch, setGallerySearch] = React.useState('');
   const [gallerySort, setGallerySort] = React.useState('newest');
+  const [galleryDate, setGalleryDate] = React.useState('any');
+  const [galleryFavoritesOnly, setGalleryFavoritesOnly] = React.useState(false);
   const [galleryModels, setGalleryModels] = React.useState([]);
   const [galleryPage, setGalleryPage] = React.useState({ nextOffset: null, hasMore: false });
   const [libraryLoading, setLibraryLoading] = React.useState(false);
@@ -38,6 +40,8 @@ export default function useLibraryController({ section, toGalleryItem }) {
     model = galleryModel,
     search = gallerySearch,
     sort = gallerySort,
+    date = galleryDate,
+    favoritesOnly = galleryFavoritesOnly,
   } = {}) => {
     if (append && galleryPage.nextOffset == null) return;
     if (!silent) append ? setGalleryAppending(true) : setGalleryLoading(true);
@@ -53,6 +57,8 @@ export default function useLibraryController({ section, toGalleryItem }) {
         model,
         search,
         sort,
+        date,
+        favoritesOnly,
       });
       const nextItems = (Array.isArray(payload?.items) ? payload.items : []).map(toGalleryItem);
       setGalleryItems((current) => append ? [...current, ...nextItems] : nextItems);
@@ -147,15 +153,20 @@ export default function useLibraryController({ section, toGalleryItem }) {
       refreshInFlightRef.current = true;
       try {
         if (section === 'Gallery') {
-          await loadGallery({
-            append: false,
-            silent: !initial,
-            preserveLoaded: !initial,
-            kind: galleryKind,
-            model: galleryModel,
-            search: gallerySearch,
-            sort: gallerySort,
-          });
+          await Promise.all([
+            loadGallery({
+              append: false,
+              silent: !initial,
+              preserveLoaded: !initial,
+              kind: galleryKind,
+              model: galleryModel,
+              search: gallerySearch,
+              sort: gallerySort,
+              date: galleryDate,
+              favoritesOnly: galleryFavoritesOnly,
+            }),
+            loadCollections({ silent: true }),
+          ]);
         } else if (section === 'Favorites') {
           await loadFavorites({ silent: !initial });
         } else if (section === 'Collections') {
@@ -185,7 +196,7 @@ export default function useLibraryController({ section, toGalleryItem }) {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [section, galleryKind, galleryModel, gallerySearch, gallerySort, selectedCollection?.id]);
+  }, [section, galleryKind, galleryModel, gallerySearch, gallerySort, galleryDate, galleryFavoritesOnly, selectedCollection?.id]);
 
   return {
     favorites, setFavorites,
@@ -196,6 +207,8 @@ export default function useLibraryController({ section, toGalleryItem }) {
     galleryModel, setGalleryModel,
     gallerySearch, setGallerySearch,
     gallerySort, setGallerySort,
+    galleryDate, setGalleryDate,
+    galleryFavoritesOnly, setGalleryFavoritesOnly,
     galleryModels, galleryPage,
     libraryLoading, libraryError, setLibraryError,
     collections, setCollections,
