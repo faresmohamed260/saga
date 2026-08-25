@@ -368,16 +368,7 @@ try {
   if (/@Image\s+\d+/i.test(cleanedPrompt)) throw new Error(`Stale reference tag remains after removing all references: ${cleanedPrompt}`);
   await shot(desktop, '06b-reference-removal-cleanup.png');
 
-  // Tools is the clarified sidebar destination for additional creation utilities, and Create returns to the compact image composer.
-  await desktop.getByRole('button', { name: 'Tools', exact: true }).click();
-  await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });
-  await desktop.getByRole('heading', { name: 'Creation tools', exact: true }).waitFor({ state: 'visible' });
-  await desktop.locator('.saga-more-panel').getByText('Additional tools', { exact: true }).waitFor({ state: 'visible' });
-  if ((await desktop.locator('.saga-create-stage').innerText()).includes('More tools')) throw new Error('Ambiguous More terminology remains on the Tools destination');
-  await shot(desktop, '07-tools-sidebar.png');
-  await desktop.getByRole('button', { name: 'Create', exact: true }).click();
-  await desktop.locator('.saga-composer').waitFor({ state: 'visible' });
-
+  // Placeholder Tools navigation was removed; continue directly with the real Create output wall.
   // Output wall uses equal-width masonry cards, full-bleed frames and one-row aligned hover actions.
   const slots = desktop.locator('.saga-output-slot');
   if (await slots.count() < 4) throw new Error(`Output wall should render four review outputs, got ${await slots.count()}`);
