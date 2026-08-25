@@ -1,0 +1,29 @@
+name: Correct Studio Audit Patch Helper
+
+on:
+  push:
+    branches:
+      - studio/advanced-ui-audit
+    paths:
+      - scripts/fix_studio_audit_patch_helper.py
+      - .github/workflows/fix-studio-audit-patch-helper.yml
+
+permissions:
+  contents: write
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/advanced-ui-audit
+      - name: Patch helper
+        run: python scripts/fix_studio_audit_patch_helper.py
+      - name: Commit corrected helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/studio_advanced_ui_audit_patch.py
+          git commit -m "fix: correct Studio audit patch import target"
+          git push origin HEAD:studio/advanced-ui-audit
