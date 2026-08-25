@@ -14,7 +14,7 @@ PYTHON_VERSION = "3.11"
 CACHE_DIR = "/cache"
 MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
 MODEL_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511"
-GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10")
+GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")
 WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_TIMEOUT_SECONDS", "7200"))
 CONTAINER_IDLE_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_IDLE_SECONDS", "300"))
@@ -60,6 +60,7 @@ image = (
     )
     .env({
         "HF_HUB_CACHE": CACHE_DIR,
+        "HF_ENABLE_PARALLEL_LOADING": "YES",
         "PYTHONUTF8": "1",
         "PYTHONIOENCODING": "utf-8",
         "SAGA_MODAL_WORKER_ID": WORKER_ID,
@@ -142,26 +143,35 @@ class QwenImageEdit2511Worker:
         _set_worker_state("loading")
         started = time.perf_counter()
         model_path = _snapshot_download()
+        gpu_count = torch.cuda.device_count()
+        if gpu_count < 2:
+            raise RuntimeError(f"Qwen Image Edit requires a multi-GPU worker; visible CUDA devices={gpu_count}")
+        max_memory = {index: "22GB" for index in range(gpu_count)}
         self.pipe = QwenImageEditPlusPipeline.from_pretrained(
             str(model_path),
             torch_dtype=torch.bfloat16,
             local_files_only=True,
+            device_map="balanced",
+            max_memory=max_memory,
         )
-        # A10 is the highest GPU tier available on the current credit-only
-        # Modal accounts. Sequential CPU offload keeps the official BF16
-        # weights unchanged while loading only the active leaf modules onto
-        # the accelerator, trading latency for lower VRAM usage.
-        self.pipe.enable_sequential_cpu_offload(device="cuda")
         self.pipe.set_progress_bar_config(disable=True)
         startup_seconds = round(time.perf_counter() - started, 3)
-        _set_worker_state("ready", startup_seconds=startup_seconds)
+        device_map = getattr(self.pipe, "hf_device_map", None)
+        _set_worker_state(
+            "ready",
+            startup_seconds=startup_seconds,
+            gpu_count=gpu_count,
+            placement="balanced-multi-gpu",
+        )
         _log(
             "qwen_image_edit_worker_ready",
             model=MODEL_REPO,
             precision="official-bfloat16",
             gpu=GPU_TYPE,
+            gpu_count=gpu_count,
             memory_mb=WORKER_MEMORY_MB,
-            offload="sequential_cpu_offload",
+            placement="balanced-multi-gpu",
+            device_map=device_map,
             startup_seconds=startup_seconds,
         )
 
