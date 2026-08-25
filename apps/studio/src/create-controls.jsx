@@ -483,13 +483,14 @@ function FancySelect({ label, value, options, onChange }) {
     setOpen(true);
   };
 
+  const menuPositioned = Boolean(position);
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || !menuPositioned) return undefined;
     const frame = window.requestAnimationFrame(() => {
       optionRefs.current[pendingFocusIndexRef.current]?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open, options.length]);
+  }, [open, menuPositioned, options.length]);
 
   useOutsideDismiss(open, [rootRef, popoverRef], () => close(false), triggerRef);
 
