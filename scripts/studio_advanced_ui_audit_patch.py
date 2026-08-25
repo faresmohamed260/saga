@@ -241,27 +241,29 @@ def phase_image_advanced_and_backend_controls() -> None:
 
     controls_path = "apps/studio/src/create-controls.jsx"
     controls = read(controls_path)
-    controls = replace_once(controls, "  seed, setSeed, steps, setSteps, cfg, setCfg, workflowId, setWorkflowId, modelId, setModelId,", "  seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt, workflowId, setWorkflowId, modelId, setModelId,", "AdvancedSettings negative prompt props")
-    seed_anchor = '''          <div className="saga-seed-row">
-            <div><strong>Seed</strong><small>Reuse a seed to reproduce a result.</small></div>
-            <div className="saga-seed-input"><input value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" aria-label="Seed value" /><button type="button" aria-label="Randomize seed" onClick={() => setSeed(String(Math.floor(Math.random() * 999999)))}><Dices size={15} /></button></div>
-          </div>'''
-    negative_block = seed_anchor + '''
-          <label className="saga-negative-prompt">
-            <span><strong>Negative prompt</strong><small>Tell the active workflow what to avoid.</small></span>
-            <textarea
-              value={negativePrompt}
-              onChange={(event) => setNegativePrompt(event.target.value)}
-              maxLength={2000}
-              rows={3}
-              placeholder="Optional exclusions…"
-              aria-label="Negative prompt"
-            />
-          </label>'''
-    controls = replace_once(controls, seed_anchor, negative_block, "render backend negative prompt control")
+    controls = replace_once(controls, "  cfg, setCfg, workflowId, setWorkflowId, modelId, setModelId,", "  cfg, setCfg, negativePrompt, setNegativePrompt, workflowId, setWorkflowId, modelId, setModelId,", "AdvancedSettings negative prompt props")
+    negative_block = '''
+              <label className="saga-negative-prompt">
+                <span><strong>Negative prompt</strong><small>Tell the active workflow what to avoid.</small></span>
+                <textarea
+                  value={negativePrompt}
+                  onChange={(event) => setNegativePrompt(event.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Optional exclusions…"
+                  aria-label="Negative prompt"
+                />
+              </label>'''
+    controls = sub_once(
+        controls,
+        r'(              <div className="saga-seed-row">.*?
+              </div>)',
+        lambda match: match.group(1) + negative_block,
+        "render backend negative prompt control",
+    )
     controls = replace_once(controls, "    setCfg(preset.cfg);\n    setWorkflowId(preset.workflowId);", "    setCfg(preset.cfg);\n    setNegativePrompt(preset.negativePrompt || '');\n    setWorkflowId(preset.workflowId);", "reset negative prompt")
     controls = replace_once(controls, "  seed, setSeed, steps, setSteps, cfg, setCfg,\n  workflowId", "  seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,\n  workflowId", "legacy workspace negative prompt props")
-    controls = replace_once(controls, "  const isEdit = mode === 'Edit';\n  const isVideo = mode === 'Video';", "  const isEdit = mode === 'Edit';\n  const isVideo = mode === 'Video';\n  const isImageSetup = mode === 'Image';", "Image setup state")
+    controls = replace_once(controls, "  const isVideo = mode === 'Video';\n  const referenceInputRef", "  const isVideo = mode === 'Video';\n  const isImageSetup = mode === 'Image';\n  const referenceInputRef", "Image setup state")
     controls = replace_once(controls, "  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : mode === 'More' ? 'Creation tools' : 'Imagine worlds';", "  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Prepare an image edit';", "accurate Image heading")
     controls = replace_once(controls, "      const savedMode = ['Image', 'Video', 'More'].includes(saved.mode) ? saved.mode : 'Image';", "      const savedMode = ['Image', 'Video'].includes(saved.mode) ? saved.mode : 'Image';", "remove More persisted mode")
     controls = replace_once(controls, "      if (Number.isFinite(Number(saved.cfg))) setCfg(Math.max(0, Math.min(20, Number(saved.cfg))));", "      if (Number.isFinite(Number(saved.cfg))) setCfg(Math.max(0, Math.min(20, Number(saved.cfg))));\n      if (typeof saved.negativePrompt === 'string') setNegativePrompt(saved.negativePrompt.slice(0, 2000));", "load negative prompt preference")
@@ -295,8 +297,8 @@ def phase_image_advanced_and_backend_controls() -> None:
 
     controls = replace_once(
         controls,
-        "<button className={visualMode === 'Image' ? 'selected' : ''} onClick={() => setMode('Image')} title=\"Image\"><ImageIcon size={15}/><span>Image</span></button>",
-        "<button className={visualMode === 'Image' ? 'selected' : ''} onClick={() => { if (visualMode !== 'Image') setMode('Image'); }} title=\"Image\"><ImageIcon size={15}/><span>Image</span></button>",
+        "onClick={() => setMode('Image')}",
+        "onClick={() => { if (visualMode !== 'Image') setMode('Image'); }}",
         "prevent selected Image toggle from dropping Edit mode",
     )
     write(controls_path, controls)
