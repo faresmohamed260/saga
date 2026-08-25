@@ -16,10 +16,12 @@ MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
 MODEL_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511"
 CIVITAI_MODEL_ID = 2246542
 CIVITAI_VERSION_ID = 2553500
+CIVITAI_FILE_ID = 2443737
 CIVITAI_MODEL_NAME = "Qwn-Image-Edit-abliterated"
 CIVITAI_VERSION_NAME = "v1.6-bf16"
 CIVITAI_WEIGHT_NAME = "qwnImageEdit_v16Bf16.safetensors"
 CIVITAI_WEIGHT_SHA256 = "4F8CA1242C7FDBE6CFD1835833C66E9CDBCF23EA27C7B811B43BDA316F30A6DA"
+CIVITAI_EXPECTED_BYTES = 40861031560
 CIVITAI_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511-civitai-v16-bf16"
 CIVITAI_WEIGHT_PATH = CIVITAI_DIR / CIVITAI_WEIGHT_NAME
 CIVITAI_HASH_MARKER = CIVITAI_DIR / f"{CIVITAI_WEIGHT_NAME}.sha256"
@@ -52,7 +54,7 @@ for _name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "CIVITAI_API_TOKEN"):
 RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
 
 # Keep the released Diffusers/Transformers versions that support Qwen Image Edit
-# single-file transformer loading. The Civitai fallback is pinned by version and SHA.
+# single-file transformer loading. The Civitai fallback is pinned by version, file ID, size, and SHA.
 image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.8.1-devel-ubuntu22.04",
@@ -143,12 +145,14 @@ def _snapshot_download() -> Path:
 
 def _civitai_checkpoint_download() -> Path:
     import hashlib
+    import urllib.error
+    import urllib.parse
     import urllib.request
 
     expected = CIVITAI_WEIGHT_SHA256.upper()
     if CIVITAI_WEIGHT_PATH.is_file() and CIVITAI_HASH_MARKER.is_file():
         marker = CIVITAI_HASH_MARKER.read_text(encoding="utf-8").strip().upper()
-        if marker == expected:
+        if marker == expected and CIVITAI_WEIGHT_PATH.stat().st_size == CIVITAI_EXPECTED_BYTES:
             return CIVITAI_WEIGHT_PATH
 
     CIVITAI_DIR.mkdir(parents=True, exist_ok=True)
@@ -156,12 +160,15 @@ def _civitai_checkpoint_download() -> Path:
     if temporary.exists():
         temporary.unlink()
 
+    query = urllib.parse.urlencode({
+        "fileId": CIVITAI_FILE_ID,
+        "token": _civitai_token(),
+    })
     request = urllib.request.Request(
-        f"https://civitai.com/api/download/models/{CIVITAI_VERSION_ID}",
+        f"https://civitai.com/api/download/models/{CIVITAI_VERSION_ID}?{query}",
         headers={
-            "Authorization": f"Bearer {_civitai_token()}",
             "Accept": "application/octet-stream",
-            "User-Agent": "saga-qwen-image-edit-worker/1.0",
+            "User-Agent": "saga-qwen-image-edit-worker/2.0",
         },
     )
     started = time.perf_counter()
@@ -169,6 +176,9 @@ def _civitai_checkpoint_download() -> Path:
     downloaded = 0
     try:
         with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as output:
+            disposition = str(response.headers.get("Content-Disposition") or "")
+            if CIVITAI_WEIGHT_NAME not in disposition:
+                raise RuntimeError("Civitai download resolved to an unexpected checkpoint filename")
             while True:
                 chunk = response.read(8 * 1024 * 1024)
                 if not chunk:
@@ -176,17 +186,41 @@ def _civitai_checkpoint_download() -> Path:
                 output.write(chunk)
                 digest.update(chunk)
                 downloaded += len(chunk)
-    except Exception:
+    except urllib.error.HTTPError as exc:
         if temporary.exists():
             temporary.unlink()
-        raise
+        try:
+            detail = exc.read(2048).decode("utf-8", errors="replace").strip()[:1000]
+        except Exception:
+            detail = ""
+        raise RuntimeError(
+            f"Civitai checkpoint download failed with HTTP {int(exc.code)}: {detail or 'no response body'}"
+        ) from None
+    except urllib.error.URLError as exc:
+        if temporary.exists():
+            temporary.unlink()
+        reason = str(getattr(exc, "reason", "network error"))[:500]
+        raise RuntimeError(f"Civitai checkpoint download failed: {reason}") from None
+    except Exception as exc:
+        if temporary.exists():
+            temporary.unlink()
+        raise RuntimeError(
+            f"Civitai checkpoint download failed: {type(exc).__name__}: {str(exc)[:500]}"
+        ) from None
+
+    if downloaded != CIVITAI_EXPECTED_BYTES:
+        if temporary.exists():
+            temporary.unlink()
+        raise RuntimeError(
+            f"Civitai checkpoint size mismatch for file {CIVITAI_FILE_ID}: expected {CIVITAI_EXPECTED_BYTES}, got {downloaded}"
+        )
 
     actual = digest.hexdigest().upper()
     if actual != expected:
         if temporary.exists():
             temporary.unlink()
         raise RuntimeError(
-            f"Civitai checkpoint SHA256 mismatch for version {CIVITAI_VERSION_ID}: expected {expected}, got {actual}"
+            f"Civitai checkpoint SHA256 mismatch for file {CIVITAI_FILE_ID}: expected {expected}, got {actual}"
         )
 
     temporary.replace(CIVITAI_WEIGHT_PATH)
@@ -196,6 +230,7 @@ def _civitai_checkpoint_download() -> Path:
         "qwen_image_edit_civitai_checkpoint_downloaded",
         model_id=CIVITAI_MODEL_ID,
         version_id=CIVITAI_VERSION_ID,
+        file_id=CIVITAI_FILE_ID,
         version=CIVITAI_VERSION_NAME,
         weight=CIVITAI_WEIGHT_NAME,
         bytes=downloaded,
@@ -246,6 +281,7 @@ def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
         assets_cached=True,
         checkpoint_source="civitai",
         checkpoint_version_id=CIVITAI_VERSION_ID,
+        checkpoint_file_id=CIVITAI_FILE_ID,
         precision="civitai-bfloat16",
         acceleration="lightning-lora-4step-bf16",
         lightning_steps=str(LIGHTNING_DEFAULT_STEPS),
@@ -257,9 +293,11 @@ def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
         "precision": "civitai-bfloat16",
         "checkpointModelId": CIVITAI_MODEL_ID,
         "checkpointVersionId": CIVITAI_VERSION_ID,
+        "checkpointFileId": CIVITAI_FILE_ID,
         "checkpointVersion": CIVITAI_VERSION_NAME,
         "checkpointPath": str(checkpoint_path),
         "checkpointSha256": CIVITAI_WEIGHT_SHA256,
+        "checkpointBytes": CIVITAI_EXPECTED_BYTES,
         "lightningRepo": LIGHTNING_REPO,
         "lightningPath": str(lightning_path / LIGHTNING_WEIGHT_NAME),
         "lightningSteps": [LIGHTNING_DEFAULT_STEPS],
@@ -290,6 +328,7 @@ class QwenImageEdit2511Worker:
             "loading",
             checkpoint_source="civitai",
             checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
             precision="civitai-bfloat16",
         )
         started = time.perf_counter()
@@ -315,6 +354,7 @@ class QwenImageEdit2511Worker:
             "loading",
             checkpoint_source="civitai",
             checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
             precision="civitai-bfloat16",
             transformer_load_seconds=transformer_load_seconds,
         )
@@ -344,6 +384,7 @@ class QwenImageEdit2511Worker:
             placement="balanced-multi-gpu",
             checkpoint_source="civitai",
             checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
             precision="civitai-bfloat16",
             acceleration="lightning-lora-4step-bf16",
             lightning_steps=str(LIGHTNING_DEFAULT_STEPS),
@@ -354,6 +395,7 @@ class QwenImageEdit2511Worker:
             checkpoint_model=CIVITAI_MODEL_NAME,
             checkpoint_version=CIVITAI_VERSION_NAME,
             checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
             checkpoint_sha256=CIVITAI_WEIGHT_SHA256,
             precision="civitai-bfloat16",
             lightning_repo=LIGHTNING_REPO,
@@ -397,6 +439,7 @@ class QwenImageEdit2511Worker:
             "generating",
             checkpoint_source="civitai",
             checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
             precision="civitai-bfloat16",
             acceleration="lightning-lora-4step-bf16",
             inference_steps=lightning_steps,
@@ -444,6 +487,7 @@ class QwenImageEdit2511Worker:
             true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
             checkpoint_source="civitai",
             checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
             precision="civitai-bfloat16",
             acceleration="lightning-lora-4step-bf16",
         )
