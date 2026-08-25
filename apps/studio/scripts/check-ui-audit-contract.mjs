@@ -26,6 +26,7 @@ expect(controls.includes('aria-label="Negative prompt"'), 'Advanced must expose 
 expect(controller.includes('negativePrompt, resolution:') && controller.includes('prompt: prompt.trim(), negativePrompt, resolution: videoResolution'), 'Negative prompt must reach both connected workflows');
 expect(client.includes('negativePrompt') && client.includes('negativePrompt,'), 'Generation client must transport negative prompt');
 expect(!controls.includes("isImageSetup ? 'Add image'"), 'Image setup must not use a wide Add image submit CTA');
+// Image setup, Edit, and Video intentionally share this one circular reference-upload control.
 const roundUploadMarkup = '<button type="button" className="saga-round-button" title="Upload reference images" aria-label="Upload reference images"';
 expect(controls.includes(roundUploadMarkup) && !controls.includes(`{!isImageSetup && (\n              ${roundUploadMarkup}`), 'Image and Video must share the circular upload affordance');
 expect(controls.includes('onDrop={handleReferenceDrop}') && controls.includes('Drop images to upload'), 'Create composer must support image drag-and-drop');
