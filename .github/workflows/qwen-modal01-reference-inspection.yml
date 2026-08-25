@@ -1,0 +1,120 @@
+name: Qwen modal-01 Reference Inspection
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-modal01-reference-inspection.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Select modal-01 credentials
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "").strip()
+          if not raw:
+              raise SystemExit("SAGA_MODAL_TOKENS_JSON is not configured")
+          payload = json.loads(raw)
+          accounts = payload.get("accounts") or payload.get("tokens") or payload.get("roster") or [] if isinstance(payload, dict) else payload
+          selected = None
+          for account in accounts:
+              if not isinstance(account, dict):
+                  continue
+              label = str(account.get("label") or account.get("name") or account.get("account") or "").strip().lower()
+              if label in {"modal-01", "modal01", "modal-1", "account-01", "account-1"}:
+                  selected = account
+                  break
+          if selected is None:
+              raise SystemExit("modal-01 was not found in roster")
+          token_id = str(selected.get("token_id") or "").strip()
+          token_secret = str(selected.get("token_secret") or "").strip()
+          combined = str(selected.get("api_key") or selected.get("token") or "").strip()
+          if (not token_id or not token_secret) and "." in combined:
+              token_id, token_secret = combined.split(".", 1)
+          if not token_id or not token_secret:
+              raise SystemExit("modal-01 credentials are incomplete")
+          print(f"::add-mask::{token_id}")
+          print(f"::add-mask::{token_secret}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"MODAL_TOKEN_ID={token_id}\n")
+              handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
+          PY
+      - name: Inspect modal-01 Qwen assets and runtime workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          import modal
+
+          volume = modal.Volume.from_name("graduation-comfyui-cache")
+          entries = list(volume.listdir("/", recursive=True))
+          rows = []
+          for entry in entries:
+              path = str(getattr(entry, "path", ""))
+              lower = path.lower()
+              if any(token in lower for token in ("qwen", "workflow", "lora", "vae", "text_encoder", "clip")):
+                  rows.append({
+                      "path": path,
+                      "size": int(getattr(entry, "size", 0) or 0),
+                      "type": str(getattr(entry, "type", "") or ""),
+                  })
+          print(json.dumps({"event": "modal01-qwen-volume-index", "matches": rows[:300]}, indent=2), flush=True)
+
+          workflow_hits = []
+          for row in rows:
+              path = row["path"]
+              lower = path.lower()
+              if not lower.endswith(".json") or row["size"] > 2_000_000:
+                  continue
+              try:
+                  data = b"".join(volume.read_file(path)).decode("utf-8", errors="replace")
+              except Exception as exc:
+                  workflow_hits.append({"path": path, "read_error": f"{type(exc).__name__}: {exc}"})
+                  continue
+              if "qwen" not in data.lower() and "lightning" not in data.lower():
+                  continue
+              try:
+                  obj = json.loads(data)
+              except Exception:
+                  workflow_hits.append({"path": path, "text_matches": sorted(set(re.findall(r"[^\\\"']*(?:qwen|lightning)[^\\\"']*", data, re.I)))[:50]})
+                  continue
+              interesting = []
+              if isinstance(obj, dict):
+                  for node_id, node in obj.items():
+                      if not isinstance(node, dict):
+                          continue
+                      text = json.dumps(node, ensure_ascii=False)
+                      if "qwen" in text.lower() or "lightning" in text.lower():
+                          interesting.append({"node": str(node_id), "class_type": node.get("class_type"), "inputs": node.get("inputs")})
+              workflow_hits.append({"path": path, "nodes": interesting[:100]})
+          print(json.dumps({"event": "modal01-qwen-workflow-hits", "files": workflow_hits}, indent=2, ensure_ascii=False), flush=True)
+
+          try:
+              fn = modal.Function.from_name("saga-image-runtime", "workflow_catalog")
+              print(json.dumps({"event": "modal01-workflow-catalog", "result": fn.remote()}, indent=2, default=str), flush=True)
+          except Exception as exc:
+              print(json.dumps({"event": "modal01-workflow-catalog-error", "error": f"{type(exc).__name__}: {exc}"}), flush=True)
+          PY
+      - name: Show modal-01 deployed apps
+        shell: bash
+        run: |
+          modal app list | sed -n '1,120p'
