@@ -241,7 +241,7 @@ function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNest
     };
     const onKey = (event) => {
       if (event.key !== 'Escape') return;
-      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\"true\"]'))) return;
+      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded="true"]'))) return;
       event.preventDefault();
       event.stopPropagation();
       close();
@@ -649,10 +649,15 @@ function AdvancedSettings({
               </label>
               {preset.stepsEditable ? (
                 <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} />
-              ) : (
+              ) : isVideo ? (
                 <div className="saga-fixed-setting" data-ltx-fixed-steps="11">
                   <div><strong>Steps</strong><small>Fixed distilled two-stage schedule</small></div>
                   <span>11</span>
+                </div>
+              ) : (
+                <div className="saga-fixed-setting" data-qwen-fixed-steps={preset.steps}>
+                  <div><strong>Steps</strong><small>{preset.stepsDetail || 'Fixed production schedule'}</small></div>
+                  <span>{preset.steps}</span>
                 </div>
               )}
               <RangeField label="CFG" help={isVideo ? 'Distilled default is 1.0' : 'Prompt guidance strength'} value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1} />
