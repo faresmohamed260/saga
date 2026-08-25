@@ -78,7 +78,7 @@
   .uploads-mobile-filter-panel input{width:17px;height:17px;accent-color:#7a5cff}
   .uploads-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;justify-content:stretch}
   .uploads-density-comfortable .uploads-grid{grid-template-columns:1fr;gap:12px}
-  .upload-add-card,.upload-asset-card{border-radius:12px}
+  .upload-add-card,.upload-asset-card{aspect-ratio:3/4;border-radius:12px}
   .upload-favorite{right:44px}
   .upload-favorite,.upload-card-menu-trigger,.upload-selection-mark{top:6px;width:32px;height:32px}
   .upload-card-menu-wrap{top:6px;right:6px}
