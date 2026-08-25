@@ -20,6 +20,11 @@ expect(!css.includes('.saga-audio-toggle::after'), 'Audio control must not rende
 expect(/\.saga-audio-toggle:focus-visible\s*\{[\s\S]*?outline:\s*2px/.test(css), 'Audio control needs a 2px focus-visible outline');
 expect(html.includes('/src/features/create/audio-control.css'), 'Audio control stylesheet is not loaded');
 expect(pkg.scripts?.build?.includes('check-audio-control-contract.mjs'), 'Audio control contract is not part of the Studio build');
-expect(pkg.scripts?.['visual:preview']?.includes('capture-audio-state-preview.mjs'), 'Audio state visual contract is not part of Studio Visual Preview');
+const visualPreview = pkg.scripts?.['visual:preview'] || '';
+const visualCapture = pkg.scripts?.['visual:capture'] || '';
+expect(
+  visualPreview.includes('visual:capture') && visualCapture.includes('capture-audio-state-preview.mjs'),
+  'Audio state visual contract is not part of Studio Visual Preview',
+);
 
 console.log('Audio control contract passed: one circular control, explanatory tooltip copy, aria-pressed state, and focus treatment are wired.');
