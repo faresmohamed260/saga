@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "deploymentRevision": "worker-identity-v2",
+  "version": 2,
+  "deploymentRevision": "qwen-image-edit-2511-v1",
   "ecosystems": [
     {
       "id": "flux2-klein-9b",
@@ -14,9 +14,30 @@
       "gatewayEntrypoint": "integrations/comfyui/flux2_klein_gateway.py",
       "gatewayApp": "saga-flux2-klein-gateway",
       "gatewayFunction": "web",
+      "prefetchFunction": "prefetch_klein",
+      "prefetchArgument": false,
       "volume": "saga-flux2-klein-9b-cache",
       "stateDict": "saga-flux2-klein-9b-worker-state",
       "idleSeconds": 180,
+      "maxConcurrency": 1
+    },
+    {
+      "id": "qwen-image-edit-2511",
+      "displayName": "Qwen Image Edit 2511",
+      "workflowIds": [
+        "qwen-image-edit-2511"
+      ],
+      "runtimeEntrypoint": "integrations/qwen/qwen_image_edit_2511_app.py",
+      "runtimeApp": "saga-qwen-image-edit-2511",
+      "runtimeClass": "QwenImageEdit2511Worker",
+      "gatewayEntrypoint": "integrations/qwen/qwen_image_edit_2511_gateway.py",
+      "gatewayApp": "saga-qwen-image-edit-2511-gateway",
+      "gatewayFunction": "web",
+      "prefetchFunction": "prefetch_qwen_image_edit_2511",
+      "prefetchArgument": false,
+      "volume": "saga-qwen-image-edit-2511-cache",
+      "stateDict": "saga-qwen-image-edit-2511-worker-state",
+      "idleSeconds": 300,
       "maxConcurrency": 1
     },
     {
@@ -31,6 +52,8 @@
       "gatewayEntrypoint": "integrations/comfyui/ltx23_gateway.py",
       "gatewayApp": "saga-ltx25-gateway",
       "gatewayFunction": "web",
+      "prefetchFunction": "prefetch_ltx25",
+      "prefetchArgument": true,
       "volume": "saga-ltx25-redgraft-cache",
       "stateDict": "saga-ltx25-redgraft-worker-state",
       "idleSeconds": 180,
