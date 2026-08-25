@@ -465,6 +465,7 @@ function FancySelect({ label, value, options, onChange }) {
   const triggerRef = useRef(null);
   const popoverRef = useRef(null);
   const optionRefs = useRef([]);
+  const pendingFocusIndexRef = useRef(0);
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   const selected = options[selectedIndex] || options[0];
   const menuHeight = Math.min(260, Math.max(46, options.length * 34 + 10));
@@ -478,9 +479,17 @@ function FancySelect({ label, value, options, onChange }) {
   const openMenu = (focusIndex = selectedIndex) => {
     const width = triggerRef.current?.getBoundingClientRect().width;
     setMenuWidth(Math.max(180, Math.round(width || 220)));
+    pendingFocusIndexRef.current = focusIndex;
     setOpen(true);
-    window.setTimeout(() => optionRefs.current[focusIndex]?.focus(), 0);
   };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      optionRefs.current[pendingFocusIndexRef.current]?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, options.length]);
 
   useOutsideDismiss(open, [rootRef, popoverRef], () => close(false), triggerRef);
 
