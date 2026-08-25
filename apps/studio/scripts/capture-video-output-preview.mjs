@@ -7,7 +7,7 @@ const baseUrl = process.env.UI_PREVIEW_URL || 'http://127.0.0.1:4173/#/create';
 const createUrl = /#\//.test(baseUrl) ? baseUrl.replace(/#\/.*$/, '#/create') : `${baseUrl.replace(/\/$/, '')}/#/create`;
 const outputDir = path.resolve(process.env.UI_PREVIEW_DIR || 'visual-preview');
 await mkdir(outputDir, { recursive: true });
-const diagnostics = { createUrl, generatedAt: new Date().toISOString(), screenshots: [], pageErrors: [], submitted: null };
+const diagnostics = { createUrl, generatedAt: new Date().toISOString(), screenshots: [], pageErrors: [], submitted: null, sourceUpload: null };
 const referencePng = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 35, g: 38, b: 56, alpha: 1 } } }).png().toBuffer();
 
 const browser = await chromium.launch({ headless: true });
@@ -16,6 +16,20 @@ try {
   const page = await context.newPage();
   page.on('pageerror', (error) => diagnostics.pageErrors.push(error?.stack || error?.message || String(error)));
   await context.route('**/api/favorites', async (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }));
+  await context.route('**/api/uploads', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    diagnostics.sourceUpload = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        uploadUrl: '/__visual-test-upload/reference-4x3.png',
+        key: 'visual-tests/reference-4x3.png',
+        contentType: 'image/png',
+      }),
+    });
+  });
+  await context.route('**/__visual-test-upload/**', async (route) => route.fulfill({ status: 200, body: '' }));
   await context.route('**/api/generate', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
     diagnostics.submitted = route.request().postDataJSON();
@@ -101,20 +115,22 @@ try {
   await autoOption.click();
   if (!/Auto\s+4:3\s*·\s*From reference/.test(await aspectWithReference.innerText())) throw new Error(`Auto aspect did not follow 4:3 reference: ${await aspectWithReference.innerText()}`);
 
-  // CFG is editable and reaches the actual generation request; fixed steps remain 11.
+  // CFG is editable and reaches the actual image-to-video request; fixed steps remain 11.
   await cfg.fill('1.4');
   await closeAdvanced.click();
   await advanced.waitFor({ state: 'hidden' });
   const prompt = page.locator('.saga-prompt-shell textarea');
   await prompt.fill('A slow cinematic camera move through a sunlit coastal landscape');
   await page.getByRole('button', { name: 'Generate video', exact: true }).click();
-  await page.waitForTimeout(450);
+  for (let attempt = 0; attempt < 40 && !diagnostics.submitted; attempt += 1) await page.waitForTimeout(50);
+  if (!diagnostics.sourceUpload) throw new Error('Image-to-video source upload ticket was not requested');
   if (!diagnostics.submitted) throw new Error('Video generation request was not submitted');
   if (Number(diagnostics.submitted.steps) !== 11) throw new Error(`Video request did not send fixed 11 steps: ${JSON.stringify(diagnostics.submitted)}`);
   if (Number(diagnostics.submitted.cfg) !== 1.4) throw new Error(`Video request did not send edited CFG: ${JSON.stringify(diagnostics.submitted)}`);
   if (Number(diagnostics.submitted.frameRate) !== 30) throw new Error(`Video request did not send selected 30 fps: ${JSON.stringify(diagnostics.submitted)}`);
   if (diagnostics.submitted.aspectRatio !== '4:3') throw new Error(`Video request did not send Auto reference aspect: ${JSON.stringify(diagnostics.submitted)}`);
   if (diagnostics.submitted.workflowId !== 'ltx25-redgraft-video') throw new Error(`Video request did not use the production LTX workflow: ${JSON.stringify(diagnostics.submitted)}`);
+  if (diagnostics.submitted.sourceKey !== 'visual-tests/reference-4x3.png') throw new Error(`Video request did not send uploaded reference key: ${JSON.stringify(diagnostics.submitted)}`);
 
   // Mobile: Aspect/FPS stay out of the composer and remain accessible in Advanced.
   const mobile = await context.newPage();
