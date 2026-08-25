@@ -101,7 +101,7 @@ export default function JobsView({ jobs, filter, loading, error, actionBusyId, o
             <span style={{ fontSize: 12, color: '#7f8999' }}>{formatJobTime(job.created_at)}</span>
           </div>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#8f98a8' }}>
-            <span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span><span>{job.provider || 'provider n/a'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}
+            <span>{job.kind || 'image'} · {job.mode || 'generation'}</span><span>{job.model || 'Unknown model'}</span>{job.seed != null && <span>Seed {job.seed}</span>}{job.resolution && <span>{job.resolution}</span>}
           </div>
           <div className={`saga-generation-progress is-${runtime.state}`} style={{ margin: 0 }} role="status" aria-live="polite">
             <div className="saga-generation-progress-icon">
@@ -113,7 +113,12 @@ export default function JobsView({ jobs, filter, loading, error, actionBusyId, o
               <div className={`saga-generation-progress-track ${runtime.terminal ? 'terminal' : 'indeterminate'}`} aria-hidden="true"><span /></div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: '#687284' }}><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span></div>
+          <details style={{ fontSize: 11, color: '#687284' }}>
+            <summary style={{ cursor: 'pointer', width: 'fit-content' }}>Technical details</summary>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', paddingTop: 8 }}>
+              <span>Provider {job.provider || 'n/a'}</span><span>Queued {formatJobTime(job.created_at)}</span><span>Started {formatJobTime(job.started_at)}</span><span>Finished {formatJobTime(job.completed_at)}</span>
+            </div>
+          </details>
           {job.error_message && <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(120,20,35,.14)', border: '1px solid rgba(255,100,120,.25)', color: '#ffb4c0', fontSize: 12 }}>{job.error_message}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>{['queued', 'running'].includes(job.status) && <button className="secondary-button" disabled={actionBusy} onClick={() => onJobAction(job, 'cancel')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <X size={16}/>} Cancel</button>}{job.status === 'failed' && <button className="secondary-button" disabled={actionBusy} onClick={() => onJobAction(job, 'retry')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <RotateCcw size={16}/>} Retry</button>}</div>
         </article>;
