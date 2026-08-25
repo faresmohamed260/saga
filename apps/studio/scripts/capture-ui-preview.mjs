@@ -57,7 +57,38 @@ const browser = await chromium.launch({ headless: true });
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(desktop, 'desktop');
+  await desktop.route('**/api/favorites', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const dataUrl = `data:image/png;base64,${referencePng.toString('base64')}`;
+    const shapes = [[1080, 1440], [1440, 1080], [1080, 1080], [2048, 1152]];
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: shapes.map(([width, height], index) => ({
+          id: `00000000-0000-4000-8000-00000000000${index + 1}`,
+          status: 'completed',
+          kind: 'image',
+          mode: 'edit',
+          model: 'FLUX.2 Klein 9B',
+          prompt: `Favorite generation ${index + 1}`,
+          media_url: dataUrl,
+          thumbnail_url: dataUrl,
+          mime_type: 'image/png',
+          resolution: '1080 px',
+          width,
+          height,
+          seed: 42 + index,
+          workflow_id: 'flux2-klein-image-edit',
+          metadata: { execution: { steps: 4, cfg: 1.0 } },
+          is_favorite: true,
+          created_at: new Date(Date.UTC(2026, 7, 25, 3, index)).toISOString(),
+        })),
+      }),
+    });
+  });
   await waitForStudio(desktop);
+  await desktop.locator('.saga-output-slot').first().waitFor({ state: 'visible', timeout: 3000 });
 
   const tokenContract = await desktop.evaluate(() => {
     const root = getComputedStyle(document.documentElement);
@@ -171,7 +202,7 @@ try {
   await aspectTrigger.click();
   await aspectPicker.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();
 
-  // Advanced settings: custom dropdowns, continuous sampling values, viewport-safe panel.
+  // Advanced settings in original Image mode must not expose controls with no live workflow.
   const settingsButton = desktop.getByRole('button', { name: 'Advanced settings', exact: true });
   await settingsButton.click();
   const advanced = desktop.locator('.saga-advanced-panel');
@@ -180,33 +211,10 @@ try {
   const panelBox = await advanced.boundingBox();
   const viewport = desktop.viewportSize();
   if (!panelBox || !viewport || panelBox.x < 8 || panelBox.y < 8 || panelBox.x + panelBox.width > viewport.width - 8 || panelBox.y + panelBox.height > viewport.height - 8) throw new Error(`Advanced panel out of viewport: ${JSON.stringify(panelBox)}`);
-  await advanced.locator('input[aria-label="Steps value"]').fill('17');
-  await advanced.locator('input[aria-label="CFG value"]').fill('2.7');
-  await advanced.locator('input[aria-label="Seed"]').fill('12345');
-  const outputSelect = advanced.locator('.saga-advanced-top .saga-fancy-select').nth(1);
-  const outputTrigger = outputSelect.locator(':scope > button');
-  await outputTrigger.focus();
-  await desktop.keyboard.press('Enter');
-  const outputOptions = outputSelect.getByRole('option');
-  await outputOptions.first().waitFor({ state: 'visible' });
-  await desktop.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option', null, { timeout: 1500 });
-  await desktop.keyboard.press('End');
-  if (!/4 outputs/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('End did not focus the last advanced select option');
-  await desktop.keyboard.press('Home');
-  if (!/1 output/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('Home did not focus the first advanced select option');
-  await desktop.keyboard.press('ArrowDown');
-  if (!/2 outputs/.test(await desktop.evaluate(() => document.activeElement?.innerText || ''))) throw new Error('ArrowDown did not move advanced select focus');
-  await expectStrongFocus(outputOptions.nth(1), 'Advanced output option');
-  await shot(desktop, '03b-advanced-picker-keyboard-focus.png');
-  await desktop.keyboard.press('Enter');
-  await expectText(outputTrigger, '2 outputs', 'Advanced keyboard selection');
-  await expectFocused(outputTrigger, 'Advanced select trigger after selection');
-  await desktop.keyboard.press('Space');
-  await outputOptions.first().waitFor({ state: 'visible' });
+  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });
+  if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('Disconnected Image mode still exposes Steps');
+  if (await advanced.locator('input[aria-label="CFG value"]').count()) throw new Error('Disconnected Image mode still exposes CFG');
   await shot(desktop, '03-advanced-custom-dropdown.png');
-  await desktop.keyboard.press('Escape');
-  await advanced.waitFor({ state: 'visible' });
-  await expectFocused(outputTrigger, 'Advanced select trigger after Escape');
   await settingsButton.click();
   await expectHidden(advanced, 'Advanced settings');
 
@@ -282,7 +290,7 @@ try {
   await expectText(desktop.getByRole('button', { name: 'Video duration 23 seconds', exact: true }), '23s', 'Persisted video duration');
   if (await desktop.locator('.saga-audio-toggle').getAttribute('aria-pressed') !== 'false') throw new Error('Persisted audio state did not remain muted');
 
-  // Switch back to Image and verify image + advanced values also persisted.
+  // Switch back to Image and verify image canvas preferences persist while inert sampling stays hidden.
   await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();
   await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');
   const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';
@@ -290,12 +298,7 @@ try {
   await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });
-  if (await advanced.locator('input[aria-label="Steps value"]').inputValue() !== '17') throw new Error('Steps did not persist');
-  if (await advanced.locator('input[aria-label="CFG value"]').inputValue() !== '2.7') throw new Error('CFG did not persist');
-  if (await advanced.locator('input[aria-label="Seed"]').inputValue() !== '12345') throw new Error('Seed did not persist');
-  const persistedOutputSelect = advanced.locator('.saga-advanced-top .saga-fancy-select').nth(1);
-  await persistedOutputSelect.locator(':scope > button').click();
-  await persistedOutputSelect.getByRole('option', { name: '4 outputs' }).click();
+  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });
   await settingsButton.click();
 
   // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.
@@ -329,6 +332,19 @@ try {
   if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');
   await autoToggle.click();
   if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');
+
+  // FLUX Advanced defaults are real production values and Reset restores them.
+  await settingsButton.click();
+  await advanced.waitFor({ state: 'visible' });
+  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  const fluxSteps = advanced.locator('input[aria-label="Steps value"]');
+  const fluxCfg = advanced.locator('input[aria-label="CFG value"]');
+  if (await fluxSteps.inputValue() !== '4' || await fluxCfg.inputValue() !== '1') throw new Error(`FLUX preset is not 4 steps / CFG 1.0: ${await fluxSteps.inputValue()} / ${await fluxCfg.inputValue()}`);
+  await fluxSteps.fill('7');
+  await fluxCfg.fill('1.8');
+  await advanced.getByRole('button', { name: 'Reset to FLUX defaults', exact: true }).click();
+  if (await fluxSteps.inputValue() !== '4' || await fluxCfg.inputValue() !== '1') throw new Error('FLUX Reset did not restore 4 / 1.0');
+  await settingsButton.click();
   await shot(desktop, '06-edit-inline-reference-and-auto.png');
 
   // Removing references cleans prompt tags, renumbers survivors, and exits Edit when the last reference is gone.
