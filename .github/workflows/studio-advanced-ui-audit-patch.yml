@@ -42,6 +42,20 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Start built Studio preview
+        shell: bash
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              echo "Studio preview is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+
       - name: Run real-browser interaction and visual suite
         run: npm run visual:preview
 
