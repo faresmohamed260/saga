@@ -1,0 +1,36 @@
+name: Apply Create Advanced Presets Patch
+
+on:
+  push:
+    branches:
+      - studio/create-advanced-presets
+    paths:
+      - .github/workflows/patch-create-advanced-presets.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/create-advanced-presets
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply targeted Create patch
+        run: python scripts/patch_create_advanced_presets.py
+      - name: Remove one-off patch helpers
+        run: |
+          rm scripts/patch_create_advanced_presets.py
+          rm .github/workflows/patch-create-advanced-presets.yml
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(studio): make Create advanced settings production-aware"
+          git push origin HEAD:studio/create-advanced-presets
