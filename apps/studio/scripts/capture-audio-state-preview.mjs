@@ -31,9 +31,9 @@ async function expectFocusRing(locator, label) {
   }
 }
 
-async function expectCircularButton(locator, label, maxSize) {
+async function expectCircularButton(locator, label, maxSize, minSize = 0) {
   const box = await locator.boundingBox();
-  if (!box || Math.abs(box.width - box.height) > 1 || box.width > maxSize) {
+  if (!box || Math.abs(box.width - box.height) > 1 || box.width > maxSize || box.height > maxSize || box.width < minSize || box.height < minSize) {
     throw new Error(`${label} should remain compact and circular: ${JSON.stringify(box)}`);
   }
   return box;
@@ -96,7 +96,7 @@ try {
   await mobileAudio.waitFor({ state: 'visible' });
   const mobileAfter = await mobileAudio.evaluate((element) => getComputedStyle(element, '::after').content);
   if (mobileAfter && mobileAfter !== 'none' && mobileAfter !== 'normal') throw new Error(`Mobile Audio renders a duplicate pseudo-label: ${mobileAfter}`);
-  await expectCircularButton(mobileAudio, 'Mobile Audio button', 34);
+  await expectCircularButton(mobileAudio, 'Mobile Audio button', 46, 44);
   const mobileMargin = Number.parseFloat(await mobileAudio.evaluate((element) => getComputedStyle(element).marginRight));
   if (mobileMargin > 4) throw new Error(`Mobile Audio still reserves room for a removed duplicate badge: ${mobileMargin}`);
   await expectToolbarContained(mobile, 'Mobile Video');
