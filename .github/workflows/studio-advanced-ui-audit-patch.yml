@@ -1,54 +1,63 @@
-name: Apply Studio Advanced UI Audit Patch
+name: Studio Browser UX Review
 
 on:
   push:
     branches:
       - studio/advanced-ui-audit
     paths:
-      - scripts/studio_advanced_ui_audit_patch.py
-      - .github/workflows/studio-advanced-ui-audit-patch.yml
+      - "apps/studio/**"
+      - "docs/studio-ui-ux-benchmark-audit.md"
+      - ".github/workflows/studio-advanced-ui-audit-patch.yml"
 
 permissions:
-  contents: write
+  contents: read
+  actions: read
 
 concurrency:
-  group: studio-advanced-ui-audit-patch
-  cancel-in-progress: false
+  group: studio-browser-ux-review
+  cancel-in-progress: true
 
-# Temporary remote-only patch runner; iteration 3 uses hardened source targets.
 jobs:
-  apply:
+  review:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/studio
     steps:
       - uses: actions/checkout@v4
         with:
           ref: studio/advanced-ui-audit
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Configure Git author
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Apply independent UI fixes and audit commits
-        run: python scripts/studio_advanced_ui_audit_patch.py
 
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
 
       - name: Install Studio dependencies
-        working-directory: apps/studio
         run: npm install --no-audit --no-fund
 
-      - name: Build and run Studio contracts before publishing patch commits
-        working-directory: apps/studio
+      - name: Build and run contracts
         run: npm run build
 
-      - name: Push validated patch commits
-        run: git push origin HEAD:studio/advanced-ui-audit
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run real-browser interaction and visual suite
+        run: npm run visual:preview
+
+      - name: Upload browser-review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-browser-ux-review
+          path: |
+            apps/studio/artifacts/ui-preview/**
+            apps/studio/artifacts/video-output-preview/**
+            apps/studio/artifacts/audio-state-preview/**
+            apps/studio/artifacts/gallery-preview/**
+            apps/studio/artifacts/uploads-preview/**
+            apps/studio/artifacts/jobs-preview/**
+            apps/studio/artifacts/gallery-thumbnail-preview/**
+            apps/studio/artifacts/responsive-preview/**
+          if-no-files-found: warn
+          retention-days: 7
