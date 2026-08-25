@@ -233,7 +233,7 @@ try {
   await thirdSelectButton.press('Enter');
   if (await thirdSelectButton.getAttribute('aria-pressed') !== 'true') throw new Error('Enter did not select the third Gallery card');
   if (!(await manager.locator('strong').innerText()).includes('2 selected')) throw new Error('Gallery manager did not track two keyboard-selected items');
-  for (const label of ['Favorite', 'Download ZIP', 'Delete']) {
+  for (const label of ['Favorite', 'Download', 'Delete']) {
     const button = manager.getByRole('button', { name: label, exact: true });
     if (await button.isDisabled()) throw new Error(`${label} bulk action stayed disabled after selection`);
   }
@@ -288,7 +288,7 @@ try {
 
   await mobile.screenshot({ path: path.join(outputDir, '13-gallery-mobile.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('13-gallery-mobile.png');
-  await mobile.getByRole('button', { name: 'Comfortable', exact: true }).click();
+  await mobile.getByRole('button', { name: 'Gallery layout: compact', exact: true }).click();
   const mobileComfortableGrid = mobile.locator('.gallery-grid');
   if (await mobileComfortableGrid.getAttribute('data-density') !== 'comfortable') throw new Error('Mobile Comfortable density did not activate');
   const mobileComfortableFirst = await mobileCards.first().boundingBox();
@@ -298,7 +298,7 @@ try {
   }
   await mobile.screenshot({ path: path.join(outputDir, '13c-gallery-mobile-comfortable.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('13c-gallery-mobile-comfortable.png');
-  await mobile.getByRole('button', { name: 'Compact', exact: true }).click();
+  await mobile.getByRole('button', { name: 'Gallery layout: comfortable', exact: true }).click();
 
   await mobileOverlay.getByRole('button', { name: 'More actions', exact: true }).click();
   const mobileMore = mobileCards.first().locator('.media-actions-popover');
