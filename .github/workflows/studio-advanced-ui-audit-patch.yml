@@ -1,0 +1,53 @@
+name: Apply Studio Advanced UI Audit Patch
+
+on:
+  push:
+    branches:
+      - studio/advanced-ui-audit
+    paths:
+      - scripts/studio_advanced_ui_audit_patch.py
+      - .github/workflows/studio-advanced-ui-audit-patch.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: studio-advanced-ui-audit-patch
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/advanced-ui-audit
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply independent UI fixes and audit commits
+        run: python scripts/studio_advanced_ui_audit_patch.py
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+
+      - name: Build and run Studio contracts before publishing patch commits
+        working-directory: apps/studio
+        run: npm run build
+
+      - name: Push validated patch commits
+        run: git push origin HEAD:studio/advanced-ui-audit
