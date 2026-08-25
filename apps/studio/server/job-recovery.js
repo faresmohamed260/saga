@@ -35,6 +35,8 @@ async function persistRecoveredWorkerState(job, worker) {
   }
 }
 
+// Recovery uses the same persistence helpers as the foreground result poll so
+// a completed provider job reaches the same durable Gallery state after reloads.
 async function persistRecoveredResult(job, workflow, result) {
   if (job.kind === 'video') {
     return persistVideoJobResult(
