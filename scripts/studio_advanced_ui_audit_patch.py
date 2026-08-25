@@ -13,6 +13,21 @@ if not patch.exists():
 
 run(sys.executable, str(patch))
 
+# The bootstrap patch writes this generated source through a Python triple-quoted
+# string. Keep the failure reporter syntax simple so newline escaping cannot turn
+# into an invalid JavaScript string literal on the Actions runner.
+contract = Path('apps/studio/scripts/check-ui-ux-benchmark-contract.mjs')
+contract_text = contract.read_text(encoding='utf-8')
+start = contract_text.index('const failures = ')
+end = contract_text.index("console.log('UI/UX benchmark contract passed.');")
+contract_text = contract_text[:start] + """const failures = checks.filter(([ok]) => !ok).map(([, message]) => message);
+if (failures.length) {
+  console.error('UI/UX benchmark contract failed:', failures);
+  process.exit(1);
+}
+""" + contract_text[end:]
+contract.write_text(contract_text, encoding='utf-8')
+
 # Persist the validated UX pass as one coherent commit. The temporary bootstrap
 # workflow/script are removed so the branch keeps only product code, tests and docs.
 run('git', 'add',
