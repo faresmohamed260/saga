@@ -34,20 +34,22 @@ for _name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
         _runtime_secret_values[_name] = _value
 RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_secret_values else []
 
+# Qwen's official model card requires the latest Diffusers QwenImageEditPlusPipeline.
+# Keep Transformers below 5.x until the current Qwen multimodal token-type compatibility
+# fix is released across the stable stack; this does not alter model weights or precision.
 image = (
     modal.Image.debian_slim(python_version=PYTHON_VERSION)
     .apt_install("git", "libgl1", "libglib2.0-0")
     .pip_install(
         f"modal=={MODAL_VERSION}",
         "torch==2.7.1",
-        "torchvision==0.22.1",
-        "transformers>=4.57.0",
+        "transformers>=4.57.0,<5.0.0",
         "accelerate>=1.8.0",
         "safetensors>=0.5.3",
-        "huggingface_hub[hf_transfer]>=0.36.0",
+        "huggingface_hub[hf_transfer]>=0.36.0,<1.0",
         "pillow>=11.0.0",
-        "git+https://github.com/huggingface/diffusers.git",
     )
+    .run_commands("pip install --no-cache-dir git+https://github.com/huggingface/diffusers.git")
     .env({
         "HF_HUB_ENABLE_HF_TRANSFER": "1",
         "HF_HUB_CACHE": CACHE_DIR,
@@ -91,7 +93,6 @@ def _snapshot_download() -> Path:
         repo_id=MODEL_REPO,
         local_dir=str(MODEL_DIR),
         token=token,
-        local_dir_use_symlinks=False,
     )
     cache_volume.commit()
     _log("qwen_image_edit_checkpoint_downloaded", repo=MODEL_REPO, elapsed_seconds=round(time.perf_counter() - started, 3))
