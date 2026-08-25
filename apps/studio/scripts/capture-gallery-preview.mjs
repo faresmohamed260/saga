@@ -196,9 +196,10 @@ try {
   await overlay.getByRole('button', { name: 'More actions', exact: true }).click();
   const desktopMore = cards.first().locator('.media-actions-popover');
   await desktopMore.waitFor({ state: 'visible' });
-  for (const label of ['Reuse settings', 'Edit', 'Add to collection', 'Delete permanently']) {
+  for (const label of ['Reuse settings', 'Add to collection', 'Delete permanently']) {
     await desktopMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });
   }
+  if (await desktopMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in desktop Gallery');
   if (await desktopMore.getByRole('menuitem', { name: 'Download original', exact: true }).isVisible()) {
     throw new Error('Desktop More menu duplicates the already-visible Download action');
   }
@@ -310,9 +311,10 @@ try {
   await mobileOverlay.getByRole('button', { name: 'More actions', exact: true }).click();
   const mobileMore = mobileCards.first().locator('.media-actions-popover');
   await mobileMore.waitFor({ state: 'visible' });
-  for (const label of ['Reuse settings', 'Edit', 'Download original', 'Add to collection', 'Delete permanently']) {
+  for (const label of ['Reuse settings', 'Download original', 'Add to collection', 'Delete permanently']) {
     await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });
   }
+  if (await mobileMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in mobile Gallery');
   await assertTouchTargets(mobileMore.getByRole('menuitem'), 44);
   const moreBox = await mobileMore.boundingBox();
   if (!moreBox || moreBox.x < 0 || moreBox.x + moreBox.width > 390 || moreBox.y < 0 || moreBox.y + moreBox.height > 844) {
