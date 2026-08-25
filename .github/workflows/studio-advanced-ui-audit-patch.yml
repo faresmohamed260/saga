@@ -59,7 +59,49 @@ jobs:
               "  for (const label of ['Reuse settings', 'Edit', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }",
               "  for (const label of ['Reuse settings', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }\n  if (await mobileMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in mobile Gallery');",
           )
+          gallery_text = gallery_text.replace(
+              "  const mobileMore = mobileCards.first().locator('.media-actions-popover');",
+              "  const mobileMore = mobile.locator('.gallery-more-sheet-portal .media-actions-popover');",
+          )
           gallery.write_text(gallery_text, encoding='utf-8')
+
+          media = Path('apps/studio/src/components/MediaCard.jsx')
+          media_text = media.read_text(encoding='utf-8')
+          if "import { createPortal } from 'react-dom';" not in media_text:
+              media_text = media_text.replace(
+                  "import React, { useEffect, useRef, useState } from 'react';",
+                  "import React, { useEffect, useRef, useState } from 'react';\nimport { createPortal } from 'react-dom';",
+                  1,
+              )
+          if "const morePopoverRef = useRef(null);" not in media_text:
+              media_text = media_text.replace(
+                  "  const moreRef = useRef(null);",
+                  "  const moreRef = useRef(null);\n  const morePopoverRef = useRef(null);",
+                  1,
+              )
+          if "const [mobileMoreSheet, setMobileMoreSheet]" not in media_text:
+              media_text = media_text.replace(
+                  "  const [moreOpen, setMoreOpen] = useState(false);",
+                  "  const [moreOpen, setMoreOpen] = useState(false);\n  const [mobileMoreSheet, setMobileMoreSheet] = useState(false);",
+                  1,
+              )
+          mobile_effect_anchor = "  const openOrSelect = () => selectable ? onSelect?.(item) : onOpen(item);"
+          if "window.matchMedia('(max-width: 760px)')" not in media_text:
+              mobile_effect = "  useEffect(() => {\n    const media = window.matchMedia('(max-width: 760px)');\n    const update = () => setMobileMoreSheet(media.matches);\n    update();\n    media.addEventListener?.('change', update);\n    return () => media.removeEventListener?.('change', update);\n  }, []);\n\n"
+              media_text = media_text.replace(mobile_effect_anchor, mobile_effect + mobile_effect_anchor, 1)
+          media_text = media_text.replace(
+              "      if (!moreRef.current?.contains(event.target)) setMoreOpen(false);",
+              "      if (!moreRef.current?.contains(event.target) && !morePopoverRef.current?.contains(event.target)) setMoreOpen(false);",
+              1,
+          )
+          old_more_block = """        {moreOpen && (\n          <div className=\"media-actions-popover\" role=\"menu\" aria-label=\"More media actions\" onClick={(event) => event.stopPropagation()}>\n            <button type=\"button\" role=\"menuitem\" onClick={menuAction(onReuseSettings)}><RefreshCcw size={15}/><span>Reuse settings</span></button>\n            {item.kind !== 'video' && <button type=\"button\" role=\"menuitem\" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>}\n            <button type=\"button\" role=\"menuitem\" className=\"media-overflow-download\" onClick={menuAction(onDownload)}><Download size={15}/><span>Download original</span></button>\n            <button type=\"button\" role=\"menuitem\" onClick={menuAction(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={15}/><span>{collectionLabel}</span></button>\n            <div className=\"media-actions-menu-divider\" role=\"separator\"/>\n            <button type=\"button\" role=\"menuitem\" className=\"danger\" onClick={menuAction(onDelete)}><Trash2 size={15}/><span>Delete permanently</span></button>\n          </div>\n        )}"""
+          if old_more_block in media_text:
+              media_text = media_text.replace(old_more_block, "        {renderedMorePopover}", 1)
+          if "const morePopover = moreOpen ? (" not in media_text:
+              insert_anchor = "  const galleryActions = ("
+              popover_declaration = """  const morePopover = moreOpen ? (\n    <div ref={morePopoverRef} className=\"media-actions-popover\" role=\"menu\" aria-label=\"More media actions\" onClick={(event) => event.stopPropagation()}>\n      <button type=\"button\" role=\"menuitem\" onClick={menuAction(onReuseSettings)}><RefreshCcw size={15}/><span>Reuse settings</span></button>\n      {item.kind !== 'video' && <button type=\"button\" role=\"menuitem\" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>}\n      <button type=\"button\" role=\"menuitem\" className=\"media-overflow-download\" onClick={menuAction(onDownload)}><Download size={15}/><span>Download original</span></button>\n      <button type=\"button\" role=\"menuitem\" onClick={menuAction(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={15}/><span>{collectionLabel}</span></button>\n      <div className=\"media-actions-menu-divider\" role=\"separator\"/>\n      <button type=\"button\" role=\"menuitem\" className=\"danger\" onClick={menuAction(onDelete)}><Trash2 size={15}/><span>Delete permanently</span></button>\n    </div>\n  ) : null;\n  const renderedMorePopover = mobileMoreSheet && morePopover && typeof document !== 'undefined'\n    ? createPortal(<div className=\"gallery-card gallery-more-sheet-portal\">{morePopover}</div>, document.body)\n    : morePopover;\n\n"""
+              media_text = media_text.replace(insert_anchor, popover_declaration + insert_anchor, 1)
+          media.write_text(media_text, encoding='utf-8')
 
           controls = Path('apps/studio/src/create-controls.jsx')
           controls_text = controls.read_text(encoding='utf-8')
@@ -110,11 +152,11 @@ jobs:
               )
           controls.write_text(controls_text, encoding='utf-8')
           PY
-          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx; then
+          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/components/MediaCard.jsx apps/studio/src/create-controls.jsx; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/create-controls.jsx
-            git commit -m "fix(studio): stabilize portal selectors and audited interactions"
+            git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/components/MediaCard.jsx apps/studio/src/create-controls.jsx
+            git commit -m "fix(studio): portal mobile Gallery overflow actions"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
