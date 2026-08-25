@@ -130,7 +130,7 @@ try {
   if (Number(diagnostics.submitted.frameRate) !== 30) throw new Error(`Video request did not send selected 30 fps: ${JSON.stringify(diagnostics.submitted)}`);
   if (diagnostics.submitted.aspectRatio !== '4:3') throw new Error(`Video request did not send Auto reference aspect: ${JSON.stringify(diagnostics.submitted)}`);
   if (diagnostics.submitted.workflowId !== 'ltx25-redgraft-video') throw new Error(`Video request did not use the production LTX workflow: ${JSON.stringify(diagnostics.submitted)}`);
-  if (diagnostics.submitted.sourceKey !== 'visual-tests/reference-4x3.png') throw new Error(`Video request did not send uploaded reference key: ${JSON.stringify(diagnostics.submitted)}`);
+  if (diagnostics.submitted.sourceKeys?.[0] !== 'visual-tests/reference-4x3.png') throw new Error(`Video request did not send uploaded reference key: ${JSON.stringify(diagnostics.submitted)}`);
 
   // Mobile: Aspect/FPS stay out of the composer and remain accessible in Advanced.
   const mobile = await context.newPage();
