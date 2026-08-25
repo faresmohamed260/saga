@@ -10,7 +10,7 @@ await mkdir(outputDir, { recursive: true });
 const referencePng = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 42, g: 54, b: 72, alpha: 1 } } }).png().toBuffer();
 const resultPng = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 78, g: 91, b: 126, alpha: 1 } } }).png().toBuffer();
 const resultDataUrl = `data:image/png;base64,${resultPng.toString('base64')}`;
-const diagnostics = { submitted: null, resultPolls: 0, qwenSelected: false };
+const diagnostics = { submitted: null, resultPolls: 0, qwenSelected: false, qwenBackendLabel: false };
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -47,6 +47,7 @@ try {
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
   const advanced = page.locator('.saga-advanced-panel');
   await advanced.getByText('Qwen Image Edit 2511 · Official BF16', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
   const steps = advanced.locator('input[aria-label="Steps value"]');
   if (Number(await steps.inputValue()) !== 40) throw new Error('Qwen Advanced defaults did not switch to 40 steps');
   const cfg = advanced.locator('input[aria-label="CFG value"]');
@@ -58,6 +59,8 @@ try {
   if (diagnostics.submitted.workflowId !== 'qwen-image-edit-2511') throw new Error(`Wrong Qwen workflow: ${JSON.stringify(diagnostics.submitted)}`);
   if (Number(diagnostics.submitted.steps) !== 40 || Number(diagnostics.submitted.cfg) !== 4) throw new Error(`Wrong Qwen defaults: ${JSON.stringify(diagnostics.submitted)}`);
   await page.locator('.saga-generation-progress').getByText('Generation ready', { exact: true }).waitFor({ state: 'visible', timeout: 7000 });
+  await page.getByText(/Live backend · Qwen Image Edit 2511 ·/).waitFor({ state: 'visible', timeout: 5000 });
+  diagnostics.qwenBackendLabel = true;
   await page.screenshot({ path: path.join(outputDir, 'qwen-generation-complete.png'), fullPage: true, animations: 'disabled' });
 } finally {
   await writeFile(path.join(outputDir, 'qwen-generation-diagnostics.json'), JSON.stringify(diagnostics, null, 2));
