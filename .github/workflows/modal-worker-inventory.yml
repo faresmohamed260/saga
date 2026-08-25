@@ -7,7 +7,7 @@ on:
       - "scripts/modal_worker_fleet.py"
       - "config/modal-worker-ecosystems.json"
   push:
-    branches: [studio/video-gallery-ux]
+    branches: [studio/video-gallery-ux, studio/qwen-image-edit-2511]
     paths:
       - ".github/workflows/modal-worker-inventory.yml"
       - "scripts/modal_worker_fleet.py"
@@ -30,8 +30,6 @@ jobs:
       EXPECTED_MODAL_ACCOUNTS: "47"
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: studio/video-gallery-ux
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
