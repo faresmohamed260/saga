@@ -515,6 +515,7 @@ function FancySelect({ label, value, options, onChange }) {
       <button
         ref={triggerRef}
         type="button"
+        aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
         onKeyDown={(event) => {

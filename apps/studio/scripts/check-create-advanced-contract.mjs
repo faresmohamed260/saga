@@ -26,6 +26,7 @@ expect(controls.includes('data-ltx-fixed-steps="11"'), 'LTX fixed 8+3 step recip
 expect(!controls.includes('if (isEdit) setOutputs(1)'), 'FLUX preset reset must not silently change output count');
 expect(controls.includes('ariaLabel="Video aspect"'), 'Video aspect must live in Advanced');
 expect(controls.includes('label="Video frame rate"'), 'Video frame rate must live in Advanced');
+expect(controls.includes('aria-label={label}'), 'Advanced custom-select triggers must expose their accessible labels');
 expect(!controls.includes('{isVideo && videoToolbarSlot}'), 'Video aspect/FPS must not remain in the prompt toolbar');
 expect(!wrapper.includes('<VideoOutputControls'), 'Wrapper must not inject duplicate inline video output controls');
 expect(controller.includes('seed: effectiveSeed, steps, cfg'), 'Video controller must forward steps and CFG');
