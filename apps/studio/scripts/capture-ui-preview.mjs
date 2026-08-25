@@ -116,21 +116,15 @@ try {
   const composerCenter = composerBox.x + composerBox.width / 2;
   const workspaceCenter = workspaceBox.x + workspaceBox.width / 2;
   if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
-  const primarySubmit = desktop.locator('.saga-submit');
-  await primarySubmit.waitFor({ state: 'visible' });
-  if ((await primarySubmit.locator('.saga-submit-label').innerText()).trim() !== 'Add image') throw new Error('Image setup primary action must request a real reference image');
-  if (await primarySubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Image setup primary action lost its accessible name');
-  const primarySubmitBox = await primarySubmit.boundingBox();
-  if (!primarySubmitBox || primarySubmitBox.width < 100 || primarySubmitBox.width < primarySubmitBox.height * 2.4) throw new Error(`Desktop primary action is not visually promoted as a primary verb: ${JSON.stringify(primarySubmitBox)}`);
-  const primarySubmitStyle = await primarySubmit.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { display: style.display, fontWeight: Number(style.fontWeight), borderRadius: style.borderRadius };
-  });
-  if (!primarySubmitStyle.display.includes('flex') || primarySubmitStyle.fontWeight < 700) throw new Error(`Desktop primary action styling is not sufficiently primary: ${JSON.stringify(primarySubmitStyle)}`);
+  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  await upload.waitFor({ state: 'visible' });
+  if (await desktop.locator('.saga-submit').count()) throw new Error('Image setup still exposes a wide submit-style Add image action');
+  const uploadBox = await upload.boundingBox();
+  if (!uploadBox || Math.abs(uploadBox.width - uploadBox.height) > 1 || uploadBox.width < 36) throw new Error(`Image setup circular upload action is missing: ${JSON.stringify(uploadBox)}`);
   await shot(desktop, '01-create-image-centered.png');
   await shot(desktop, '01b-generate-primary.png');
-  await primarySubmit.focus();
-  await expectStrongFocus(primarySubmit, 'Image setup primary action');
+  await upload.focus();
+  await expectStrongFocus(upload, 'Image setup circular upload action');
 
   // Image picker keyboard, morphing and outside dismissal.
   const resolutionTrigger = desktop.locator('.saga-resolution-trigger');
@@ -306,13 +300,23 @@ try {
   if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');
   await settingsButton.click();
 
-  // The single primary Image CTA attaches the first reference; Edit then exposes + for additional references.
-  if (await desktop.getByRole('button', { name: 'Upload reference images', exact: true }).count()) throw new Error('Image setup exposes a duplicate secondary upload action');
-  const chooserPromise = desktop.waitForEvent('filechooser');
-  await primarySubmit.click();
-  const chooser = await chooserPromise;
-  await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });
-  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
+  // Drag/drop attaches the first reference; the same circular + remains available for additional references.
+  const composer = desktop.locator('.saga-composer');
+  await composer.evaluate((element, encoded) => {
+    const bytes = Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+    const file = new File([bytes], 'reference.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    window.__sagaReferenceDropTransfer = transfer;
+    element.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, referencePng.toString('base64'));
+  await desktop.locator('.saga-drop-overlay').waitFor({ state: 'visible' });
+  await expectText(desktop.locator('.saga-drop-overlay'), 'Drop images to upload', 'Drag-over upload affordance');
+  await composer.evaluate((element) => {
+    element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__sagaReferenceDropTransfer }));
+    delete window.__sagaReferenceDropTransfer;
+  });
+  await desktop.locator('.saga-composer.is-edit').waitFor({ state: 'visible' });
   await upload.waitFor({ state: 'visible' });
   const secondChooserPromise = desktop.waitForEvent('filechooser');
   await upload.click();
@@ -420,12 +424,11 @@ try {
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: 'dark' });
   recordDiagnostics(mobile, 'mobile');
   await waitForStudio(mobile);
-  const mobileSubmit = mobile.locator('.saga-submit');
-  await mobileSubmit.waitFor({ state: 'visible' });
-  if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
-  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');
-  const mobileSubmitBox = await mobileSubmit.boundingBox();
-  if (!mobileSubmitBox || mobileSubmitBox.width < 44 || mobileSubmitBox.height < 44 || mobileSubmitBox.width > 48 || mobileSubmitBox.height > 48 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action does not provide a compact 44px touch target: ${JSON.stringify(mobileSubmitBox)}`);
+  const mobileUpload = mobile.getByRole('button', { name: 'Upload reference images', exact: true });
+  await mobileUpload.waitFor({ state: 'visible' });
+  if (await mobile.locator('.saga-submit').count()) throw new Error('Mobile Image setup still exposes a separate Add image submit action');
+  const mobileUploadBox = await mobileUpload.boundingBox();
+  if (!mobileUploadBox || mobileUploadBox.width < 44 || mobileUploadBox.height < 44 || mobileUploadBox.width > 48 || mobileUploadBox.height > 48 || Math.abs(mobileUploadBox.width - mobileUploadBox.height) > 1) throw new Error(`Mobile circular upload action does not provide a 44px touch target: ${JSON.stringify(mobileUploadBox)}`);
   await shot(mobile, '09-mobile-create.png');
 
   if (diagnostics.pageErrors.length) throw new Error(`Page errors: ${diagnostics.pageErrors.map((entry) => entry.text).join(' | ')}`);

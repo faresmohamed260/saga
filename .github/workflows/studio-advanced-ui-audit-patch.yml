@@ -1,33 +1,218 @@
-name: Studio Upload Affordance Patch
+name: Studio Browser UX Review
 
 on:
   push:
     branches:
-      - studio/upload-plus-drag-drop
+      - studio/advanced-ui-audit
     paths:
+      - "apps/studio/**"
+      - "docs/studio-ui-ux-benchmark-audit.md"
       - ".github/workflows/studio-advanced-ui-audit-patch.yml"
 
 permissions:
   contents: write
+  actions: read
+
+concurrency:
+  group: studio-browser-ux-review
+  cancel-in-progress: true
 
 jobs:
-  patch:
+  review:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/studio
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: studio/upload-plus-drag-drop
+          ref: studio/advanced-ui-audit
           fetch-depth: 0
-      - name: Apply patch
-        run: python scripts/studio_upload_affordance_patch.py
-      - name: Commit patch
+
+      - name: Align browser review with current production UI
+        shell: bash
+        working-directory: .
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/studio-advanced-ui-audit-patch.yml
-          git rm -f scripts/studio_upload_affordance_patch.py
-          git add apps/studio/src/create-controls.jsx apps/studio/src/create-workspace-v2.css apps/studio/scripts/check-ui-audit-contract.mjs apps/studio/scripts/check-generate-action-contract.mjs apps/studio/scripts/capture-ui-preview.mjs .github/workflows/studio-advanced-ui-audit-patch.yml
-          git diff --cached --check
-          git commit -m "feat(studio): unify reference uploads and add drag drop"
-          git push origin HEAD:studio/upload-plus-drag-drop
+          python - <<'PY'
+          from pathlib import Path
+
+          ui = Path('apps/studio/scripts/capture-ui-preview.mjs')
+          ui_text = ui.read_text(encoding='utf-8')
+          ui_text = ui_text.replace(
+              "  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');",
+              "  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');",
+          )
+          ui_text = ui_text.replace(
+              "  const autoToggle = desktop.locator('.saga-auto-toggle');\n  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not start enabled');\n  await autoToggle.click();\n  if (await autoToggle.getAttribute('aria-pressed') !== 'false') throw new Error('Edit Auto did not toggle off');\n  await autoToggle.click();\n  if (await autoToggle.getAttribute('aria-pressed') !== 'true') throw new Error('Edit Auto did not toggle back on');",
+              "  if (await desktop.locator('.saga-auto-toggle').count()) throw new Error('Edit exposes a duplicate standalone Auto control');\n  const editAspectTrigger = desktop.locator('.saga-shared-aspect-trigger');\n  await expectText(editAspectTrigger, 'Canvas · Auto', 'Edit automatic canvas trigger');\n  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Edit Auto should not expose a second resolution Auto control');\n  await editAspectTrigger.click();\n  const editAspectMenu = desktop.locator('.saga-aspect-picker');\n  await editAspectMenu.waitFor({ state: 'visible' });\n  await editAspectMenu.getByRole('menuitemradio', { name: /16:9.*Widescreen/i }).click();\n  await desktop.locator('.saga-resolution-trigger').waitFor({ state: 'visible' });\n  await editAspectTrigger.click();\n  await editAspectMenu.getByRole('menuitemradio', { name: /Auto/i }).click();\n  if (await desktop.locator('.saga-resolution-trigger').count()) throw new Error('Returning to Edit Auto did not collapse manual resolution control');",
+          )
+          ui_text = ui_text.replace(
+              "  // Direct + upload auto-enters Edit, reference click inserts inline at the caret, Auto is toggleable.\n  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });\n  const chooserPromise = desktop.waitForEvent('filechooser');\n  await upload.click();\n  const chooser = await chooserPromise;\n  await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });\n  const secondChooserPromise = desktop.waitForEvent('filechooser');\n  await upload.click();",
+              "  // The single primary Image CTA attaches the first reference; Edit then exposes + for additional references.\n  if (await desktop.getByRole('button', { name: 'Upload reference images', exact: true }).count()) throw new Error('Image setup exposes a duplicate secondary upload action');\n  const chooserPromise = desktop.waitForEvent('filechooser');\n  await primarySubmit.click();\n  const chooser = await chooserPromise;\n  await chooser.setFiles({ name: 'reference.png', mimeType: 'image/png', buffer: referencePng });\n  const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });\n  await upload.waitFor({ state: 'visible' });\n  const secondChooserPromise = desktop.waitForEvent('filechooser');\n  await upload.click();",
+          )
+          ui.write_text(ui_text, encoding='utf-8')
+
+          gallery = Path('apps/studio/scripts/capture-gallery-preview.mjs')
+          gallery_text = gallery.read_text(encoding='utf-8')
+          gallery_text = gallery_text.replace(
+              "  for (const label of ['Reuse settings', 'Edit', 'Add to collection', 'Delete permanently']) {\n    await desktopMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }",
+              "  for (const label of ['Reuse settings', 'Add to collection', 'Delete permanently']) {\n    await desktopMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }\n  if (await desktopMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in desktop Gallery');",
+          )
+          gallery_text = gallery_text.replace(
+              "  for (const label of ['Reuse settings', 'Edit', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }",
+              "  for (const label of ['Reuse settings', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }\n  if (await mobileMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in mobile Gallery');",
+          )
+          gallery_text = gallery_text.replace(
+              "  const mobileMore = mobileCards.first().locator('.media-actions-popover');",
+              "  const mobileMore = mobile.locator('.gallery-more-sheet-portal .media-actions-popover');",
+          )
+          gallery.write_text(gallery_text, encoding='utf-8')
+
+          media = Path('apps/studio/src/components/MediaCard.jsx')
+          media_text = media.read_text(encoding='utf-8')
+          if "import { createPortal } from 'react-dom';" not in media_text:
+              media_text = media_text.replace(
+                  "import React, { useEffect, useRef, useState } from 'react';",
+                  "import React, { useEffect, useRef, useState } from 'react';\nimport { createPortal } from 'react-dom';",
+                  1,
+              )
+          if "const morePopoverRef = useRef(null);" not in media_text:
+              media_text = media_text.replace(
+                  "  const moreRef = useRef(null);",
+                  "  const moreRef = useRef(null);\n  const morePopoverRef = useRef(null);",
+                  1,
+              )
+          if "const [mobileMoreSheet, setMobileMoreSheet]" not in media_text:
+              media_text = media_text.replace(
+                  "  const [moreOpen, setMoreOpen] = useState(false);",
+                  "  const [moreOpen, setMoreOpen] = useState(false);\n  const [mobileMoreSheet, setMobileMoreSheet] = useState(false);",
+                  1,
+              )
+          mobile_effect_anchor = "  const openOrSelect = () => selectable ? onSelect?.(item) : onOpen(item);"
+          if "window.matchMedia('(max-width: 760px)')" not in media_text:
+              mobile_effect = "  useEffect(() => {\n    const media = window.matchMedia('(max-width: 760px)');\n    const update = () => setMobileMoreSheet(media.matches);\n    update();\n    media.addEventListener?.('change', update);\n    return () => media.removeEventListener?.('change', update);\n  }, []);\n\n"
+              media_text = media_text.replace(mobile_effect_anchor, mobile_effect + mobile_effect_anchor, 1)
+          media_text = media_text.replace(
+              "      if (!moreRef.current?.contains(event.target)) setMoreOpen(false);",
+              "      if (!moreRef.current?.contains(event.target) && !morePopoverRef.current?.contains(event.target)) setMoreOpen(false);",
+              1,
+          )
+          old_more_block = """        {moreOpen && (\n          <div className=\"media-actions-popover\" role=\"menu\" aria-label=\"More media actions\" onClick={(event) => event.stopPropagation()}>\n            <button type=\"button\" role=\"menuitem\" onClick={menuAction(onReuseSettings)}><RefreshCcw size={15}/><span>Reuse settings</span></button>\n            {item.kind !== 'video' && <button type=\"button\" role=\"menuitem\" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>}\n            <button type=\"button\" role=\"menuitem\" className=\"media-overflow-download\" onClick={menuAction(onDownload)}><Download size={15}/><span>Download original</span></button>\n            <button type=\"button\" role=\"menuitem\" onClick={menuAction(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={15}/><span>{collectionLabel}</span></button>\n            <div className=\"media-actions-menu-divider\" role=\"separator\"/>\n            <button type=\"button\" role=\"menuitem\" className=\"danger\" onClick={menuAction(onDelete)}><Trash2 size={15}/><span>Delete permanently</span></button>\n          </div>\n        )}"""
+          if old_more_block in media_text:
+              media_text = media_text.replace(old_more_block, "        {renderedMorePopover}", 1)
+          if "const morePopover = moreOpen ? (" not in media_text:
+              insert_anchor = "  const galleryActions = ("
+              popover_declaration = """  const morePopover = moreOpen ? (\n    <div ref={morePopoverRef} className=\"media-actions-popover\" role=\"menu\" aria-label=\"More media actions\" onClick={(event) => event.stopPropagation()}>\n      <button type=\"button\" role=\"menuitem\" onClick={menuAction(onReuseSettings)}><RefreshCcw size={15}/><span>Reuse settings</span></button>\n      {item.kind !== 'video' && <button type=\"button\" role=\"menuitem\" onClick={menuAction(onEdit)}><Pencil size={15}/><span>Edit</span></button>}\n      <button type=\"button\" role=\"menuitem\" className=\"media-overflow-download\" onClick={menuAction(onDownload)}><Download size={15}/><span>Download original</span></button>\n      <button type=\"button\" role=\"menuitem\" onClick={menuAction(inCollection ? onRemoveFromCollection : onAddToCollection)}><Folder size={15}/><span>{collectionLabel}</span></button>\n      <div className=\"media-actions-menu-divider\" role=\"separator\"/>\n      <button type=\"button\" role=\"menuitem\" className=\"danger\" onClick={menuAction(onDelete)}><Trash2 size={15}/><span>Delete permanently</span></button>\n    </div>\n  ) : null;\n  const renderedMorePopover = mobileMoreSheet && morePopover && typeof document !== 'undefined'\n    ? createPortal(<div className=\"gallery-card gallery-more-sheet-portal\">{morePopover}</div>, document.body)\n    : morePopover;\n\n"""
+              media_text = media_text.replace(insert_anchor, popover_declaration + insert_anchor, 1)
+          media.write_text(media_text, encoding='utf-8')
+
+          controls = Path('apps/studio/src/create-controls.jsx')
+          controls_text = controls.read_text(encoding='utf-8')
+
+          duplicate_guard = "                  {!(isEdit && editAuto) && (\n                  {!(isEdit && editAuto) && ("
+          single_guard = "                  {!(isEdit && editAuto) && ("
+          while duplicate_guard in controls_text:
+              controls_text = controls_text.replace(duplicate_guard, single_guard, 1)
+
+          controls_text = controls_text.replace(
+              '      aria-label={`${label} options`}',
+              '      aria-label={label}',
+          )
+
+          old_portal_style = "      style={{ position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height }}"
+          new_portal_style = "      style={position ? { position: 'fixed', top: position.top, left: position.left, width: position.width, height: 'auto', maxHeight: position.height } : { position: 'fixed', visibility: 'hidden' }}"
+          controls_text = controls_text.replace(old_portal_style, new_portal_style, 1)
+
+          old_keyboard = "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Escape' && open) {"
+          new_keyboard = "          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {\n            event.preventDefault();\n            openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);\n          } else if (event.key === 'Enter' || event.key === ' ') {\n            event.preventDefault();\n            if (open) close(false);\n            else openMenu(selectedIndex);\n          } else if (event.key === 'Escape' && open) {"
+          if old_keyboard in controls_text:
+              controls_text = controls_text.replace(old_keyboard, new_keyboard, 1)
+
+          standalone_auto = "\n\n              {isEdit && (\n                <button\n                  type=\"button\"\n                  className={`saga-auto-toggle ${editAuto ? 'active' : ''}`}\n                  aria-pressed={editAuto}\n                  onClick={() => setEditAuto((current) => !current)}\n                >\n                  <Sparkles size={15} /><span>Auto</span>\n                </button>\n              )}\n"
+          controls_text = controls_text.replace(standalone_auto, "\n")
+
+          if "{!isImageSetup && (\n              <button type=\"button\" className=\"saga-round-button\"" not in controls_text:
+              controls_text = controls_text.replace(
+                  "              <button type=\"button\" className=\"saga-round-button\" title=\"Upload reference images\" aria-label=\"Upload reference images\" onClick={() => referenceInputRef.current?.click()}>\n                <Plus size={21} />\n              </button>",
+                  "              {!isImageSetup && (\n              <button type=\"button\" className=\"saga-round-button\" title=\"Upload reference images\" aria-label=\"Upload reference images\" onClick={() => referenceInputRef.current?.click()}>\n                <Plus size={21} />\n              </button>\n              )}",
+                  1,
+              )
+          controls_text = controls_text.replace(
+              "                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Type to imagine'}",
+              "                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Describe the change you want to make…'}",
+              1,
+          )
+
+          resolution_button = "                  <button\n                    ref={resolutionButtonRef}"
+          guarded_resolution = "                  {!(isEdit && editAuto) && (\n                  <button\n                    ref={resolutionButtonRef}"
+          if guarded_resolution not in controls_text and resolution_button in controls_text:
+              controls_text = controls_text.replace(resolution_button, guarded_resolution, 1)
+
+          close_then_aspect = "                  </button>\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}"
+          guarded_close_then_aspect = "                  </button>\n                  )}\n\n                  <AspectPicker\n                    triggerRef={aspectButtonRef}"
+          if guarded_close_then_aspect not in controls_text and close_then_aspect in controls_text:
+              controls_text = controls_text.replace(close_then_aspect, guarded_close_then_aspect, 1)
+
+          if "triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}" not in controls_text:
+              controls_text = controls_text.replace(
+                  "                    ariaLabel=\"Aspect ratio\"\n                    value={aspect}",
+                  "                    ariaLabel=\"Aspect ratio\"\n                    triggerPrefix={isEdit ? 'Canvas' : 'Aspect'}\n                    value={aspect}",
+                  1,
+              )
+          if "onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}" not in controls_text:
+              controls_text = controls_text.replace(
+                  "                    autoSelected={isEdit && editAuto}\n                    effectiveRatio={primaryRatio}",
+                  "                    autoSelected={isEdit && editAuto}\n                    onAutoChoose={isEdit ? () => setEditAuto(true) : undefined}\n                    effectiveRatio={primaryRatio}",
+                  1,
+              )
+          controls.write_text(controls_text, encoding='utf-8')
+          PY
+          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/components/MediaCard.jsx apps/studio/src/create-controls.jsx; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs apps/studio/src/components/MediaCard.jsx apps/studio/src/create-controls.jsx
+            git commit -m "fix(studio): simplify Image setup affordances"
+            git push origin HEAD:studio/advanced-ui-audit
+          fi
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Studio dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build and run contracts
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start built Studio preview
+        shell: bash
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/saga-studio-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              echo "Studio preview is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-studio-preview.log
+          exit 1
+
+      - name: Run real-browser interaction and visual suite
+        env:
+          UI_PREVIEW_DIR: artifacts/browser-review
+        run: npm run visual:preview
+
+      - name: Upload browser-review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-browser-ux-review
+          path: apps/studio/artifacts/browser-review/**
+          if-no-files-found: warn
+          retention-days: 7

@@ -777,6 +777,7 @@ export default function CreateWorkspace({
   const durationButtonRef = useRef(null);
   const settingsButtonRef = useRef(null);
   const modeEffectMountedRef = useRef(false);
+  const dragDepthRef = useRef(0);
 
   const [resolutionOpen, setResolutionOpen] = useState(false);
   const [aspectOpen, setAspectOpen] = useState(false);
@@ -787,6 +788,7 @@ export default function CreateWorkspace({
   const [videoDuration, setVideoDuration] = useState(10);
   const [videoAudio, setVideoAudio] = useState(true);
   const [preferencesReady, setPreferencesReady] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const autoBaselineRef = useRef(null);
 
   const imageOption = IMAGE_RESOLUTIONS.find((item) => item.value === Number(imageResolution)) || IMAGE_RESOLUTIONS[2];
@@ -868,13 +870,40 @@ export default function CreateWorkspace({
   }, [mode]);
 
   const addReferenceFiles = (files) => {
-    if (!files.length) return;
-    onAddReferences(files);
+    const accepted = Array.from(files || []).filter((file) => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type));
+    if (!accepted.length) return;
+    onAddReferences(accepted);
     setAspectOpen(false);
     setResolutionOpen(false);
     setVideoResolutionOpen(false);
     setDurationOpen(false);
     setSettingsOpen(false);
+  };
+
+  const hasDraggedFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+  const handleReferenceDragEnter = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  };
+  const handleReferenceDragOver = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  const handleReferenceDragLeave = (event) => {
+    if (!dragActive) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  };
+  const handleReferenceDrop = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    addReferenceFiles(event.dataTransfer?.files);
   };
 
 
@@ -899,7 +928,20 @@ export default function CreateWorkspace({
           <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : 'Add an image, describe the change, and generate with the live FLUX edit model.'}</p>
         </div>
 
-        <section className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''}`}>
+        <section
+          className={`saga-composer ${isEdit ? 'is-edit' : ''} ${isVideo ? 'is-video' : ''} ${dragActive ? 'is-dragging' : ''}`}
+          onDragEnter={handleReferenceDragEnter}
+          onDragOver={handleReferenceDragOver}
+          onDragLeave={handleReferenceDragLeave}
+          onDrop={handleReferenceDrop}
+        >
+          {dragActive && (
+            <div className="saga-drop-overlay" aria-hidden="true">
+              <Plus size={24} />
+              <strong>Drop images to upload</strong>
+              <span>PNG, JPG, or WebP</span>
+            </div>
+          )}
           {(isEdit || (isVideo && references.length > 0)) && (
             <ReferenceStrip
               references={references}
@@ -924,11 +966,9 @@ export default function CreateWorkspace({
 
           <div className="saga-toolbar">
             <div className="saga-toolbar-left">
-              {!isImageSetup && (
               <button type="button" className="saga-round-button" title="Upload reference images" aria-label="Upload reference images" onClick={() => referenceInputRef.current?.click()}>
                 <Plus size={21} />
               </button>
-              )}
 
               <MediaModeToggle mode={mode} setMode={setMode} />
 
@@ -1061,23 +1101,19 @@ export default function CreateWorkspace({
               >
                 <SlidersHorizontal size={18} />
               </button>
+              {!isImageSetup && (
               <button
                 type="button"
                 className="saga-submit"
-                title={isImageSetup ? 'Add a reference image to start editing' : isEdit ? 'Edit image' : 'Generate video'}
-                aria-label={isImageSetup ? 'Add reference image' : isEdit ? 'Edit image' : 'Generate video'}
-                onClick={() => {
-                  if (isImageSetup) {
-                    referenceInputRef.current?.click();
-                    return;
-                  }
-                  onGenerate({ videoResolution, videoDuration, videoAudio });
-                }}
+                title={isEdit ? 'Edit image' : 'Generate video'}
+                aria-label={isEdit ? 'Edit image' : 'Generate video'}
+                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
                 disabled={busy || (isEdit && references.length === 0)}
               >
-                <span className="saga-submit-label">{isImageSetup ? 'Add image' : isEdit ? 'Edit' : 'Generate'}</span>
-                {isImageSetup ? <Plus size={18} aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
+                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
+                <ArrowUp size={18} aria-hidden="true" />
               </button>
+              )}
             </div>
           </div>
           {composerStatusSlot}
