@@ -30,7 +30,7 @@ jobs:
           ref: studio/advanced-ui-audit
           fetch-depth: 0
 
-      - name: Repair stale Image Advanced browser assertion
+      - name: Align browser review with current production UI
         shell: bash
         working-directory: .
         run: |
@@ -38,18 +38,27 @@ jobs:
           from pathlib import Path
           path = Path('apps/studio/scripts/capture-ui-preview.mjs')
           text = path.read_text(encoding='utf-8')
-          old = """  // Switch back to Image and verify image canvas preferences persist while inert sampling stays hidden.\n  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();\n  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');\n  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';\n  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);\n  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');\n  await settingsButton.click();\n  await advanced.waitFor({ state: 'visible' });\n  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });\n  await settingsButton.click();\n"""
-          new = """  // Switch back to Image and verify canvas preferences persist while the live FLUX setup controls remain available.\n  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();\n  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');\n  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';\n  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);\n  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');\n  await settingsButton.click();\n  await advanced.waitFor({ state: 'visible' });\n  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });\n  await advanced.locator('input[aria-label=\"Steps value\"]').waitFor({ state: 'visible' });\n  await advanced.locator('input[aria-label=\"CFG value\"]').waitFor({ state: 'visible' });\n  await advanced.locator('textarea[aria-label=\"Negative prompt\"]').waitFor({ state: 'visible' });\n  if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');\n  await settingsButton.click();\n"""
-          if old in text:
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          elif "Legacy disconnected Image Advanced message returned after reload" not in text:
-              raise SystemExit('Could not locate stale Image Advanced browser assertion')
+          changed = False
+
+          stale_image = """  // Switch back to Image and verify image canvas preferences persist while inert sampling stays hidden.\n  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();\n  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');\n  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';\n  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);\n  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');\n  await settingsButton.click();\n  await advanced.waitFor({ state: 'visible' });\n  await advanced.getByText('No production image workflow connected', { exact: true }).waitFor({ state: 'visible' });\n  await settingsButton.click();\n"""
+          live_image = """  // Switch back to Image and verify canvas preferences persist while the live FLUX setup controls remain available.\n  await desktop.locator('.saga-media-toggle button').filter({ hasText: 'Image' }).click();\n  await expectText(desktop.locator('.saga-resolution-trigger'), '2048 px', 'Persisted image resolution');\n  const imageResolutionTitle = await desktop.locator('.saga-resolution-trigger').getAttribute('title') || '';\n  if (!/2048×1152 at 16:9/.test(imageResolutionTitle)) throw new Error(`Image resolution trigger lacks exact canvas context: ${imageResolutionTitle}`);\n  await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');\n  await settingsButton.click();\n  await advanced.waitFor({ state: 'visible' });\n  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });\n  await advanced.locator('input[aria-label=\"Steps value\"]').waitFor({ state: 'visible' });\n  await advanced.locator('input[aria-label=\"CFG value\"]').waitFor({ state: 'visible' });\n  await advanced.locator('textarea[aria-label=\"Negative prompt\"]').waitFor({ state: 'visible' });\n  if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');\n  await settingsButton.click();\n"""
+          if stale_image in text:
+              text = text.replace(stale_image, live_image, 1)
+              changed = True
+
+          stale_tools = """  // Tools is the clarified sidebar destination for additional creation utilities, and Create returns to the compact image composer.\n  await desktop.getByRole('button', { name: 'Tools', exact: true }).click();\n  await desktop.locator('.saga-more-panel').waitFor({ state: 'visible' });\n  await desktop.getByRole('heading', { name: 'Creation tools', exact: true }).waitFor({ state: 'visible' });\n  await desktop.locator('.saga-more-panel').getByText('Additional tools', { exact: true }).waitFor({ state: 'visible' });\n  if ((await desktop.locator('.saga-create-stage').innerText()).includes('More tools')) throw new Error('Ambiguous More terminology remains on the Tools destination');\n  await shot(desktop, '07-tools-sidebar.png');\n  await desktop.getByRole('button', { name: 'Create', exact: true }).click();\n  await desktop.locator('.saga-composer').waitFor({ state: 'visible' });\n\n"""
+          if stale_tools in text:
+              text = text.replace(stale_tools, "  // Placeholder Tools navigation was removed; continue directly with the real Create output wall.\n", 1)
+              changed = True
+
+          if changed:
+              path.write_text(text, encoding='utf-8')
           PY
           if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add apps/studio/scripts/capture-ui-preview.mjs
-            git commit -m "test(studio): align browser review with live Image Advanced"
+            git commit -m "test(studio): remove obsolete Tools browser contract"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
