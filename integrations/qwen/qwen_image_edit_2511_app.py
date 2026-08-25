@@ -52,7 +52,7 @@ image = (
         "accelerate~=1.8.1",
         "git+https://github.com/huggingface/diffusers.git",
         "huggingface-hub==0.36.0",
-        "safetensors==0.5.3",
+        "safetensors>=0.8.0,<1.0.0",
         "sentencepiece==0.2.0",
         "torch==2.7.1",
         "transformers>=4.57.0,<5.0.0",
