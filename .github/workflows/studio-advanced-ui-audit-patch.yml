@@ -15,6 +15,7 @@ concurrency:
   group: studio-advanced-ui-audit-patch
   cancel-in-progress: false
 
+# This helper is temporary; it publishes validated component-level commits only.
 jobs:
   apply:
     runs-on: ubuntu-latest
