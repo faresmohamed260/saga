@@ -57,12 +57,11 @@ jobs:
               handle.write(f"MODAL_TOKEN_ID={token_id}\n")
               handle.write(f"MODAL_TOKEN_SECRET={token_secret}\n")
           PY
-      - name: Inspect modal-01 Qwen assets and runtime workflow
+      - name: Inspect modal-01 Qwen implementation
         shell: bash
         run: |
           python - <<'PY'
           import json
-          import re
           import modal
 
           volume = modal.Volume.from_name("graduation-comfyui-cache")
@@ -70,43 +69,39 @@ jobs:
           rows = []
           for entry in entries:
               path = str(getattr(entry, "path", ""))
-              lower = path.lower()
-              if any(token in lower for token in ("qwen", "workflow", "lora", "vae", "text_encoder", "clip")):
-                  rows.append({
-                      "path": path,
-                      "size": int(getattr(entry, "size", 0) or 0),
-                      "type": str(getattr(entry, "type", "") or ""),
-                  })
-          print(json.dumps({"event": "modal01-qwen-volume-index", "matches": rows[:300]}, indent=2), flush=True)
+              if not path:
+                  continue
+              rows.append({
+                  "path": path,
+                  "size": int(getattr(entry, "size", 0) or 0),
+                  "type": str(getattr(entry, "type", "") or ""),
+              })
 
-          workflow_hits = []
-          for row in rows:
+          model_rows = [row for row in rows if row["path"].startswith("studio-models/") and row["type"] == "1"]
+          print(json.dumps({"event": "modal01-studio-model-files", "files": model_rows}, indent=2), flush=True)
+
+          workflow_rows = [row for row in rows if row["path"].startswith("workflows/") and row["path"].endswith(".json") and row["size"] < 2_000_000]
+          workflows = []
+          for row in workflow_rows:
               path = row["path"]
-              lower = path.lower()
-              if not lower.endswith(".json") or row["size"] > 2_000_000:
-                  continue
-              try:
-                  data = b"".join(volume.read_file(path)).decode("utf-8", errors="replace")
-              except Exception as exc:
-                  workflow_hits.append({"path": path, "read_error": f"{type(exc).__name__}: {exc}"})
-                  continue
-              if "qwen" not in data.lower() and "lightning" not in data.lower():
-                  continue
+              data = b"".join(volume.read_file(path)).decode("utf-8", errors="replace")
               try:
                   obj = json.loads(data)
-              except Exception:
-                  workflow_hits.append({"path": path, "text_matches": sorted(set(re.findall(r"[^\\\"']*(?:qwen|lightning)[^\\\"']*", data, re.I)))[:50]})
+              except Exception as exc:
+                  workflows.append({"path": path, "error": f"{type(exc).__name__}: {exc}"})
                   continue
-              interesting = []
+              nodes = []
               if isinstance(obj, dict):
                   for node_id, node in obj.items():
                       if not isinstance(node, dict):
                           continue
-                      text = json.dumps(node, ensure_ascii=False)
-                      if "qwen" in text.lower() or "lightning" in text.lower():
-                          interesting.append({"node": str(node_id), "class_type": node.get("class_type"), "inputs": node.get("inputs")})
-              workflow_hits.append({"path": path, "nodes": interesting[:100]})
-          print(json.dumps({"event": "modal01-qwen-workflow-hits", "files": workflow_hits}, indent=2, ensure_ascii=False), flush=True)
+                      nodes.append({
+                          "node": str(node_id),
+                          "class_type": node.get("class_type"),
+                          "inputs": node.get("inputs"),
+                      })
+              workflows.append({"path": path, "nodes": nodes})
+          print(json.dumps({"event": "modal01-workflow-graphs", "workflows": workflows}, indent=2, ensure_ascii=False), flush=True)
 
           try:
               fn = modal.Function.from_name("saga-image-runtime", "workflow_catalog")
