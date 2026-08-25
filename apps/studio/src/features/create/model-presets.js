@@ -14,6 +14,18 @@ export const MODEL_ADVANCED_PRESETS = Object.freeze({
     stepsEditable: true,
     stepsDetail: '4 sampling iterations',
   }),
+  'qwen-image-edit-2511': Object.freeze({
+    modelId: 'qwen-image-edit-2511',
+    modelLabel: 'Qwen Image Edit 2511 · Official BF16',
+    workflowId: 'qwen-image-edit-2511',
+    workflowLabel: 'Qwen Image Edit 2511',
+    seed: '42',
+    steps: 40,
+    cfg: 4.0,
+    negativePrompt: '',
+    stepsEditable: true,
+    stepsDetail: '40 official inference steps',
+  }),
   'ltx25-redgraft': Object.freeze({
     modelId: 'ltx25-redgraft',
     modelLabel: 'REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot',
@@ -28,8 +40,19 @@ export const MODEL_ADVANCED_PRESETS = Object.freeze({
   }),
 });
 
+let activeImageModel = 'flux2-klein-9b';
+
+export function setActiveImageModel(modelId) {
+  if (MODEL_ADVANCED_PRESETS[modelId] && modelId !== 'ltx25-redgraft') activeImageModel = modelId;
+  return activeImageModel;
+}
+
+export function activeImageModelId() {
+  return activeImageModel;
+}
+
 export function advancedPresetForMode(mode) {
-  if (mode === 'Image' || mode === 'Edit') return MODEL_ADVANCED_PRESETS['flux2-klein-9b'];
+  if (mode === 'Image' || mode === 'Edit') return MODEL_ADVANCED_PRESETS[activeImageModel] || MODEL_ADVANCED_PRESETS['flux2-klein-9b'];
   if (mode === 'Video') return MODEL_ADVANCED_PRESETS['ltx25-redgraft'];
   return null;
 }
