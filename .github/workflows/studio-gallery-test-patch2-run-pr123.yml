@@ -1,0 +1,29 @@
+name: Studio Gallery Test Patch 2 Run PR123
+
+on:
+  push:
+    branches:
+      - studio/automatic-refresh-video-recovery
+    paths:
+      - .github/workflows/studio-gallery-test-patch2-run-pr123.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/automatic-refresh-video-recovery
+      - name: Patch Gallery preview contract
+        run: python .github/gallery_patch2.py
+      - name: Commit Gallery preview contract
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/scripts/capture-gallery-preview.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "test(studio): follow redesigned Gallery actions"
+          git push origin HEAD:studio/automatic-refresh-video-recovery
