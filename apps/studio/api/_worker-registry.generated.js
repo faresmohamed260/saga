@@ -43,5 +43,27 @@ export const GENERATED_MODAL_WORKERS = [
     "enabled": true,
     "order": 1,
     "version": "fleet-v1"
+  },
+  {
+    "id": "qwen-primary-01",
+    "ecosystem": "qwen-image-edit-2511",
+    "gatewayUrl": "https://voidtrek--saga-qwen-image-edit-2511-gateway-web.modal.run",
+    "displayName": "Qwen Image Edit 2511 \u00b7 Primary",
+    "accountLabel": "modal-42",
+    "role": "primary",
+    "enabled": true,
+    "order": 0,
+    "version": "qwen-2511-v1"
+  },
+  {
+    "id": "qwen-standby-01",
+    "ecosystem": "qwen-image-edit-2511",
+    "gatewayUrl": "https://nyxprotocol--saga-qwen-image-edit-2511-gateway-web.modal.run",
+    "displayName": "Qwen Image Edit 2511 \u00b7 Standby",
+    "accountLabel": "modal-43",
+    "role": "standby",
+    "enabled": true,
+    "order": 1,
+    "version": "qwen-2511-v1"
   }
 ];
