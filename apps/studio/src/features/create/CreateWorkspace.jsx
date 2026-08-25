@@ -4,6 +4,7 @@ import {
   VideoGenerationProgress,
   referenceAspect,
 } from './VideoGenerationControls.jsx';
+import './create-advanced-mobile.css';
 
 const VIDEO_OUTPUT_STORAGE_KEY = 'saga-studio:video-output:v2';
 
