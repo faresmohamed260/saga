@@ -409,7 +409,7 @@ try {
   const mobileSubmit = mobile.locator('.saga-submit');
   await mobileSubmit.waitFor({ state: 'visible' });
   if (await mobileSubmit.locator('.saga-submit-label').isVisible()) throw new Error('Mobile Generate action should collapse its text label');
-  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');
+  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');
   const mobileSubmitBox = await mobileSubmit.boundingBox();
   if (!mobileSubmitBox || mobileSubmitBox.width > 40 || mobileSubmitBox.height > 40 || Math.abs(mobileSubmitBox.width - mobileSubmitBox.height) > 1) throw new Error(`Mobile Generate action is not compact/circular: ${JSON.stringify(mobileSubmitBox)}`);
   await shot(mobile, '09-mobile-create.png');
