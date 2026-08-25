@@ -309,7 +309,7 @@ try {
   await mobile.getByRole('button', { name: 'Gallery layout: comfortable', exact: true }).click();
 
   await mobileOverlay.getByRole('button', { name: 'More actions', exact: true }).click();
-  const mobileMore = mobileCards.first().locator('.media-actions-popover');
+  const mobileMore = mobile.locator('.gallery-more-sheet-portal .media-actions-popover');
   await mobileMore.waitFor({ state: 'visible' });
   for (const label of ['Reuse settings', 'Download original', 'Add to collection', 'Delete permanently']) {
     await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });
