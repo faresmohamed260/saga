@@ -36,24 +36,32 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('apps/studio/scripts/capture-ui-preview.mjs')
-          text = path.read_text(encoding='utf-8')
-          replacements = [
-              (
-                  "  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');",
-                  "  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');",
-              ),
-          ]
-          for old, new in replacements:
-              if old in text:
-                  text = text.replace(old, new, 1)
-          path.write_text(text, encoding='utf-8')
+
+          ui = Path('apps/studio/scripts/capture-ui-preview.mjs')
+          ui_text = ui.read_text(encoding='utf-8')
+          ui_text = ui_text.replace(
+              "  if (await mobileSubmit.getAttribute('aria-label') !== 'Generate image') throw new Error('Compact mobile Generate action lost its accessible name');",
+              "  if (await mobileSubmit.getAttribute('aria-label') !== 'Add reference image') throw new Error('Compact mobile Image setup action lost its accessible name');",
+          )
+          ui.write_text(ui_text, encoding='utf-8')
+
+          gallery = Path('apps/studio/scripts/capture-gallery-preview.mjs')
+          gallery_text = gallery.read_text(encoding='utf-8')
+          gallery_text = gallery_text.replace(
+              "  for (const label of ['Reuse settings', 'Edit', 'Add to collection', 'Delete permanently']) {\n    await desktopMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }",
+              "  for (const label of ['Reuse settings', 'Add to collection', 'Delete permanently']) {\n    await desktopMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }\n  if (await desktopMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in desktop Gallery');",
+          )
+          gallery_text = gallery_text.replace(
+              "  for (const label of ['Reuse settings', 'Edit', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }",
+              "  for (const label of ['Reuse settings', 'Download original', 'Add to collection', 'Delete permanently']) {\n    await mobileMore.getByRole('menuitem', { name: label, exact: true }).waitFor({ state: 'visible' });\n  }\n  if (await mobileMore.getByRole('menuitem', { name: 'Edit', exact: true }).count()) throw new Error('Unsupported video Edit action is still exposed in mobile Gallery');",
+          )
+          gallery.write_text(gallery_text, encoding='utf-8')
           PY
-          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs; then
+          if ! git diff --quiet -- apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add apps/studio/scripts/capture-ui-preview.mjs
-            git commit -m "test(studio): align mobile browser CTA contract"
+            git add apps/studio/scripts/capture-ui-preview.mjs apps/studio/scripts/capture-gallery-preview.mjs
+            git commit -m "test(studio): align browser contracts with functional media actions"
             git push origin HEAD:studio/advanced-ui-audit
           fi
 
