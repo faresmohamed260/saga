@@ -1,0 +1,33 @@
+name: Apply FLUX Reset Scope Fix
+
+on:
+  push:
+    branches:
+      - studio/create-advanced-presets
+    paths:
+      - .github/workflows/patch-flux-reset-scope.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/create-advanced-presets
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python scripts/patch_flux_reset_scope.py
+      - run: |
+          rm scripts/patch_flux_reset_scope.py
+          rm .github/workflows/patch-flux-reset-scope.yml
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(studio): keep FLUX preset reset scoped to model settings"
+          git push origin HEAD:studio/create-advanced-presets
