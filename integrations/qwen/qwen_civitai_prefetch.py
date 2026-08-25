@@ -14,8 +14,10 @@ APP_NAME = "saga-qwen-civitai-prefetch"
 CACHE_DIR = "/cache"
 CACHE_VOLUME_NAME = os.environ.get("SAGA_MODAL_WORKER_VOLUME", "saga-qwen-image-edit-2511-cache")
 CIVITAI_VERSION_ID = 2553500
+CIVITAI_FILE_ID = 2443737
 CIVITAI_WEIGHT_NAME = "qwnImageEdit_v16Bf16.safetensors"
 CIVITAI_WEIGHT_SHA256 = "4F8CA1242C7FDBE6CFD1835833C66E9CDBCF23EA27C7B811B43BDA316F30A6DA"
+CIVITAI_EXPECTED_BYTES = 40861031560
 CIVITAI_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511-civitai-v16-bf16"
 CIVITAI_WEIGHT_PATH = CIVITAI_DIR / CIVITAI_WEIGHT_NAME
 CIVITAI_HASH_MARKER = CIVITAI_DIR / f"{CIVITAI_WEIGHT_NAME}.sha256"
@@ -54,13 +56,15 @@ def stage_qwen_civitai_checkpoint(force: bool = False) -> dict[str, object]:
     expected = CIVITAI_WEIGHT_SHA256.upper()
     if not force and CIVITAI_WEIGHT_PATH.is_file() and CIVITAI_HASH_MARKER.is_file():
         marker = CIVITAI_HASH_MARKER.read_text(encoding="utf-8").strip().upper()
-        if marker == expected:
+        if marker == expected and CIVITAI_WEIGHT_PATH.stat().st_size == CIVITAI_EXPECTED_BYTES:
             return {
                 "ready": True,
                 "cached": True,
                 "versionId": CIVITAI_VERSION_ID,
+                "fileId": CIVITAI_FILE_ID,
                 "weight": CIVITAI_WEIGHT_NAME,
                 "sha256": expected,
+                "bytes": CIVITAI_EXPECTED_BYTES,
             }
 
     CIVITAI_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,12 +72,15 @@ def stage_qwen_civitai_checkpoint(force: bool = False) -> dict[str, object]:
     if temporary.exists():
         temporary.unlink()
 
-    query = urllib.parse.urlencode({"token": _token_or_raise()})
+    query = urllib.parse.urlencode({
+        "fileId": CIVITAI_FILE_ID,
+        "token": _token_or_raise(),
+    })
     request = urllib.request.Request(
         f"https://civitai.com/api/download/models/{CIVITAI_VERSION_ID}?{query}",
         headers={
             "Accept": "application/octet-stream",
-            "User-Agent": "saga-qwen-checkpoint-prefetch/1.0",
+            "User-Agent": "saga-qwen-checkpoint-prefetch/2.0",
         },
     )
 
@@ -82,6 +89,9 @@ def stage_qwen_civitai_checkpoint(force: bool = False) -> dict[str, object]:
     downloaded = 0
     try:
         with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as output:
+            disposition = str(response.headers.get("Content-Disposition") or "")
+            if CIVITAI_WEIGHT_NAME not in disposition:
+                raise RuntimeError("Civitai download resolved to an unexpected checkpoint filename")
             while True:
                 chunk = response.read(8 * 1024 * 1024)
                 if not chunk:
@@ -105,12 +115,19 @@ def stage_qwen_civitai_checkpoint(force: bool = False) -> dict[str, object]:
             temporary.unlink()
         raise RuntimeError(f"Civitai checkpoint download failed: {type(exc).__name__}: {str(exc)[:500]}") from None
 
+    if downloaded != CIVITAI_EXPECTED_BYTES:
+        if temporary.exists():
+            temporary.unlink()
+        raise RuntimeError(
+            f"Civitai checkpoint size mismatch for file {CIVITAI_FILE_ID}: expected {CIVITAI_EXPECTED_BYTES}, got {downloaded}"
+        )
+
     actual = digest.hexdigest().upper()
     if actual != expected:
         if temporary.exists():
             temporary.unlink()
         raise RuntimeError(
-            f"Civitai checkpoint SHA256 mismatch: expected {expected}, got {actual}"
+            f"Civitai checkpoint SHA256 mismatch for file {CIVITAI_FILE_ID}: expected {expected}, got {actual}"
         )
 
     temporary.replace(CIVITAI_WEIGHT_PATH)
@@ -120,6 +137,7 @@ def stage_qwen_civitai_checkpoint(force: bool = False) -> dict[str, object]:
         "ready": True,
         "cached": False,
         "versionId": CIVITAI_VERSION_ID,
+        "fileId": CIVITAI_FILE_ID,
         "weight": CIVITAI_WEIGHT_NAME,
         "sha256": expected,
         "bytes": downloaded,
