@@ -27,7 +27,7 @@ const workflowRegistry = {
     id: 'qwen-image-edit-2511',
     kind: 'image',
     mode: 'edit',
-    model: 'Qwen Image Edit 2511 · Official BF16',
+    model: 'Qwen Image Edit 2511 · Official BF16 + Lightning',
     provider: 'modal-flux2-klein',
     ecosystem: 'qwen-image-edit-2511',
     requiresSourceImage: true,
@@ -37,14 +37,16 @@ const workflowRegistry = {
     defaults: {
       negativePrompt: '',
       seed: 42,
-      steps: 40,
-      cfg: 4.0,
+      steps: 8,
+      cfg: 1.0,
       megapixels: 1.0,
     },
     limits: {
       maxSourceBytes: 25 * 1024 * 1024,
       minMegapixels: 0.25,
       maxMegapixels: 4.0,
+      minSteps: 6,
+      maxSteps: 8,
     },
   },
   'ltx25-redgraft-video': {
