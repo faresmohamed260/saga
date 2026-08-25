@@ -14,6 +14,13 @@ PYTHON_VERSION = "3.11"
 CACHE_DIR = "/cache"
 MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"
 MODEL_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511"
+LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"
+LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors"
+LIGHTNING_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511-lightning"
+LIGHTNING_MIN_STEPS = 6
+LIGHTNING_MAX_STEPS = 8
+LIGHTNING_DEFAULT_STEPS = 8
+LIGHTNING_TRUE_CFG_SCALE = 1.0
 GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")
 WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_TIMEOUT_SECONDS", "7200"))
@@ -37,7 +44,7 @@ RUNTIME_SECRETS = [modal.Secret.from_dict(_runtime_secret_values)] if _runtime_s
 
 # Use the released library versions matching the checkpoint's own serialization
 # metadata (Diffusers 0.36.x / Transformers 4.57.1) rather than tracking Git HEAD.
-# The model weights remain the official BF16 checkpoint.
+# The base model and Lightning adapter both remain BF16.
 image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.8.1-devel-ubuntu22.04",
@@ -88,37 +95,77 @@ def _set_worker_state(state: str, **fields: Any) -> None:
     _log("worker_state", **payload)
 
 
+def _hf_token() -> str | None:
+    return str(os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or "").strip() or None
+
+
 def _snapshot_download() -> Path:
     marker = MODEL_DIR / "model_index.json"
     if marker.is_file():
         return MODEL_DIR
     from huggingface_hub import snapshot_download
 
-    token = str(os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or "").strip() or None
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     snapshot_download(
         repo_id=MODEL_REPO,
         local_dir=str(MODEL_DIR),
-        token=token,
+        token=_hf_token(),
     )
     cache_volume.commit()
     _log("qwen_image_edit_checkpoint_downloaded", repo=MODEL_REPO, elapsed_seconds=round(time.perf_counter() - started, 3))
     return MODEL_DIR
 
 
+def _lightning_download() -> Path:
+    weight = LIGHTNING_DIR / LIGHTNING_WEIGHT_NAME
+    if weight.is_file():
+        return LIGHTNING_DIR
+    from huggingface_hub import snapshot_download
+
+    LIGHTNING_DIR.mkdir(parents=True, exist_ok=True)
+    started = time.perf_counter()
+    snapshot_download(
+        repo_id=LIGHTNING_REPO,
+        local_dir=str(LIGHTNING_DIR),
+        allow_patterns=[LIGHTNING_WEIGHT_NAME],
+        token=_hf_token(),
+    )
+    cache_volume.commit()
+    _log(
+        "qwen_image_edit_lightning_downloaded",
+        repo=LIGHTNING_REPO,
+        weight=LIGHTNING_WEIGHT_NAME,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
+    return LIGHTNING_DIR
+
+
 @app.function(image=image, timeout=7200, volumes={CACHE_DIR: cache_volume}, secrets=RUNTIME_SECRETS)
 def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
-    if force and MODEL_DIR.exists():
+    if force:
         import shutil
-        shutil.rmtree(MODEL_DIR)
-    path = _snapshot_download()
-    _set_worker_state("sleeping", assets_cached=True)
+        for path in (MODEL_DIR, LIGHTNING_DIR):
+            if path.exists():
+                shutil.rmtree(path)
+    model_path = _snapshot_download()
+    lightning_path = _lightning_download()
+    _set_worker_state(
+        "sleeping",
+        assets_cached=True,
+        acceleration="lightning-lora-8step-bf16",
+        lightning_steps=f"{LIGHTNING_MIN_STEPS}-{LIGHTNING_MAX_STEPS}",
+    )
     return {
         "ready": True,
         "model": MODEL_REPO,
-        "path": str(path),
+        "path": str(model_path),
         "precision": "official-bfloat16",
+        "lightningRepo": LIGHTNING_REPO,
+        "lightningPath": str(lightning_path / LIGHTNING_WEIGHT_NAME),
+        "lightningSteps": [LIGHTNING_MIN_STEPS, LIGHTNING_MAX_STEPS],
+        "defaultSteps": LIGHTNING_DEFAULT_STEPS,
+        "trueCfgScale": LIGHTNING_TRUE_CFG_SCALE,
     }
 
 
@@ -143,6 +190,7 @@ class QwenImageEdit2511Worker:
         _set_worker_state("loading")
         started = time.perf_counter()
         model_path = _snapshot_download()
+        lightning_path = _lightning_download()
         gpu_count = torch.cuda.device_count()
         if gpu_count < 2:
             raise RuntimeError(f"Qwen Image Edit requires a multi-GPU worker; visible CUDA devices={gpu_count}")
@@ -154,6 +202,12 @@ class QwenImageEdit2511Worker:
             device_map="balanced",
             max_memory=max_memory,
         )
+        self.pipe.load_lora_weights(
+            str(lightning_path),
+            weight_name=LIGHTNING_WEIGHT_NAME,
+            adapter_name="lightning_8step",
+        )
+        self.pipe.set_adapters("lightning_8step", adapter_weights=1.0)
         self.pipe.set_progress_bar_config(disable=True)
         startup_seconds = round(time.perf_counter() - started, 3)
         device_map = getattr(self.pipe, "hf_device_map", None)
@@ -162,11 +216,17 @@ class QwenImageEdit2511Worker:
             startup_seconds=startup_seconds,
             gpu_count=gpu_count,
             placement="balanced-multi-gpu",
+            acceleration="lightning-lora-8step-bf16",
+            lightning_steps=f"{LIGHTNING_MIN_STEPS}-{LIGHTNING_MAX_STEPS}",
         )
         _log(
             "qwen_image_edit_worker_ready",
             model=MODEL_REPO,
             precision="official-bfloat16",
+            lightning_repo=LIGHTNING_REPO,
+            lightning_weight=LIGHTNING_WEIGHT_NAME,
+            lightning_steps=f"{LIGHTNING_MIN_STEPS}-{LIGHTNING_MAX_STEPS}",
+            true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
             gpu=GPU_TYPE,
             gpu_count=gpu_count,
             memory_mb=WORKER_MEMORY_MB,
@@ -183,8 +243,8 @@ class QwenImageEdit2511Worker:
         prompt: str,
         negative_prompt: str = "",
         seed: int = 42,
-        steps: int = 40,
-        cfg: float = 4.0,
+        steps: int = LIGHTNING_DEFAULT_STEPS,
+        cfg: float = LIGHTNING_TRUE_CFG_SCALE,
         megapixels: float = 1.0,
     ) -> bytes:
         import math
@@ -197,7 +257,13 @@ class QwenImageEdit2511Worker:
         if not clean_prompt:
             raise ValueError("prompt is required")
 
-        _set_worker_state("generating")
+        lightning_steps = max(LIGHTNING_MIN_STEPS, min(int(steps), LIGHTNING_MAX_STEPS))
+        _set_worker_state(
+            "generating",
+            acceleration="lightning-lora-8step-bf16",
+            inference_steps=lightning_steps,
+            true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
+        )
         started = time.perf_counter()
         pil_images = []
         for item in images:
@@ -219,9 +285,9 @@ class QwenImageEdit2511Worker:
                 prompt=clean_prompt,
                 negative_prompt=str(negative_prompt or " ") or " ",
                 generator=generator,
-                true_cfg_scale=float(cfg),
+                true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
                 guidance_scale=1.0,
-                num_inference_steps=max(1, min(int(steps), 80)),
+                num_inference_steps=lightning_steps,
                 num_images_per_prompt=1,
                 width=target_width,
                 height=target_height,
@@ -236,5 +302,8 @@ class QwenImageEdit2511Worker:
             last_generation_seconds=round(time.perf_counter() - started, 3),
             output_width=result.width,
             output_height=result.height,
+            inference_steps=lightning_steps,
+            true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE,
+            acceleration="lightning-lora-8step-bf16",
         )
         return payload
