@@ -1,3 +1,4 @@
+// Keep these UI defaults aligned with apps/studio/api/_workflows.js and the deployed worker recipes.
 export const MODEL_ADVANCED_PRESETS = Object.freeze({
   'flux2-klein-9b': Object.freeze({
     modelId: 'flux2-klein-9b',
