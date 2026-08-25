@@ -4,12 +4,29 @@ async function jsonResponse(response, fallback) {
   return payload;
 }
 
-export async function fetchGallery({ limit, offset, kind, model, search, sort }) {
+function galleryDateAfter(date) {
+  if (!['today', 'week', 'month'].includes(date)) return '';
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (date === 'week') {
+    const daysSinceMonday = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - daysSinceMonday);
+  } else if (date === 'month') {
+    start.setDate(1);
+  }
+  return start.toISOString();
+}
+
+export async function fetchGallery({ limit, offset, kind, model, search, sort, date = 'any', favoritesOnly = false }) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (kind === 'image' || kind === 'video') params.set('kind', kind);
   if (model && model !== 'all') params.set('model', model);
   if (search?.trim()) params.set('search', search.trim());
   if (sort === 'oldest') params.set('sort', 'oldest');
+  const after = galleryDateAfter(date);
+  if (after) params.set('after', after);
+  if (favoritesOnly) params.set('favorite', 'true');
   const response = await fetch(`/api/history?${params.toString()}`, { headers: { Accept: 'application/json' } });
   return jsonResponse(response, `Gallery request failed (${response.status})`);
 }
