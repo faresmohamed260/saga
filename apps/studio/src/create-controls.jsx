@@ -547,6 +547,10 @@ function FancySelect({ label, value, options, onChange }) {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
             openMenu(event.key === 'ArrowUp' ? options.length - 1 : selectedIndex);
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            if (open) close(false);
+            else openMenu(selectedIndex);
           } else if (event.key === 'Escape' && open) {
             event.preventDefault();
             event.stopPropagation();
@@ -919,6 +923,7 @@ export default function CreateWorkspace({
 
               {!isVideo ? (
                 <>
+                  {!(isEdit && editAuto) && (
                   {!(isEdit && editAuto) && (
                   <button
                     ref={resolutionButtonRef}
