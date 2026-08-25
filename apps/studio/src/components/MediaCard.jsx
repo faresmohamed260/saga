@@ -60,7 +60,7 @@ export default function MediaCard({
   const videoSource = item.originalUrl || item.url || '';
   const itemLabel = item.title || 'media';
   const isGalleryVideo = history && item.kind === 'video' && Boolean(videoSource);
-  const hoverPreviewActive = previewVisible && previewHoverCapable && previewHoverIntent;
+  const hoverPreviewActive = previewHoverCapable && previewHoverIntent;
   const previewActive = isGalleryVideo
     && !selectable
     && previewMotionAllowed
