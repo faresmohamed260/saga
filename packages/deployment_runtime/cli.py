@@ -8,7 +8,7 @@ from pathlib import Path
 
 from packages.deployment_runtime.config import create_deployment_persistence_client
 from packages.deployment_runtime.backup import ArtifactBackupRuntime, BackupRuntime
-from packages.persistence_runtime.database_url import build_database_url_from_env
+from packages.persistence_runtime.database_url import build_admin_database_url_from_env
 from packages.deployment_runtime.health import check_readiness
 from packages.deployment_runtime.gates import ReleaseGateRuntime
 from packages.deployment_runtime.migrations import MigrationRuntime
@@ -58,6 +58,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "migrate":
+        database_url = build_admin_database_url_from_env()
+        if not database_url:
+            raise RuntimeError("Migration requires SAGA_ADMIN_DB_URL.")
         runtime = MigrationRuntime()
         if args.action == "upgrade":
             runtime.upgrade(args.revision)
@@ -68,10 +71,10 @@ def main() -> int:
             runtime.downgrade(args.revision)
             payload = {"downgraded": True, "revision": args.revision}
         elif args.action == "adopt":
-            client = create_deployment_persistence_client(initialize=False)
+            client = create_deployment_persistence_client(initialize=False, database_url=database_url)
             payload = runtime.adopt_existing(client.engine)
         else:
-            client = create_deployment_persistence_client(initialize=False)
+            client = create_deployment_persistence_client(initialize=False, database_url=database_url)
             payload = runtime.check(client.engine)
             if args.action == "current":
                 payload = {"current": payload["current"], "head": payload["head"]}
@@ -79,9 +82,9 @@ def main() -> int:
         return 0 if payload.get("ready", True) else 2
 
     if args.command == "backup":
-        database_url = build_database_url_from_env()
+        database_url = build_admin_database_url_from_env()
         if not database_url:
-            raise RuntimeError("Backup requires the Supabase database environment.")
+            raise RuntimeError("Backup requires SAGA_ADMIN_DB_URL.")
         backup_runtime = BackupRuntime(pg_dump=str(os.getenv("SAGA_PG_DUMP") or "pg_dump"), pg_restore=str(os.getenv("SAGA_PG_RESTORE") or "pg_restore"))
         payload = backup_runtime.create(database_url=database_url, output_path=args.output, release_id=str(os.getenv("SAGA_RELEASE_ID") or "")) if args.backup_action == "create" else backup_runtime.restore(database_url=database_url, backup_path=args.input, confirm_target=args.confirm_target)
         print(json.dumps(payload, indent=2, sort_keys=True))

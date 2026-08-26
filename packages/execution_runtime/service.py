@@ -230,7 +230,8 @@ class ExecutionRuntimeService:
         return self.queue.cancel(queue_id, reason=reason)
 
     def retry(
-        self, request: OrchestrationRequest, *, priority: int = 0, max_attempts: int = 3
+        self, request: OrchestrationRequest, *, priority: int = 0, max_attempts: int = 3,
+        backoff_seconds: int = 10,
     ) -> dict[str, Any] | None:
         queue_id = queue_id_for_run(request.run_id)
         current = self.queue.get(queue_id)
@@ -249,6 +250,7 @@ class ExecutionRuntimeService:
                 request=request,
                 priority=priority,
                 max_attempts=max_attempts,
+                backoff_seconds=backoff_seconds,
             )
         )
 

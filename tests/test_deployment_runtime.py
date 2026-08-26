@@ -328,7 +328,7 @@ def test_artifact_backup_round_trip_uses_storage_contract(tmp_path: Path):
 
 def test_migration_runtime_has_one_expected_head():
     runtime = MigrationRuntime()
-    assert runtime.head() == "202608090400"
+    assert runtime.head() == "202608120100"
 
 
 def test_migration_adoption_rejects_incomplete_unversioned_database(tmp_path: Path):

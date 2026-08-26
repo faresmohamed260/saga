@@ -173,7 +173,7 @@ def normalized_outcome_payload(outcome: StageOutcomeArtifact) -> dict[str, Any]:
 
 def _stage_request_payload(stage: StageName, request: OrchestrationRequest) -> dict[str, Any]:
     limits = request.execution_limits
-    common = {"series_id": request.series_id}
+    common = {"project_id": request.project_id, "series_id": request.series_id}
     if stage == "analysis_foundation":
         return {**common, "sources": [_source_identity(path) for path in request.source_paths]}
     if stage in {"canon_extraction", "character_world_modeling"}:

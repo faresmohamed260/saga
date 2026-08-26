@@ -20,12 +20,14 @@ from packages.canon_extraction.pipeline import (
     _entities_for_scene_slice_batch,
     _has_participant_text_support,
     _identity_character_context,
+    _merge_chapter_canon_payloads,
     _normalize_entity_type,
     _normalize_relationship_type,
     _resolve_participant_refs,
     _resolve_name_refs,
     _resolve_single_name_ref,
     _should_keep_relationship_artifact,
+    _should_retry_chapter_canon_error,
     _should_retry_split_extraction_error,
     _split_scene_slices_for_retry,
 )
@@ -113,10 +115,42 @@ class StubReasoningRuntime:
 
     def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None, cancellation_checker=None):
         del strict, validator, max_tokens, tools, tool_choice, cancellation_checker
-        self.response_schema_names.append(str(((response_format or {}).get("json_schema") or {}).get("name") or ""))
+        schema_name = str(((response_format or {}).get("json_schema") or {}).get("name") or "")
+        self.response_schema_names.append(schema_name)
         lowered = prompt.lower()
         scene_id = _first_scene_id(prompt)
-        if "key 'events'" in lowered:
+        if schema_name == "canon_chapter":
+            payload = {
+                "events": [
+                    {
+                        "scene_id": scene_id,
+                        "title": "Fares meets Kareem",
+                        "summary": "Fares greets Kareem and they review the project deadline.",
+                        "event_type": "meeting",
+                        "participant_names": ["Fares", "Kareem"],
+                        "entity_names": ["project deadline"],
+                    }
+                ],
+                "entities": [
+                    {
+                        "canonical_name": "project deadline",
+                        "entity_type": "concept",
+                        "description": "The deadline the team is discussing.",
+                        "aliases": ["deadline"],
+                        "scene_ids": [scene_id],
+                    }
+                ],
+                "relationships": [
+                    {
+                        "source_name": "Fares",
+                        "target_name": "Kareem",
+                        "relationship_type": "collaborates_with",
+                        "description": "They work together on the same project review.",
+                        "scene_ids": [scene_id],
+                    }
+                ],
+            }
+        elif "key 'events'" in lowered:
             payload = {
                 "events": [
                     {
@@ -396,14 +430,12 @@ def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_pa
     assert len(result.timeline) == 1
     assert result.timeline[0].event_id == result.events[0].event_id
     assert result.run_metadata["stage_order"] == [
-        "event_extraction",
-        "entity_extraction",
-        "relationship_extraction",
+        "chapter_canon_extraction",
         "timeline_construction",
     ]
-    assert result.run_metadata["stage_details"]["event_extraction"]["parallelism"] >= 1
-    assert result.run_metadata["stage_details"]["event_extraction"]["job_latency_seconds"]["count"] >= 1
-    assert set(reasoning.response_schema_names) == {"canon_events", "canon_entities", "canon_relationships"}
+    assert result.run_metadata["stage_details"]["chapter_canon_extraction"]["parallelism"] >= 1
+    assert result.run_metadata["stage_details"]["chapter_canon_extraction"]["job_latency_seconds"]["count"] >= 1
+    assert set(reasoning.response_schema_names) == {"canon_chapter"}
     persisted_events = client.library.list_records(record_type="event", series_id="series-1", limit=20)
     persisted_entities = client.library.list_records(record_type="entity", series_id="series-1", limit=20)
     persisted_relationships = client.library.list_records(record_type="relationship", series_id="series-1", limit=20)
@@ -417,6 +449,24 @@ def test_canon_extraction_persists_event_entity_relationship_and_timeline(tmp_pa
 def test_schema_invalid_canon_payload_is_eligible_for_bounded_split_retry():
     error = RuntimeError("Event extraction payload_validation_failed: event_type is required")
     assert _should_retry_split_extraction_error(error) is True
+
+
+def test_combined_canon_payload_allows_deterministic_entity_type_classification():
+    payload = canon_pipeline.CanonChapterPayload.model_validate({
+        "entities": [{
+            "canonical_name": "Hollow Hall",
+            "aliases": ["the hall"],
+            "description": "A great hall used by the royal court.",
+            "scene_ids": ["book-1-chapter-012-scene-005"],
+        }]
+    })
+
+    assert payload.entities[0].entity_type == ""
+    assert canon_pipeline._normalize_entity_type(
+        payload.entities[0].entity_type,
+        name=payload.entities[0].canonical_name,
+        description=payload.entities[0].description,
+    ) == "location"
 
 
 def test_event_agent_rebuilds_from_persisted_stage_jobs_without_reasoning(tmp_path: Path, monkeypatch):
@@ -1221,3 +1271,30 @@ def test_split_retry_predicate_handles_empty_provider_responses():
     assert _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: parse_failed"))
     assert not _should_retry_split_extraction_error(RuntimeError("Event extraction failed: max_retries_exceeded"))
     assert not _should_retry_split_extraction_error(RuntimeError("Entity extraction failed: auth_failed"))
+
+
+def test_chapter_canon_timeout_is_split_retryable():
+    assert _should_retry_chapter_canon_error(
+        RuntimeError("Chapter canon extraction failed: max_retries_exceeded: Read timed out")
+    )
+    assert not _should_retry_chapter_canon_error(
+        RuntimeError("Provider request budget exceeded")
+    )
+
+
+def test_split_chapter_canon_payloads_merge_without_losing_items():
+    left = canon_pipeline.CanonChapterPayload(
+        events=[canon_pipeline.SceneEventExtraction(
+            scene_id="scene-1", title="One", summary="First", event_type="beat"
+        )]
+    )
+    right = canon_pipeline.CanonChapterPayload(
+        entities=[canon_pipeline.SceneEntityExtraction(
+            canonical_name="Palace", entity_type="location", scene_ids=["scene-2"]
+        )]
+    )
+
+    merged = _merge_chapter_canon_payloads(left, right)
+
+    assert [item.scene_id for item in merged.events] == ["scene-1"]
+    assert [item.canonical_name for item in merged.entities] == ["Palace"]

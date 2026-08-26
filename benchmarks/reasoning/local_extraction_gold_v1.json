@@ -1,0 +1,146 @@
+{
+  "version": "1.1.0",
+  "corpus_version": "1.0.0",
+  "corpus_fingerprint": "9e3d2a7c36df8e184a2bc1910f121cdf548860582a889cb946900208e76cbbe3",
+  "annotation_policy": {
+    "canon_events": "Distinct consequential events anchored by normalized source spans.",
+    "canon_entities": "Named or narratively consequential non-character entities with canonical aliases and one task-schema entity_type; exclude generic props unless plot-significant.",
+    "canon_relationships": "Explicit or strongly evidenced participant/entity relationships represented by source, target, and type aliases.",
+    "minimum_annotators": 1,
+    "review_required": true
+  },
+  "annotations": [
+    {
+      "family": "canon_events",
+      "case_id": "the-cruel-prince-chapter-003-opening",
+      "source_id": "the-cruel-prince",
+      "items": [
+        {"normalized_evidence_spans": [[3079, 3180]]},
+        {"normalized_evidence_spans": [[9065, 9137]]},
+        {"normalized_evidence_spans": [[9253, 9305]]},
+        {"normalized_evidence_spans": [[10689, 10817]]}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_events",
+      "case_id": "a-court-of-thorns-and-roses-chapter-001-opening",
+      "source_id": "a-court-of-thorns-and-roses",
+      "items": [
+        {"normalized_evidence_spans": [[5443, 5488]]},
+        {"normalized_evidence_spans": [[6456, 6540]]},
+        {"normalized_evidence_spans": [[10329, 10424]]},
+        {"normalized_evidence_spans": [[10546, 10605]]},
+        {"normalized_evidence_spans": [[11290, 11396]]}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_events",
+      "case_id": "caraval-chapter-002-opening",
+      "source_id": "caraval",
+      "items": [
+        {"normalized_evidence_spans": [[209, 258]]},
+        {"normalized_evidence_spans": [[1107, 1178]]},
+        {"normalized_evidence_spans": [[5039, 5120]]},
+        {"normalized_evidence_spans": [[9139, 9207]]},
+        {"normalized_evidence_spans": [[11879, 11915]]}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_entities",
+      "case_id": "the-cruel-prince-chapter-006-middle",
+      "source_id": "the-cruel-prince",
+      "items": [
+        {"aliases": ["sprites", "sprite"], "entity_type": "creature"},
+        {"aliases": ["Elfhame"], "entity_type": "location"},
+        {"aliases": ["Faerie"], "entity_type": "location"},
+        {"aliases": ["Undersea", "the Undersea"], "entity_type": "location"},
+        {"aliases": ["Queen Mab's crown", "Blood Crown", "the Blood Crown"], "entity_type": "artifact"},
+        {"aliases": ["Heartseeker"], "entity_type": "artifact"},
+        {"aliases": ["Heartsworn"], "entity_type": "artifact"},
+        {"aliases": ["Land of Promise", "the Land of Promise"], "entity_type": "concept"},
+        {"aliases": ["Summer Tournament", "the Summer Tournament"], "entity_type": "concept"},
+        {"aliases": ["Circle of Falcons", "the Circle of Falcons"], "entity_type": "organization"},
+        {"aliases": ["Greenbriar line", "the Greenbriar line"], "entity_type": "organization"}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_entities",
+      "case_id": "a-court-of-thorns-and-roses-chapter-007-middle",
+      "source_id": "a-court-of-thorns-and-roses",
+      "items": [
+        {"aliases": ["Treaty", "the Treaty"], "entity_type": "concept"},
+        {"aliases": ["Prythian"], "entity_type": "location"},
+        {"aliases": ["wall", "the wall"], "entity_type": "artifact"},
+        {"aliases": ["Cauldron", "the Cauldron"], "entity_type": "concept"},
+        {"aliases": ["High Fae", "the High Fae"], "entity_type": "creature"}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_entities",
+      "case_id": "caraval-chapter-008-middle",
+      "source_id": "caraval",
+      "items": [
+        {"aliases": ["Caraval"], "entity_type": "location"},
+        {"aliases": ["patchwork door", "magical portal", "portal on the wall"], "entity_type": "artifact"},
+        {"aliases": ["Casabian's shop", "clock shop", "the clock shop"], "entity_type": "location"},
+        {"aliases": ["isle", "the isle"], "entity_type": "location"},
+        {"aliases": ["Legend's invitation", "invitation"], "entity_type": "artifact"},
+        {"aliases": ["Caraval tickets", "tickets"], "entity_type": "artifact"},
+        {"aliases": ["wooden mansion", "turreted house", "largest house"], "entity_type": "location"},
+        {"aliases": ["Caraval's main gates", "main gates", "gate"], "entity_type": "location"},
+        {"aliases": ["crimson banner", "banner"], "entity_type": "artifact"},
+        {"aliases": ["silver symbol of Caraval", "symbol of Caraval"], "entity_type": "artifact"}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_relationships",
+      "case_id": "the-cruel-prince-chapter-012-closing",
+      "source_id": "the-cruel-prince",
+      "items": [
+        {"source_aliases": ["Nicasia"], "target_aliases": ["Jude"], "type_aliases": ["bullies", "humiliates", "torments", "abuses", "commands"]},
+        {"source_aliases": ["Cardan", "Prince Cardan"], "target_aliases": ["Jude"], "type_aliases": ["bullies", "humiliates", "torments", "abuses", "commands"]},
+        {"source_aliases": ["Locke"], "target_aliases": ["Jude"], "type_aliases": ["protects", "rescues", "helps", "defends", "escorts home"]},
+        {"source_aliases": ["Locke"], "target_aliases": ["Jude"], "type_aliases": ["romantic interest", "courts", "flirts with", "interested in"]},
+        {"source_aliases": ["Madoc"], "target_aliases": ["Jude"], "type_aliases": ["guardian", "father", "foster father", "adoptive father"]},
+        {"source_aliases": ["Madoc"], "target_aliases": ["Jude"], "type_aliases": ["trains", "teaches", "mentors", "weapons instructor"]},
+        {"source_aliases": ["owl-faced hob", "hob"], "target_aliases": ["Jude"], "type_aliases": ["assigns spy mission", "commands", "recruits as spy", "orders espionage"]}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_relationships",
+      "case_id": "a-court-of-thorns-and-roses-chapter-015-closing",
+      "source_id": "a-court-of-thorns-and-roses",
+      "items": [
+        {"source_aliases": ["naga", "the naga"], "target_aliases": ["Suriel", "the Suriel"], "type_aliases": ["hunts", "preys on", "attacks", "threatens"]},
+        {"source_aliases": ["naga", "the naga"], "target_aliases": ["Feyre", "human", "the human"], "type_aliases": ["hunts", "preys on", "attacks", "threatens", "predator"]},
+        {"source_aliases": ["Feyre", "human", "the human"], "target_aliases": ["Suriel", "the Suriel"], "type_aliases": ["frees", "rescues", "protects"]},
+        {"source_aliases": ["Feyre", "human", "the human"], "target_aliases": ["naga", "the naga"], "type_aliases": ["fights", "attacks", "kills", "defends against"]},
+        {"source_aliases": ["Tamlin"], "target_aliases": ["Feyre", "human", "the human"], "type_aliases": ["rescues", "protects", "saves", "heals"]},
+        {"source_aliases": ["Tamlin"], "target_aliases": ["naga", "the naga"], "type_aliases": ["hunts", "kills", "attacks", "fights"]}
+      ],
+      "review_status": "reviewed"
+    },
+    {
+      "family": "canon_relationships",
+      "case_id": "caraval-chapter-016-closing",
+      "source_id": "caraval",
+      "items": [
+        {"source_aliases": ["Jovan", "Jo"], "target_aliases": ["Scarlett"], "type_aliases": ["transports", "ferries", "gives ride", "boat operator"]},
+        {"source_aliases": ["Jovan", "Jo"], "target_aliases": ["Julian"], "type_aliases": ["transports", "ferries", "gives ride", "boat operator"]},
+        {"source_aliases": ["Julian"], "target_aliases": ["Scarlett"], "type_aliases": ["companion", "guide", "helps search", "search partner"]},
+        {"source_aliases": ["Julian"], "target_aliases": ["Scarlett"], "type_aliases": ["flirts with", "teases", "romantic interest", "offers kiss"]},
+        {"source_aliases": ["Scarlett"], "target_aliases": ["count", "the count", "fiance"], "type_aliases": ["engaged to", "betrothed to", "fiancee of"]},
+        {"source_aliases": ["Scarlett"], "target_aliases": ["Tella", "Donatella", "sister"], "type_aliases": ["sister", "searches for", "protects"]},
+        {"source_aliases": ["inked man", "tattooed man"], "target_aliases": ["Scarlett"], "type_aliases": ["offers fortune reading", "reads future", "fortune teller"]}
+      ],
+      "review_status": "reviewed"
+    }
+  ]
+}

@@ -85,7 +85,7 @@ class CostRate(BaseModel):
 
 class UsageBudgetPolicy(BaseModel):
     policy_id: str
-    scope_type: Literal["global", "run", "provider", "account", "model"]
+    scope_type: Literal["global", "project", "run", "provider", "account", "model"]
     scope_value: str = ""
     window_seconds: int = Field(default=0, ge=0)
     limits: dict[str, float] = Field(default_factory=dict)

@@ -3,13 +3,18 @@ from __future__ import annotations
 import io
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.production_orchestration.contracts import ArtifactReference, OrchestrationExecutionLimits, OrchestrationRequest, StageOutcomeArtifact
 from packages.production_orchestration.packaging import PackageChapter, PackageSourceBundle, VersionedDeliverablePackager, build_epub
-from packages.production_orchestration.bindings import ActiveStageBinding, ActiveStageInspector
+from packages.production_orchestration.bindings import (
+    ActiveStageBinding,
+    ActiveStageInspector,
+    _blueprint_matches_requested_structure,
+)
 from packages.production_orchestration.pipeline import ProductionOrchestrationRuntime
 from packages.production_orchestration.policy import STAGE_ORDER, resolve_stage_plan
 from packages.production_orchestration.service import _run_scoped_service
@@ -131,13 +136,30 @@ def test_character_world_stage_accepts_empty_world_when_canon_has_no_entities():
         },
     )()
     inspector.canon = type("Canon", (), {"list_entities": lambda self, series_id: []})()
-    request = OrchestrationRequest(run_id="run-1", series_id="series-1")
+    request = OrchestrationRequest(run_id="run-1", series_id="series-1", project_id="project-1")
 
     outcome = inspector.character_world_modeling(request, {})
 
     assert outcome is not None
     assert outcome.metrics["source_entity_count"] == 0
     assert outcome.metrics["world_state_count"] == 0
+
+
+def test_blueprint_reuse_requires_exact_requested_structure():
+    valid = SimpleNamespace(
+        chapter_outline=[SimpleNamespace(chapter_index=1)],
+        scene_plan=[
+            SimpleNamespace(chapter_index=1, scene_index=1),
+            SimpleNamespace(chapter_index=1, scene_index=2),
+        ],
+    )
+    duplicate_chapter = SimpleNamespace(
+        chapter_outline=[SimpleNamespace(chapter_index=1), SimpleNamespace(chapter_index=1)],
+        scene_plan=valid.scene_plan,
+    )
+
+    assert _blueprint_matches_requested_structure(valid, desired_chapter_count=1) is True
+    assert _blueprint_matches_requested_structure(duplicate_chapter, desired_chapter_count=1) is False
 
 
 class FakeSource:
@@ -202,7 +224,7 @@ def _runtime(tmp_path: Path, bindings, sink, *, client=None, version_overrides=N
 
 def _request(run_id="run-1", **kwargs):
     payload = {
-        "run_id": run_id, "series_id": "series-1", "story_id": "story-1",
+        "run_id": run_id, "series_id": "series-1", "project_id": "project-1", "story_id": "story-1",
         "selected_stages": ["artifact_packaging"], "include_visuals": False, "include_audiobook": False,
     }
     payload.update(kwargs)

@@ -33,6 +33,7 @@ ALL_STAGES = [
     "audiobook_generation",
     "artifact_packaging",
 ]
+GENERATION_STAGES = {"narrative_generation", "visual_generation", "audiobook_generation"}
 
 
 def main() -> int:
@@ -41,6 +42,7 @@ def main() -> int:
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=2400)
     parser.add_argument("--stage-timeout-seconds", type=int, default=900)
+    parser.add_argument("--generation-stage-timeout-seconds", type=int, default=900)
     parser.add_argument("--preflight-timeout-seconds", type=int, default=30)
     parser.add_argument(
         "--visual-max-attempts", type=int, choices=range(1, 7), default=2
@@ -51,10 +53,11 @@ def main() -> int:
     parser.add_argument("--series-id", default="")
     parser.add_argument("--report", default="")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--stop-after-stage", choices=ALL_STAGES, default="artifact_packaging")
     args = parser.parse_args()
     if args.resume:
         os.environ["SAGA_CANON_RESUME_STAGES"] = (
-            "event_extraction,entity_extraction,relationship_extraction"
+            "chapter_canon_extraction"
         )
 
     source = Path(args.source).resolve()
@@ -74,18 +77,20 @@ def main() -> int:
             series_id=series_id,
             allow_resume=args.resume,
         )
-        _reasoning_preflight(timeout_seconds=args.preflight_timeout_seconds)
+        if _requires_generation_preflight(args.stop_after_stage):
+            _reasoning_preflight(timeout_seconds=args.preflight_timeout_seconds)
         request = OrchestrationRequest(
             run_id=run_id,
             series_id=series_id,
+            project_id=f"qualification-project-{args.release_id}",
             source_paths=[str(source)],
-            premise="During the first winter after the war, a court archivist discovers that a disputed Solstice oath could reopen an old alliance or destroy the fragile peace.",
+            premise="During the first winter after the war, Evangeline discovers that a disputed Solstice oath could reopen an old alliance or destroy the fragile peace.",
             target_audience="adult fantasy readers",
             tone="intimate, wintry, politically tense, and hopeful",
             desired_chapter_count=1,
-            selected_stages=ALL_STAGES,
-            include_visuals=True,
-            include_audiobook=True,
+            selected_stages=[args.stop_after_stage],
+            include_visuals=args.stop_after_stage in {"visual_generation", "artifact_packaging"},
+            include_audiobook=args.stop_after_stage in {"audiobook_generation", "artifact_packaging"},
             max_attempts=args.max_attempts,
             execution_limits=OrchestrationExecutionLimits(
                 target_words_per_scene=100,
@@ -100,6 +105,14 @@ def main() -> int:
                 max_visual_attempts=args.visual_max_attempts,
                 audiobook_max_chapters=1,
                 audiobook_max_segment_chars=900,
+                provider_request_limits={
+                    "analysis_foundation": {"modal": 1},
+                    "canon_extraction": {
+                        _reasoning_budget_provider(
+                            os.getenv("SAGA_CANON_EXTRACTION_REASONING_MODE", "gpt_oss")
+                        ): 40
+                    },
+                },
             ),
             metadata={
                 "validation_kind": "fresh_production_qualification",
@@ -119,7 +132,11 @@ def main() -> int:
             and queued
             and queued.get("status") in {"cancelled", "dead_letter"}
         ):
-            queued = service.retry(request, max_attempts=args.max_attempts)
+            queued = service.retry(
+                request,
+                max_attempts=args.max_attempts,
+                backoff_seconds=max(1, args.retry_backoff_seconds),
+            )
         if queued is None:
             raise RuntimeError("Qualification queue submission did not return an item.")
         queue_id = str(queued["queue_id"])
@@ -186,8 +203,10 @@ def main() -> int:
                         message=log.get("message"),
                         elapsed_seconds=round(time.monotonic() - started, 1),
                     )
-                if current_stage and time.monotonic() - stage_started > max(
-                    60, args.stage_timeout_seconds
+                if current_stage and time.monotonic() - stage_started > _stage_timeout_seconds(
+                    current_stage,
+                    standard_timeout_seconds=args.stage_timeout_seconds,
+                    generation_timeout_seconds=args.generation_stage_timeout_seconds,
                 ):
                     cancellation_reason = f"Stage deadline exceeded: {current_stage}"
                     cancellation_requested = _request_cancellation(
@@ -253,6 +272,47 @@ def main() -> int:
                 if worker_result.orchestration_result.decision.status == "cancelled"
                 else 2
             )
+        if args.stop_after_stage != "artifact_packaging":
+            slice_report = _build_stage_slice_report(
+                result=worker_result.orchestration_result,
+                source=source,
+                source_sha256=source_sha256,
+                release_id=args.release_id,
+                elapsed_seconds=round(time.monotonic() - started, 1),
+            )
+            stored = service.persistence.artifacts.store_json(
+                artifact_type="runtime_report",
+                filename=f"{run_id}-{args.stop_after_stage}-qualification.json",
+                payload=slice_report,
+                provider_name="qualification_runtime",
+                report_kind="production_stage_slice",
+                series_id=series_id,
+                run_id=run_id,
+                metadata={
+                    "accepted": True,
+                    "release_id": args.release_id,
+                    "stop_after_stage": args.stop_after_stage,
+                },
+            )
+            slice_report["artifact_reference"] = stored
+            if args.report:
+                report_path = Path(args.report).resolve()
+                report_path.parent.mkdir(parents=True, exist_ok=True)
+                report_path.write_text(
+                    json.dumps(slice_report, ensure_ascii=False, indent=2, default=str),
+                    encoding="utf-8",
+                )
+            _emit(
+                "stage_slice_complete",
+                accepted=True,
+                run_id=run_id,
+                series_id=series_id,
+                stop_after_stage=args.stop_after_stage,
+                elapsed_seconds=slice_report["metrics"]["elapsed_seconds"],
+                stage_seconds=slice_report["metrics"]["stage_seconds"],
+                report_artifact=stored,
+            )
+            return 0
         from packages.qualification_runtime import ProductionQualificationEvaluator
 
         evaluator = ProductionQualificationEvaluator(persistence=service.persistence)
@@ -341,6 +401,58 @@ def _resume_stage(logs: list[dict[str, object]]) -> str:
         elif message in {"stage_cancelled", "stage_failed", "stage_rejected"}:
             current_stage = stage
     return current_stage
+
+
+def _stage_timeout_seconds(
+    stage: str,
+    *,
+    standard_timeout_seconds: int,
+    generation_timeout_seconds: int,
+) -> int:
+    configured = (
+        generation_timeout_seconds if stage in GENERATION_STAGES else standard_timeout_seconds
+    )
+    return max(60, int(configured))
+
+
+def _requires_generation_preflight(stop_after_stage: str) -> bool:
+    return ALL_STAGES.index(stop_after_stage) >= ALL_STAGES.index("generation_planning")
+
+
+def _reasoning_budget_provider(mode: str) -> str:
+    normalized = str(mode or "").strip().lower()
+    if normalized in {"ollama_local", "lm_studio_local", "mistral", "gemini", "general_compute"}:
+        return normalized
+    if normalized in {"gpt_oss", "deepseek"}:
+        return "ollama"
+    raise ValueError(f"Unsupported reasoning mode for provider budgeting: {mode!r}")
+
+
+def _build_stage_slice_report(
+    *,
+    result,
+    source: Path,
+    source_sha256: str,
+    release_id: str,
+    elapsed_seconds: float,
+) -> dict[str, object]:
+    return {
+        "report_id": f"qualification-{result.request.run_id}-{result.request.selected_stages[-1]}",
+        "run_id": result.request.run_id,
+        "series_id": result.request.series_id,
+        "source_path": str(source),
+        "source_sha256": source_sha256,
+        "release_id": release_id,
+        "accepted": result.decision.accepted,
+        "completed_stages": list(result.decision.completed_stages),
+        "metrics": {
+            "elapsed_seconds": elapsed_seconds,
+            "stage_seconds": {
+                item.stage: float(item.elapsed_seconds or 0.0) for item in result.outcomes
+            },
+        },
+        "result": result.model_dump(),
+    }
 
 
 def _qualification_queue_name(run_id: str) -> str:

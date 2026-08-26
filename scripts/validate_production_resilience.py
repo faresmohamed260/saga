@@ -110,7 +110,7 @@ def main() -> int:
 
 def _submit(queue: ExecutionQueueRuntime, run_id: str) -> dict[str, object]:
     request = OrchestrationRequest(
-        run_id=run_id, series_id=f"series-{run_id}", story_id=f"story-{run_id}",
+        run_id=run_id, series_id=f"series-{run_id}", project_id="resilience-validation", story_id=f"story-{run_id}",
         selected_stages=["artifact_packaging"], include_visuals=False, include_audiobook=False,
     )
     return queue.submit(ExecutionSubmission(

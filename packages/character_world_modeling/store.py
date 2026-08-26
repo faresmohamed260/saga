@@ -56,7 +56,17 @@ class CharacterWorldModelingStore:
         series_id: str,
         profiles: list[CharacterProfileArtifact],
     ) -> list[CharacterProfileArtifact]:
-        self.persistence.library.delete_records(record_type="character_profile", series_id=series_id)
+        self.delete_character_profiles(series_id=series_id)
+        return self.upsert_character_profiles(profiles=profiles)
+
+    def delete_character_profiles(self, *, series_id: str) -> int:
+        return self.persistence.library.delete_records(
+            record_type="character_profile", series_id=series_id
+        )
+
+    def upsert_character_profiles(
+        self, *, profiles: list[CharacterProfileArtifact]
+    ) -> list[CharacterProfileArtifact]:
         persisted: list[CharacterProfileArtifact] = []
         for item in profiles:
             payload = self.persistence.library.upsert_record(
@@ -75,7 +85,17 @@ class CharacterWorldModelingStore:
         series_id: str,
         states: list[StableCharacterStateArtifact],
     ) -> list[StableCharacterStateArtifact]:
-        self.persistence.library.delete_records(record_type="stable_character_state", series_id=series_id)
+        self.delete_stable_character_states(series_id=series_id)
+        return self.upsert_stable_character_states(states=states)
+
+    def delete_stable_character_states(self, *, series_id: str) -> int:
+        return self.persistence.library.delete_records(
+            record_type="stable_character_state", series_id=series_id
+        )
+
+    def upsert_stable_character_states(
+        self, *, states: list[StableCharacterStateArtifact]
+    ) -> list[StableCharacterStateArtifact]:
         persisted: list[StableCharacterStateArtifact] = []
         for item in states:
             payload = self.persistence.library.upsert_record(

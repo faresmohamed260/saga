@@ -29,6 +29,7 @@ class OrchestrationExecutionLimits(BaseModel):
     max_visual_attempts: int = Field(default=0, ge=0, le=6)
     audiobook_max_chapters: int = Field(default=0, ge=0, le=1000)
     audiobook_max_segment_chars: int = Field(default=1800, ge=200, le=10000)
+    provider_request_limits: dict[str, dict[str, int]] = Field(default_factory=dict)
 
 
 class ArtifactReference(BaseModel):
@@ -46,6 +47,7 @@ class ArtifactReference(BaseModel):
 class OrchestrationRequest(BaseModel):
     run_id: str
     series_id: str
+    project_id: str
     story_id: str = ""
     blueprint_id: str = ""
     audiobook_run_id: str = ""
@@ -61,7 +63,7 @@ class OrchestrationRequest(BaseModel):
     execution_limits: OrchestrationExecutionLimits = Field(default_factory=OrchestrationExecutionLimits)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("run_id", "series_id")
+    @field_validator("run_id", "series_id", "project_id")
     @classmethod
     def _require_id(cls, value: str) -> str:
         normalized = str(value or "").strip()

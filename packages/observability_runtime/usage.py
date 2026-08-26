@@ -95,8 +95,8 @@ class UsageGovernanceRuntime:
             evidence={"reason": str(reason or "released")[:240]},
         ))
 
-    def summary(self, *, run_id: str = "", provider: str = "", account_alias: str = "", since_ms: int = 0, limit: int = 100000) -> dict[str, Any]:
-        rows = self.store.list(run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms, limit=limit)
+    def summary(self, *, project_id: str = "", run_id: str = "", provider: str = "", account_alias: str = "", since_ms: int = 0, limit: int = 100000) -> dict[str, Any]:
+        rows = self.store.list(project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms, limit=limit)
         metrics = {key: 0.0 for key in ("request_count", "input_tokens", "output_tokens", "cached_input_tokens", "compute_seconds", "image_count", "audio_seconds", "cost_usd")}
         rows = _active_ledger_rows(rows, now_ms=_now_ms())
         for row in rows:
@@ -107,6 +107,10 @@ class UsageGovernanceRuntime:
             row for row in charges
             if bool(dict(row.get("evidence") or {}).get("provider_evidence"))
         ]
+        source_counts = {source: 0 for source in ("provider", "measured", "declared", "unknown")}
+        for row in charges:
+            source = str(dict(row.get("evidence") or {}).get("usage_source") or "unknown")
+            source_counts[source if source in source_counts else "unknown"] += 1
         return {
             **metrics,
             "charge_count": len(charges),
@@ -115,6 +119,11 @@ class UsageGovernanceRuntime:
             "reconciled_charge_count": len(reconciled_charges),
             "reconciliation_coverage": len(reconciled_charges) / len(charges) if charges else 0.0,
             "reconciled": bool(charges) and len(reconciled_charges) == len(charges),
+            "provider_confirmed_charge_count": source_counts["provider"],
+            "measured_charge_count": source_counts["measured"],
+            "declared_charge_count": source_counts["declared"],
+            "unknown_source_charge_count": source_counts["unknown"],
+            "provider_confirmed_coverage": source_counts["provider"] / len(charges) if charges else 0.0,
             "providers": sorted({str(row.get("provider") or "") for row in charges if row.get("provider")}),
             "accounts": sorted({str(row.get("account_alias") or "") for row in charges if row.get("account_alias")}),
         }
@@ -123,18 +132,20 @@ class UsageGovernanceRuntime:
         self,
         *,
         group_by: str,
+        project_id: str = "",
         run_id: str = "",
         provider: str = "",
         account_alias: str = "",
         since_ms: int = 0,
         limit: int = 100000,
     ) -> list[dict[str, Any]]:
-        allowed = {"release_id", "run_id", "series_id", "stage", "agent", "component", "provider", "account_alias", "model", "operation"}
+        allowed = {"release_id", "project_id", "run_id", "series_id", "stage", "agent", "component", "provider", "account_alias", "model", "operation"}
         if group_by not in allowed:
             raise ValueError(f"Unsupported usage breakdown '{group_by}'.")
         rows = [
             row
             for row in self.store.list(
+                project_id=project_id,
                 run_id=run_id,
                 provider=provider,
                 account_alias=account_alias,
@@ -159,6 +170,7 @@ class UsageGovernanceRuntime:
                 "audio_seconds": sum(float(row.get("audio_seconds") or 0) for row in group),
                 "cost_usd": sum(float(row.get("cost_usd") or 0) for row in group),
                 "unpriced_charge_count": sum(row.get("cost_status") == "unpriced" for row in group),
+                "provider_confirmed_charge_count": sum(dict(row.get("evidence") or {}).get("usage_source") == "provider" for row in group),
             })
         return result
 

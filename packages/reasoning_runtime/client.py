@@ -11,6 +11,7 @@ import time
 import wave
 from copy import deepcopy
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse
 
 import requests
 from langchain_core.tools import StructuredTool
@@ -45,7 +46,33 @@ from packages.runtime_common import (
 )
 
 
+class _BufferedOllamaResponse:
+    """Minimal response facade for a fully consumed Ollama event stream."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+def _enforce_stream_deadline(
+    response: Any, *, started: float, timeout_seconds: int,
+) -> None:
+    if time.perf_counter() - started <= timeout_seconds:
+        return
+    response.close()
+    raise requests.Timeout(
+        f"Reasoning request exceeded {timeout_seconds} seconds."
+    )
+
+
 class ReasoningRuntimeClient:
+    MODE_OLLAMA_LOCAL = "ollama_local"
+    MODE_LM_STUDIO_LOCAL = "lm_studio_local"
     MODE_DEEPSEEK = "deepseek"
     MODE_GPT_OSS = "gpt_oss"
     MODE_GENERAL_COMPUTE = "general_compute"
@@ -56,6 +83,15 @@ class ReasoningRuntimeClient:
         self.profile = profile
         self.config = deepcopy(config)
         self.mode = str(profile.mode or self.MODE_GPT_OSS).strip().lower()
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            self._validate_loopback_url(self.config.ollama_local_url)
+            self._validate_loopback_url(self.config.ollama_local_chat_url)
+            if not self.resolved_model_name():
+                raise ValueError("ollama_local profiles require ollama_model or model_override.")
+        if self.mode == self.MODE_LM_STUDIO_LOCAL:
+            self._validate_loopback_url(self.config.lm_studio_chat_url, provider="lm_studio_local")
+            if not self.resolved_model_name():
+                raise ValueError("lm_studio_local profiles require lm_studio_model or model_override.")
         self.timeout = max(30, int(profile.timeout_seconds))
         self.max_retries = max(1, int(profile.max_retries))
         self.base_delay = max(0.0, float(profile.base_delay_seconds))
@@ -71,6 +107,7 @@ class ReasoningRuntimeClient:
         self._pending_tool_mode = ""
         self._request_account_alias = ""
         self._request_usage = ProviderUsage(request_count=0)
+        self._provider_metrics: dict[str, Any] = {}
         self._ollama_pool = SimpleRotationPool(
             accounts=self.config.ollama_accounts,
             active_index=self.config.ollama_active_index,
@@ -96,7 +133,7 @@ class ReasoningRuntimeClient:
         tool_choice: Optional[object] = None,
         cancellation_checker: CancellationChecker | None = None,
     ) -> dict[str, Any]:
-        effective_prompt = self._apply_strict_mode(prompt) if strict else prompt
+        effective_prompt = self._apply_strict_mode(prompt) if strict and not tools else prompt
         self._pending_request_kind = "json"
         self._pending_json_mode = "strict_prompt" if strict else "plain_prompt"
         self._pending_response_format_type = self._response_format_type(response_format)
@@ -162,7 +199,7 @@ class ReasoningRuntimeClient:
         response_format: Optional[dict] = None,
     ) -> dict[str, Any]:
         """Run structured multimodal inference through the configured Ollama pool."""
-        if self.mode not in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS, self.MODE_MISTRAL}:
+        if self.mode not in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS, self.MODE_MISTRAL}:
             raise ValueError("Vision inference requires an Ollama or Mistral reasoning profile.")
         if not image_bytes:
             raise ValueError("image_bytes is required for vision inference.")
@@ -245,6 +282,10 @@ class ReasoningRuntimeClient:
             self._finalize_request_tracking()
 
     def provider_name(self) -> str:
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            return "ollama_local"
+        if self.mode == self.MODE_LM_STUDIO_LOCAL:
+            return "lm_studio_local"
         if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return "ollama"
         if self.mode == self.MODE_GENERAL_COMPUTE:
@@ -256,6 +297,10 @@ class ReasoningRuntimeClient:
             if self.mode == self.MODE_GENERAL_COMPUTE and self.profile.model_override.endswith("-cloud"):
                 return self.profile.general_compute_model
             return self.profile.model_override
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            return self.profile.ollama_model
+        if self.mode == self.MODE_LM_STUDIO_LOCAL:
+            return self.profile.lm_studio_model
         if self.mode == self.MODE_DEEPSEEK:
             return self.profile.deepseek_model
         if self.mode == self.MODE_GPT_OSS:
@@ -387,7 +432,21 @@ class ReasoningRuntimeClient:
         tools: Optional[list],
         tool_choice: Optional[object],
     ) -> dict[str, Any]:
-        if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
+        if self.mode == self.MODE_OLLAMA_LOCAL and tools:
+            return self._generate_tools_ollama(
+                prompt, max_tokens=max_tokens, tools=tools, tool_choice=tool_choice,
+            )
+        if self.mode == self.MODE_LM_STUDIO_LOCAL:
+            return self._generate_json_lm_studio(
+                prompt,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+        if self.mode in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
+            if tools:
+                raise ValueError("Cloud-oriented Ollama modes do not expose the local tool contract.")
             return self._generate_json_ollama(prompt, max_tokens=max_tokens, response_format=response_format)
         if self.mode == self.MODE_GENERAL_COMPUTE:
             return self._generate_json_general_compute(
@@ -415,9 +474,16 @@ class ReasoningRuntimeClient:
         temperature: float,
         max_tokens: int,
     ) -> str:
-        if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
+        if self.mode in {self.MODE_OLLAMA_LOCAL, self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return self._generate_text_ollama(
                 self._compose_text_prompt(system_prompt, prompt),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        if self.mode == self.MODE_LM_STUDIO_LOCAL:
+            return self._generate_text_lm_studio(
+                prompt,
+                system_prompt=system_prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
@@ -446,32 +512,224 @@ class ReasoningRuntimeClient:
 
     def _generate_json_ollama(self, prompt: str, *, max_tokens: int, response_format: Optional[dict] = None) -> dict[str, Any]:
         url, headers, direct_cloud = self._ollama_transport()
+        payload = self._ollama_payload(
+            prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
+            json_mode=True, response_format=response_format, max_tokens=max_tokens, temperature=0.0,
+        )
         response = self._metered_call(
-            lambda: requests.post(
-                url, headers=headers,
-                json=self._ollama_payload(
-                    prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
-                    json_mode=True, response_format=response_format, max_tokens=max_tokens, temperature=0.0,
-                ), timeout=self.timeout,
-            ),
+            lambda: self._post_ollama(url, headers=headers, payload=payload),
             projected=_projected_text_usage(prompt, max_tokens), operation="generate_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
+        self._capture_ollama_metrics(response)
         payload = response.json() or {}
         return self._safe_parse_json(str(payload.get("response") or ""))
 
-    def _generate_text_ollama(self, prompt: str, *, temperature: float, max_tokens: int) -> str:
-        url, headers, direct_cloud = self._ollama_transport()
+    def _generate_tools_ollama(
+        self, prompt: str, *, max_tokens: int, tools: list, tool_choice: Optional[object],
+    ) -> dict[str, Any]:
+        if tool_choice is not None:
+            raise ValueError("ollama_local does not support explicit tool_choice.")
+        payload = {
+            "model": self.resolved_model_name(),
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "keep_alive": self.profile.ollama_keep_alive,
+            "tools": tools,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": max(1, int(max_tokens)),
+                "num_ctx": int(self.profile.context_window_tokens),
+            },
+        }
+        if self.profile.ollama_thinking is not None:
+            payload["think"] = self.profile.ollama_thinking
+        self._apply_local_resource_options(payload["options"])
         response = self._metered_call(
             lambda: requests.post(
-                url, headers=headers,
-                json=self._ollama_payload(prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
-                                          temperature=temperature, max_tokens=max_tokens), timeout=self.timeout,
+                self.config.ollama_local_chat_url, headers={}, json=payload,
+                timeout=self.timeout,
             ),
+            projected=_projected_text_usage(prompt, max_tokens),
+            operation="generate_tools", usage_extractor=_http_ollama_usage,
+        )
+        response.raise_for_status()
+        self._capture_ollama_metrics(response)
+        tool_calls = self._extract_ollama_tool_calls(dict(response.json() or {}))
+        return {"tool_calls": tool_calls} if tool_calls else {"error": "missing_tool_call"}
+
+    def _generate_text_ollama(self, prompt: str, *, temperature: float, max_tokens: int) -> str:
+        url, headers, direct_cloud = self._ollama_transport()
+        payload = self._ollama_payload(
+            prompt=prompt, model_name=self.resolved_model_name(), direct_cloud=direct_cloud,
+            temperature=temperature, max_tokens=max_tokens,
+        )
+        response = self._metered_call(
+            lambda: self._post_ollama(url, headers=headers, payload=payload),
             projected=_projected_text_usage(prompt, max_tokens), operation="generate_text", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
+        self._capture_ollama_metrics(response)
         return str((response.json() or {}).get("response") or "").strip()
+
+    def _generate_json_lm_studio(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int,
+        response_format: Optional[dict],
+        tools: Optional[list],
+        tool_choice: Optional[object],
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.resolved_model_name(),
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "max_tokens": max(1, int(max_tokens)),
+            "stream": False,
+        }
+        if response_format:
+            payload["response_format"] = response_format
+        if tools:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+        self._apply_lm_studio_reasoning(payload)
+        response = self._metered_call(
+            lambda: self._post_lm_studio(payload, allow_stream=not tools),
+            projected=_projected_text_usage(prompt, max_tokens),
+            operation="generate_json",
+            usage_extractor=_http_openai_usage,
+        )
+        response.raise_for_status()
+        body = dict(response.json() or {})
+        self._capture_lm_studio_metrics(body)
+        message = dict(((body.get("choices") or [{}])[0].get("message") or {}))
+        if tools:
+            calls = self._extract_openai_tool_calls(message)
+            return {"tool_calls": calls} if calls else {"error": "missing_tool_call"}
+        return self._safe_parse_json(str(message.get("content") or ""))
+
+    def _generate_text_lm_studio(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        payload = {
+            "model": self.resolved_model_name(), "messages": messages,
+            "temperature": max(0.0, float(temperature)),
+            "max_tokens": max(1, int(max_tokens)), "stream": False,
+        }
+        self._apply_lm_studio_reasoning(payload)
+        response = self._metered_call(
+            lambda: self._post_lm_studio(
+                payload,
+                allow_stream=True,
+            ),
+            projected=_projected_text_usage(prompt, max_tokens),
+            operation="generate_text",
+            usage_extractor=_http_openai_usage,
+        )
+        response.raise_for_status()
+        body = dict(response.json() or {})
+        self._capture_lm_studio_metrics(body)
+        return str(((body.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+
+    @staticmethod
+    def _extract_openai_tool_calls(message: dict[str, Any]) -> list[dict[str, Any]]:
+        calls = []
+        for item in list(message.get("tool_calls") or []):
+            function = dict(item.get("function") or {}) if isinstance(item, dict) else {}
+            arguments = function.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    continue
+            if function.get("name") and isinstance(arguments, dict):
+                calls.append({"tool": str(function["name"]), "arguments": arguments})
+        return calls
+
+    def _lm_studio_headers(self) -> dict[str, str]:
+        token = str(self.config.lm_studio_api_token or os.getenv("LM_STUDIO_API_TOKEN") or "").strip()
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
+    def _apply_lm_studio_reasoning(self, payload: dict[str, Any]) -> None:
+        effort = str(self.profile.lm_studio_reasoning_effort or "").strip()
+        if effort:
+            payload["reasoning_effort"] = effort
+
+    def _capture_lm_studio_metrics(self, payload: dict[str, Any]) -> None:
+        usage = dict(payload.get("usage") or {})
+        output_tokens = int(usage.get("completion_tokens") or 0)
+        decode_seconds = max(0.0, float(payload.get("_decode_seconds") or 0))
+        self._provider_metrics = {
+            "input_tokens": int(usage.get("prompt_tokens") or 0),
+            "output_tokens": output_tokens,
+            "tokens_per_second": output_tokens / decode_seconds if decode_seconds else 0.0,
+        }
+        if payload.get("_ttft_seconds") is not None:
+            self._provider_metrics["ttft_seconds"] = max(0.0, float(payload["_ttft_seconds"]))
+
+    def _post_lm_studio(self, payload: dict[str, Any], *, allow_stream: bool) -> Any:
+        if not self.profile.lm_studio_stream_metrics or not allow_stream:
+            return requests.post(
+                self.config.lm_studio_chat_url,
+                headers=self._lm_studio_headers(), json=payload, timeout=self.timeout,
+            )
+        streamed_payload = dict(payload)
+        streamed_payload["stream"] = True
+        streamed_payload["stream_options"] = {"include_usage": True}
+        started = time.perf_counter()
+        response = requests.post(
+            self.config.lm_studio_chat_url,
+            headers=self._lm_studio_headers(), json=streamed_payload,
+            stream=True, timeout=self.timeout,
+        )
+        response.raise_for_status()
+        chunks: list[str] = []
+        usage: dict[str, Any] = {}
+        first_token_seconds: float | None = None
+        for line in response.iter_lines():
+            _enforce_stream_deadline(
+                response, started=started, timeout_seconds=self.timeout,
+            )
+            if not line:
+                continue
+            decoded = line.decode("utf-8") if isinstance(line, bytes) else str(line)
+            if not decoded.startswith("data:"):
+                continue
+            data = decoded[5:].strip()
+            if not data or data == "[DONE]":
+                continue
+            event = json.loads(data)
+            usage.update(dict(event.get("usage") or {}))
+            choices = list(event.get("choices") or [])
+            delta = dict((choices[0].get("delta") or {})) if choices else {}
+            content = str(delta.get("content") or "")
+            if content and first_token_seconds is None:
+                first_token_seconds = time.perf_counter() - started
+            chunks.append(content)
+        _enforce_stream_deadline(
+            response, started=started, timeout_seconds=self.timeout,
+        )
+        completed = time.perf_counter() - started
+        return _BufferedOllamaResponse({
+            "choices": [{"message": {"content": "".join(chunks)}}],
+            "usage": usage,
+            "_ttft_seconds": first_token_seconds,
+            "_decode_seconds": max(0.0, completed - (first_token_seconds or completed)),
+        })
 
     def _generate_vision_json_ollama(
         self,
@@ -493,6 +751,7 @@ class ReasoningRuntimeClient:
             projected=_projected_text_usage(prompt, 4096), operation="vision_json", usage_extractor=_http_ollama_usage,
         )
         response.raise_for_status()
+        self._capture_ollama_metrics(response)
         payload = response.json() or {}
         content = str(payload.get("response") or (payload.get("message") or {}).get("content") or "")
         return self._safe_parse_json(content)
@@ -771,6 +1030,9 @@ class ReasoningRuntimeClient:
         return False
 
     def _ollama_transport(self) -> tuple[str, dict[str, str], bool]:
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            self._request_account_alias = self._ollama_pool.local_alias
+            return self.config.ollama_local_url, {}, False
         if self.profile.prefer_local_ollama:
             self._request_account_alias = self._ollama_pool.local_alias
             return self.config.ollama_local_url, {}, False
@@ -802,11 +1064,23 @@ class ReasoningRuntimeClient:
                 "num_predict": max(1, int(max_tokens)),
             },
         }
-        if "gpt-oss" in translated_model.lower():
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            payload["options"]["num_ctx"] = int(self.profile.context_window_tokens)
+            payload["keep_alive"] = self.profile.ollama_keep_alive
+            self._apply_local_resource_options(payload["options"])
+        if self.mode == self.MODE_OLLAMA_LOCAL and self.profile.ollama_thinking is not None:
+            payload["think"] = self.profile.ollama_thinking
+        elif "gpt-oss" in translated_model.lower():
             payload["think"] = "low"
         if json_mode:
             payload["format"] = self._ollama_json_format_payload(response_format)
         return payload
+
+    def _apply_local_resource_options(self, options: dict[str, Any]) -> None:
+        if self.profile.ollama_gpu_layers is not None:
+            options["num_gpu"] = int(self.profile.ollama_gpu_layers)
+        if self.profile.ollama_threads is not None:
+            options["num_thread"] = int(self.profile.ollama_threads)
 
     def _general_compute_headers(self) -> dict[str, str]:
         api_key = self._general_compute_pool.acquire_api_key_for_request()
@@ -839,6 +1113,7 @@ class ReasoningRuntimeClient:
     def _begin_request_tracking(self) -> None:
         self._request_account_alias = ""
         self._request_usage = ProviderUsage(request_count=0)
+        self._provider_metrics = {}
         trace_context = current_trace_context()
         self._last_request_metadata = ReasoningRequestMetadata(
             trace_id=create_trace(
@@ -873,6 +1148,7 @@ class ReasoningRuntimeClient:
         self._last_request_metadata.provider_account_alias = self._current_account_alias()
         self._last_request_metadata.provider = self.provider_name()
         self._last_request_metadata.usage = self._request_usage.model_dump()
+        self._last_request_metadata.provider_metrics = dict(self._provider_metrics)
         self._last_request_metadata.completed_at_ms = completed_at_ms
         self._last_request_metadata.latency_ms = max(
             0,
@@ -912,12 +1188,69 @@ class ReasoningRuntimeClient:
         values["evidence_id"] = usage.evidence_id
         self._request_usage = ProviderUsage.model_validate(values)
 
+    def _capture_ollama_metrics(self, response: Any) -> None:
+        payload = dict(response.json() or {})
+        eval_count = max(0, int(payload.get("eval_count") or 0))
+        eval_seconds = max(0.0, float(payload.get("eval_duration") or 0) / 1_000_000_000)
+        self._provider_metrics = {
+            "total_duration_seconds": max(0.0, float(payload.get("total_duration") or 0) / 1_000_000_000),
+            "load_duration_seconds": max(0.0, float(payload.get("load_duration") or 0) / 1_000_000_000),
+            "prompt_eval_duration_seconds": max(0.0, float(payload.get("prompt_eval_duration") or 0) / 1_000_000_000),
+            "eval_duration_seconds": eval_seconds,
+            "tokens_per_second": (eval_count / eval_seconds) if eval_seconds else 0.0,
+        }
+        if payload.get("_ttft_seconds") is not None:
+            self._provider_metrics["ttft_seconds"] = max(0.0, float(payload["_ttft_seconds"]))
+
+    def _post_ollama(self, url: str, *, headers: dict[str, str], payload: dict[str, Any]) -> Any:
+        if self.mode != self.MODE_OLLAMA_LOCAL or not self.profile.ollama_stream_metrics:
+            return requests.post(url, headers=headers, json=payload, timeout=self.timeout)
+        streamed_payload = dict(payload)
+        streamed_payload["stream"] = True
+        started = time.perf_counter()
+        response = requests.post(
+            url, headers=headers, json=streamed_payload,
+            stream=True, timeout=self.timeout,
+        )
+        response.raise_for_status()
+        chunks: list[str] = []
+        final_payload: dict[str, Any] = {}
+        first_token_seconds: float | None = None
+        for line in response.iter_lines():
+            _enforce_stream_deadline(
+                response, started=started, timeout_seconds=self.timeout,
+            )
+            if not line:
+                continue
+            event = json.loads(line.decode("utf-8") if isinstance(line, bytes) else str(line))
+            chunk = str(event.get("response") or "")
+            if chunk and first_token_seconds is None:
+                first_token_seconds = time.perf_counter() - started
+            chunks.append(chunk)
+            final_payload.update(event)
+        _enforce_stream_deadline(
+            response, started=started, timeout_seconds=self.timeout,
+        )
+        final_payload["response"] = "".join(chunks)
+        final_payload["_ttft_seconds"] = first_token_seconds
+        return _BufferedOllamaResponse(final_payload)
+
     def _current_account_alias(self) -> str:
+        if self.mode == self.MODE_OLLAMA_LOCAL:
+            return self._ollama_pool.local_alias
+        if self.mode == self.MODE_LM_STUDIO_LOCAL:
+            return "lm_studio_local"
         if self.mode in {self.MODE_DEEPSEEK, self.MODE_GPT_OSS}:
             return self._request_account_alias or self._ollama_pool.current_label()
         if self.mode == self.MODE_GENERAL_COMPUTE:
             return self._general_compute_pool.current_label()
         return ""
+
+    @staticmethod
+    def _validate_loopback_url(value: str, *, provider: str = "ollama_local") -> None:
+        parsed = urlparse(str(value or "").strip())
+        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError(f"{provider} requires a loopback-only endpoint URL.")
 
     @staticmethod
     def _should_retry_http(exc: requests.HTTPError, attempt: int, max_retries: int) -> bool:
@@ -1025,6 +1358,17 @@ class ReasoningRuntimeClient:
                     arguments = {}
             normalized.append({"tool": name, "arguments": arguments})
         return {"tool_calls": normalized} if normalized else None
+
+    @staticmethod
+    def _extract_ollama_tool_calls(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in list(dict(payload.get("message") or {}).get("tool_calls") or []):
+            function = dict(item.get("function") or {}) if isinstance(item, dict) else {}
+            name = str(function.get("name") or "").strip()
+            arguments = function.get("arguments")
+            if name and isinstance(arguments, dict):
+                normalized.append({"tool": name, "arguments": arguments})
+        return normalized
 
     @classmethod
     def _safe_parse_json(cls, content: str) -> dict[str, Any]:

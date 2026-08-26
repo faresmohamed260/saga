@@ -68,7 +68,7 @@ def test_source_content_mutation_invalidates_analysis_at_the_same_path(tmp_path:
     source = tmp_path / "book.epub"
     source.write_bytes(b"first source version")
     request = OrchestrationRequest(
-        run_id="source-run", series_id="series-1", source_paths=[str(source)],
+        run_id="source-run", series_id="series-1", project_id="project-1", source_paths=[str(source)],
         selected_stages=["analysis_foundation"], include_visuals=False, include_audiobook=False,
     )
     first = runtime.fingerprints(

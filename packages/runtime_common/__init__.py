@@ -21,6 +21,7 @@ from packages.runtime_common.tracing import (
 from packages.runtime_common.tooling import build_structured_runtime_tool
 from packages.runtime_common.cancellation import CancellationChecker, RuntimeCancelledError, raise_if_cancelled
 from packages.runtime_common.usage import (
+    ProviderRequestBudget,
     UsageBudgetExceededError,
     current_usage_attribution,
     release_usage,
@@ -40,6 +41,7 @@ __all__ = [
     "UsageGovernor",
     "UsageReservation",
     "UsageBudgetExceededError",
+    "ProviderRequestBudget",
     "CancellationChecker",
     "RuntimeCancelledError",
     "build_structured_runtime_tool",

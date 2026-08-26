@@ -1,0 +1,1103 @@
+{
+  "task_suite_version": "1.2.0",
+  "candidate_manifest_version": "2.5.0",
+  "policy": {
+    "minimum_trials": 3,
+    "minimum_acceptance_rate": 1.0,
+    "minimum_sources": 3,
+    "allow_unqualified_fallback": false,
+    "require_resource_metrics": true,
+    "max_peak_vram_bytes": 10737418240,
+    "max_peak_host_ram_bytes": 120259084288,
+    "require_gold_for_families": [
+      "canon_entities",
+      "canon_events",
+      "canon_relationships"
+    ],
+    "artifact_allowlist_enforced": true
+  },
+  "excluded_trial_count": 0,
+  "superseded_trial_count": 9,
+  "routes": {
+    "canon_entities": {
+      "status": "unqualified",
+      "model": null
+    },
+    "canon_events": {
+      "status": "unqualified",
+      "model": null
+    },
+    "canon_relationships": {
+      "status": "unqualified",
+      "model": null
+    },
+    "character_world_modeling": {
+      "status": "unqualified",
+      "model": null
+    },
+    "continuity_grounding": {
+      "status": "unqualified",
+      "model": null
+    },
+    "generation_planning": {
+      "status": "unqualified",
+      "model": null
+    },
+    "narrative_generation": {
+      "status": "unqualified",
+      "model": null
+    },
+    "structured_json": {
+      "status": "qualified",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 1.109036
+    },
+    "tool_use": {
+      "status": "qualified",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 1.223623
+    }
+  },
+  "results": [
+    {
+      "task_family": "canon_entities",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 20.90633,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6374227968,
+      "peak_host_ram_bytes": 85087719424,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_available": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_f1": {
+          "samples": 3,
+          "median": 0.117647,
+          "minimum": 0.117647,
+          "maximum": 0.125
+        },
+        "gold_item_count": {
+          "samples": 3,
+          "median": 11.0,
+          "minimum": 11.0,
+          "maximum": 11.0
+        },
+        "gold_matched_items": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_precision": {
+          "samples": 3,
+          "median": 0.166667,
+          "minimum": 0.166667,
+          "maximum": 0.2
+        },
+        "gold_recall": {
+          "samples": 3,
+          "median": 0.090909,
+          "minimum": 0.090909,
+          "maximum": 0.090909
+        },
+        "gold_reviewed": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 6.0,
+          "minimum": 5.0,
+          "maximum": 6.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 20.487126,
+          "minimum": 18.574806,
+          "maximum": 20.575856
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.146544,
+          "minimum": 0.146323,
+          "maximum": 0.167335
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.07452,
+          "minimum": 0.070635,
+          "maximum": 2.051935
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 29.8894,
+          "minimum": 28.156418,
+          "maximum": 30.018852
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 20.868699,
+          "minimum": 20.785626,
+          "maximum": 20.876659
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.305631,
+          "minimum": 0.300043,
+          "maximum": 2.311619
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "canon_events",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 20.121675,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6372392960,
+      "peak_host_ram_bytes": 85297250304,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_available": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_f1": {
+          "samples": 3,
+          "median": 0.166667,
+          "minimum": 0.166667,
+          "maximum": 0.166667
+        },
+        "gold_item_count": {
+          "samples": 3,
+          "median": 4.0,
+          "minimum": 4.0,
+          "maximum": 4.0
+        },
+        "gold_matched_items": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_precision": {
+          "samples": 3,
+          "median": 0.125,
+          "minimum": 0.125,
+          "maximum": 0.125
+        },
+        "gold_recall": {
+          "samples": 3,
+          "median": 0.25,
+          "minimum": 0.25,
+          "maximum": 0.25
+        },
+        "gold_reviewed": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 19.181984,
+          "minimum": 18.817161,
+          "maximum": 19.916277
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.07688,
+          "minimum": 0.074564,
+          "maximum": 0.082842
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.046097,
+          "minimum": 0.045159,
+          "maximum": 1.789657
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 34.720079,
+          "minimum": 33.540405,
+          "maximum": 35.49951
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 20.087632,
+          "minimum": 18.988078,
+          "maximum": 21.097425
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.176019,
+          "minimum": 0.175614,
+          "maximum": 1.919352
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "canon_relationships",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 23.263195,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6369837056,
+      "peak_host_ram_bytes": 85221732352,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.714286,
+          "minimum": 0.714286,
+          "maximum": 0.714286
+        },
+        "gold_available": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "gold_f1": {
+          "samples": 3,
+          "median": 0.571429,
+          "minimum": 0.571429,
+          "maximum": 0.571429
+        },
+        "gold_item_count": {
+          "samples": 3,
+          "median": 7.0,
+          "minimum": 7.0,
+          "maximum": 7.0
+        },
+        "gold_matched_items": {
+          "samples": 3,
+          "median": 4.0,
+          "minimum": 4.0,
+          "maximum": 4.0
+        },
+        "gold_precision": {
+          "samples": 3,
+          "median": 0.571429,
+          "minimum": 0.571429,
+          "maximum": 0.571429
+        },
+        "gold_recall": {
+          "samples": 3,
+          "median": 0.571429,
+          "minimum": 0.571429,
+          "maximum": 0.571429
+        },
+        "gold_reviewed": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 0.285714,
+          "minimum": 0.285714,
+          "maximum": 0.285714
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 7.0,
+          "minimum": 7.0,
+          "maximum": 7.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 22.928626,
+          "minimum": 22.589453,
+          "maximum": 22.956923
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.122867,
+          "minimum": 0.115988,
+          "maximum": 0.150633
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.074522,
+          "minimum": 0.063311,
+          "maximum": 2.108564
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 30.006159,
+          "minimum": 29.969173,
+          "maximum": 30.456691
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 23.231134,
+          "minimum": 22.828362,
+          "maximum": 25.254611
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.309522,
+          "minimum": 0.244981,
+          "maximum": 2.30423
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff-gold1.1.0"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "character_world_modeling",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 24.516729,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6374293504,
+      "peak_host_ram_bytes": 84799508480,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 2,
+          "median": 0.75,
+          "minimum": 0.75,
+          "maximum": 0.75
+        },
+        "hallucination_rate": {
+          "samples": 2,
+          "median": 0.25,
+          "minimum": 0.25,
+          "maximum": 0.25
+        },
+        "item_count": {
+          "samples": 2,
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "minimum_item_coverage": {
+          "samples": 2,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 24.321491,
+          "minimum": 24.22664,
+          "maximum": 29.031342
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.078385,
+          "minimum": 0.07471,
+          "maximum": 0.114535
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.04737,
+          "minimum": 0.042053,
+          "maximum": 1.890022
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 34.290661,
+          "minimum": 31.000978,
+          "maximum": 34.424914
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 24.490735,
+          "minimum": 24.381856,
+          "maximum": 31.10034
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.174595,
+          "minimum": 0.16045,
+          "maximum": 2.077608
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "continuity_grounding",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 9,
+      "accepted": 3,
+      "failed": 0,
+      "source_count": 3,
+      "acceptance_rate": 0.333333,
+      "median_wall_seconds": 2.516581,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6374162432,
+      "peak_host_ram_bytes": 85195427840,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "classification_accuracy": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "evidence_precision": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 9,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "contradiction_error_rate": {
+          "samples": 9,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 9,
+          "median": 2.254151,
+          "minimum": 2.057435,
+          "maximum": 2.341691
+        },
+        "load_duration_seconds": {
+          "samples": 9,
+          "median": 0.080251,
+          "minimum": 0.075727,
+          "maximum": 0.100627
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 9,
+          "median": 0.040728,
+          "minimum": 0.034608,
+          "maximum": 2.120708
+        },
+        "tokens_per_second": {
+          "samples": 9,
+          "median": 34.03565,
+          "minimum": 33.69971,
+          "maximum": 35.261104
+        },
+        "total_duration_seconds": {
+          "samples": 9,
+          "median": 2.490525,
+          "minimum": 2.283526,
+          "maximum": 4.643936
+        },
+        "ttft_seconds": {
+          "samples": 9,
+          "median": 0.183809,
+          "minimum": 0.161474,
+          "maximum": 2.334459
+        }
+      },
+      "failure_modes": {
+        "rejected": 6
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "generation_planning",
+      "provider": "ollama_local",
+      "model": "llama3.1:8b",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 6.946663,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6685196288,
+      "peak_host_ram_bytes": 85576126464,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "item_count": {
+          "samples": 3,
+          "median": 3.0,
+          "minimum": 3.0,
+          "maximum": 3.0
+        },
+        "minimum_item_coverage": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 5.394251,
+          "minimum": 5.209036,
+          "maximum": 6.01286
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.573909,
+          "minimum": 0.487972,
+          "maximum": 0.753309
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.122434,
+          "minimum": 0.083618,
+          "maximum": 2.15384
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 28.919678,
+          "minimum": 25.944393,
+          "maximum": 29.94796
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 6.923008,
+          "minimum": 5.996565,
+          "maximum": 7.966914
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.916441,
+          "minimum": 0.609337,
+          "maximum": 2.7624
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "generation_planning",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 9,
+      "accepted": 6,
+      "failed": 0,
+      "source_count": 3,
+      "acceptance_rate": 0.666667,
+      "median_wall_seconds": 9.713772,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6376325120,
+      "peak_host_ram_bytes": 85354176512,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "hallucination_rate": {
+          "samples": 9,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "item_count": {
+          "samples": 9,
+          "median": 3.0,
+          "minimum": 3.0,
+          "maximum": 3.0
+        },
+        "minimum_item_coverage": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 9,
+          "median": 8.951981,
+          "minimum": 8.708903,
+          "maximum": 9.69715
+        },
+        "load_duration_seconds": {
+          "samples": 9,
+          "median": 0.082876,
+          "minimum": 0.072963,
+          "maximum": 0.093675
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 9,
+          "median": 0.052156,
+          "minimum": 0.043921,
+          "maximum": 1.98458
+        },
+        "tokens_per_second": {
+          "samples": 9,
+          "median": 34.029563,
+          "minimum": 32.474827,
+          "maximum": 35.573465
+        },
+        "total_duration_seconds": {
+          "samples": 9,
+          "median": 9.686702,
+          "minimum": 8.918,
+          "maximum": 11.144625
+        },
+        "ttft_seconds": {
+          "samples": 9,
+          "median": 0.187785,
+          "minimum": 0.174114,
+          "maximum": 2.142736
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "narrative_generation",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 3,
+      "accepted": 0,
+      "failed": 0,
+      "source_count": 1,
+      "acceptance_rate": 0.0,
+      "median_wall_seconds": 3.739896,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6374621184,
+      "peak_host_ram_bytes": 84772474880,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "evidence_precision": {
+          "samples": 3,
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "hallucination_rate": {
+          "samples": 3,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "word_count": {
+          "samples": 3,
+          "median": 32.0,
+          "minimum": 32.0,
+          "maximum": 32.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 3,
+          "median": 3.557974,
+          "minimum": 3.544829,
+          "maximum": 4.04045
+        },
+        "load_duration_seconds": {
+          "samples": 3,
+          "median": 0.078172,
+          "minimum": 0.07536,
+          "maximum": 0.078519
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 3,
+          "median": 0.038191,
+          "minimum": 0.035226,
+          "maximum": 2.027039
+        },
+        "tokens_per_second": {
+          "samples": 3,
+          "median": 34.416329,
+          "minimum": 34.289177,
+          "maximum": 36.134589
+        },
+        "total_duration_seconds": {
+          "samples": 3,
+          "median": 3.718016,
+          "minimum": 3.703176,
+          "maximum": 6.191874
+        },
+        "ttft_seconds": {
+          "samples": 3,
+          "median": 0.163994,
+          "minimum": 0.162893,
+          "maximum": 2.156094
+        }
+      },
+      "failure_modes": {
+        "rejected": 3
+      },
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-deadline60-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": false
+    },
+    {
+      "task_family": "structured_json",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 9,
+      "accepted": 9,
+      "failed": 0,
+      "source_count": 3,
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 1.109036,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6366502912,
+      "peak_host_ram_bytes": 85635911680,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "exact_match": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        },
+        "schema_valid": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 9,
+          "median": 0.874981,
+          "minimum": 0.699102,
+          "maximum": 1.136365
+        },
+        "load_duration_seconds": {
+          "samples": 9,
+          "median": 0.148778,
+          "minimum": 0.142787,
+          "maximum": 0.155363
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 9,
+          "median": 0.04358,
+          "minimum": 0.039063,
+          "maximum": 0.277424
+        },
+        "tokens_per_second": {
+          "samples": 9,
+          "median": 35.678811,
+          "minimum": 32.559961,
+          "maximum": 36.733608
+        },
+        "total_duration_seconds": {
+          "samples": 9,
+          "median": 1.096243,
+          "minimum": 0.897647,
+          "maximum": 1.58193
+        },
+        "ttft_seconds": {
+          "samples": 9,
+          "median": 0.213353,
+          "minimum": 0.203729,
+          "maximum": 0.451395
+        }
+      },
+      "failure_modes": {},
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": true
+    },
+    {
+      "task_family": "tool_use",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 9,
+      "accepted": 9,
+      "failed": 0,
+      "source_count": 3,
+      "acceptance_rate": 1.0,
+      "median_wall_seconds": 1.223623,
+      "resource_evidence_complete": true,
+      "peak_vram_bytes": 6371680256,
+      "peak_host_ram_bytes": 85775085568,
+      "resource_limits_met": true,
+      "gold_evidence_complete": true,
+      "quality_metrics": {
+        "tool_call_valid": {
+          "samples": 9,
+          "median": 1.0,
+          "minimum": 1.0,
+          "maximum": 1.0
+        }
+      },
+      "provider_metrics": {
+        "eval_duration_seconds": {
+          "samples": 9,
+          "median": 1.025561,
+          "minimum": 0.844008,
+          "maximum": 1.239717
+        },
+        "load_duration_seconds": {
+          "samples": 9,
+          "median": 0.131084,
+          "minimum": 0.127623,
+          "maximum": 0.146498
+        },
+        "prompt_eval_duration_seconds": {
+          "samples": 9,
+          "median": 0.030408,
+          "minimum": 0.026447,
+          "maximum": 0.205721
+        },
+        "tokens_per_second": {
+          "samples": 9,
+          "median": 35.083557,
+          "minimum": 33.443772,
+          "maximum": 38.05013
+        },
+        "total_duration_seconds": {
+          "samples": 9,
+          "median": 1.21306,
+          "minimum": 1.013654,
+          "maximum": 1.585263
+        }
+      },
+      "failure_modes": {},
+      "context_windows_tested": [
+        4096
+      ],
+      "run_variants": [
+        "tasks-1.2.0-full-ollama-ollama-0.32.5-ctx4096-gpu32-threads4-stream1-thinkingoff"
+      ],
+      "execution_profile_consistent": true,
+      "checkpoint_evidence_complete": true,
+      "qualified": true
+    }
+  ]
+}

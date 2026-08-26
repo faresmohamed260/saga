@@ -31,7 +31,7 @@ class CanonExtractionServiceConfig:
     reasoning_mode: str = "gpt_oss"
     reasoning_model: str = ""
     reasoning_timeout_seconds: int = 60
-    reasoning_max_retries: int = 2
+    reasoning_max_retries: int = 1
 
 
 @dataclass(frozen=True)
@@ -190,6 +190,6 @@ def load_canon_extraction_service_config_from_env() -> CanonExtractionServiceCon
         reasoning_profile_name=str(os.getenv("SAGA_CANON_EXTRACTION_REASONING_PROFILE") or "canon-extraction").strip(),
         reasoning_mode=reasoning_mode,
         reasoning_model=str(os.getenv("SAGA_CANON_EXTRACTION_REASONING_MODEL") or default_model).strip(),
-        reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_TIMEOUT_SECONDS") or "60")),
-        reasoning_max_retries=max(1, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_MAX_RETRIES") or "2")),
+        reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_TIMEOUT_SECONDS") or "180")),
+        reasoning_max_retries=max(1, int(os.getenv("SAGA_CANON_EXTRACTION_REASONING_MAX_RETRIES") or "1")),
     )

@@ -277,7 +277,12 @@ Supported component env vars:
 - `SAGA_SUPABASE_POOLER_TENANT_ID`, `SUPABASE_POOLER_TENANT_ID`, or `POOLER_TENANT_ID`
 - `SAGA_SUPABASE_DB_SSLMODE` or `SUPABASE_DB_SSLMODE`
 
-If no explicit DB user is supplied but a pooler tenant id is present, the runtime uses the session-pooler user form `postgres.<tenant_id>`.
+The self-hosted default is Supavisor's transaction-pooling port `6543`. Production
+deployments that provide an explicit database URL must target the transaction
+endpoint as well; port `5432` is the session endpoint and can exhaust the tenant
+pool when independently composed services create their own SQLAlchemy pools.
+
+If no explicit DB user is supplied but a pooler tenant id is present, the runtime uses the pooler user form `postgres.<tenant_id>`.
 
 ## Storage Provider Resolution
 

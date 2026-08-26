@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.reasoning_runtime.client import ReasoningRuntimeClient
-from packages.reasoning_runtime.client import _mistral_usage, _wav_duration_seconds
+from packages.reasoning_runtime.client import (
+    _enforce_stream_deadline,
+    _mistral_usage,
+    _wav_duration_seconds,
+)
 from packages.reasoning_runtime.factory import create_reasoning_client
 from packages.reasoning_runtime.models import (
     GeneralComputeAccount,
@@ -29,6 +33,326 @@ def test_ollama_cloud_payload_drops_cloud_suffix():
     assert payload["model"] == "gpt-oss:120b"
     assert payload["think"] == "low"
     assert payload["options"] == {"temperature": 0.25, "num_predict": 17}
+
+
+def test_ollama_local_profile_is_explicit_and_cannot_use_cloud_accounts():
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(
+            profiles={
+                "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                    ollama_gpu_layers=32, ollama_threads=8, ollama_thinking=False,
+                )
+            },
+            ollama_accounts=[OllamaAccount(label="cloud", api_key="secret")],
+        ),
+    )
+
+    assert client.provider_name() == "ollama_local"
+    assert client.resolved_model_name() == "qwen2.5:14b"
+    assert client._ollama_transport() == (
+        "http://localhost:11434/api/generate", {}, False,
+    )
+    payload = client._ollama_payload(
+        prompt="probe", model_name=client.resolved_model_name(), direct_cloud=False,
+    )
+    assert payload["options"] == {"temperature": 0.0, "num_predict": 4096, "num_ctx": 8192, "num_gpu": 32, "num_thread": 8}
+    assert payload["think"] is False
+    assert client._rotate_account() is False
+
+
+def test_ollama_local_profile_rejects_non_loopback_transport():
+    with pytest.raises(ValueError, match="loopback-only"):
+        create_reasoning_client(
+            profile_name="local",
+            config=ReasoningRuntimeConfig(
+                profiles={
+                    "local": ReasoningProfile(
+                        name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                    )
+                },
+                ollama_local_url="https://ollama.com/api/generate",
+            ),
+        )
+
+
+def test_lm_studio_local_profile_is_explicit_and_loopback_only():
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local",
+                mode="lm_studio_local",
+                lm_studio_model="qwen/local-model",
+            )
+        }),
+    )
+
+    assert client.provider_name() == "lm_studio_local"
+    assert client.resolved_model_name() == "qwen/local-model"
+    assert client._rotate_account() is False
+
+    with pytest.raises(ValueError, match="loopback-only"):
+        create_reasoning_client(
+            profile_name="local",
+            config=ReasoningRuntimeConfig(
+                profiles={
+                    "local": ReasoningProfile(
+                        name="local",
+                        mode="lm_studio_local",
+                        lm_studio_model="qwen/local-model",
+                    )
+                },
+                lm_studio_chat_url="https://example.com/v1/chat/completions",
+            ),
+        )
+
+
+def test_lm_studio_local_structured_output_uses_native_schema(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "id": "chat-1",
+                "choices": [{"message": {"content": '{"answer":42}'}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4},
+            }
+
+    def post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(requests, "post", post)
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="lm_studio_local",
+                lm_studio_model="qwen/local-model", max_retries=1,
+                lm_studio_reasoning_effort="low",
+            )
+        }),
+    )
+    schema = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "answer",
+            "schema": {
+                "type": "object",
+                "properties": {"answer": {"type": "integer"}},
+                "required": ["answer"],
+            },
+        },
+    }
+
+    result = client.generate_json("Return 42.", response_format=schema, max_tokens=32)
+
+    assert result == {"answer": 42}
+    assert captured["url"] == "http://localhost:1234/v1/chat/completions"
+    assert captured["json"]["response_format"] == schema
+    assert captured["json"]["reasoning_effort"] == "low"
+    assert captured["json"]["stream"] is False
+    assert client.last_request_metadata()["usage"]["output_tokens"] == 4
+
+
+def test_lm_studio_local_tool_use_preserves_portable_tool_contract(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"tool_calls": [{
+                    "type": "function",
+                    "function": {
+                        "name": "fetch_passage",
+                        "arguments": '{"source_id":"book-1","chapter_index":2}',
+                    },
+                }]}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 8},
+            }
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Response())
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="lm_studio_local",
+                lm_studio_model="qwen/local-model", max_retries=1,
+            )
+        }),
+    )
+    tools = [{"type": "function", "function": {
+        "name": "fetch_passage",
+        "parameters": {"type": "object", "properties": {}},
+    }}]
+
+    result = client.generate_json("Fetch it.", tools=tools, max_tokens=32)
+
+    assert result == {"tool_calls": [{
+        "tool": "fetch_passage",
+        "arguments": {"source_id": "book-1", "chapter_index": 2},
+    }]}
+
+
+def test_lm_studio_local_streaming_captures_ttft(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return iter([
+                b'data: {"choices":[{"delta":{"content":"{\\"answer\\":"}}]}',
+                b'data: {"choices":[{"delta":{"content":"42}"}}]}',
+                b'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}',
+                b'data: [DONE]',
+            ])
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Response())
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="lm_studio_local",
+                lm_studio_model="qwen/local-model", max_retries=1,
+                lm_studio_stream_metrics=True,
+            )
+        }),
+    )
+
+    result = client.generate_json("Return 42.", max_tokens=16)
+
+    assert result == {"answer": 42}
+    metrics = client.last_request_metadata()["provider_metrics"]
+    assert metrics["ttft_seconds"] >= 0
+    assert metrics["output_tokens"] == 2
+
+
+def test_local_stream_deadline_closes_the_provider_response(monkeypatch):
+    response = SimpleNamespace(closed=False)
+    response.close = lambda: setattr(response, "closed", True)
+    monkeypatch.setattr(
+        "packages.reasoning_runtime.client.time.perf_counter", lambda: 61.0,
+    )
+
+    with pytest.raises(requests.Timeout, match="exceeded 60 seconds"):
+        _enforce_stream_deadline(
+            response, started=0.0, timeout_seconds=60,
+        )
+
+    assert response.closed is True
+
+
+def test_ollama_local_tool_use_calls_native_chat_endpoint(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "message": {"tool_calls": [{"function": {
+                    "name": "lookup_book",
+                    "arguments": {"book_id": "book-1"},
+                }}]},
+                "prompt_eval_count": 12,
+                "eval_count": 8,
+                "eval_duration": 1_000_000_000,
+            }
+
+    def post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(requests, "post", post)
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+                max_retries=1,
+            )
+        }),
+    )
+    tools = [{"type": "function", "function": {
+        "name": "lookup_book",
+        "description": "Load one book.",
+        "parameters": {
+            "type": "object",
+            "properties": {"book_id": {"type": "string"}},
+            "required": ["book_id"],
+        },
+    }}]
+
+    result = client.generate_json("Load book-1.", tools=tools, max_tokens=64)
+
+    assert result == {"tool_calls": [{"tool": "lookup_book", "arguments": {"book_id": "book-1"}}]}
+    assert captured["url"] == "http://localhost:11434/api/chat"
+    assert captured["json"]["tools"] == tools
+    assert captured["json"]["keep_alive"] == "5m"
+    assert client.last_request_metadata()["tool_mode"] == "tool_calling"
+
+
+def test_ollama_provider_metrics_preserve_native_load_and_decode_timings():
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="qwen2.5:14b",
+            )
+        }),
+    )
+    response = SimpleNamespace(json=lambda: {
+        "total_duration": 2_000_000_000,
+        "load_duration": 500_000_000,
+        "prompt_eval_duration": 250_000_000,
+        "eval_duration": 1_000_000_000,
+        "eval_count": 25,
+    })
+
+    client._capture_ollama_metrics(response)
+
+    assert client._provider_metrics == {
+        "total_duration_seconds": 2.0,
+        "load_duration_seconds": 0.5,
+        "prompt_eval_duration_seconds": 0.25,
+        "eval_duration_seconds": 1.0,
+        "tokens_per_second": 25.0,
+    }
+
+
+def test_ollama_local_streaming_captures_ttft_and_reassembles_response(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self):
+            return iter([
+                b'{"response":"{\\"answer\\":"}',
+                b'{"response":"42}","done":true,"eval_count":2,"eval_duration":1000000000}',
+            ])
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Response())
+    client = create_reasoning_client(
+        profile_name="local",
+        config=ReasoningRuntimeConfig(profiles={
+            "local": ReasoningProfile(
+                name="local", mode="ollama_local", ollama_model="mistral:7b-instruct",
+                ollama_stream_metrics=True,
+            )
+        }),
+    )
+
+    result = client.generate_json("Return the answer.", max_tokens=10)
+
+    assert result == {"answer": 42}
+    assert client.last_request_metadata()["provider_metrics"]["ttft_seconds"] >= 0
 
 
 def test_mistral_native_usage_extraction_is_exact_and_mock_safe():
@@ -193,6 +517,8 @@ def test_database_owned_sdk_provider_keys_override_process_composition_without_l
         profiles={"default": ReasoningProfile(name="default")},
         mistral_api_key="process-mistral-secret",
         gemini_api_key="process-gemini-secret",
+        lm_studio_chat_url="http://127.0.0.1:1234/v1/chat/completions",
+        lm_studio_api_token="local-lm-secret",
     )
 
     resolved = apply_persistence_provider_configs(config, persistence_client=persistence)
@@ -200,6 +526,8 @@ def test_database_owned_sdk_provider_keys_override_process_composition_without_l
 
     assert resolved.mistral_api_key == "db-mistral-secret"
     assert resolved.gemini_api_key == "db-gemini-secret"
+    assert resolved.lm_studio_chat_url == "http://127.0.0.1:1234/v1/chat/completions"
+    assert resolved.lm_studio_api_token == "local-lm-secret"
     assert summary["mistral"]["configured"] is True
     assert summary["gemini"]["configured"] is True
     assert "secret" not in str(summary)

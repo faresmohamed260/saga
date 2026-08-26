@@ -8,6 +8,25 @@ from pydantic import BaseModel, Field
 
 
 VisualTargetType = Literal["character", "location", "creature", "object", "scene"]
+VisualQualityOutcome = Literal["accepted", "rejected", "uncertain"]
+
+
+class VisualDefectEvidence(BaseModel):
+    category: Literal[
+        "anatomy", "character_count", "clothing", "footwear", "identity_consistency",
+        "action_alignment", "composition", "wrong_target", "forbidden_subject", "technical", "other",
+    ]
+    severity: Literal["low", "medium", "high"] = "medium"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = ""
+
+
+class VisualPolicyDecision(BaseModel):
+    outcome: VisualQualityOutcome
+    defects: list[VisualDefectEvidence] = Field(default_factory=list)
+    blocking_defects: list[VisualDefectEvidence] = Field(default_factory=list)
+    review_reasons: list[str] = Field(default_factory=list)
+    retry_reasons: list[str] = Field(default_factory=list)
 
 
 class CharacterVisualBaselineArtifact(BaseModel):
@@ -127,7 +146,7 @@ class VisualQualityDecisionArtifact(BaseModel):
     target_type: VisualTargetType
     target_ref: str
     accepted: bool = False
-    status: Literal["accepted", "retry_required", "rejected"] = "rejected"
+    status: Literal["accepted", "retry_required", "rejected", "uncertain"] = "rejected"
     prompt_alignment_score: float = 0.0
     subject_consistency_score: float = 0.0
     composition_score: float = 0.0

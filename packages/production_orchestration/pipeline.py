@@ -115,8 +115,10 @@ class StageAgent:
                 if current and not current.accepted and previous_attempt >= max(1, request.max_attempts):
                     return {}
                 with usage_scope(
-                    governor=self.usage_governor, release_id=self.release_id, run_id=request.run_id,
+                    governor=self.usage_governor, release_id=self.release_id, project_id=request.project_id, run_id=request.run_id,
                     series_id=request.series_id, stage=self.stage, agent=f"{self.stage}_agent",
+                    request_limits=request.execution_limits.provider_request_limits.get(self.stage),
+                    initial_request_counts=self._persisted_request_counts(request),
                 ):
                     outcome = self.binding.execute(request=request, outcomes=stage_context)
                 outcome = outcome.model_copy(update={
@@ -148,6 +150,20 @@ class StageAgent:
                 output_payload=normalized_outcome_payload(outcome), outcome=outcome, execution_mode="executed",
             )
         return self._persist(state, request, planned, outcomes, outcome)
+
+    def _persisted_request_counts(self, request: OrchestrationRequest) -> dict[str, int]:
+        if not request.execution_limits.provider_request_limits.get(self.stage):
+            return {}
+        rows = self.store.persistence.usage.list(
+            project_id=request.project_id, run_id=request.run_id, limit=100000,
+        )
+        counts: dict[str, int] = {}
+        for row in rows:
+            if row.get("entry_kind") != "charge" or row.get("stage") != self.stage:
+                continue
+            provider = str(row.get("provider") or "unknown").strip().lower()
+            counts[provider] = counts.get(provider, 0) + max(0, int(float(row.get("request_count") or 0)))
+        return counts
 
     def _spec(self, request: OrchestrationRequest, outcomes: dict[str, StageOutcomeArtifact]) -> StageLineageSpec:
         builder = getattr(self.binding, "lineage_spec", None)

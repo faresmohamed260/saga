@@ -27,6 +27,7 @@ class NarrativeSupportServiceConfig:
     supabase_service_role_key: str = ""
     reasoning_profile_name: str = "narrative-support"
     reasoning_mode: str = "mistral"
+    reasoning_model: str = ""
     reasoning_timeout_seconds: int = 120
     reasoning_max_retries: int = 4
     reasoning_base_delay_seconds: float = 1.0
@@ -68,6 +69,7 @@ class NarrativeSupportService:
         reasoning_profile = ReasoningProfile(
             name=config.reasoning_profile_name,
             mode=config.reasoning_mode,
+            model_override=config.reasoning_model,
             timeout_seconds=config.reasoning_timeout_seconds,
             max_retries=config.reasoning_max_retries,
             base_delay_seconds=config.reasoning_base_delay_seconds,
@@ -172,6 +174,7 @@ def load_narrative_support_service_config_from_env() -> NarrativeSupportServiceC
         supabase_service_role_key=str(os.getenv("SAGA_SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip(),
         reasoning_profile_name=str(os.getenv("SAGA_NARRATIVE_SUPPORT_REASONING_PROFILE") or "narrative-support").strip(),
         reasoning_mode=str(os.getenv("SAGA_NARRATIVE_SUPPORT_REASONING_MODE") or "mistral").strip() or "mistral",
+        reasoning_model=str(os.getenv("SAGA_NARRATIVE_SUPPORT_REASONING_MODEL") or "").strip(),
         reasoning_timeout_seconds=max(30, int(os.getenv("SAGA_NARRATIVE_SUPPORT_REASONING_TIMEOUT_SECONDS") or "120")),
         reasoning_max_retries=max(1, int(os.getenv("SAGA_NARRATIVE_SUPPORT_REASONING_MAX_RETRIES") or "4")),
         reasoning_base_delay_seconds=max(0.0, float(os.getenv("SAGA_NARRATIVE_SUPPORT_REASONING_BASE_DELAY_SECONDS") or "1")),

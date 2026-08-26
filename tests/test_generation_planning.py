@@ -81,6 +81,15 @@ class FailingGenerationPlanningReasoningRuntime(StubGenerationPlanningReasoningR
         return {"error": "max_retries_exceeded"}
 
 
+class DuplicateOutlineGenerationPlanningReasoningRuntime(StubGenerationPlanningReasoningRuntime):
+    def generate_json(self, *args, **kwargs):
+        payload = super().generate_json(*args, **kwargs)
+        payload["chapter_outline"].append(
+            {**payload["chapter_outline"][0], "title": "Duplicate Chapter One"}
+        )
+        return payload
+
+
 def _persistence(tmp_path: Path):
     profile = PersistenceProfile(
         name="generation-planning-test",
@@ -303,9 +312,50 @@ def test_generation_planning_fallback_remains_usable(tmp_path: Path):
     assert has_live_planning_provider_proof(result.blueprint) is False
 
 
+def test_generation_planning_normalizes_duplicate_chapters_to_requested_structure(tmp_path: Path):
+    client = _persistence(tmp_path)
+    _seed_upstream_outputs(client)
+    result = GenerationPlanningRuntime(
+        persistence=client,
+        reasoning_runtime=DuplicateOutlineGenerationPlanningReasoningRuntime(),
+        allow_in_memory_checkpointer=True,
+    ).invoke(series_id="series-1", premise="Plan one grounded chapter.", desired_chapter_count=1)
+
+    assert [item.chapter_index for item in result.blueprint.chapter_outline] == [1]
+    assert [(item.chapter_index, item.scene_index) for item in result.blueprint.scene_plan] == [(1, 1), (1, 2)]
+    metrics = evaluate_generation_blueprint(
+        result,
+        valid_canon_refs={"event-meeting", "timeline-meeting"},
+        valid_character_refs={"char-fares", "char-kareem"},
+        valid_entity_refs={"entity-silver-notebook"},
+    )
+    assert metrics.details["structure_valid"] is True
+    assert metrics.pass_quality_gate is True
+
+    result.blueprint.chapter_outline.append(result.blueprint.chapter_outline[0].model_copy())
+    malformed_metrics = evaluate_generation_blueprint(
+        result,
+        valid_canon_refs={"event-meeting", "timeline-meeting"},
+        valid_character_refs={"char-fares", "char-kareem"},
+        valid_entity_refs={"entity-silver-notebook"},
+    )
+    assert malformed_metrics.details["structure_valid"] is False
+    assert malformed_metrics.pass_quality_gate is False
+
+
 def test_generation_planning_service_uses_bounded_rate_limit_retries_by_default(monkeypatch):
     monkeypatch.delenv("SAGA_GENERATION_PLANNING_REASONING_MAX_RETRIES", raising=False)
 
     config = load_generation_planning_service_config_from_env()
 
     assert config.reasoning_max_retries == 3
+
+
+def test_generation_planning_local_model_override_is_configurable(monkeypatch):
+    monkeypatch.setenv("SAGA_GENERATION_PLANNING_REASONING_MODE", "ollama_local")
+    monkeypatch.setenv("SAGA_GENERATION_PLANNING_REASONING_MODEL", "mistral:7b-instruct")
+
+    config = load_generation_planning_service_config_from_env()
+
+    assert config.reasoning_mode == "ollama_local"
+    assert config.reasoning_model == "mistral:7b-instruct"

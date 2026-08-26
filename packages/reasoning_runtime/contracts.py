@@ -21,6 +21,7 @@ class ReasoningRequestMetadata(RuntimeRequestMetadata):
     fallback_used: bool = False
     fallback_from_mode: str = ""
     fallback_to_mode: str = ""
+    provider_metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class ReasoningTextResult(BaseModel):

@@ -19,6 +19,17 @@ from .pipeline import (
     NarrativeGroundingAgent,
     SceneSegmentationAgent,
     build_analysis_foundation_graph,
+    parse_source_document,
+)
+from .addressee_evaluation import (
+    AddresseeEvaluation,
+    AddresseeGoldCase,
+    evaluate_addressees,
+)
+from .narrative_grounding_evaluation import (
+    NarrativeGroundingEvaluation,
+    NarrativeGroundingGoldCase,
+    evaluate_narrative_grounding,
 )
 from .service import (
     AnalysisFoundationRunRequest,
@@ -28,6 +39,8 @@ from .service import (
 )
 
 __all__ = [
+    "AddresseeEvaluation",
+    "AddresseeGoldCase",
     "AnalysisFoundationResult",
     "AnalysisFoundationRuntime",
     "AnalysisFoundationRunRequest",
@@ -41,11 +54,16 @@ __all__ = [
     "IngestionAgent",
     "NarrativeEvidenceSpan",
     "NarrativeGroundingAgent",
+    "NarrativeGroundingEvaluation",
+    "NarrativeGroundingGoldCase",
     "NarratorReferenceData",
     "SceneArtifact",
     "SceneNarrativeGrounding",
     "SceneSegmentationAgent",
     "SourceDocumentArtifact",
     "build_analysis_foundation_graph",
+    "parse_source_document",
+    "evaluate_addressees",
+    "evaluate_narrative_grounding",
     "load_analysis_foundation_service_config_from_env",
 ]

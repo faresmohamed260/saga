@@ -39,6 +39,7 @@ from packages.visual_generation.contracts import (
 )
 from packages.visual_generation.prompt_policy import compile_prompt
 from packages.visual_generation.quality import evaluate_image_technical_quality
+from packages.visual_generation.policy import decide_visual_quality
 from packages.visual_generation.store import VisualGenerationStore
 
 
@@ -409,20 +410,25 @@ class VisualRenderAgent:
         prompts = [VisualPromptArtifact.model_validate(item) for item in state.get("prompts") or []]
         renders = [VisualRenderArtifact.model_validate(item) for item in state.get("renders") or []]
         audits = [VisualQualityDecisionArtifact.model_validate(item) for item in state.get("audits") or []]
-        accepted = {item.prompt_id for item in audits if item.accepted}
+        latest_audits = _latest_audits(audits)
         max_attempts = int(state.get("max_attempts") or 2)
         rendered_now = 0
         for prompt in prompts:
             attempts = len([item for item in renders if item.prompt_id == prompt.prompt_id])
-            if prompt.prompt_id in accepted or attempts >= max_attempts:
+            latest = latest_audits.get(prompt.prompt_id)
+            if (latest is not None and latest.status not in {"retry_required", "rejected"}) or attempts >= max_attempts:
                 continue
             attempt = attempts + 1
             seed = int(self.seed_factory())
             render_id = _stable_id("visual-render", prompt.prompt_id, attempt, seed)
             call_started = time.perf_counter()
             try:
+                retry_reasons = [str(item) for item in list((latest.metadata if latest else {}).get("retry_reasons") or []) if str(item).strip()]
+                effective_prompt = prompt.positive_prompt
+                if retry_reasons:
+                    effective_prompt += "\nRetry corrections: " + " ".join(retry_reasons)
                 raw = self.image_provider.render(
-                    prompt=prompt.positive_prompt,
+                    prompt=effective_prompt,
                     negative_prompt=prompt.negative_prompt,
                     seed=seed,
                     steps=prompt.steps,
@@ -446,7 +452,7 @@ class VisualRenderAgent:
                     byte_length=len(image_bytes), image_sha256=hashlib.sha256(image_bytes).hexdigest() if image_bytes else "",
                     provider_name="modal_comfyui", provider_account=str(raw.get("token_name") or response.get("token_name") or ""),
                     elapsed_seconds=round(time.perf_counter() - call_started, 4), technical_metrics=technical,
-                    metadata={"workflow_mode": prompt.workflow_mode, "workflow_version": prompt.workflow_version, "source_scene_id": prompt.source_scene_id, "request_metrics": response.get("request_metrics") or {}},
+                    metadata={"workflow_mode": prompt.workflow_mode, "workflow_version": prompt.workflow_version, "source_scene_id": prompt.source_scene_id, "request_metrics": response.get("request_metrics") or {}, "retry_reasons": retry_reasons},
                 )
                 if image_bytes:
                     stored = self.store.store_image(render=render, image_bytes=image_bytes)
@@ -512,17 +518,20 @@ class VisualAuditAgent:
             hard_violations = _blocking_hard_violations(reported_hard_violations, scores=scores)
             issues.extend(reported_hard_violations)
             blocking_issues = [item for item in issues if item not in reported_hard_violations or item in hard_violations]
-            accepted = (
-                technical_passed and not any(item.startswith("semantic_evaluator_error") for item in issues)
-                and not hard_violations
-                and not _issues_contain_hard_violation(blocking_issues)
-                and scores["prompt_alignment_score"] >= 0.65
-                and scores["subject_consistency_score"] >= 0.60
-                and scores["composition_score"] >= 0.55
-                and scores["photorealism_score"] >= 0.55
-                and scores["defect_score"] <= 0.35
+            policy = decide_visual_quality(
+                technical_passed=technical_passed,
+                scores=scores,
+                issues=blocking_issues,
+                hard_violations=hard_violations,
+                defect_observations=list(semantic.get("defect_observations") or []),
+                evaluator_error=any(item.startswith("semantic_evaluator_error") for item in issues),
             )
-            status = "accepted" if accepted else ("retry_required" if render.attempt < max_attempts else "rejected")
+            accepted = policy.outcome == "accepted"
+            status = (
+                "accepted" if accepted else
+                "uncertain" if policy.outcome == "uncertain" else
+                "retry_required" if render.attempt < max_attempts else "rejected"
+            )
             audits.append(
                 VisualQualityDecisionArtifact(
                     audit_id=_stable_id("visual-audit", render.render_id), series_id=render.series_id, story_id=render.story_id,
@@ -536,6 +545,10 @@ class VisualAuditAgent:
                         "character_consistency_audit": _character_consistency_audit_lineage(semantic),
                         "reported_hard_violation_count": len(reported_hard_violations),
                         "blocking_hard_violation_count": len(hard_violations),
+                        "policy_outcome": policy.outcome,
+                        "defect_observations": [item.model_dump() for item in policy.defects],
+                        "review_reasons": policy.review_reasons,
+                        "retry_reasons": policy.retry_reasons,
                     },
                 )
             )
@@ -717,7 +730,7 @@ def _route_after_audit(state: VisualGenerationState) -> str:
     max_attempts = int(state.get("max_attempts") or 2)
     for prompt in prompts:
         attempts = len([item for item in renders if item.prompt_id == prompt.prompt_id])
-        if (not latest.get(prompt.prompt_id) or not latest[prompt.prompt_id].accepted) and attempts < max_attempts:
+        if (not latest.get(prompt.prompt_id) or latest[prompt.prompt_id].status in {"retry_required", "rejected"}) and attempts < max_attempts:
             return "retry"
     return "decide"
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from packages.analysis_foundation import AnalysisFoundationRuntime
 from packages.canon_extraction import CanonExtractionRuntime
@@ -14,7 +15,11 @@ from packages.character_world_modeling.pipeline import (
     WorldStateSynthesis,
     _build_character_evidence,
     _build_character_profile_prompt,
+    _build_stable_state_prompt,
     _character_event_role,
+    _compact_character_prompt_evidence,
+    _grounded_character_ids,
+    _prompt_batched,
     _profile_artifact_from_evidence,
     _world_state_artifact_from_evidence,
     _sanitize_notable_relationships,
@@ -22,6 +27,7 @@ from packages.character_world_modeling.pipeline import (
     _should_retry_split_synthesis_error,
     _split_evidence_batch_for_retry,
 )
+from packages.character_world_modeling.service import load_character_world_modeling_service_config_from_env
 from packages.persistence_runtime import PersistenceProfile, PersistenceRuntimeConfig, create_persistence_client
 from packages.analysis_foundation.contracts import CanonicalCharacter, SceneArtifact
 
@@ -71,10 +77,36 @@ class StubCanonReasoningRuntime:
         self._last = {}
 
     def generate_json(self, prompt: str, strict: bool = False, validator=None, max_tokens: int = 4096, response_format=None, tools=None, tool_choice=None, cancellation_checker=None):
-        del strict, validator, max_tokens, response_format, tools, tool_choice, cancellation_checker
+        del strict, validator, max_tokens, tools, tool_choice, cancellation_checker
+        schema_name = str(((response_format or {}).get("json_schema") or {}).get("name") or "")
         scene_id = _first_scene_id(prompt)
         lowered = prompt.lower()
-        if "key 'events'" in lowered:
+        if schema_name == "canon_chapter":
+            payload = {
+                "events": [{
+                    "scene_id": scene_id,
+                    "title": "Fares meets Kareem",
+                    "summary": "Fares greets Kareem and they discuss a silver notebook.",
+                    "event_type": "meeting",
+                    "participant_names": ["Fares", "Kareem"],
+                    "entity_names": ["silver notebook"],
+                }],
+                "entities": [{
+                    "canonical_name": "silver notebook",
+                    "entity_type": "artifact",
+                    "description": "A silver notebook used during the discussion.",
+                    "aliases": ["notebook"],
+                    "scene_ids": [scene_id],
+                }],
+                "relationships": [{
+                    "source_name": "Fares",
+                    "target_name": "Kareem",
+                    "relationship_type": "friendship",
+                    "description": "They collaborate calmly on the same task.",
+                    "scene_ids": [scene_id],
+                }],
+            }
+        elif "key 'events'" in lowered:
             payload = {
                 "events": [
                     {
@@ -787,3 +819,77 @@ def test_character_world_modeling_split_retry_helpers_handle_empty_responses():
     assert _should_retry_split_synthesis_error(RuntimeError("Character profile synthesis failed: empty_response"))
     assert _should_retry_split_synthesis_error(RuntimeError("Character profile synthesis failed: max_retries_exceeded"))
     assert not _should_retry_split_synthesis_error(RuntimeError("Character profile synthesis failed: auth_failed"))
+
+
+def test_character_prompt_evidence_is_bounded_without_losing_identity():
+    evidence = {
+        "character_id": "char-evangeline",
+        "canonical_name": "Evangeline Fox",
+        "aliases": [f"alias-{index}-" + "x" * 300 for index in range(30)],
+        "scene_ids": [f"scene-{index}" for index in range(100)],
+        "event_evidence": [
+            {
+                "event_id": f"event-{index}",
+                "summary": "grounded evidence " * 200,
+                "participant_refs": [f"char-{value}" for value in range(40)],
+            }
+            for index in range(20)
+        ],
+        "contextual_event_evidence": [],
+        "relationship_evidence": [],
+        "timeline_evidence": [],
+        "scene_evidence": [],
+    }
+
+    compacted = _compact_character_prompt_evidence(evidence)
+
+    assert compacted["character_id"] == "char-evangeline"
+    assert compacted["canonical_name"] == "Evangeline Fox"
+    assert len(compacted["aliases"]) == 12
+    assert len(compacted["scene_ids"]) == 8
+    assert len(compacted["event_evidence"]) == 5
+    assert len(compacted["event_evidence"][0]["summary"]) <= 360
+    assert len(compacted["event_evidence"][0]["participant_refs"]) == 8
+
+
+def test_character_prompt_batches_respect_serialized_budget_and_order():
+    values = [
+        _compact_character_prompt_evidence(
+            {
+                "character_id": f"char-{index}",
+                "canonical_name": f"Character {index}",
+                "event_evidence": [{"summary": "evidence " * 100}],
+            }
+        )
+        for index in range(8)
+    ]
+
+    batches = _prompt_batched(
+        values,
+        max_rows=6,
+        max_chars=4_000,
+        prompt_builder=_build_character_profile_prompt,
+    )
+
+    assert [row["character_id"] for batch in batches for row in batch] == [
+        f"char-{index}" for index in range(8)
+    ]
+    assert all(len(_build_character_profile_prompt(batch=batch)) <= 4_000 for batch in batches)
+    assert all(len(_build_stable_state_prompt(batch=batch)) > 0 for batch in batches)
+
+
+def test_character_modeling_admits_only_canon_referenced_identities():
+    assert _grounded_character_ids(
+        events=[SimpleNamespace(participant_refs=["char-a", "entity-place"])],
+        relationships=[SimpleNamespace(source_ref="char-b", target_ref="entity-place")],
+    ) == {"char-a", "char-b"}
+
+
+def test_character_world_local_model_override_is_configurable(monkeypatch):
+    monkeypatch.setenv("SAGA_CHARACTER_WORLD_MODELING_REASONING_MODE", "ollama_local")
+    monkeypatch.setenv("SAGA_CHARACTER_WORLD_MODELING_REASONING_MODEL", "mistral:7b-instruct")
+
+    config = load_character_world_modeling_service_config_from_env()
+
+    assert config.reasoning_mode == "ollama_local"
+    assert config.reasoning_model == "mistral:7b-instruct"

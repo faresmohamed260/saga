@@ -79,6 +79,10 @@ class SceneNarrativeGrounding(BaseModel):
     addressee_names: list[str] = Field(default_factory=list)
     first_person_count: int = 0
     second_person_count: int = 0
+    dialogue_first_person_count: int = 0
+    dialogue_second_person_count: int = 0
+    raw_first_person_count: int = 0
+    raw_second_person_count: int = 0
     evidence_spans: list[NarrativeEvidenceSpan] = Field(default_factory=list)
     diagnostics: list[str] = Field(default_factory=list)
 

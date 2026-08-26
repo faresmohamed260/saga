@@ -37,7 +37,9 @@ class StubNarrativeReasoningRuntime:
                 "still mattered, not because it trapped them, but because it gave their next choice a shape. "
                 "Fares opened the notebook and named the risk aloud. Kareem answered carefully, keeping their "
                 "collaboration steady while the object between them became a promise to continue without breaking "
-                "what they already knew."
+                "what they already knew. Outside, footsteps crossed the upper landing, but neither looked away. "
+                "They agreed to read the next page together, accepting that whatever waited there would demand "
+                "honesty from both of them."
             ),
         }
 
@@ -52,12 +54,28 @@ class FailingNarrativeReasoningRuntime(StubNarrativeReasoningRuntime):
         return {"error": "max_retries_exceeded"}
 
 
+class RepairingNarrativeReasoningRuntime(StubNarrativeReasoningRuntime):
+    def generate_json(self, *args, **kwargs):
+        self.include_sparse = self.calls == 0
+        return super().generate_json(*args, **kwargs)
+
+
 def test_narrative_service_uses_bounded_rate_limit_retries_by_default(monkeypatch):
     monkeypatch.delenv("SAGA_NARRATIVE_GENERATION_REASONING_MAX_RETRIES", raising=False)
 
     config = load_narrative_generation_service_config_from_env()
 
     assert config.reasoning_max_retries == 3
+
+
+def test_narrative_local_model_override_is_configurable(monkeypatch):
+    monkeypatch.setenv("SAGA_NARRATIVE_GENERATION_REASONING_MODE", "ollama_local")
+    monkeypatch.setenv("SAGA_NARRATIVE_GENERATION_REASONING_MODEL", "mistral:7b-instruct")
+
+    config = load_narrative_generation_service_config_from_env()
+
+    assert config.reasoning_mode == "ollama_local"
+    assert config.reasoning_model == "mistral:7b-instruct"
 
 
 def _persistence(tmp_path: Path):
@@ -165,7 +183,7 @@ def test_narrative_generation_carries_role_identity_context_between_scenes(tmp_p
     assert "Preserve role identity and character identity" in reasoning.prompts[1]
 
 
-def test_narrative_generation_repairs_sparse_provider_output(tmp_path: Path):
+def test_narrative_generation_rejects_sparse_provider_output_without_fake_repair(tmp_path: Path):
     client = _persistence(tmp_path)
     blueprint = _seed_blueprint(client)
     result = NarrativeGenerationRuntime(
@@ -174,8 +192,27 @@ def test_narrative_generation_repairs_sparse_provider_output(tmp_path: Path):
         allow_in_memory_checkpointer=True,
     ).invoke(series_id="series-1", blueprint_id=blueprint.blueprint_id, story_id="story-1")
 
-    assert all(len(scene.prose.split()) >= 80 for scene in result.scene_prose)
-    assert all(check.passed for check in result.story.continuity_checks)
+    assert all(scene.prose == "Too short." for scene in result.scene_prose)
+    assert all(
+        dict(scene.metadata.get("request_metadata") or {}).get("error_code") == "scene_prose_quality_failed"
+        for scene in result.scene_prose
+    )
+    assert evaluate_narrative_generation(result, blueprint=blueprint).pass_quality_gate is False
+
+
+def test_narrative_generation_retries_sparse_scene_once_with_quality_provenance(tmp_path: Path):
+    client = _persistence(tmp_path)
+    blueprint = _seed_blueprint(client)
+    runtime = RepairingNarrativeReasoningRuntime()
+    result = NarrativeGenerationRuntime(
+        persistence=client,
+        reasoning_runtime=runtime,
+        allow_in_memory_checkpointer=True,
+    ).invoke(series_id="series-1", blueprint_id=blueprint.blueprint_id, story_id="story-retry")
+
+    assert evaluate_narrative_generation(result, blueprint=blueprint).pass_quality_gate is True
+    assert result.scene_prose[0].metadata["request_metadata"]["quality_retry_used"] is True
+    assert result.scene_prose[1].metadata["request_metadata"].get("quality_retry_used") is not True
 
 
 def test_narrative_generation_fallback_remains_usable(tmp_path: Path):

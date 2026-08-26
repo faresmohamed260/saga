@@ -221,6 +221,7 @@ class UsageLedgerRow(Base):
     __tablename__ = "usage_ledger"
     __table_args__ = (
         Index("ix_usage_ledger_run", "run_id", "timestamp_ms"),
+        Index("ix_usage_ledger_project", "project_id", "timestamp_ms"),
         Index("ix_usage_ledger_provider", "provider", "account_alias", "timestamp_ms"),
         Index("ix_usage_ledger_reservation", "reservation_id", "entry_kind"),
     )
@@ -231,6 +232,7 @@ class UsageLedgerRow(Base):
     timestamp_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     expires_at_ms: Mapped[int] = mapped_column(BigInteger, default=0)
     release_id: Mapped[str] = mapped_column(String(160), default="")
+    project_id: Mapped[str] = mapped_column(String(160), default="")
     run_id: Mapped[str] = mapped_column(String(160), default="")
     series_id: Mapped[str] = mapped_column(String(120), default="")
     stage: Mapped[str] = mapped_column(String(120), default="")

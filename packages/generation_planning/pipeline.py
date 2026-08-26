@@ -534,13 +534,18 @@ def _repair_blueprint_completeness(
     valid_character_refs: set[str],
     valid_entity_refs: set[str],
 ) -> BlueprintSynthesisPayload:
-    chapters = list(payload.chapter_outline or [])
     chapter_count = max(1, int(intent.desired_chapter_count or 1))
+    chapters_by_index: dict[int, ChapterOutlineItem] = {}
+    for chapter in list(payload.chapter_outline or []):
+        if 1 <= chapter.chapter_index <= chapter_count and chapter.chapter_index not in chapters_by_index:
+            chapters_by_index[chapter.chapter_index] = chapter
     base_canon = _priority_refs(grounding.canon_event_ids + grounding.timeline_ids, valid_canon_refs, 6)
     base_characters = _priority_refs(grounding.required_character_ids, valid_character_refs, 6)
     base_entities = _priority_refs(grounding.required_entity_ids, valid_entity_refs, 4)
-    for index in range(len(chapters) + 1, chapter_count + 1):
-        chapters.append(
+    for index in range(1, chapter_count + 1):
+        if index in chapters_by_index:
+            continue
+        chapters_by_index[index] = (
             ChapterOutlineItem(
                 chapter_index=index,
                 title=f"Chapter {index}",
@@ -550,13 +555,18 @@ def _repair_blueprint_completeness(
                 entity_refs=base_entities[:2],
             )
         )
-    repaired_scenes = list(payload.scene_plan or [])
-    existing_scene_keys = {(item.chapter_index, item.scene_index) for item in repaired_scenes}
+    chapters = [chapters_by_index[index] for index in range(1, chapter_count + 1)]
+    repaired_scene_by_key: dict[tuple[int, int], ScenePlanItem] = {}
+    for scene in list(payload.scene_plan or []):
+        key = (scene.chapter_index, scene.scene_index)
+        if 1 <= scene.chapter_index <= chapter_count and scene.scene_index in (1, 2) and key not in repaired_scene_by_key:
+            repaired_scene_by_key[key] = scene
     for chapter in chapters:
         for scene_index in (1, 2):
-            if (chapter.chapter_index, scene_index) in existing_scene_keys:
+            key = (chapter.chapter_index, scene_index)
+            if key in repaired_scene_by_key:
                 continue
-            repaired_scenes.append(
+            repaired_scene_by_key[key] = (
                 ScenePlanItem(
                     scene_id=f"planned-scene-{chapter.chapter_index}-{scene_index}",
                     chapter_index=chapter.chapter_index,
@@ -570,6 +580,7 @@ def _repair_blueprint_completeness(
                     audio_requirements=["Track speaker/narrator tone, emotional beat, and pacing for audiobook generation."],
                 )
             )
+    repaired_scenes = list(repaired_scene_by_key.values())
     for scene in repaired_scenes:
         if not scene.visual_requirements:
             scene.visual_requirements = ["Identify characters, setting, mood, and key non-character entities for image generation."]

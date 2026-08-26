@@ -191,6 +191,7 @@ def runtime_provider_statuses(refresh: int = Query(0, ge=0, le=1)):
 
 @app.get("/runtime/usage/summary")
 def runtime_usage_summary(
+    project_id: str = Query("", max_length=160),
     run_id: str = Query("", max_length=160),
     provider: str = Query("", max_length=120),
     account_alias: str = Query("", max_length=160),
@@ -200,19 +201,22 @@ def runtime_usage_summary(
     runtime = UsageGovernanceRuntime(store=client.usage)
     return {
         "summary": runtime.summary(
-            run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+            project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+        ),
+        "by_project": runtime.breakdown(
+            group_by="project_id", project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
         ),
         "by_provider": runtime.breakdown(
-            group_by="provider", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+            group_by="provider", project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
         ),
         "by_account": runtime.breakdown(
-            group_by="account_alias", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+            group_by="account_alias", project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
         ),
         "by_model": runtime.breakdown(
-            group_by="model", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+            group_by="model", project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
         ),
         "by_stage": runtime.breakdown(
-            group_by="stage", run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
+            group_by="stage", project_id=project_id, run_id=run_id, provider=provider, account_alias=account_alias, since_ms=since_ms,
         ),
         "policies": client.usage.list_policies(enabled=True),
     }

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from urllib.parse import quote_plus
 
+from sqlalchemy.engine import make_url
+
 
 def build_database_url_from_env() -> str:
     def _env(*names: str, default: str = "") -> str:
@@ -19,7 +21,9 @@ def build_database_url_from_env() -> str:
         return explicit_url
 
     host = _env("SAGA_SUPABASE_DB_HOST", "SUPABASE_DB_HOST", default="127.0.0.1")
-    port = _env("SAGA_SUPABASE_DB_PORT", "SUPABASE_DB_PORT", default="5432")
+    # Supavisor exposes transaction pooling on 6543. The session endpoint on
+    # 5432 pins one server connection per independently composed runtime pool.
+    port = _env("SAGA_SUPABASE_DB_PORT", "SUPABASE_DB_PORT", default="6543")
     database = _env("SAGA_SUPABASE_DB_NAME", "SUPABASE_DB_NAME", default="postgres")
     password = _env("SAGA_SUPABASE_DB_PASSWORD", "SUPABASE_DB_PASSWORD", "POSTGRES_PASSWORD")
     sslmode = _env("SAGA_SUPABASE_DB_SSLMODE", "SUPABASE_DB_SSLMODE", default="disable")
@@ -38,3 +42,21 @@ def build_database_url_from_env() -> str:
         "postgresql+psycopg://"
         f"{quote_plus(username)}:{quote_plus(password)}@{host}:{port}/{database}?sslmode={sslmode}"
     )
+
+
+def build_admin_database_url_from_env() -> str:
+    """Resolve a direct Postgres URL for migrations and backup operations."""
+    database_url = str(os.getenv("SAGA_ADMIN_DB_URL") or "").strip()
+    if not database_url:
+        database_url = build_database_url_from_env()
+    if not database_url:
+        return ""
+
+    parsed = make_url(database_url)
+    host = str(parsed.host or "").lower()
+    if "pooler" in host or parsed.port in {5433, 6543}:
+        raise RuntimeError(
+            "Database administration requires a direct Postgres connection in "
+            "SAGA_ADMIN_DB_URL; pooled endpoints are not supported."
+        )
+    return database_url

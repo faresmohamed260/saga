@@ -24,6 +24,8 @@ class OrchestrationStore:
             persisted = OrchestrationRequest.model_validate(payload.get("request") or {})
             if persisted.series_id != request.series_id:
                 raise ValueError(f"Run '{request.run_id}' belongs to series '{persisted.series_id}'.")
+            if persisted.project_id != request.project_id:
+                raise ValueError(f"Run '{request.run_id}' belongs to project '{persisted.project_id}'.")
             for field in ("story_id", "blueprint_id", "audiobook_run_id"):
                 previous = str(getattr(persisted, field) or "")
                 current_value = str(getattr(request, field) or "")

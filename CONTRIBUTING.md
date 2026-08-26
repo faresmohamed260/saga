@@ -1,5 +1,18 @@
 # Contributing
 
+## Bounded execution
+
+Development tasks should produce reviewable evidence early instead of accumulating an open-ended research scope.
+
+- Give each task one primary outcome and define its acceptance check before implementation.
+- Produce the first inspectable result within 15 minutes. If that is impossible, split the task before continuing.
+- Bound external commands and provider calls to five minutes or less, with additional cleanup margin around inner deadlines.
+- Retry a failed operation at most once, and only after identifying a concrete cause and changing the attempt.
+- Stop and re-scope after two failed approaches or 30 minutes without new evidence.
+- Keep optional comparisons, unrelated cleanup, downloads, and achievement/streak work outside the critical path.
+- Commit completed evidence or behavior, not download percentages or progress-only milestones.
+- A failed qualification is a valid result. Record the decision and move on instead of forcing every candidate to succeed.
+
 ## Dashboard Pro workflow
 
 Use GitHub issues and pull requests for all `apps/dashboard_pro` work.

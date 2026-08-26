@@ -1,0 +1,53 @@
+{
+  "version": "1.0.0",
+  "task_suite_version": "1.2.0",
+  "corpus_version": "1.0.0",
+  "decision": "not_ready",
+  "policy": {
+    "allow_unqualified_fallback": false,
+    "local_providers_only": true,
+    "minimum_acceptance_rate": 1.0,
+    "minimum_trials": 3,
+    "minimum_sources": 3,
+    "max_peak_vram_gib": 10.0,
+    "max_peak_host_ram_gib": 112.0
+  },
+  "deployment": {
+    "context_window_tokens": 4096,
+    "request_timeout_seconds": 90,
+    "max_provider_attempts": 1,
+    "max_concurrency": 1,
+    "queue_capacity": 8,
+    "queue_wait_seconds": 30.0,
+    "idle_keep_alive": "5m"
+  },
+  "routes": {
+    "structured_json": {
+      "status": "qualified",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 9,
+      "sources": 3,
+      "acceptance_rate": 1.0,
+      "median_warm_wall_seconds": 1.109036,
+      "warm_wall_slo_seconds": 2.0
+    },
+    "tool_use": {
+      "status": "qualified",
+      "provider": "ollama_local",
+      "model": "mistral:7b-instruct",
+      "trials": 9,
+      "sources": 3,
+      "acceptance_rate": 1.0,
+      "median_warm_wall_seconds": 1.223623,
+      "warm_wall_slo_seconds": 2.0
+    },
+    "canon_entities": {"status": "unqualified", "model": null},
+    "canon_events": {"status": "unqualified", "model": null},
+    "canon_relationships": {"status": "unqualified", "model": null},
+    "character_world_modeling": {"status": "unqualified", "model": null},
+    "generation_planning": {"status": "unqualified", "model": null},
+    "narrative_generation": {"status": "unqualified", "model": null},
+    "continuity_grounding": {"status": "unqualified", "model": null}
+  }
+}

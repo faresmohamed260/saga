@@ -37,8 +37,16 @@ class IdentityQualityDiagnostic(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class IdentityMergeEvidence(BaseModel):
+    source_cluster_ids: list[int] = Field(default_factory=list)
+    source_display_names: list[str] = Field(default_factory=list)
+    canonical_display_name: str = ""
+    signals: list[str] = Field(default_factory=list)
+
+
 class ReviewedIdentityCluster(BaseModel):
     cluster: IdentityCluster
+    source_cluster_ids: list[int] = Field(default_factory=list)
     keep_cluster: bool = True
     accepted_aliases: list[str] = Field(default_factory=list)
     rejected_aliases: list[str] = Field(default_factory=list)
@@ -53,6 +61,8 @@ class IdentityGroundingReviewResult(BaseModel):
     dropped_cluster_count: int = 0
     accepted_alias_count: int = 0
     rejected_alias_count: int = 0
+    merge_count: int = 0
+    merge_evidence: list[IdentityMergeEvidence] = Field(default_factory=list)
 
 
 class IdentityRuntimeResult(BaseModel):

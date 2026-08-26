@@ -44,6 +44,10 @@ Technical QA rejects corrupt data, wrong dimensions, undersized payloads, black 
 
 Explicit negative-prompt or target violations override contradictory numeric scores. Failed semantic providers fail closed. Accepted renders are preserved while only rejected targets are eligible for retry.
 
+Quality decisions are centralized in `visual_generation.policy` and return `accepted`, `rejected`, or `uncertain`. Structured defect evidence records category, severity, confidence, and visible evidence for anatomy, cast count, clothing, footwear, identity consistency, action alignment, composition, wrong target, and forbidden subjects. High-confidence defects reject; medium-confidence defects become uncertain and require review instead of being silently accepted or automatically retried. Rejected retries append only category-specific corrective instructions to the original prompt.
+
+`visual_generation.evaluation` provides portable precision, recall, F1, false-accept rate, false-reject rate, exact outcome accuracy, and per-defect recall over labeled persisted renders.
+
 ## Operations
 
 Run a new bounded job:
@@ -83,3 +87,14 @@ Validation used accepted persisted stories from *The Lost Sisters* and *The Quee
 The rejected outputs are expected fail-closed evidence, not runtime failures. Preview files and complete JSON reports are under `tmp_live_visual_generation/`; durable reports and images are in Supabase object storage.
 
 The whole-frame hard-constraint regression corpus includes a scene with a small background person that must fail an exact-one cast limit and a scene with one partially framed edge subject that must pass it. The dedicated evaluator classified both correctly across repeated live calls; these artifacts remain release-gate fixtures rather than unit-test mocks.
+
+## Persisted-Render Hardening
+
+The policy was evaluated on 15 human-labeled persisted renders from *Once Upon a Broken Heart*, *The Lost Sisters*, and *The Queen of Nothing*, covering every target type. The corpus includes known false accepts: incorrect character attire, parchment rendered instead of the Valory Arch, a two-panel scene collage, malformed fingers, missing action, forbidden people in an empty location, and character-sheet identity/anatomy drift.
+
+- Previous decisions: recall `0.4444`, false-accept rate `0.5556`.
+- Hardened policy: precision `1.0`, recall `1.0`, F1 `1.0`, false-accept rate `0.0`, false-reject rate `0.0`, exact three-way outcome accuracy `1.0`.
+- Per-defect recall: `1.0` for anatomy, action alignment, cast count, clothing, composition, forbidden subjects, identity consistency, and wrong target.
+- The persisted qualification scene collage is also rejected deterministically by the technical central-seam detector.
+
+No new Modal render was needed for this hardening pass because persisted real images exposed and verified every changed policy path. Detection-model calibration on a larger independently labeled corpus remains required before claiming genre-wide quality.
