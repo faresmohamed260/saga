@@ -1,0 +1,47 @@
+name: Qwen Persisted Studio Release Proof
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-supabase-persistence-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  persisted-studio-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run protected-preview persistence proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error --max-time 420 'https://rashyleshocuvpgcooxy.supabase.co/functions/v1/qwen-deployment-readiness-proof?proof=8pACZ2D4_qRpkVNuPlkekiyNDO8VsEVC')"
+          printf '%s\n' "$response"
+          PROOF_JSON="$response" python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ['PROOF_JSON'])
+          required = ['ready', 'persisted', 'jobsVerified', 'galleryVerified', 'mediaVerified']
+          missing = [key for key in required if payload.get(key) is not True]
+          if missing:
+              raise SystemExit(f'Qwen persisted Studio proof failed: missing={missing}; payload={payload}')
+          if payload.get('workflow') != 'qwen-image-edit-2511':
+              raise SystemExit(f'Wrong workflow: {payload}')
+          if payload.get('model') != 'Qwen Image Edit 2511 · Abliterated BF16 + Lightning':
+              raise SystemExit(f'Wrong model: {payload}')
+          if payload.get('workerId') not in {'qwen-primary-01', 'qwen-standby-01'}:
+              raise SystemExit(f'Wrong worker: {payload}')
+          checkpoint = payload.get('checkpoint') or {}
+          if checkpoint.get('source') != 'civitai' or checkpoint.get('versionId') != 2553500 or checkpoint.get('fileId') != 2443737:
+              raise SystemExit(f'Wrong checkpoint: {payload}')
+          acceleration = payload.get('acceleration') or {}
+          if acceleration.get('profile') != 'lightning-lora-4step-bf16' or acceleration.get('steps') != 4 or float(acceleration.get('cfg') or 0) != 1.0:
+              raise SystemExit(f'Wrong acceleration: {payload}')
+          if int(payload.get('mediaBytes') or 0) < 10000 or not str(payload.get('mediaContentType') or '').startswith('image/'):
+              raise SystemExit(f'Invalid persisted media: {payload}')
+          print('Qwen persisted Studio release proof passed.')
+          PY
