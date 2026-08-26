@@ -329,7 +329,7 @@ try {
   const refChips = desktop.locator('.saga-reference-chip');
   await refChips.nth(1).waitFor({ state: 'visible', timeout: 5000 });
   if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Edit mode primary action does not retain the Generate verb');
-  if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Edit image') throw new Error('Edit primary action lost its accessible name');
+  if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Generate image') throw new Error('Edit primary action lost its consistent Generate accessible name');
   const richPrompt = desktop.locator('.saga-rich-prompt');
   await richPrompt.click();
   await richPrompt.pressSequentially('Put ');
@@ -430,7 +430,9 @@ try {
   await waitForStudio(mobile);
   const mobileUpload = mobile.getByRole('button', { name: 'Upload reference images', exact: true });
   await mobileUpload.waitFor({ state: 'visible' });
-  if (await mobile.locator('.saga-submit').count()) throw new Error('Mobile Image setup still exposes a separate Add image submit action');
+  const mobileGenerate = mobile.locator('.saga-submit');
+  await mobileGenerate.waitFor({ state: 'visible' });
+  if ((await mobileGenerate.getAttribute('aria-label')) !== 'Generate image' || !(await mobileGenerate.isDisabled())) throw new Error('Mobile Image setup must keep a separate disabled Generate action until a reference is attached');
   const mobileUploadBox = await mobileUpload.boundingBox();
   if (!mobileUploadBox || mobileUploadBox.width < 44 || mobileUploadBox.height < 44 || mobileUploadBox.width > 48 || mobileUploadBox.height > 48 || Math.abs(mobileUploadBox.width - mobileUploadBox.height) > 1) throw new Error(`Mobile circular upload action does not provide a 44px touch target: ${JSON.stringify(mobileUploadBox)}`);
   await shot(mobile, '09-mobile-create.png');

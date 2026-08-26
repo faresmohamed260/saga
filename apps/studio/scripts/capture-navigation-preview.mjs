@@ -111,7 +111,7 @@ async function runMobile(browser) {
     diagnostics.mobile.push({ label, url: page.url() });
   }
 
-  await page.locator('.mobile-topbar').getByRole('button', { name: 'Open generation settings', exact: true }).click();
+  await page.locator('.mobile-topbar').getByRole('button', { name: 'Advanced settings', exact: true }).click();
   await page.getByRole('dialog', { name: 'Advanced settings' }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Global mobile settings action did not return to Create');
   const dialogBox = await page.getByRole('dialog', { name: 'Advanced settings' }).boundingBox();
