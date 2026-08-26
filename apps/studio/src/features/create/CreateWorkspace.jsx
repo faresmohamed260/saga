@@ -65,10 +65,10 @@ export default function CreateWorkspace(props) {
       : imageModel === 'qwen-image-edit-2511' ? 'qwen-image-edit-2511' : 'flux2-klein-image-edit';
     if (warmedWorkflows.has(workflowId)) return;
     warmedWorkflows.add(workflowId);
-    fetch('/api/warmup', {
+    fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workflowId }),
+      body: JSON.stringify({ workflowId, phase: 'warmup' }),
       keepalive: true,
     }).catch(() => { warmedWorkflows.delete(workflowId); });
   }, [mode, imageModel]);
