@@ -33,6 +33,9 @@ export default function GallerySelect({ value, options, onChange, ariaLabel, cla
 
   return (
     <div ref={rootRef} className={`gallery-menu-select ${className} ${open ? 'open' : ''}`}>
+      <select className="gallery-menu-select-metadata" value={value} onChange={(event) => onChange(event.target.value)} tabIndex={-1} aria-hidden="true">
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
       <button
         ref={buttonRef}
         type="button"
