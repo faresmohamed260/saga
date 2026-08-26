@@ -6,5 +6,6 @@ import './styles.css';
 import './create-controls.css';
 import './studio-polish.css';
 import './mobile-touch-targets.css';
+import './mobile-ui-cleanup.css';
 
 createRoot(document.getElementById('root')).render(<App />);
