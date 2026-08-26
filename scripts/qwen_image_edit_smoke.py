@@ -17,7 +17,6 @@ EXPECTED_PRECISION = 'civitai-bfloat16'
 EXPECTED_CHECKPOINT_VERSION_ID = 2553500
 EXPECTED_CHECKPOINT_FILE_ID = 2443737
 EXPECTED_STEPS = 4
-EXPECTED_PLACEMENT = 'civitai-bf16-lightning-4xA10-sharded'
 
 
 def png(width: int = 256, height: int = 256) -> bytes:
@@ -165,10 +164,10 @@ def main() -> None:
                     final_status, _, final_health = request_json(base + '/health', timeout=60)
                     worker = final_health.get('worker') if final_status == 200 else {}
                     worker = worker or {}
-                    if worker.get('placement') != EXPECTED_PLACEMENT:
-                        raise SystemExit(f'Qwen generation completed on the wrong runtime placement: {worker}')
                     if int(worker.get('checkpoint_file_id') or 0) != EXPECTED_CHECKPOINT_FILE_ID:
                         raise SystemExit(f'Qwen generation completed on the wrong Civitai file: {worker}')
+                    if worker.get('acceleration') != 'lightning-lora-4step-bf16':
+                        raise SystemExit(f'Qwen generation completed without the pinned Lightning profile: {worker}')
                     result = {
                         'ready': True,
                         'callId': call_id,
@@ -182,7 +181,6 @@ def main() -> None:
                         'inferenceSteps': submitted.get('inference_steps'),
                         'trueCfgScale': submitted.get('true_cfg_scale'),
                         'acceleration': submitted.get('acceleration'),
-                        'workerPlacement': worker.get('placement'),
                         'inferenceSeconds': inference_seconds,
                         'totalSeconds': total_seconds,
                         'workerReportedGenerationSeconds': worker.get('last_generation_seconds'),
