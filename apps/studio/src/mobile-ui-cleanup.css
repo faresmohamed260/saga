@@ -1,4 +1,4 @@
-/* Mobile UI cleanup: tighter Create controls and flat input focus treatment. */
+/* Mobile UI cleanup: compact visual controls with accessible hit areas, plus flat input focus treatment. */
 
 /* Keep keyboard focus visible without purple glow boxes around text-entry surfaces. */
 input:focus,
@@ -32,19 +32,60 @@ select:focus-visible,
 
 @media (max-width: 720px) {
   .workspace .saga-toolbar {
-    gap: 3px;
-    padding: 0 6px 7px;
+    gap: 2px;
+    padding: 0 4px 5px;
   }
 
   .workspace .saga-toolbar-left,
   .workspace .saga-toolbar-right {
-    gap: 3px;
+    gap: 1px;
   }
 
-  .workspace .saga-round-button {
+  /* Preserve 44px touch targets while rendering the visible circular controls at 28–30px. */
+  .workspace .saga-round-button,
+  .workspace .saga-audio-toggle,
+  .workspace .saga-submit {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex-basis: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .workspace .saga-round-button::before,
+  .workspace .saga-audio-toggle::before,
+  .workspace .saga-submit::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
     width: 28px;
     height: 28px;
-    flex-basis: 28px;
+    transform: translate(-50%, -50%);
+    border: 1px solid #272d37;
+    border-radius: 50%;
+    background: var(--saga-color-surface-control, #171b21);
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+
+  .workspace .saga-submit::before {
+    width: 30px;
+    height: 30px;
+    border-color: #f1f1ef;
+    background: #f1f1ef;
+  }
+
+  .workspace .saga-round-button > *,
+  .workspace .saga-audio-toggle > *,
+  .workspace .saga-submit > * {
+    position: relative;
+    z-index: 1;
   }
 
   .workspace .saga-round-button svg {
@@ -52,21 +93,66 @@ select:focus-visible,
     height: 16px;
   }
 
+  .workspace .saga-audio-toggle svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .workspace .saga-submit svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* The segmented mode control keeps full-size hit boxes but a compact 28px visible rail. */
   .workspace .saga-media-toggle {
-    height: 28px;
-    padding: 1px;
+    position: relative;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    flex: 0 0 auto;
+  }
+
+  .workspace .saga-media-toggle::before {
+    content: '';
+    position: absolute;
+    inset: 7px 0;
+    border: 1px solid #232730;
+    border-radius: 999px;
+    background: #090b0f;
+    pointer-events: none;
   }
 
   .workspace .saga-media-toggle button {
-    height: 26px;
-    min-width: 25px;
-    padding: 0 4px;
+    position: relative;
+    height: 44px;
+    min-height: 44px;
+    min-width: 29px;
+    padding: 0 5px;
     gap: 3px;
     font-size: 10px;
+    background: transparent !important;
+    box-shadow: none !important;
   }
 
   .workspace .saga-media-toggle button.selected {
-    min-width: 48px;
+    min-width: 50px;
+  }
+
+  .workspace .saga-media-toggle button.selected::before {
+    content: '';
+    position: absolute;
+    inset: 9px 2px;
+    z-index: 0;
+    border-radius: 999px;
+    background: #202126;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+    pointer-events: none;
+  }
+
+  .workspace .saga-media-toggle button > * {
+    position: relative;
+    z-index: 1;
   }
 
   .workspace .saga-media-toggle button svg {
@@ -74,12 +160,39 @@ select:focus-visible,
     height: 13px;
   }
 
+  /* Pills retain comfortable hit areas, but their visible chrome is only 28px tall. */
   .workspace .saga-control-pill,
   .workspace .saga-auto-toggle {
-    height: 28px;
-    padding: 0 6px;
+    position: relative;
+    height: 44px;
+    min-height: 44px;
+    min-width: 0 !important;
+    padding: 0 7px;
+    border: 0;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
     gap: 3px;
     font-size: 10px;
+  }
+
+  .workspace .saga-control-pill::before,
+  .workspace .saga-auto-toggle::before {
+    content: '';
+    position: absolute;
+    inset: 8px 1px;
+    z-index: 0;
+    border: 1px solid #272d37;
+    border-radius: 999px;
+    background: var(--saga-color-surface-control, #171b21);
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+
+  .workspace .saga-control-pill > *,
+  .workspace .saga-auto-toggle > * {
+    position: relative;
+    z-index: 1;
   }
 
   .workspace .saga-control-pill svg,
@@ -88,53 +201,31 @@ select:focus-visible,
     height: 12px;
   }
 
-  .workspace .saga-audio-toggle {
-    width: 28px;
-    height: 28px;
-    flex-basis: 28px;
-  }
-
-  .workspace .saga-audio-toggle svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .workspace .saga-submit {
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
-    flex-basis: 30px;
-  }
-
-  .workspace .saga-submit svg {
-    width: 17px;
-    height: 17px;
-  }
-
   .workspace .saga-resolution-trigger {
-    min-width: 76px;
+    min-width: 78px !important;
   }
 }
 
 @media (max-width: 390px) {
   .workspace .saga-toolbar {
-    gap: 2px;
-    padding-left: 5px;
-    padding-right: 5px;
+    gap: 0;
+    padding-left: 2px;
+    padding-right: 2px;
   }
 
   .workspace .saga-toolbar-left,
   .workspace .saga-toolbar-right {
-    gap: 2px;
+    gap: 0;
   }
 
   .workspace .saga-control-pill,
   .workspace .saga-auto-toggle {
-    padding: 0 5px;
+    padding-left: 5px;
+    padding-right: 5px;
     font-size: 9px;
   }
 
   .workspace .saga-media-toggle button.selected {
-    min-width: 45px;
+    min-width: 46px;
   }
 }
