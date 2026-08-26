@@ -214,7 +214,7 @@ try {
   await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
   await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
   await shot(desktop, '03-advanced-custom-dropdown.png');
-  await settingsButton.click();
+  await advanced.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
   await expectHidden(advanced, 'Advanced settings');
 
   // Video mode and all requested controls.
@@ -302,7 +302,7 @@ try {
   await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
   await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
   if (await advanced.getByText('No production image workflow connected', { exact: true }).count()) throw new Error('Legacy disconnected Image Advanced message returned after reload');
-  await settingsButton.click();
+  await advanced.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
 
   // Drag/drop attaches the first reference; the same circular + remains available for additional references.
   const composer = desktop.locator('.saga-composer');
@@ -365,7 +365,7 @@ try {
   await fluxCfg.fill('1.8');
   await advanced.getByRole('button', { name: 'Reset to FLUX defaults', exact: true }).click();
   if (await fluxSteps.inputValue() !== '4' || await fluxCfg.inputValue() !== '1') throw new Error('FLUX Reset did not restore 4 / 1.0');
-  await settingsButton.click();
+  await advanced.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
   await shot(desktop, '06-edit-inline-reference-and-auto.png');
 
   // Removing references cleans prompt tags, renumbers survivors, and exits Edit when the last reference is gone.
