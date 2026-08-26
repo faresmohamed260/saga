@@ -40,7 +40,15 @@
 /* Custom dropdowns use the same dark popover language as Advanced. */
 .gallery-menu-select { position: relative; min-width: 112px; flex: 0 0 auto; }
 .gallery-menu-select.gallery-model-filter { min-width: 150px; max-width: 220px; }
-.gallery-menu-select-metadata { display: none !important; }
+.gallery-menu-select-metadata {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 38px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
 .gallery-menu-select-trigger {
   width: 100%; height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 0 10px 0 11px; border: 1px solid rgba(255,255,255,.11); border-radius: 10px;
