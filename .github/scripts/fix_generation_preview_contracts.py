@@ -48,8 +48,8 @@ new_selector = """  await page.getByRole('button', { name: 'Advanced settings', 
 replace_once(qwen, old_selector, new_selector)
 replace_once(
     qwen,
-    "  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();\n  const advanced = page.locator('.saga-advanced-panel');",
-    "  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();",
+    "  await page.locator('.saga-rich-prompt').fill('Make the reference look like a clean editorial photograph');\n  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();\n  const advanced = page.locator('.saga-advanced-panel');",
+    "  await page.locator('.saga-rich-prompt').fill('Make the reference look like a clean editorial photograph');\n  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();",
 )
 replace_once(qwen, "  await page.getByRole('button', { name: 'Edit image', exact: true }).click();", "  await page.getByRole('button', { name: 'Generate image', exact: true }).click();")
 
