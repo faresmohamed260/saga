@@ -15,7 +15,9 @@ import zlib
 EXPECTED_MODEL = 'Qwen/Qwen-Image-Edit-2511'
 EXPECTED_PRECISION = 'civitai-bfloat16'
 EXPECTED_CHECKPOINT_VERSION_ID = 2553500
+EXPECTED_CHECKPOINT_FILE_ID = 2443737
 EXPECTED_STEPS = 4
+EXPECTED_PLACEMENT = 'civitai-bf16-lightning-4xA10-sharded'
 
 
 def png(width: int = 256, height: int = 256) -> bytes:
@@ -76,7 +78,9 @@ def validate_health(health: dict) -> None:
         raise SystemExit(f'Qwen gateway reports wrong model/precision: {health}')
     checkpoint = health.get('checkpoint') or {}
     if int(checkpoint.get('version_id') or 0) != EXPECTED_CHECKPOINT_VERSION_ID:
-        raise SystemExit(f'Qwen gateway reports wrong Civitai checkpoint: {health}')
+        raise SystemExit(f'Qwen gateway reports wrong Civitai checkpoint version: {health}')
+    if int(checkpoint.get('file_id') or 0) != EXPECTED_CHECKPOINT_FILE_ID:
+        raise SystemExit(f'Qwen gateway reports wrong Civitai checkpoint file: {health}')
     acceleration = health.get('acceleration') or {}
     if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != EXPECTED_STEPS:
         raise SystemExit(f'Qwen gateway is not serving the Lightning 4-step profile: {health}')
@@ -158,6 +162,11 @@ def main() -> None:
                     total_seconds = round(time.monotonic() - submit_started, 3)
                     final_status, _, final_health = request_json(base + '/health', timeout=60)
                     worker = final_health.get('worker') if final_status == 200 else {}
+                    worker = worker or {}
+                    if worker.get('placement') != EXPECTED_PLACEMENT:
+                        raise SystemExit(f'Qwen generation completed on the wrong runtime placement: {worker}')
+                    if int(worker.get('checkpoint_file_id') or 0) != EXPECTED_CHECKPOINT_FILE_ID:
+                        raise SystemExit(f'Qwen generation completed on the wrong Civitai file: {worker}')
                     result = {
                         'ready': True,
                         'callId': call_id,
@@ -167,14 +176,16 @@ def main() -> None:
                         'workerId': submitted.get('worker_id'),
                         'ecosystem': submitted.get('ecosystem'),
                         'checkpointVersionId': EXPECTED_CHECKPOINT_VERSION_ID,
+                        'checkpointFileId': EXPECTED_CHECKPOINT_FILE_ID,
                         'inferenceSteps': submitted.get('inference_steps'),
                         'trueCfgScale': submitted.get('true_cfg_scale'),
                         'acceleration': submitted.get('acceleration'),
+                        'workerPlacement': worker.get('placement'),
                         'inferenceSeconds': inference_seconds,
                         'totalSeconds': total_seconds,
-                        'workerReportedGenerationSeconds': (worker or {}).get('last_generation_seconds'),
-                        'workerReportedStartupSeconds': (worker or {}).get('startup_seconds'),
-                        'workerReportedTransformerLoadSeconds': (worker or {}).get('transformer_load_seconds'),
+                        'workerReportedGenerationSeconds': worker.get('last_generation_seconds'),
+                        'workerReportedStartupSeconds': worker.get('startup_seconds'),
+                        'workerReportedTransformerLoadSeconds': worker.get('transformer_load_seconds'),
                         'stateTimeline': state_timeline,
                     }
                     print(json.dumps(result), flush=True)
