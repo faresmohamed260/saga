@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
+// This contract intentionally covers the mobile Gallery/Create follow-up so final-head CI is path-triggered.
 const root = new URL('../', import.meta.url);
 const [presets, controls, wrapper, app, library, controller, client, workflows, providers, gateway, runtime, audioCss, generateApi] = await Promise.all([
   readFile(new URL('src/features/create/model-presets.js', root), 'utf8'),
