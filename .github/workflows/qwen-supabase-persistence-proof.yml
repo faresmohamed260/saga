@@ -36,6 +36,22 @@ jobs:
 
           gateway = os.environ['QWEN_GATEWAY'].rstrip('/')
           studio = os.environ['STUDIO_BASE'].rstrip('/')
+
+          health_response = requests.get(gateway + '/health', timeout=60)
+          health_response.raise_for_status()
+          health = health_response.json()
+          worker = health.get('worker') or {}
+          checkpoint = health.get('checkpoint') or {}
+          acceleration = health.get('acceleration') or {}
+          if health.get('ready') is not True or worker.get('worker_id') != 'qwen-primary-01':
+              raise SystemExit(f'Qwen primary is not ready: {health}')
+          if health.get('precision') != 'civitai-bfloat16' or checkpoint.get('source') != 'civitai' or checkpoint.get('version_id') != 2553500:
+              raise SystemExit(f'Wrong Qwen checkpoint health: {health}')
+          if worker.get('checkpoint_file_id') != 2443737:
+              raise SystemExit(f'Wrong Qwen checkpoint file health: {health}')
+          if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != 4:
+              raise SystemExit(f'Wrong Qwen acceleration health: {health}')
+
           width = height = 256
           raw = b''.join(b'\x00' + bytes([48, 76, 118]) * width for _ in range(height))
           def chunk(kind, data):
@@ -54,8 +70,8 @@ jobs:
           call_id = queued.get('call_id')
           if queued.get('worker_id') != 'qwen-primary-01' or not call_id:
               raise SystemExit(f'Unexpected Qwen submission: {queued}')
-          if queued.get('checkpoint_version_id') != 2553500 or queued.get('checkpoint_file_id') != 2443737:
-              raise SystemExit(f'Wrong Qwen checkpoint: {queued}')
+          if queued.get('checkpoint_version_id') != 2553500:
+              raise SystemExit(f'Wrong Qwen checkpoint version: {queued}')
           if queued.get('inference_steps') != 4 or float(queued.get('true_cfg_scale') or 0) != 1.0:
               raise SystemExit(f'Wrong Qwen sampling profile: {queued}')
 
@@ -105,7 +121,7 @@ jobs:
               'workerId': queued.get('worker_id'),
               'callId': call_id,
               'checkpointVersionId': queued.get('checkpoint_version_id'),
-              'checkpointFileId': queued.get('checkpoint_file_id'),
+              'checkpointFileId': worker.get('checkpoint_file_id'),
               'steps': queued.get('inference_steps'),
               'cfg': queued.get('true_cfg_scale'),
               'generatedBytes': len(output),
