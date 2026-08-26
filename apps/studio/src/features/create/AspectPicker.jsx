@@ -188,6 +188,13 @@ export function AspectPicker({
   };
 
   const optionKeyDown = (event, index) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      window.setTimeout(() => triggerRef.current?.focus(), 0);
+      return;
+    }
     let next = null;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = index + 1;
     if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = index - 1;
