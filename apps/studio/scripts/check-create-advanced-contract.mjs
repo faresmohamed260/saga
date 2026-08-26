@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
+// This contract intentionally covers the mobile Gallery/Create follow-up so final-head CI is path-triggered.
 const root = new URL('../', import.meta.url);
-const [presets, controls, wrapper, app, library, controller, client, workflows, providers, gateway, runtime, audioCss] = await Promise.all([
+const [presets, controls, wrapper, app, library, controller, client, workflows, providers, gateway, runtime, audioCss, generateApi] = await Promise.all([
   readFile(new URL('src/features/create/model-presets.js', root), 'utf8'),
   readFile(new URL('src/create-controls.jsx', root), 'utf8'),
   readFile(new URL('src/features/create/CreateWorkspace.jsx', root), 'utf8'),
@@ -14,6 +15,7 @@ const [presets, controls, wrapper, app, library, controller, client, workflows, 
   readFile(new URL('../../integrations/comfyui/ltx23_gateway.py', root), 'utf8'),
   readFile(new URL('../../integrations/comfyui/ltx23_app.py', root), 'utf8'),
   readFile(new URL('src/features/create/audio-control.css', root), 'utf8'),
+  readFile(new URL('api/generate.js', root), 'utf8'),
 ]);
 
 function expect(condition, message) {
@@ -29,6 +31,8 @@ expect(controls.includes('label="Video frame rate"'), 'Video frame rate must liv
 expect(controls.includes('aria-label={label}'), 'Advanced custom-select triggers must expose their accessible labels');
 expect(!controls.includes('{isVideo && videoToolbarSlot}'), 'Video aspect/FPS must not remain in the prompt toolbar');
 expect(!wrapper.includes('<VideoOutputControls'), 'Wrapper must not inject duplicate inline video output controls');
+expect(wrapper.includes("fetch('/api/generate'") && wrapper.includes("phase: 'warmup'"), 'Create worker warmup must reuse the existing generate route');
+expect(generateApi.includes('requestWorkerWarmup') && generateApi.includes("body.phase === 'warmup'"), 'Generate API must handle best-effort worker warmup without adding another serverless route');
 expect(controller.includes('seed: effectiveSeed, steps, cfg'), 'Video controller must forward steps and CFG');
 expect(client.includes('steps = 11') && client.includes('cfg = 1.0'), 'Video client defaults must mirror LTX preset');
 expect(/frameRate,[\s\S]*?seed,[\s\S]*?steps,[\s\S]*?cfg/.test(client), 'Video request body must include steps and CFG');
@@ -40,12 +44,14 @@ expect(runtime.match(/"cfg": float\(cfg\)/g)?.length === 2, 'LTX CFG must drive 
 expect(runtime.includes('"separate_distill_lora": False'), 'LTX health contract must state that no separate distill LoRA is loaded');
 expect(!app.includes('const samples = ['), 'Create must not ship stock face/scene placeholders');
 expect(app.includes('favoriteItems.filter'), 'Create output wall must draw from Favorites');
-expect(app.includes("setCreateMode('Edit')"), 'Uploading a reference must apply the FLUX preset when entering Edit');
+expect(app.includes("setCreateMode('Edit')"), 'Uploading a reference must apply the selected image preset when entering Edit');
+expect(app.includes('uploadLibraryReference') && client.includes("purpose: 'library-upload'"), 'Create references must upload immediately into the reusable Uploads library');
 expect(library.includes("['Create', 'Gallery', 'Favorites', 'Collections']"), 'Favorites must refresh while Create is visible');
 expect(/item\.kind === 'video'[\s\S]*?setSteps\(11\)[\s\S]*?setCfg\(1\)/.test(await readFile(new URL('src/hooks/useMediaActions.js', root), 'utf8')), 'Reusing a video must restore the LTX production sampling preset');
 expect(!audioCss.includes('.saga-audio-toggle::after'), 'Audio must render only the circular button');
+expect(controls.includes('useLayoutEffect') && /useLayoutEffect\(\(\) => \{[\s\S]*?!focusedRef\.current[\s\S]*?setDraft[\s\S]*?\}, \[value, min\]\)/.test(controls), 'Steps/CFG drafts must synchronize external Reset values before paint without clobbering focused input');
 
 expect(!app.includes('setWorkflowId') && !app.includes('setModelId') && !controls.includes('saved.workflowId') && !controls.includes('saved.modelId'), 'Dead workflow/model presentation state must stay removed from Create');
 expect(!app.includes('setOutputs') && !controls.includes('saved.outputs'), 'Dead output-count presentation state must stay removed from Create');
-expect(controls.includes('aria-label=\"Recent work\"') && controls.includes('Current-session results appear first'), 'Create results must explain session-first Recent work semantics');
-console.log('Create Advanced contract passed: production presets, live LTX CFG transport, fixed 11-step recipe, dead presentation plumbing removed, and Recent work is explicit.');
+expect(controls.includes('aria-label="Recent work"') && controls.includes('Current-session results appear first'), 'Create results must explain session-first Recent work semantics');
+console.log('Create Advanced contract passed: production presets, consolidated warmup, live LTX CFG transport, synchronous numeric reset sync, fixed 11-step recipe, dead presentation plumbing removed, and Recent work is explicit.');

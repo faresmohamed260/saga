@@ -14,14 +14,17 @@ async function responseException(response, fallback) {
 
 export async function runQwenImageEdit(input, options = {}) {
   const files = Array.from(input?.sourceFiles || []).filter(Boolean);
-  if (!files.length) throw new Error('At least one reference image is required.');
+  const sourceKeys = Array.from(input?.sourceKeys || []).filter(Boolean);
+  if (!files.length && !sourceKeys.length) throw new Error('At least one source image is required.');
   if (options.onStatus) options.onStatus('uploading');
-  const uploaded = await uploadSourceFiles(files);
+  const uploaded = sourceKeys.length
+    ? sourceKeys.map((key, index) => ({ key, contentType: files[index]?.type || 'image/png', filename: files[index]?.name || `input-${index + 1}.png` }))
+    : await uploadSourceFiles(files);
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      workflowId: 'qwen-image-edit-2511',
+      workflowId: input.workflowId || 'qwen-image-edit-2511',
       sourceKeys: uploaded.map((item) => item.key),
       sourceFilenames: uploaded.map((item) => item.filename),
       sourceContentTypes: uploaded.map((item) => item.contentType),

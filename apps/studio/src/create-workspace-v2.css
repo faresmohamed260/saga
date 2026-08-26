@@ -515,3 +515,34 @@
 
 .workspace .saga-model-selector-card .saga-fancy-select{width:100%}
 .workspace .saga-model-selector-card .saga-fancy-select>button{min-height:42px;font-weight:700}
+
+
+/* Mobile follow-up: immediate reference upload feedback + compact one-line composer controls. */
+.workspace .saga-reference-thumb{overflow:hidden}
+.workspace .saga-reference-upload-state{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit;background:rgba(8,11,16,.64);color:#f4f5f8;backdrop-filter:blur(2px)}
+.workspace .saga-reference-upload-state.error{background:rgba(72,18,28,.72);color:#ffb1bd}
+.workspace .saga-seed-random-toggle.active{background:#6e58e8!important;border-color:#9e8eff!important;color:#fff!important;box-shadow:0 0 0 2px rgba(142,118,255,.14),0 6px 18px rgba(72,52,176,.25)}
+.workspace .saga-seed-random-toggle svg{filter:drop-shadow(0 1px 0 rgba(0,0,0,.35))}
+
+@media(max-width:720px){
+  .workspace .saga-toolbar{align-items:center;gap:4px;padding:0 7px 8px;flex-wrap:nowrap}
+  .workspace .saga-toolbar-left{gap:4px;flex-wrap:nowrap;min-width:0}
+  .workspace .saga-toolbar-right{gap:4px;flex:0 0 auto;margin-left:auto}
+  .workspace .saga-round-button{width:32px;height:32px;flex-basis:32px}
+  .workspace .saga-media-toggle{height:32px;padding:2px;flex:0 0 auto}
+  .workspace .saga-media-toggle button{height:28px;min-width:27px;padding:0 5px;gap:4px}
+  .workspace .saga-media-toggle button.selected{min-width:54px}
+  .workspace .saga-media-toggle button svg{width:14px;height:14px}
+  .workspace .saga-control-pill,.workspace .saga-auto-toggle{height:30px;min-width:0!important;padding:0 7px;border-radius:999px;gap:4px;font-size:11px}
+  .workspace .saga-control-pill svg,.workspace .saga-auto-toggle svg{width:13px;height:13px}
+  .workspace .saga-audio-toggle{width:30px;height:30px;flex-basis:30px}
+  .workspace .saga-audio-toggle svg{width:15px;height:15px}
+  .workspace .saga-submit{width:32px;height:32px;min-width:32px;flex-basis:32px;border-radius:50%}
+  .workspace .saga-submit svg{width:19px;height:19px}
+}
+@media(max-width:390px){
+  .workspace .saga-toolbar{gap:3px;padding-left:6px;padding-right:6px}
+  .workspace .saga-toolbar-left,.workspace .saga-toolbar-right{gap:3px}
+  .workspace .saga-control-pill,.workspace .saga-auto-toggle{padding:0 5px;font-size:10px}
+  .workspace .saga-media-toggle button.selected{min-width:49px}
+}

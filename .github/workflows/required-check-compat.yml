@@ -15,3 +15,5 @@ jobs:
     steps:
       - name: Compatibility gate
         run: echo "dashboard-pro legacy branch protection compatibility check"
+
+# Re-emit the required compatibility check on the final PR head.

@@ -70,9 +70,8 @@
 @media(max-width:760px){
   .uploads-desktop-controls{display:none}
   .uploads-mobile-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 14px}
-  .uploads-mobile-controls>button,.uploads-mobile-controls>label{position:relative;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:9px;background:transparent;color:#a8afb9;font-size:10px;cursor:pointer}
-  .uploads-mobile-controls>button:hover,.uploads-mobile-controls>button.active,.uploads-mobile-controls>label:focus-within{background:#141920;color:#fff}
-  .uploads-mobile-controls label select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+  .uploads-mobile-controls>button{position:relative;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:9px;background:transparent;color:#a8afb9;font-size:10px;cursor:pointer}
+  .uploads-mobile-controls>button:hover,.uploads-mobile-controls>button.active{background:#141920;color:#fff}
   .uploads-mobile-filter-panel{display:flex;margin:-5px 0 12px;padding:9px 10px;border:1px solid rgba(255,255,255,.09);border-radius:11px;background:#0e1319}
   .uploads-mobile-filter-panel label{display:flex;align-items:center;gap:8px;color:#d7dbe2;font-size:var(--saga-text-sm)}
   .uploads-mobile-filter-panel input{width:17px;height:17px;accent-color:#7a5cff}
@@ -101,7 +100,7 @@
   .upload-detail-cta button{flex:1;min-width:0;padding:0 10px;font-size:12px}
 }
 @media(max-width:390px){
-  .uploads-mobile-controls>button,.uploads-mobile-controls>label{font-size:9px}
+  .uploads-mobile-controls>button{font-size:9px}
   .upload-detail-actions{gap:2px}
   .upload-detail-title strong{max-width:38vw}
   .upload-detail-cta button{font-size:11px}

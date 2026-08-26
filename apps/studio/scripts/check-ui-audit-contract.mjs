@@ -31,7 +31,7 @@ const roundUploadMarkup = '<button type="button" className="saga-round-button" t
 expect(controls.includes(roundUploadMarkup) && !controls.includes(`{!isImageSetup && (\n              ${roundUploadMarkup}`), 'Image and Video must share the circular upload affordance');
 expect(controls.includes('onDrop={handleReferenceDrop}') && controls.includes('Drop images to upload'), 'Create composer must support image drag-and-drop');
 expect(!controls.includes('ref={settingsButtonRef}'), 'Prompt toolbar must not duplicate the global Advanced trigger');
-expect(controls.includes('<span className="saga-submit-label">Generate</span>') && controls.includes('disabled={busy || (!isVideo && references.length === 0)}'), 'Generate must remain a separate consistent action across Image/Edit/Video');
+expect(controls.includes('<span className="saga-submit-label">Generate</span>') && controls.includes('disabled={busy || !prompt.trim()}'), 'Generate must remain a separate prompt-gated action across Image/Edit/Video');
 expect(app.includes('navigationOpen') && sidebar.includes('onBlurCapture') && sidebar.includes('handlePointerDown'), 'Sidebar must collapse from desktop/mobile and dismiss outside by pointer or keyboard focus');
 expect(!controls.includes("mode === 'More'") && !sidebar.includes('Additional creation tools') && !sidebar.includes('label="Tools"'), 'Placeholder Tools mode must be removed');
 expect(!models.includes('PLANNED') && !models.includes('SAGA Image'), 'Models page must contain only live production models');
@@ -46,3 +46,5 @@ const ltx = workflows.slice(workflows.indexOf("'ltx25-redgraft-video'"));
 expect(!/defaults:\s*\{[\s\S]*?megapixels:\s*1\.0/.test(ltx.split('limits:')[0]), 'LTX workflow must not advertise an unused megapixels default');
 expect(!app.includes('advanced={advanced}'), 'Dead Advanced state prop must be removed');
 console.log('Studio UI audit contract passed: requested controls are fixed, connected backend parameters are exposed, and placeholder/dead surfaces are removed.');
+expect(!controls.includes('aria-label="Active production model"'), 'Advanced must not duplicate MODEL/WORKFLOW detail cards below model selection');
+expect(controls.includes('randomizeSeed') && controls.includes('Dice3DIcon'), 'Advanced seed must expose persistent/random per-generation mode');

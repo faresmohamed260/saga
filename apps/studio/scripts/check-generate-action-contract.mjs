@@ -20,9 +20,12 @@ requireSource(css, 'display:inline-flex;align-items:center;justify-content:cente
 requireSource(css, '.workspace .saga-submit:focus-visible{outline:var(--saga-focus-ring);outline-offset:2px}', 'tokenized strong focus-visible treatment');
 requireSource(tokens, '--saga-focus-ring: 2px solid var(--saga-color-accent-soft);', 'shared focus-ring token');
 requireSource(css, '.workspace .saga-submit-label{display:none}', 'compact mobile label collapse');
-requireSource(css, 'width:36px;height:36px;min-width:36px;flex-basis:36px', 'compact mobile submit geometry');
+requireSource(css, 'width:32px;height:32px;min-width:32px;flex-basis:32px', 'compact mobile submit geometry');
 requireSource(visual, "Image setup circular upload action is missing", 'desktop circular-upload assertion');
 requireSource(visual, "Mobile circular upload action does not provide a 44px touch target", 'mobile circular-upload assertion');
 requireSource(visual, "Edit mode primary action does not retain the Generate verb", 'Edit-mode Playwright assertion');
 
 console.log('Generate primary-action contract passed.');
+
+requireSource(controls, 'disabled={busy || !prompt.trim()}', 'prompt-only generation gate across all modes');
+requireSource(controls, 'saga-reference-upload-state', 'immediate reference upload progress feedback');
