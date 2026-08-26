@@ -151,3 +151,14 @@
 }
 .app-shell input::placeholder,
 .app-shell textarea::placeholder { color:var(--saga-color-text-subtle); opacity:1; }
+
+
+/* Jobs remain finite and viewport-safe instead of rendering the entire history at once. */
+.history-view .jobs-list{display:grid;gap:12px;max-width:100%;min-width:0}
+.history-view .job-card{max-width:100%;min-width:0;overflow:hidden}
+.history-view .job-card>div{min-width:0;max-width:100%}
+.history-view .job-card strong{max-width:100%}
+.history-view .saga-generation-progress,.history-view .saga-generation-progress-copy{min-width:0;max-width:100%}
+.history-view .jobs-list-more{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0 4px;color:var(--saga-color-text-subtle);font-size:var(--saga-text-xs)}
+.history-view .jobs-list-more .secondary-button{min-height:40px;padding:0 15px}
+@media(max-width:720px){.history-view .jobs-list-more{flex-direction:column}.history-view .jobs-list-more .secondary-button{width:100%;justify-content:center}}

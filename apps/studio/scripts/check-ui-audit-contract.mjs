@@ -30,6 +30,9 @@ expect(!controls.includes("isImageSetup ? 'Add image'"), 'Image setup must not u
 const roundUploadMarkup = '<button type="button" className="saga-round-button" title="Upload reference images" aria-label="Upload reference images"';
 expect(controls.includes(roundUploadMarkup) && !controls.includes(`{!isImageSetup && (\n              ${roundUploadMarkup}`), 'Image and Video must share the circular upload affordance');
 expect(controls.includes('onDrop={handleReferenceDrop}') && controls.includes('Drop images to upload'), 'Create composer must support image drag-and-drop');
+expect(!controls.includes('ref={settingsButtonRef}'), 'Prompt toolbar must not duplicate the global Advanced trigger');
+expect(controls.includes('<span className="saga-submit-label">Generate</span>') && controls.includes('disabled={busy || (!isVideo && references.length === 0)}'), 'Generate must remain a separate consistent action across Image/Edit/Video');
+expect(app.includes('navigationOpen') && sidebar.includes('onBlurCapture') && sidebar.includes('handlePointerDown'), 'Sidebar must collapse from desktop/mobile and dismiss outside by pointer or keyboard focus');
 expect(!controls.includes("mode === 'More'") && !sidebar.includes('Additional creation tools') && !sidebar.includes('label="Tools"'), 'Placeholder Tools mode must be removed');
 expect(!models.includes('PLANNED') && !models.includes('SAGA Image'), 'Models page must contain only live production models');
 expect(models.includes('Start image edit') && models.includes('Create video') && models.includes('onUseModel'), 'Models page must launch its live production paths');

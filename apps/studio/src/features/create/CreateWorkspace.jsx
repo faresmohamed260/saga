@@ -6,7 +6,6 @@ import {
 } from './VideoGenerationControls.jsx';
 import { MODEL_ADVANCED_PRESETS, setActiveImageModel } from './model-presets.js';
 import './create-advanced-mobile.css';
-import './image-model-selector.css';
 
 const VIDEO_OUTPUT_STORAGE_KEY = 'saga-studio:video-output:v2';
 const IMAGE_MODEL_STORAGE_KEY = 'saga-studio:image-model:v1';
@@ -36,7 +35,7 @@ function loadImageModel() {
 }
 
 export default function CreateWorkspace(props) {
-  const { mode, references = [], busy, jobStatus, workerStatus, activeJob, cancelBusy, onGenerate, onViewJob, onCancelJob, setSteps, setCfg, setNegativePrompt } = props;
+  const { mode, references = [], busy, jobStatus, workerStatus, activeJob, cancelBusy, onGenerate, onViewJob, onCancelJob, setSteps, setCfg, setNegativePrompt, settingsOpen } = props;
   const initial = useMemo(loadVideoOutputSettings, []);
   const [autoAspect, setAutoAspect] = useState(initial.autoAspect);
   const [manualAspect, setManualAspect] = useState(initial.manualAspect);
@@ -91,16 +90,16 @@ export default function CreateWorkspace(props) {
   ) : null;
 
   return (
-    <div className="saga-create-workspace-shell">
-      {mode !== 'Video' && (
-        <div className="saga-image-model-row" aria-label="Image model selection">
-          <span className="saga-image-model-label">Image model</span>
-          <div className="saga-image-model-switch" role="group" aria-label="Image model">
-            <button type="button" aria-pressed={imageModel === 'flux2-klein-9b'} className={imageModel === 'flux2-klein-9b' ? 'selected' : ''} onClick={() => chooseImageModel('flux2-klein-9b')}>FLUX</button>
-            <button type="button" aria-pressed={imageModel === 'qwen-image-edit-2511'} className={imageModel === 'qwen-image-edit-2511' ? 'selected' : ''} onClick={() => chooseImageModel('qwen-image-edit-2511')}>Qwen</button>
-          </div>
+    <div className={`saga-create-workspace-shell ${settingsOpen && mode !== 'Video' ? 'advanced-has-image-model' : ''}`}>
+      {settingsOpen && mode !== 'Video' && (
+        <label className="saga-advanced-model-row">
+          <span>IMAGE MODEL</span>
+          <select aria-label="Image model" value={imageModel} onChange={(event) => chooseImageModel(event.target.value)}>
+            <option value="flux2-klein-9b">FLUX.2 Klein 9B</option>
+            <option value="qwen-image-edit-2511">Qwen Image Edit 2511</option>
+          </select>
           <small>{MODEL_ADVANCED_PRESETS[imageModel].modelLabel}</small>
-        </div>
+        </label>
       )}
       <LegacyCreateWorkspace
         {...props}

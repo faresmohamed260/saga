@@ -4,7 +4,7 @@ import React, {
 import { createPortal } from 'react-dom';
 import {
   ArrowUp, Check, ChevronDown, Clock3, Dice5, Image as ImageIcon, Plus,
-  RotateCcw, SlidersHorizontal, Sparkles, Video, Volume2, VolumeX, X,
+  RotateCcw, Sparkles, Video, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { setEditSizingPreference } from './generation-client.js';
 import { AspectPicker, ASPECT_PRESETS } from './features/create/AspectPicker.jsx';
@@ -774,14 +774,12 @@ export default function CreateWorkspace({
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
-  const isImageSetup = mode === 'Image';
   const referenceInputRef = useRef(null);
   const promptRef = useRef(null);
   const resolutionButtonRef = useRef(null);
   const aspectButtonRef = useRef(null);
   const videoResolutionButtonRef = useRef(null);
   const durationButtonRef = useRef(null);
-  const settingsButtonRef = useRef(null);
   const modeEffectMountedRef = useRef(false);
   const dragDepthRef = useRef(0);
 
@@ -1092,34 +1090,16 @@ export default function CreateWorkspace({
             <div className="saga-toolbar-right">
               <span className="saga-prompt-count">{prompt.length} / 2000</span>
               <button
-                ref={settingsButtonRef}
-                type="button"
-                className={`saga-settings-button ${settingsOpen ? 'active' : ''}`}
-                title="Advanced settings"
-                aria-label="Advanced settings"
-                onClick={() => {
-                  setSettingsOpen((current) => !current);
-                  setAspectOpen(false);
-                  setResolutionOpen(false);
-                  setVideoResolutionOpen(false);
-                  setDurationOpen(false);
-                }}
-              >
-                <SlidersHorizontal size={18} />
-              </button>
-              {!isImageSetup && (
-              <button
                 type="button"
                 className="saga-submit"
-                title={isEdit ? 'Edit image' : 'Generate video'}
-                aria-label={isEdit ? 'Edit image' : 'Generate video'}
+                title={isVideo ? 'Generate video' : references.length ? 'Generate image' : 'Add a reference image to generate'}
+                aria-label={isVideo ? 'Generate video' : 'Generate image'}
                 onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
-                disabled={busy || (isEdit && references.length === 0)}
+                disabled={busy || (!isVideo && references.length === 0)}
               >
-                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
+                <span className="saga-submit-label">Generate</span>
                 <ArrowUp size={18} aria-hidden="true" />
               </button>
-              )}
             </div>
           </div>
           {composerStatusSlot}
@@ -1161,7 +1141,7 @@ export default function CreateWorkspace({
         <AdvancedSettings
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
-          anchorRef={settingsButtonRef}
+          anchorRef={isVideo ? videoResolutionButtonRef : aspectButtonRef}
           mode={mode}
           imageModelName={imageModelName}
           seed={seed}

@@ -25,7 +25,7 @@ expect(workflows.includes("'qwen-image-edit-2511'") && workflows.includes("ecosy
 expect(workflows.includes('steps: 4') && workflows.includes('cfg: 1.0'), 'Qwen workflow must use Lightning 4-step / CFG 1 defaults');
 expect(workflows.includes('minSteps: 4') && workflows.includes('maxSteps: 4'), 'Qwen workflow must pin Lightning sampling to four steps');
 expect(presets.includes("modelLabel: 'Qwen Image Edit 2511 · Abliterated BF16 + Lightning'") && presets.includes("stepsDetail: '4-step BF16 Lightning LoRA'"), 'Qwen UI preset must identify the Civitai BF16 fallback plus four-step Lightning recipe');
-expect(workspace.includes('aria-label="Image model"') && workspace.includes('>FLUX</button>') && workspace.includes('>Qwen</button>'), 'Image/Edit UI must expose FLUX and Qwen model selection');
+expect(workspace.includes('aria-label="Image model"') && workspace.includes('<option value="flux2-klein-9b">FLUX.2 Klein 9B</option>') && workspace.includes('<option value="qwen-image-edit-2511">Qwen Image Edit 2511</option>'), 'Advanced Image/Edit UI must expose FLUX and Qwen in a model dropdown');
 expect(workspace.includes('setActiveImageModel(nextModel)') && workspace.includes('imageModel,'), 'Selected image model must drive generation and Advanced settings');
 expect(controller.includes('runQwenImageEdit') && controller.includes('generationOptions.imageModel'), 'Generation controller must route Qwen explicitly');
 expect(client.includes("workflowId: 'qwen-image-edit-2511'") && client.includes('input.steps ?? 4') && client.includes('input.cfg ?? 1.0'), 'Qwen client must submit the four-step Lightning workflow defaults');

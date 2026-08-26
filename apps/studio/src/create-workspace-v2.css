@@ -476,3 +476,68 @@
 .saga-results-heading h2 { font-size: clamp(18px, 2vw, 24px); margin: 3px 0 4px; }
 .saga-results-heading p { max-width: 680px; }
 @media (max-width: 760px) { .saga-recent-work { margin-top: 26px; } }
+
+
+/* Requested Create/navigation refinements — right drawer, stable actions, no prompt glow. */
+.workspace .saga-prompt-shell textarea:focus,
+.workspace .saga-prompt-shell textarea:focus-visible,
+.workspace .saga-rich-prompt:focus,
+.workspace .saga-rich-prompt:focus-visible{
+  outline:0!important;
+  box-shadow:none!important;
+}
+.workspace .saga-composer:focus-within{
+  border-color:#262c37;
+  box-shadow:0 16px 48px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.02);
+}
+.workspace .saga-composer.is-edit:focus-within{border-color:#30294b}
+.workspace .saga-settings-button{display:none!important}
+.workspace .saga-advanced-panel{
+  top:0!important;
+  right:0!important;
+  bottom:0!important;
+  left:auto!important;
+  width:min(440px,calc(100vw - 24px))!important;
+  height:100dvh!important;
+  max-height:none!important;
+  border-radius:0!important;
+  border-top:0;
+  border-right:0;
+  border-bottom:0;
+  visibility:visible!important;
+  box-shadow:-24px 0 70px rgba(0,0,0,.52),inset 1px 0 0 rgba(255,255,255,.025);
+}
+.workspace .advanced-has-image-model .saga-advanced-body{padding-top:108px!important}
+.workspace .saga-advanced-model-row{
+  position:fixed;
+  z-index:1705;
+  top:112px;
+  right:14px;
+  width:min(412px,calc(100vw - 52px));
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:6px;
+  padding:12px;
+  border:1px solid #303641;
+  border-radius:12px;
+  background:#171b22;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.workspace .saga-advanced-model-row>span{color:#8b94a3;font-size:9px;font-weight:850;letter-spacing:.12em}
+.workspace .saga-advanced-model-row select{
+  width:100%;
+  min-height:38px;
+  padding:0 11px;
+  border:1px solid #343b47;
+  border-radius:9px;
+  background:#11151b;
+  color:#eef0f5;
+  outline:0;
+}
+.workspace .saga-advanced-model-row select:focus-visible{outline:var(--saga-focus-ring);outline-offset:2px}
+.workspace .saga-advanced-model-row small{color:#737d8d;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(min-width:981px){
+  .app-shell.nav-open{grid-template-columns:248px minmax(0,1fr)!important}
+  .app-shell.nav-closed{grid-template-columns:0 minmax(0,1fr)!important}
+  .app-shell.nav-closed .sidebar{transform:translateX(-102%);opacity:0;pointer-events:none}
+}
