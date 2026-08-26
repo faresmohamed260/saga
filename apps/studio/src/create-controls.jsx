@@ -592,7 +592,7 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
   const focusedRef = useRef(false);
   useEffect(() => {
     if (!focusedRef.current) setDraft(String(Number.isFinite(Number(value)) ? Number(value) : min));
-  }, [value, min]);
+  });
   const commit = () => {
     const parsed = Number(draft);
     const fallback = Number.isFinite(Number(value)) ? Number(value) : min;
