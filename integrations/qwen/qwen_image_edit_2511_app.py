@@ -29,8 +29,8 @@ CIVITAI_HASH_MARKER = CIVITAI_DIR / f"{CIVITAI_WEIGHT_NAME}.sha256"
 LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"
 LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
 LIGHTNING_DIR = Path(CACHE_DIR) / "qwen-image-edit-2511-lightning"
-LIGHTNING_MIN_STEPS = 4
-LIGHTNING_MAX_STEPS = 4
+LIGHTNING_MIN_STEPS = 1
+LIGHTNING_MAX_STEPS = 50
 LIGHTNING_DEFAULT_STEPS = 4
 LIGHTNING_TRUE_CFG_SCALE = 1.0
 TRANSFORMER_PRIMARY_GPU = 0
@@ -368,7 +368,7 @@ def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
         "checkpointBytes": CIVITAI_EXPECTED_BYTES,
         "lightningRepo": LIGHTNING_REPO,
         "lightningPath": str(lightning_path / LIGHTNING_WEIGHT_NAME),
-        "lightningSteps": [LIGHTNING_DEFAULT_STEPS],
+        "lightningSteps": {"min": LIGHTNING_MIN_STEPS, "max": LIGHTNING_MAX_STEPS},
         "defaultSteps": LIGHTNING_DEFAULT_STEPS,
         "trueCfgScale": LIGHTNING_TRUE_CFG_SCALE,
     }
