@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: qwen-studio-live-e2e-2511
@@ -35,10 +36,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Mint GitHub OIDC token for Vercel Trusted Sources
+        id: vercel-oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput('token', token);
       - name: Install HTTP dependency
         run: python -m pip install --upgrade "requests>=2.32,<3"
       - name: Run persisted Civitai Qwen generation through Studio
         shell: bash
+        env:
+          VERCEL_TRUSTED_OIDC_TOKEN: ${{ steps.vercel-oidc.outputs.token }}
         run: |
           python - <<'PY'
           import json
@@ -53,16 +64,25 @@ jobs:
 
           base = os.environ['STUDIO_BASE'].rstrip('/')
           model_label = os.environ['QWEN_MODEL_LABEL']
+          oidc_token = os.environ.get('VERCEL_TRUSTED_OIDC_TOKEN', '').strip()
+          if not oidc_token:
+              raise SystemExit('GitHub OIDC token was not minted for Vercel Trusted Sources')
           sha = os.environ.get('GITHUB_SHA', '')[:12]
           prompt = f'SAGA Civitai Qwen deployment readiness {sha}: turn this blue reference into a clean editorial poster with a centered white circle.'
           started_at = datetime.now(timezone.utc).isoformat()
           session = requests.Session()
-          session.headers.update({'User-Agent': 'saga-qwen-civitai-live-e2e/1.0'})
+          session.headers.update({
+              'User-Agent': 'saga-qwen-civitai-live-e2e/1.0',
+              'x-vercel-trusted-oidc-idp-token': oidc_token,
+          })
 
           response = session.get(base + '/api/generate', timeout=60)
           if response.status_code != 200:
               raise SystemExit(f'Studio workflow discovery failed: HTTP {response.status_code}: {response.text[:500]}')
-          workflows = response.json().get('workflows') or []
+          try:
+              workflows = response.json().get('workflows') or []
+          except ValueError as exc:
+              raise SystemExit(f'Studio workflow discovery returned non-JSON content despite OIDC: {response.text[:500]}') from exc
           qwen = next((item for item in workflows if item.get('id') == 'qwen-image-edit-2511'), None)
           if not qwen or qwen.get('model') != model_label or qwen.get('ecosystem') != 'qwen-image-edit-2511':
               raise SystemExit(f'Studio preview is not serving the Civitai Qwen workflow: {qwen}')

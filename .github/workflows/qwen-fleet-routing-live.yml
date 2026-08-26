@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install HTTP dependency
+        run: python -m pip install --upgrade "requests>=2.32,<3"
       - name: Verify Qwen failover contract
         working-directory: apps/studio
         run: node scripts/check-qwen-worker-registry-contract.mjs
