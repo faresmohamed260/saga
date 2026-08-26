@@ -1,0 +1,51 @@
+name: Studio Range Reset Sync Once
+
+on:
+  push:
+    branches:
+      - studio/mobile-gallery-create-followup
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[range-sync-applied]') && !contains(github.event.head_commit.message, '[range-sync-cleanup]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/mobile-gallery-create-followup
+          fetch-depth: 0
+      - name: Fix RangeField reset synchronization
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/studio/src/create-controls.jsx')
+          text = path.read_text()
+          old = """  useEffect(() => {\n    if (!focusedRef.current) setDraft(String(Number.isFinite(Number(value)) ? Number(value) : min));\n  }, [value, min]);"""
+          new = """  useEffect(() => {\n    if (!focusedRef.current) setDraft(String(Number.isFinite(Number(value)) ? Number(value) : min));\n  });"""
+          if text.count(old) != 1:
+              raise SystemExit(f'RangeField sync anchor count: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio/src/create-controls.jsx
+          git commit -m "fix(studio): sync numeric drafts after reset [range-sync-applied]"
+          git push origin HEAD:studio/mobile-gallery-create-followup
