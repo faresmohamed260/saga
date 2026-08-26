@@ -113,7 +113,7 @@ try {
   await page.locator('.saga-reference-chip').waitFor({ state: 'visible', timeout: 5000 });
   await page.locator('.saga-composer.is-edit').waitFor({ state: 'visible', timeout: 5000 });
   await page.getByRole('heading', { name: 'Transform your references', exact: true }).waitFor({ state: 'visible' });
-  const editSubmit = page.getByRole('button', { name: 'Edit image', exact: true });
+  const editSubmit = page.getByRole('button', { name: 'Generate image', exact: true });
   await editSubmit.waitFor({ state: 'visible' });
 
   const prompt = page.locator('.saga-rich-prompt');
@@ -131,12 +131,12 @@ try {
 
   await editSubmit.click();
   for (let attempt = 0; attempt < 40 && !diagnostics.submitted; attempt += 1) await page.waitForTimeout(50);
-  if (!diagnostics.sourceUpload) throw new Error('FLUX source upload ticket was not requested after clicking Edit');
-  if (!diagnostics.submitted) throw new Error('FLUX image-edit request was not submitted after clicking Edit');
+  if (!diagnostics.sourceUpload) throw new Error('FLUX source upload ticket was not requested after clicking Generate');
+  if (!diagnostics.submitted) throw new Error('FLUX image-edit request was not submitted after clicking Generate');
   const progress = page.locator('.saga-generation-progress');
   await progress.waitFor({ state: 'visible', timeout: 3000 });
   await progress.getByText('Generating image', { exact: true }).waitFor({ state: 'visible', timeout: 3000 });
-  if (!(await editSubmit.isDisabled())) throw new Error('Image Edit action remains enabled while generation is running');
+  if (!(await editSubmit.isDisabled())) throw new Error('Image Generate action remains enabled while generation is running');
   await page.screenshot({ path: path.join(outputDir, '07-image-generation-running.png'), fullPage: true, animations: 'disabled' });
   diagnostics.screenshots.push('07-image-generation-running.png');
 
@@ -154,7 +154,7 @@ try {
   const resultSlot = page.locator('.saga-output-slot').first();
   await resultSlot.waitFor({ state: 'visible', timeout: 7000 });
   await progress.getByText('Generation ready', { exact: true }).waitFor({ state: 'visible', timeout: 3000 });
-  if (await editSubmit.isDisabled()) throw new Error('Image Edit action stayed disabled after completion');
+  if (await editSubmit.isDisabled()) throw new Error('Image Generate action stayed disabled after completion');
   const generatedCard = resultSlot.locator('.media-card');
   await generatedCard.waitFor({ state: 'visible' });
   const frameStyle = await generatedCard.locator('.media-frame').getAttribute('style') || '';
