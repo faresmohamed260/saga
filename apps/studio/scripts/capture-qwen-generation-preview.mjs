@@ -52,9 +52,10 @@ try {
   await page.locator('.saga-composer.is-edit').waitFor({ state: 'visible', timeout: 5000 });
   await page.locator('.saga-rich-prompt').fill('Make the reference look like a clean editorial photograph');
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
-  await advanced.getByText('Qwen Image Edit 2511 · Abliterated BF16 + Lightning', { exact: true }).waitFor({ state: 'visible' });
+  if (!(await modelSelector.innerText()).includes('Qwen Image Edit 2511')) throw new Error('Qwen model selection was not preserved after adding a reference');
   await advanced.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
   await advanced.getByText('4-step BF16 Lightning LoRA', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.locator('[data-qwen-fixed-steps="4"]').waitFor({ state: 'visible' });
   if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('Qwen fixed four-step recipe unexpectedly exposed an editable Steps input');
   const cfg = advanced.locator('input[aria-label="CFG value"]');
   if (Number(await cfg.inputValue()) !== 1) throw new Error('Qwen Advanced defaults did not switch to CFG 1');
