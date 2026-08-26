@@ -1,11 +1,6 @@
-name: Qwen Persisted Studio Release Proof
+name: Qwen Live Persistence Smoke
 
 on:
-  push:
-    branches:
-      - studio/qwen-image-edit-2511
-    paths:
-      - ".github/workflows/qwen-supabase-persistence-proof.yml"
   workflow_dispatch:
 
 permissions:

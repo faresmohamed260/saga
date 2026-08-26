@@ -1,14 +1,9 @@
 import { supabaseRequest } from './_supabase.js';
-import qwenReleaseProofHandler from '../server/qwen-release-proof.js';
 
 const GENERATION_SELECT = 'id,status,kind,mode,model,prompt,negative_prompt,r2_key,media_url,thumbnail_r2_key,thumbnail_url,mime_type,resolution,width,height,thumbnail_width,thumbnail_height,duration_ms,seed,workflow_id,error_message,metadata,is_favorite,created_at,completed_at';
 
 export default async function handler(req, res) {
   try {
-    if (req.method === 'GET' && req.query?.qwenReleaseProof === 'qwen-civitai-deployment-readiness') {
-      return qwenReleaseProofHandler({ ...req, query: { confirm: 'qwen-civitai-deployment-readiness' } }, res);
-    }
-
     if (req.method === 'GET') {
       const rows = await supabaseRequest(`studio_generations?select=${encodeURIComponent(GENERATION_SELECT)}&is_favorite=eq.true&order=created_at.desc&limit=100`, { method: 'GET' });
       return res.status(200).json({ items: Array.isArray(rows) ? rows : [] });
