@@ -21,8 +21,20 @@ import {
 import LibraryHeader from '../../components/LibraryHeader.jsx';
 import { modelDisplayName } from '../../model-labels.js';
 import UploadsView from './UploadsView.jsx';
+import GallerySelect from './GallerySelect.jsx';
 
 const DENSITY_STORAGE_KEY = 'saga.galleryDensity';
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  { value: 'image', label: 'Images' },
+  { value: 'video', label: 'Videos' },
+];
+const DATE_OPTIONS = [
+  { value: 'any', label: 'Any date' },
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'This week' },
+  { value: 'month', label: 'This month' },
+];
 
 export default function GalleryView({
   items,
@@ -82,6 +94,10 @@ export default function GalleryView({
   const activeSearch = libraryTab === 'uploads' ? uploadSearch : search;
   const updateActiveSearch = (value) => libraryTab === 'uploads' ? setUploadSearch(value) : onSearchChange(value);
   const activeSearchLabel = libraryTab === 'uploads' ? 'Search uploads' : 'Search prompts';
+  const modelOptions = React.useMemo(() => [
+    { value: 'all', label: 'All models' },
+    ...models.map((modelName) => ({ value: modelName, label: modelDisplayName(modelName) })),
+  ], [models]);
 
   const switchLibrary = (nextTab) => {
     if (nextTab === libraryTab) return;
@@ -128,40 +144,17 @@ export default function GalleryView({
         <>
           <div className="gallery-desktop-controls">
             <div className="gallery-filter-strip">
-              <button type="button" className={`gallery-reset-filter ${hasActiveFilters ? '' : 'selected'}`} onClick={resetFilters}>All creations</button>
+              <GallerySelect value={kind} options={TYPE_OPTIONS} onChange={onKindChange} ariaLabel="Type" className="gallery-kind-filter" />
               <span className="gallery-control-divider" aria-hidden="true"/>
-              <label className="gallery-kind-filter gallery-inline-select">
-                <span className="sr-only">Type</span>
-                <select value={kind} onChange={(event) => onKindChange(event.target.value)} aria-label="Type">
-                  <option value="all">All types</option>
-                  <option value="image">Images</option>
-                  <option value="video">Videos</option>
-                </select>
-              </label>
+              <GallerySelect value={model} options={modelOptions} onChange={onModelChange} ariaLabel="Model" className="gallery-model-filter" />
               <span className="gallery-control-divider" aria-hidden="true"/>
-              <label className="gallery-model-filter gallery-inline-select">
-                <span className="sr-only">Model</span>
-                <select value={model} onChange={(event) => onModelChange(event.target.value)} aria-label="Model">
-                  <option value="all">All models</option>
-                  {models.map((modelName) => <option key={modelName} value={modelName}>{modelDisplayName(modelName)}</option>)}
-                </select>
-              </label>
-              <span className="gallery-control-divider" aria-hidden="true"/>
-              <label className="gallery-date-filter gallery-inline-select">
-                <span className="sr-only">Date</span>
-                <select value={date} onChange={(event) => onDateChange(event.target.value)} aria-label="Date">
-                  <option value="any">Any date</option>
-                  <option value="today">Today</option>
-                  <option value="week">This week</option>
-                  <option value="month">This month</option>
-                </select>
-              </label>
+              <GallerySelect value={date} options={DATE_OPTIONS} onChange={onDateChange} ariaLabel="Date" className="gallery-date-filter" />
               <span className="gallery-control-divider" aria-hidden="true"/>
               <label className="gallery-favorites-filter">
                 <input type="checkbox" checked={favoritesOnly} onChange={(event) => onFavoritesOnlyChange(event.target.checked)} />
-                <Heart size={15} fill={favoritesOnly ? 'currentColor' : 'none'}/>
                 <span>Favorites</span>
               </label>
+              {hasActiveFilters && <button type="button" className="gallery-clear-filters inline" onClick={resetFilters}>Clear</button>}
             </div>
 
             <div className="gallery-view-strip">
@@ -169,7 +162,7 @@ export default function GalleryView({
                 {managing ? <X size={16}/> : <Check size={16}/>}<span>{managing ? 'Exit Batch Selection' : 'Batch Actions'}</span>
               </button>
               <span className="gallery-control-divider" aria-hidden="true"/>
-          <button type="button" className="gallery-sort-toggle" aria-label={`Sort gallery, ${sort === 'newest' ? 'newest first' : 'oldest first'}`} title={`Showing ${sort === 'newest' ? 'newest' : 'oldest'} first`} onClick={() => onSortChange(sort === 'newest' ? 'oldest' : 'newest')}><ArrowDownUp size={16}/><span>{sort === 'newest' ? 'Newest' : 'Oldest'}</span></button>
+              <button type="button" className="gallery-sort-toggle" aria-label={`Sort gallery, ${sort === 'newest' ? 'newest first' : 'oldest first'}`} title={`Showing ${sort === 'newest' ? 'newest' : 'oldest'} first`} onClick={() => onSortChange(sort === 'newest' ? 'oldest' : 'newest')}><ArrowDownUp size={16}/><span>{sort === 'newest' ? 'Newest' : 'Oldest'}</span></button>
               <span className="gallery-control-divider" aria-hidden="true"/>
               <div className="gallery-density-control" role="group" aria-label="Gallery density">
                 <LayoutGrid size={15}/>
@@ -180,7 +173,6 @@ export default function GalleryView({
           </div>
 
           <div className="gallery-mobile-controls" aria-label="Gallery controls">
-            <button type="button" className={collectionsOpen ? 'active' : ''} aria-expanded={collectionsOpen} onClick={() => setCollectionsOpen((value) => !value)}><Folder size={19}/><span>Collections</span></button>
             <button type="button" className={mobileFiltersOpen || hasActiveFilters ? 'active' : ''} aria-expanded={mobileFiltersOpen} onClick={() => setMobileFiltersOpen((value) => !value)}><SlidersHorizontal size={19}/><span>Filter{hasActiveFilters ? ' •' : ''}</span></button>
             <button type="button" className="gallery-sort-toggle" aria-label={`Sort gallery, ${sort === 'newest' ? 'newest first' : 'oldest first'}`} onClick={() => onSortChange(sort === 'newest' ? 'oldest' : 'newest')}><ArrowDownUp size={19}/><span>{sort === 'newest' ? 'Newest' : 'Oldest'}</span></button>
             <button type="button" onClick={() => changeDensity(density === 'compact' ? 'comfortable' : 'compact')} aria-label={`Gallery layout: ${density}`}><LayoutGrid size={19}/><span>Layout</span></button>
@@ -189,10 +181,10 @@ export default function GalleryView({
 
           {mobileFiltersOpen && (
             <div className="gallery-mobile-filter-panel" role="group" aria-label="Gallery filters">
-              <label><span>Type</span><select value={kind} onChange={(event) => onKindChange(event.target.value)}><option value="all">All types</option><option value="image">Images</option><option value="video">Videos</option></select></label>
-              <label className="gallery-model-filter"><span>Model</span><select value={model} onChange={(event) => onModelChange(event.target.value)}><option value="all">All models</option>{models.map((modelName) => <option key={modelName} value={modelName}>{modelDisplayName(modelName)}</option>)}</select></label>
-              <label><span>Date</span><select value={date} onChange={(event) => onDateChange(event.target.value)}><option value="any">Any date</option><option value="today">Today</option><option value="week">This week</option><option value="month">This month</option></select></label>
-              <label className="gallery-mobile-favorite"><input type="checkbox" checked={favoritesOnly} onChange={(event) => onFavoritesOnlyChange(event.target.checked)} /><Heart size={16} fill={favoritesOnly ? 'currentColor' : 'none'}/><span>Favorites only</span></label>
+              <label><span>Type</span><GallerySelect value={kind} options={TYPE_OPTIONS} onChange={onKindChange} ariaLabel="Type" /></label>
+              <label className="gallery-model-filter"><span>Model</span><GallerySelect value={model} options={modelOptions} onChange={onModelChange} ariaLabel="Model" /></label>
+              <label><span>Date</span><GallerySelect value={date} options={DATE_OPTIONS} onChange={onDateChange} ariaLabel="Date" /></label>
+              <label className="gallery-mobile-favorite"><input type="checkbox" checked={favoritesOnly} onChange={(event) => onFavoritesOnlyChange(event.target.checked)} /><span>Favorites only</span></label>
               {hasActiveFilters && <button type="button" className="gallery-clear-filters" onClick={resetFilters}>Clear filters</button>}
             </div>
           )}
