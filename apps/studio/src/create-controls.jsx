@@ -237,7 +237,7 @@ function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNest
     if (!open) return undefined;
     const onPointer = (event) => {
       if (refs.some((item) => item.current?.contains(event.target))) return;
-      if (protectNestedEscape && event.target?.closest?.('[data-advanced-trigger="true"]')) return;
+      if (protectNestedEscape && event.target?.closest?.('[data-advanced-trigger="true"], .saga-fancy-options-portal')) return;
       close();
     };
     const onKey = (event) => {
