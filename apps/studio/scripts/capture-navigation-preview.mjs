@@ -35,6 +35,16 @@ async function expectDestination(page, label, heading) {
   if (overflow > 1) throw new Error(`${label} has ${overflow}px horizontal overflow`);
 }
 
+async function navigateDesktop(page, label, heading) {
+  const openNavigation = page.getByRole('button', { name: 'Open navigation', exact: true });
+  if (await openNavigation.count()) await openNavigation.click();
+  const sidebar = page.locator('.sidebar.open');
+  await sidebar.waitFor({ state: 'visible', timeout: 3000 });
+  await sidebar.getByRole('button', { name: label, exact: true }).click();
+  await expectDestination(page, label, heading);
+  if (await page.locator('.sidebar.open').count()) throw new Error(`Desktop navigation did not close after choosing ${label}`);
+}
+
 async function runDesktop(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark', reducedMotion: 'reduce' });
   const page = await context.newPage();
@@ -45,8 +55,8 @@ async function runDesktop(browser) {
   await page.locator('.saga-create-stage').waitFor({ state: 'visible', timeout: 10000 });
 
   for (const [label, heading] of destinations) {
-    if (label !== 'Create') await page.getByRole('button', { name: label, exact: true }).click();
-    await expectDestination(page, label, heading);
+    if (label !== 'Create') await navigateDesktop(page, label, heading);
+    else await expectDestination(page, label, heading);
     diagnostics.desktop.push({ label, url: page.url() });
     if (['Models', 'Workflows', 'Settings'].includes(label)) {
       await page.screenshot({ path: path.join(outputDir, `navigation-${label.toLowerCase()}-desktop.png`), fullPage: true, animations: 'disabled' });
@@ -65,8 +75,7 @@ async function runDesktop(browser) {
     const saved = JSON.parse(localStorage.getItem(key) || '{}');
     localStorage.setItem(key, JSON.stringify({ ...saved, mode: 'Video' }));
   });
-  await page.getByRole('button', { name: 'Models', exact: true }).click();
-  await expectDestination(page, 'Models', 'Production models');
+  await navigateDesktop(page, 'Models', 'Production models');
   await page.getByRole('button', { name: 'Start image edit', exact: true }).click();
   await page.getByRole('heading', { name: /Create from a reference|Transform your references/ }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Model launch action did not enter Create');
@@ -80,8 +89,7 @@ async function runDesktop(browser) {
     const saved = JSON.parse(localStorage.getItem(key) || '{}');
     localStorage.setItem(key, JSON.stringify({ ...saved, mode: 'Image' }));
   });
-  await page.getByRole('button', { name: 'Workflows', exact: true }).click();
-  await expectDestination(page, 'Workflows', 'Production workflows');
+  await navigateDesktop(page, 'Workflows', 'Production workflows');
   await page.getByRole('button', { name: 'Create video', exact: true }).click();
   await page.getByRole('heading', { name: 'Create motion', exact: true }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Workflow launch action did not enter Video Create');
