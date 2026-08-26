@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "deploymentRevision": "qwen-image-edit-2511-v1",
+  "deploymentRevision": "qwen-image-edit-2511-civitai-sharded-v2",
   "ecosystems": [
     {
       "id": "flux2-klein-9b",
