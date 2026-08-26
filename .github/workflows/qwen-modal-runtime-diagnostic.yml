@@ -62,8 +62,8 @@ jobs:
       - name: Fetch recent Qwen runtime logs
         run: >-
           modal app logs saga-qwen-image-edit-2511
-          --since 15m
-          --tail 1200
+          --since 30m
+          --tail 1500
           --timestamps
           --show-function-id
           --show-container-id
