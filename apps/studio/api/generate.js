@@ -5,6 +5,7 @@ import {
 } from './_generation-jobs.js';
 import { submitWorkflow } from './_providers.js';
 import { readSourceObject, isSourceKey } from './_r2.js';
+import { workersForWorkflow } from './_worker-registry.js';
 import { getWorkflow, listWorkflows } from './_workflows.js';
 
 export const config = { maxDuration: 60 };
@@ -49,6 +50,25 @@ async function readBody(req, limit) {
   return Buffer.concat(chunks);
 }
 
+async function requestWorkerWarmup(workflow) {
+  const worker = workersForWorkflow(workflow)[0];
+  if (!worker) return { status: 'unavailable', ecosystem: workflow.ecosystem || null, workerId: null };
+  try {
+    const response = await fetch(`${worker.gatewayUrl}/warm`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(4500),
+    });
+    return {
+      status: response.ok ? 'waking' : 'requested',
+      ecosystem: workflow.ecosystem || null,
+      workerId: worker.id,
+    };
+  } catch {
+    return { status: 'requested', ecosystem: workflow.ecosystem || null, workerId: worker.id };
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method === 'GET') return res.status(200).json({ workflows: listWorkflows() });
 
@@ -65,6 +85,10 @@ export default async function handler(req, res) {
     const workflowId = jsonMode ? String(body.workflowId || '').trim() : String(req.headers['x-saga-workflow'] || '').trim();
     const workflow = getWorkflow(workflowId);
     if (!workflow) return res.status(404).json({ error: 'Unknown generation workflow' });
+
+    if (jsonMode && body.phase === 'warmup') {
+      return res.status(202).json(await requestWorkerWarmup(workflow));
+    }
 
     const prompt = jsonMode ? String(body.prompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-prompt']).trim().slice(0, 2000);
     const negativePrompt = jsonMode ? String(body.negativePrompt || '').trim().slice(0, 2000) : decodeHeader(req.headers['x-saga-negative-prompt']).trim().slice(0, 2000);
