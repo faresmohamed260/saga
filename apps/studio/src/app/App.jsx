@@ -315,7 +315,7 @@ export default function App() {
       />
 
       <main className="workspace">
-        <MobileTopbar navigationOpen={navigationOpen} onOpenNavigation={() => setNavigationOpen(true)} onOpenSettings={() => { setSection('Create'); setSettingsOpen(true); }} />
+        <MobileTopbar navigationOpen={navigationOpen} settingsOpen={settingsOpen} onOpenNavigation={() => setNavigationOpen((current) => !current)} onOpenSettings={() => { setSection('Create'); setSettingsOpen((current) => !current); }} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
           : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} date={galleryDate} favoritesOnly={galleryFavoritesOnly} collections={collections} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onDateChange={setGalleryDate} onFavoritesOnlyChange={setGalleryFavoritesOnly} onOpenCollection={async (collection) => { await loadCollectionItems(collection); setSection('Collections'); }} onOpenCollections={() => setSection('Collections')} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} onUseUploadReference={useUploadReference} />

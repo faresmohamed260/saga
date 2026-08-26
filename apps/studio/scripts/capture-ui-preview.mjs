@@ -118,7 +118,10 @@ try {
   if (Math.abs(composerCenter - workspaceCenter) > 70) throw new Error(`Composer is not centered: ${composerCenter} vs ${workspaceCenter}`);
   const upload = desktop.getByRole('button', { name: 'Upload reference images', exact: true });
   await upload.waitFor({ state: 'visible' });
-  if (await desktop.locator('.saga-submit').count()) throw new Error('Image setup still exposes a wide submit-style Add image action');
+  const imageGenerate = desktop.locator('.saga-submit');
+  await imageGenerate.waitFor({ state: 'visible' });
+  if ((await imageGenerate.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Image setup primary action must retain the Generate verb');
+  if (!(await imageGenerate.isDisabled())) throw new Error('Image setup Generate must remain disabled until a reference is attached');
   const uploadBox = await upload.boundingBox();
   if (!uploadBox || Math.abs(uploadBox.width - uploadBox.height) > 1 || uploadBox.width < 36) throw new Error(`Image setup circular upload action is missing: ${JSON.stringify(uploadBox)}`);
   await shot(desktop, '01-create-image-centered.png');
@@ -202,9 +205,10 @@ try {
   const advanced = desktop.locator('.saga-advanced-panel');
   await advanced.waitFor({ state: 'visible' });
   if (await advanced.locator('select').count()) throw new Error('Native select found inside advanced settings');
+  await advanced.getByRole('button', { name: 'Image model', exact: true }).waitFor({ state: 'visible' });
   const panelBox = await advanced.boundingBox();
   const viewport = desktop.viewportSize();
-  if (!panelBox || !viewport || panelBox.x < 8 || panelBox.y < 8 || panelBox.x + panelBox.width > viewport.width - 8 || panelBox.y + panelBox.height > viewport.height - 8) throw new Error(`Advanced panel out of viewport: ${JSON.stringify(panelBox)}`);
+  if (!panelBox || !viewport || panelBox.x < 0 || panelBox.y < 0 || Math.abs(panelBox.x + panelBox.width - viewport.width) > 2 || Math.abs(panelBox.height - viewport.height) > 2) throw new Error(`Advanced right drawer is not viewport-aligned: ${JSON.stringify(panelBox)}`);
   await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
   await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
   await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
@@ -324,7 +328,7 @@ try {
   await secondChooser.setFiles({ name: 'reference-2.png', mimeType: 'image/png', buffer: referencePng });
   const refChips = desktop.locator('.saga-reference-chip');
   await refChips.nth(1).waitFor({ state: 'visible', timeout: 5000 });
-  if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Edit') throw new Error('Edit mode primary action does not expose its principal Edit verb');
+  if ((await desktop.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Edit mode primary action does not retain the Generate verb');
   if (await desktop.locator('.saga-submit').getAttribute('aria-label') !== 'Edit image') throw new Error('Edit primary action lost its accessible name');
   const richPrompt = desktop.locator('.saga-rich-prompt');
   await richPrompt.click();

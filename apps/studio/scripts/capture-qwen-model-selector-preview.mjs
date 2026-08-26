@@ -13,20 +13,22 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 1000
 try {
   const page = await context.newPage();
   await page.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-  await page.getByRole('button', { name: 'Open generation settings', exact: true }).click();
-  const selector = page.getByRole('combobox', { name: 'Image model', exact: true });
+  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
+  const selector = page.getByRole('button', { name: 'Image model', exact: true });
   await selector.waitFor({ state: 'visible', timeout: 20_000 });
-  if (await selector.inputValue() !== 'flux2-klein-9b') throw new Error('FLUX must be the initial image model');
-  await selector.selectOption('qwen-image-edit-2511');
-  if (await selector.inputValue() !== 'qwen-image-edit-2511') throw new Error('Qwen model selection did not activate');
+  if (!(await selector.innerText()).includes('FLUX.2 Klein 9B')) throw new Error('FLUX must be the initial image model');
+  await selector.click();
+  await page.getByRole('option', { name: 'Qwen Image Edit 2511', exact: true }).click();
+  if (!(await selector.innerText()).includes('Qwen Image Edit 2511')) throw new Error('Qwen model selection did not activate');
   await page.getByText('Qwen Image Edit 2511 · Abliterated BF16 + Lightning', { exact: true }).waitFor({ state: 'visible' });
   await page.getByText('Add an image, describe the change, and generate with the live Qwen edit model.', { exact: true }).waitFor({ state: 'visible' });
   await page.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
   diagnostics.qwenSelected = true;
   diagnostics.qwenLabels = true;
   await page.screenshot({ path: path.join(outputDir, 'qwen-model-selector.png'), fullPage: true, animations: 'disabled' });
-  await selector.selectOption('flux2-klein-9b');
-  if (await selector.inputValue() !== 'flux2-klein-9b') throw new Error('FLUX model selection did not restore');
+  await selector.click();
+  await page.getByRole('option', { name: 'FLUX.2 Klein 9B', exact: true }).click();
+  if (!(await selector.innerText()).includes('FLUX.2 Klein 9B')) throw new Error('FLUX model selection did not restore');
   await page.getByText('Add an image, describe the change, and generate with the live FLUX edit model.', { exact: true }).waitFor({ state: 'visible' });
   diagnostics.fluxRestored = true;
 } finally {

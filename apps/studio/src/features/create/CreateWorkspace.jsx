@@ -35,7 +35,7 @@ function loadImageModel() {
 }
 
 export default function CreateWorkspace(props) {
-  const { mode, references = [], busy, jobStatus, workerStatus, activeJob, cancelBusy, onGenerate, onViewJob, onCancelJob, setSteps, setCfg, setNegativePrompt, settingsOpen } = props;
+  const { mode, references = [], busy, jobStatus, workerStatus, activeJob, cancelBusy, onGenerate, onViewJob, onCancelJob, setSteps, setCfg, setNegativePrompt } = props;
   const initial = useMemo(loadVideoOutputSettings, []);
   const [autoAspect, setAutoAspect] = useState(initial.autoAspect);
   const [manualAspect, setManualAspect] = useState(initial.manualAspect);
@@ -90,17 +90,7 @@ export default function CreateWorkspace(props) {
   ) : null;
 
   return (
-    <div className={`saga-create-workspace-shell ${settingsOpen && mode !== 'Video' ? 'advanced-has-image-model' : ''}`}>
-      {settingsOpen && mode !== 'Video' && (
-        <label className="saga-advanced-model-row">
-          <span>IMAGE MODEL</span>
-          <select aria-label="Image model" value={imageModel} onChange={(event) => chooseImageModel(event.target.value)}>
-            <option value="flux2-klein-9b">FLUX.2 Klein 9B</option>
-            <option value="qwen-image-edit-2511">Qwen Image Edit 2511</option>
-          </select>
-          <small>{MODEL_ADVANCED_PRESETS[imageModel].modelLabel}</small>
-        </label>
-      )}
+    <div className="saga-create-workspace-shell">
       <LegacyCreateWorkspace
         {...props}
         videoAspect={effectiveAspect}
@@ -111,6 +101,8 @@ export default function CreateWorkspace(props) {
         videoReferenceInfo={referenceInfo}
         videoFrameRate={frameRate}
         setVideoFrameRate={setFrameRate}
+        imageModel={imageModel}
+        onImageModelChange={chooseImageModel}
         imageModelName={imageModel === 'qwen-image-edit-2511' ? 'Qwen' : 'FLUX'}
         imageModelLabel={imageModel === 'qwen-image-edit-2511' ? 'Qwen Image Edit 2511' : 'FLUX.2 Klein 9B'}
         onGenerate={handleGenerate}

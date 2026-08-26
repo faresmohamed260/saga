@@ -15,9 +15,4 @@
     flex: 1 1 auto;
   }
 
-  .workspace .saga-advanced-model-row {
-    top: 112px;
-    right: 12px;
-    width: min(calc(92vw - 24px), 396px);
-  }
 }

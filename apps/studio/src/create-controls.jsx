@@ -237,6 +237,7 @@ function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNest
     if (!open) return undefined;
     const onPointer = (event) => {
       if (refs.some((item) => item.current?.contains(event.target))) return;
+      if (protectNestedEscape && event.target?.closest?.('[data-advanced-trigger="true"]')) return;
       close();
     };
     const onKey = (event) => {
@@ -595,7 +596,7 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 }
 
 function AdvancedSettings({
-  open, onClose, anchorRef, mode, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,
+  open, onClose, anchorRef, mode, imageModel = 'flux2-klein-9b', onImageModelChange = () => {}, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,
   cfg, setCfg, negativePrompt, setNegativePrompt,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
@@ -620,6 +621,20 @@ function AdvancedSettings({
       </header>
 
       <div className="saga-advanced-body">
+        {!isVideo && (
+          <section className="saga-advanced-card saga-model-selector-card">
+            <div className="saga-card-title"><strong>Image model</strong><small>Choose the production image-edit ecosystem.</small></div>
+            <FancySelect
+              label="Image model"
+              value={imageModel}
+              options={[
+                { value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B' },
+                { value: 'qwen-image-edit-2511', label: 'Qwen Image Edit 2511' },
+              ]}
+              onChange={onImageModelChange}
+            />
+          </section>
+        )}
         {preset ? (
           <>
             <div className="saga-advanced-runtime" aria-label="Active production model">
@@ -770,6 +785,7 @@ export default function CreateWorkspace({
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
   videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},
+  imageModel = 'flux2-klein-9b', onImageModelChange = () => {},
   imageModelName = 'FLUX', imageModelLabel = 'FLUX.2 Klein 9B',
 }) {
   const isEdit = mode === 'Edit';
@@ -1143,6 +1159,8 @@ export default function CreateWorkspace({
           onClose={() => setSettingsOpen(false)}
           anchorRef={isVideo ? videoResolutionButtonRef : aspectButtonRef}
           mode={mode}
+          imageModel={imageModel}
+          onImageModelChange={onImageModelChange}
           imageModelName={imageModelName}
           seed={seed}
           setSeed={setSeed}
