@@ -49,7 +49,7 @@ const workflowRegistry = {
     automaticOutputSize: true,
     outputMimeType: 'image/png',
     defaults: { negativePrompt: '', seed: 42, steps: 4, cfg: 1.0, megapixels: 1.0 },
-    limits: { maxSourceBytes: 25 * 1024 * 1024, minMegapixels: 0.25, maxMegapixels: 4.0, minSteps: 4, maxSteps: 4 },
+    limits: { maxSourceBytes: 25 * 1024 * 1024, minMegapixels: 0.25, maxMegapixels: 4.0, minSteps: 1, maxSteps: 50 },
   },
   'qwen-image-edit-2511': {
     id: 'qwen-image-edit-2511',
@@ -73,8 +73,8 @@ const workflowRegistry = {
       maxSourceBytes: 25 * 1024 * 1024,
       minMegapixels: 0.25,
       maxMegapixels: 4.0,
-      minSteps: 4,
-      maxSteps: 4,
+      minSteps: 1,
+      maxSteps: 50,
     },
   },
   'ltx25-redgraft-video': {
