@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl --fail-with-body --silent --show-error --max-time 420 'https://rashyleshocuvpgcooxy.supabase.co/functions/v1/qwen-deployment-readiness-proof?proof=8pACZ2D4_qRpkVNuPlkekiyNDO8VsEVC')"
+          response="$(curl --silent --show-error --max-time 420 'https://rashyleshocuvpgcooxy.supabase.co/functions/v1/qwen-deployment-readiness-proof?proof=8pACZ2D4_qRpkVNuPlkekiyNDO8VsEVC')"
           printf '%s\n' "$response"
           PROOF_JSON="$response" python - <<'PY'
           import json, os
