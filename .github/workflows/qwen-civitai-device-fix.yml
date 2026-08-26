@@ -1,0 +1,243 @@
+name: Apply Qwen Civitai Device Fix
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-civitai-device-fix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/qwen-image-edit-2511
+          fetch-depth: 0
+      - name: Patch Civitai worker placement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime_path = Path('integrations/qwen/qwen_image_edit_2511_app.py')
+          text = runtime_path.read_text(encoding='utf-8')
+
+          text = text.replace('from __future__ import annotations\n\nimport io', 'from __future__ import annotations\n\nimport gc\nimport io', 1)
+
+          constants_anchor = 'LIGHTNING_TRUE_CFG_SCALE = 1.0\nGPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")'
+          constants_new = '''LIGHTNING_TRUE_CFG_SCALE = 1.0
+TRANSFORMER_PRIMARY_GPU = 0
+TEXT_ENCODER_GPU = 1
+TRANSFORMER_SECONDARY_GPU = 2
+VAE_GPU = 3
+GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")'''
+          if constants_anchor not in text:
+              raise SystemExit('Could not find Qwen GPU constants anchor')
+          text = text.replace(constants_anchor, constants_new, 1)
+
+          helper_anchor = '\n\n@app.function(image=image, timeout=7200, volumes={CACHE_DIR: cache_volume}, secrets=RUNTIME_SECRETS)\ndef prefetch_qwen_image_edit_2511'
+          helpers = r'''
+
+
+def _civitai_transformer_device_map(transformer: Any) -> tuple[dict[str, int], int]:
+    blocks = getattr(transformer, "transformer_blocks", None)
+    if blocks is None or len(blocks) < 2:
+        raise RuntimeError("Qwen Civitai transformer does not expose the expected transformer_blocks sequence")
+    split = len(blocks) // 2
+    mapping: dict[str, int] = {}
+    for name, _module in transformer.named_children():
+        if name == "transformer_blocks":
+            continue
+        mapping[name] = TRANSFORMER_SECONDARY_GPU if name in {"norm_out", "proj_out"} else TRANSFORMER_PRIMARY_GPU
+    for index in range(len(blocks)):
+        mapping[f"transformer_blocks.{index}"] = (
+            TRANSFORMER_PRIMARY_GPU if index < split else TRANSFORMER_SECONDARY_GPU
+        )
+    uncovered = []
+    keys = tuple(mapping)
+    for name, _parameter in transformer.named_parameters():
+        if not any(name == key or name.startswith(key + ".") for key in keys):
+            uncovered.append(name)
+    if uncovered:
+        raise RuntimeError(f"Qwen Civitai transformer device map left parameters uncovered: {uncovered[:12]}")
+    return mapping, split
+
+
+def _dispatch_civitai_pipeline(pipe: Any) -> tuple[Any, int]:
+    import torch
+    from accelerate import dispatch_model
+
+    gpu_count = torch.cuda.device_count()
+    if gpu_count < 4:
+        raise RuntimeError(f"Qwen Civitai BF16 worker requires four visible CUDA devices; found {gpu_count}")
+
+    transformer_map, split = _civitai_transformer_device_map(pipe.transformer)
+    pipe.transformer = dispatch_model(
+        pipe.transformer,
+        device_map=transformer_map,
+        main_device=torch.device(f"cuda:{TRANSFORMER_PRIMARY_GPU}"),
+        force_hooks=True,
+    )
+    pipe.text_encoder = dispatch_model(
+        pipe.text_encoder,
+        device_map={"": TEXT_ENCODER_GPU},
+        main_device=torch.device(f"cuda:{TEXT_ENCODER_GPU}"),
+        force_hooks=True,
+    )
+    pipe.vae = dispatch_model(
+        pipe.vae,
+        device_map={"": VAE_GPU},
+        main_device=torch.device(f"cuda:{VAE_GPU}"),
+        force_hooks=True,
+    )
+    if hasattr(pipe.vae, "enable_slicing"):
+        pipe.vae.enable_slicing()
+    if hasattr(pipe.vae, "enable_tiling"):
+        pipe.vae.enable_tiling()
+    pipe.set_progress_bar_config(disable=True)
+    gc.collect()
+    torch.cuda.empty_cache()
+    return pipe, split
+'''
+          if helper_anchor not in text:
+              raise SystemExit('Could not find Qwen helper insertion anchor')
+          text = text.replace(helper_anchor, helpers + helper_anchor, 1)
+
+          old_load = '''        gpu_count = torch.cuda.device_count()
+        if gpu_count < 2:
+            raise RuntimeError(f"Qwen Image Edit requires a multi-GPU worker; visible CUDA devices={gpu_count}")
+        max_memory = {index: "22GB" for index in range(gpu_count)}
+
+        transformer_started = time.perf_counter()
+        transformer = QwenImageTransformer2DModel.from_single_file(
+            str(checkpoint_path),
+            config=MODEL_REPO,
+            subfolder="transformer",
+            torch_dtype=torch.bfloat16,
+            device_map="balanced",
+            max_memory=max_memory,
+        )
+        transformer_load_seconds = round(time.perf_counter() - transformer_started, 3)
+        _set_worker_state(
+            "loading",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
+            precision="civitai-bfloat16",
+            transformer_load_seconds=transformer_load_seconds,
+        )
+
+        self.pipe = QwenImageEditPlusPipeline.from_pretrained(
+            str(model_path),
+            transformer=transformer,
+            torch_dtype=torch.bfloat16,
+            local_files_only=True,
+            device_map="balanced",
+            max_memory=max_memory,
+        )
+        self.pipe.load_lora_weights(
+            str(lightning_path),
+            weight_name=LIGHTNING_WEIGHT_NAME,
+            adapter_name="lightning_4step",
+        )
+        self.pipe.set_adapters("lightning_4step", adapter_weights=1.0)
+        self.pipe.set_progress_bar_config(disable=True)
+        startup_seconds = round(time.perf_counter() - started, 3)
+        device_map = getattr(self.pipe, "hf_device_map", None)
+'''
+          new_load = '''        gpu_count = torch.cuda.device_count()
+        if gpu_count < 4:
+            raise RuntimeError(f"Qwen Image Edit requires four visible CUDA devices; found {gpu_count}")
+
+        transformer_started = time.perf_counter()
+        transformer = QwenImageTransformer2DModel.from_single_file(
+            str(checkpoint_path),
+            config=MODEL_REPO,
+            subfolder="transformer",
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+        )
+        transformer_load_seconds = round(time.perf_counter() - transformer_started, 3)
+        _set_worker_state(
+            "loading",
+            checkpoint_source="civitai",
+            checkpoint_version_id=CIVITAI_VERSION_ID,
+            checkpoint_file_id=CIVITAI_FILE_ID,
+            precision="civitai-bfloat16",
+            transformer_load_seconds=transformer_load_seconds,
+        )
+
+        self.pipe = QwenImageEditPlusPipeline.from_pretrained(
+            str(model_path),
+            transformer=transformer,
+            torch_dtype=torch.bfloat16,
+            local_files_only=True,
+            low_cpu_mem_usage=True,
+        )
+        # Load and fuse Lightning while the transformer is still colocated on CPU.
+        # Dispatching a PEFT adapter after a balanced device map can leave LoRA
+        # matmul weights on CPU while their activations live on cuda:1.
+        self.pipe.load_lora_weights(
+            str(lightning_path),
+            weight_name=LIGHTNING_WEIGHT_NAME,
+            adapter_name="lightning_4step",
+        )
+        self.pipe.set_adapters("lightning_4step", adapter_weights=1.0)
+        self.pipe.fuse_lora(
+            components=["transformer"],
+            adapter_names=["lightning_4step"],
+            lora_scale=1.0,
+            safe_fusing=True,
+        )
+        self.pipe.unload_lora_weights()
+        self.pipe, split = _dispatch_civitai_pipeline(self.pipe)
+        startup_seconds = round(time.perf_counter() - started, 3)
+        device_map = {
+            "transformer": f"cuda:{TRANSFORMER_PRIMARY_GPU}/cuda:{TRANSFORMER_SECONDARY_GPU}",
+            "text_encoder": f"cuda:{TEXT_ENCODER_GPU}",
+            "vae": f"cuda:{VAE_GPU}",
+        }
+'''
+          if old_load not in text:
+              raise SystemExit('Could not find old balanced Qwen load block')
+          text = text.replace(old_load, new_load, 1)
+
+          text = text.replace('placement="balanced-multi-gpu",', 'placement="civitai-bf16-lightning-4xA10-sharded",\n            transformer_split_block=split,', 1)
+          text = text.replace('placement="balanced-multi-gpu",\n            device_map=device_map,', 'placement="civitai-bf16-lightning-4xA10-sharded",\n            transformer_primary_gpu=TRANSFORMER_PRIMARY_GPU,\n            text_encoder_gpu=TEXT_ENCODER_GPU,\n            transformer_secondary_gpu=TRANSFORMER_SECONDARY_GPU,\n            vae_gpu=VAE_GPU,\n            transformer_split_block=split,\n            device_map=device_map,', 1)
+
+          generator_old = '        generator = torch.Generator(device="cuda").manual_seed(int(seed))'
+          generator_new = '''        execution_device = getattr(self.pipe, "_execution_device", torch.device(f"cuda:{VAE_GPU}"))
+        if not isinstance(execution_device, torch.device):
+            execution_device = torch.device(execution_device)
+        generator = torch.Generator(device=execution_device).manual_seed(int(seed))'''
+          if generator_old not in text:
+              raise SystemExit('Could not find Qwen generator placement line')
+          text = text.replace(generator_old, generator_new, 1)
+
+          runtime_path.write_text(text, encoding='utf-8')
+
+          contract_path = Path('apps/studio/scripts/check-qwen-integration-contract.mjs')
+          contract = contract_path.read_text(encoding='utf-8')
+          old_expect = "expect(runtime.includes('device_map=\"balanced\"'), 'Qwen full-BF16 worker must shard the pipeline across GPUs');"
+          new_expect = "expect(runtime.includes('_dispatch_civitai_pipeline') && runtime.includes('dispatch_model') && runtime.includes('fuse_lora') && runtime.includes('unload_lora_weights'), 'Qwen Civitai worker must fuse Lightning before deterministic four-GPU dispatch');"
+          if old_expect not in contract:
+              raise SystemExit('Could not find old balanced-device contract assertion')
+          contract = contract.replace(old_expect, new_expect, 1)
+          contract_path.write_text(contract, encoding='utf-8')
+          PY
+      - name: Validate Qwen integration contract
+        run: node apps/studio/scripts/check-qwen-integration-contract.mjs
+      - name: Commit device fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/qwen/qwen_image_edit_2511_app.py apps/studio/scripts/check-qwen-integration-contract.mjs
+          git commit -m "fix(qwen): fuse Lightning before explicit A10 sharding"
+          git push origin HEAD:studio/qwen-image-edit-2511
