@@ -10,7 +10,7 @@ await mkdir(outputDir, { recursive: true });
 const referencePng = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 42, g: 54, b: 72, alpha: 1 } } }).png().toBuffer();
 const resultPng = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 78, g: 91, b: 126, alpha: 1 } } }).png().toBuffer();
 const resultDataUrl = `data:image/png;base64,${resultPng.toString('base64')}`;
-const diagnostics = { submitted: null, resultPolls: 0, qwenSelected: false, qwenBackendLabel: false };
+const diagnostics = { submitted: null, resultPolls: 0, qwenSelected: false, qwenBackendLabel: false, selectedSteps: 7 };
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -54,9 +54,12 @@ try {
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
   if (!(await modelSelector.innerText()).includes('Qwen Image Edit 2511')) throw new Error('Qwen model selection was not preserved after adding a reference');
   await advanced.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
-  await advanced.getByText('4-step BF16 Lightning LoRA', { exact: true }).waitFor({ state: 'visible' });
-  await advanced.locator('[data-qwen-fixed-steps="4"]').waitFor({ state: 'visible' });
-  if (await advanced.locator('input[aria-label="Steps value"]').count()) throw new Error('Qwen fixed four-step recipe unexpectedly exposed an editable Steps input');
+  const steps = advanced.locator('input[aria-label="Steps value"]');
+  await steps.waitFor({ state: 'visible' });
+  if (Number(await steps.inputValue()) !== 4) throw new Error('Qwen Advanced did not retain four steps as its tuned default');
+  await steps.fill(String(diagnostics.selectedSteps));
+  await steps.press('Enter');
+  if (Number(await steps.inputValue()) !== diagnostics.selectedSteps) throw new Error('Qwen Advanced Steps field did not accept a user-selected value');
   const cfg = advanced.locator('input[aria-label="CFG value"]');
   if (Number(await cfg.inputValue()) !== 1) throw new Error('Qwen Advanced defaults did not switch to CFG 1');
   await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
@@ -64,7 +67,7 @@ try {
   for (let attempt = 0; attempt < 40 && !diagnostics.submitted; attempt += 1) await page.waitForTimeout(50);
   if (!diagnostics.submitted) throw new Error('Qwen image edit was not submitted');
   if (diagnostics.submitted.workflowId !== 'qwen-image-edit-2511') throw new Error(`Wrong Qwen workflow: ${JSON.stringify(diagnostics.submitted)}`);
-  if (Number(diagnostics.submitted.steps) !== 4 || Number(diagnostics.submitted.cfg) !== 1) throw new Error(`Wrong Qwen defaults: ${JSON.stringify(diagnostics.submitted)}`);
+  if (Number(diagnostics.submitted.steps) !== diagnostics.selectedSteps || Number(diagnostics.submitted.cfg) !== 1) throw new Error(`Qwen selected steps/CFG did not reach generation: ${JSON.stringify(diagnostics.submitted)}`);
   await page.locator('.saga-generation-progress').getByText('Generation ready', { exact: true }).waitFor({ state: 'visible', timeout: 7000 });
   await page.getByText(/Live backend · Qwen Image Edit 2511 ·/).waitFor({ state: 'visible', timeout: 5000 });
   diagnostics.qwenBackendLabel = true;

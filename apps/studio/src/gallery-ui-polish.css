@@ -1,0 +1,181 @@
+/* Gallery polish: shared toolbars, centered cards, flat search focus, and consistent control surfaces. */
+
+/* Page titles: keep the informative heading, remove duplicate purple eyebrows, and align page edges. */
+.history-eyebrow { display: none !important; }
+.history-header { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+.gallery-view { box-sizing: border-box; }
+
+/* Search is a single field. Never render a second focus/glow rectangle inside the shell. */
+.gallery-search,
+.gallery-search:focus,
+.gallery-search:focus-within,
+.gallery-search:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
+.gallery-search input,
+.gallery-search input:focus,
+.gallery-search input:focus-visible,
+.gallery-search input:active {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.gallery-search input::-webkit-search-decoration,
+.gallery-search input::-webkit-search-cancel-button,
+.gallery-search input::-webkit-search-results-button,
+.gallery-search input::-webkit-search-results-decoration { -webkit-appearance: none; }
+.gallery-search:focus-within { border-color: rgba(255,255,255,.22) !important; }
+
+/* Custom dropdowns use the same dark popover language as Advanced. */
+.gallery-menu-select { position: relative; min-width: 112px; flex: 0 0 auto; }
+.gallery-menu-select.gallery-model-filter { min-width: 150px; max-width: 220px; }
+.gallery-menu-select-metadata {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 38px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+.gallery-menu-select-trigger {
+  width: 100%; height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 0 10px 0 11px; border: 1px solid rgba(255,255,255,.11); border-radius: 10px;
+  background: #141922; color: #dce1e8; font: inherit; font-size: var(--saga-text-sm); cursor: pointer;
+  outline: 0; box-shadow: none; white-space: nowrap;
+}
+.gallery-menu-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gallery-menu-select-trigger > svg { flex: 0 0 auto; color: #8f98a6; transition: transform .16s ease; }
+.gallery-menu-select.open .gallery-menu-select-trigger { border-color: rgba(177,163,255,.34); background: #171d27; }
+.gallery-menu-select.open .gallery-menu-select-trigger > svg { transform: rotate(180deg); }
+.gallery-menu-select-trigger:hover { border-color: rgba(177,163,255,.28); color: #fff; background: #171d27; }
+.gallery-menu-select-trigger:focus-visible { border-color: rgba(177,163,255,.46); box-shadow: none; outline: none; }
+.gallery-menu-select-popover {
+  position: absolute; z-index: 70; left: 0; top: calc(100% + 6px); min-width: 100%; width: max-content; max-width: min(280px, calc(100vw - 32px));
+  padding: 5px; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; background: #171c24;
+  box-shadow: 0 18px 44px rgba(0,0,0,.48); overflow: hidden;
+}
+.gallery-menu-select-popover button {
+  width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: #cbd1da; font: inherit;
+  font-size: var(--saga-text-sm); text-align: left; cursor: pointer; white-space: nowrap;
+}
+.gallery-menu-select-popover button:hover,
+.gallery-menu-select-popover button:focus-visible { background: rgba(255,255,255,.07); color: #fff; outline: none; }
+.gallery-menu-select-popover button.selected { background: rgba(122,92,255,.12); color: #fff; }
+.gallery-menu-select-popover button svg { color: #bcaeff; flex: 0 0 auto; }
+
+/* Remove redundant/misleading controls. */
+.gallery-reset-filter { display: none !important; }
+.gallery-filter-strip > .gallery-reset-filter + .gallery-control-divider { display: none !important; }
+.gallery-favorites-filter > svg,
+.gallery-mobile-favorite > svg,
+.uploads-filter-strip label > svg,
+.uploads-mobile-filter-panel label > svg { display: none !important; }
+.uploads-filter-strip > button:first-child { display: none !important; }
+.gallery-clear-filters.inline { min-height: 32px; padding: 0 7px; border: 0; background: transparent; color: #818b99; cursor: pointer; }
+.gallery-clear-filters.inline:hover { color: #fff; }
+
+/* One visual toolbar language across Creatives and Uploads. */
+.gallery-desktop-controls,
+.uploads-desktop-controls {
+  min-height: 58px;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.gallery-filter-strip,
+.gallery-view-strip,
+.uploads-filter-strip,
+.uploads-view-strip { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.uploads-filter-strip > button,
+.uploads-filter-strip > label,
+.uploads-view-strip > button,
+.gallery-manage-trigger,
+.gallery-sort-toggle,
+.uploads-sort-toggle {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #aeb5c0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+.gallery-sort-toggle,
+.uploads-sort-toggle { min-width: 88px !important; flex: 0 0 auto !important; overflow: visible !important; }
+.gallery-sort-toggle svg,
+.uploads-sort-toggle svg { flex: 0 0 auto; }
+.gallery-sort-toggle span,
+.uploads-sort-toggle span { display: inline-block; line-height: 1; }
+.uploads-density { height: 36px !important; border-left: 1px solid rgba(255,255,255,.09); }
+
+/* Center card groups for every desktop/window width instead of pinning the last partial row left. */
+.gallery-grid,
+.uploads-grid {
+  justify-content: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+@media (max-width: 760px) {
+  .gallery-desktop-controls,
+  .uploads-desktop-controls { display: none !important; }
+
+  /* Creatives and Uploads use the same four-column mobile toolbar footprint. */
+  .gallery-mobile-controls,
+  .uploads-mobile-controls {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+    gap: 6px !important;
+    margin: 10px 0 14px !important;
+  }
+  .gallery-mobile-controls > button,
+  .uploads-mobile-controls > button {
+    min-height: 52px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    border: 0 !important;
+    border-radius: 9px !important;
+    background: transparent !important;
+    color: #a8afb9 !important;
+    font-size: 10px !important;
+    box-shadow: none !important;
+  }
+  .gallery-mobile-controls > button.active,
+  .uploads-mobile-controls > button.active { background: #141920 !important; color: #fff !important; }
+
+  .gallery-search-mobile { width: 100% !important; box-sizing: border-box !important; }
+  .gallery-search-mobile input { width: 100% !important; }
+
+  .gallery-mobile-filter-panel .gallery-menu-select { width: min(190px, 58vw); min-width: 0; }
+  .gallery-mobile-filter-panel .gallery-menu-select-popover { left: auto; right: 0; }
+
+  .gallery-grid,
+  .uploads-grid { justify-content: stretch !important; }
+}
