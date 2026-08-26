@@ -241,7 +241,7 @@ function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNest
     };
     const onKey = (event) => {
       if (event.key !== 'Escape') return;
-      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded=\"true\"]'))) return;
+      if (protectNestedEscape && refs.some((item) => item.current?.querySelector?.('[aria-expanded="true"]'))) return;
       event.preventDefault();
       event.stopPropagation();
       close();
@@ -595,7 +595,7 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 }
 
 function AdvancedSettings({
-  open, onClose, anchorRef, mode, seed, setSeed, steps, setSteps,
+  open, onClose, anchorRef, mode, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,
   cfg, setCfg, negativePrompt, setNegativePrompt,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
@@ -649,10 +649,15 @@ function AdvancedSettings({
               </label>
               {preset.stepsEditable ? (
                 <RangeField label="Steps" help="Sampling iterations" value={steps} onChange={setSteps} min={1} max={50} step={1} />
-              ) : (
+              ) : isVideo ? (
                 <div className="saga-fixed-setting" data-ltx-fixed-steps="11">
                   <div><strong>Steps</strong><small>Fixed distilled two-stage schedule</small></div>
                   <span>11</span>
+                </div>
+              ) : (
+                <div className="saga-fixed-setting" data-qwen-fixed-steps={preset.steps}>
+                  <div><strong>Steps</strong><small>{preset.stepsDetail || 'Fixed production schedule'}</small></div>
+                  <span>{preset.steps}</span>
                 </div>
               )}
               <RangeField label="CFG" help={isVideo ? 'Distilled default is 1.0' : 'Prompt guidance strength'} value={cfg} onChange={setCfg} min={0} max={20} step={0.1} decimals={1} />
@@ -708,7 +713,7 @@ function AdvancedSettings({
                 }
               }}
             >
-              <RotateCcw size={16} /> Reset to {isVideo ? 'LTX' : 'FLUX'} defaults
+              <RotateCcw size={16} /> Reset to {isVideo ? 'LTX' : imageModelName} defaults
             </button>
           </>
         ) : (
@@ -765,6 +770,7 @@ export default function CreateWorkspace({
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
   videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},
+  imageModelName = 'FLUX', imageModelLabel = 'FLUX.2 Klein 9B',
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
@@ -925,7 +931,7 @@ export default function CreateWorkspace({
         <div className="saga-stage-heading">
           <span>{isEdit ? 'EDIT' : isVideo ? 'VIDEO' : 'CREATE'}</span>
           <h1>{heading}</h1>
-          <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : 'Add an image, describe the change, and generate with the live FLUX edit model.'}</p>
+          <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : `Add an image, describe the change, and generate with the live ${imageModelName} edit model.`}</p>
         </div>
 
         <section
@@ -1122,7 +1128,7 @@ export default function CreateWorkspace({
         {error && <div className="saga-composer-error">{error}</div>}
         {isEdit && (
           <div className="saga-backend-status">
-            {jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · FLUX.2 Klein 9B · {editAuto ? 'Auto canvas' : `${aspect} · ${imageDimensions.width}×${imageDimensions.height}`} · {references.length} reference{references.length === 1 ? '' : 's'}
+            {jobStatus ? `Job ${jobStatus} · ` : ''}Live backend · {imageModelLabel} · {editAuto ? 'Auto canvas' : `${aspect} · ${imageDimensions.width}×${imageDimensions.height}`} · {references.length} reference{references.length === 1 ? '' : 's'}
           </div>
         )}
 
@@ -1157,6 +1163,7 @@ export default function CreateWorkspace({
           onClose={() => setSettingsOpen(false)}
           anchorRef={settingsButtonRef}
           mode={mode}
+          imageModelName={imageModelName}
           seed={seed}
           setSeed={setSeed}
           steps={steps}

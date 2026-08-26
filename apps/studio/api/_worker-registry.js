@@ -46,6 +46,7 @@ function envWorkers() {
 }
 
 function legacyWorker(workflow) {
+  if (workflow?.ecosystem === 'qwen-image-edit-2511') return null;
   if (workflow?.provider === 'modal-flux2-klein') {
     return normalizeWorker({
       id: 'legacy-flux2-klein',

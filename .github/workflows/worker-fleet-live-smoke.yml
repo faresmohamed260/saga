@@ -47,8 +47,17 @@ jobs:
           if not match:
               raise SystemExit('Could not parse generated worker registry')
           workers = json.loads(match.group(1))
-          if len(workers) != 4:
-              raise SystemExit(f'Expected 4 workers, found {len(workers)}')
+          expected = {
+              'flux2-klein-9b': {'primary', 'standby'},
+              'ltx25-redgraft': {'primary', 'standby'},
+              'qwen-image-edit-2511': {'primary', 'standby'},
+          }
+          if len(workers) != 6:
+              raise SystemExit(f'Expected 6 workers across three ecosystems, found {len(workers)}')
+          for ecosystem, roles in expected.items():
+              found = [worker for worker in workers if worker.get('ecosystem') == ecosystem]
+              if len(found) != 2 or {worker.get('role') for worker in found} != roles:
+                  raise SystemExit(f'Invalid {ecosystem} worker set: {found}')
 
           for worker in workers:
               response = requests.get(worker['gatewayUrl'].rstrip('/') + '/health', timeout=60)
@@ -61,6 +70,15 @@ jobs:
                   raise SystemExit(f"{worker['id']} reports wrong worker_id: {live_worker}")
               if live_worker.get('ecosystem') != worker['ecosystem']:
                   raise SystemExit(f"{worker['id']} reports wrong ecosystem: {live_worker}")
+              if worker['ecosystem'] == 'qwen-image-edit-2511':
+                  if payload.get('model') != 'Qwen/Qwen-Image-Edit-2511' or payload.get('precision') != 'civitai-bfloat16':
+                      raise SystemExit(f"{worker['id']} reports wrong Qwen model/precision: {payload}")
+                  checkpoint = payload.get('checkpoint') or {}
+                  if checkpoint.get('source') != 'civitai' or int(checkpoint.get('version_id') or 0) != 2553500:
+                      raise SystemExit(f"{worker['id']} reports wrong Qwen checkpoint: {payload}")
+                  acceleration = payload.get('acceleration') or {}
+                  if acceleration.get('type') != 'lightning-lora' or int(acceleration.get('default_steps') or 0) != 4:
+                      raise SystemExit(f"{worker['id']} reports wrong Qwen acceleration: {payload}")
               print({'worker': worker['id'], 'role': worker['role'], 'state': live_worker.get('state'), 'ready': True})
           PY
 

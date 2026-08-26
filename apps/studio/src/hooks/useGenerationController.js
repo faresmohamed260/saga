@@ -1,5 +1,6 @@
 import React from 'react';
 import { runImageEdit, runVideoGeneration } from '../generation-client.js';
+import { runQwenImageEdit } from '../features/create/qwen-generation-client.js';
 import { runJobAction } from '../api/studioApi.js';
 
 export default function useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, negativePrompt, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter }) {
@@ -10,14 +11,18 @@ export default function useGenerationController({ mode, isEdit, prompt, referenc
   const [cancelBusy, setCancelBusy] = React.useState(false);
   const generationAbortRef = React.useRef(null);
 
-  const runFluxEdit = async () => {
+  const runImageModelEdit = async (imageModel = 'flux2-klein-9b') => {
     if (!references.length) throw new Error('Add at least one reference image before running an edit.');
     if (!prompt.trim()) throw new Error('Describe the edit you want to make.');
     const effectiveSeed = Number(seed) || 42;
     setJobStatus('queued');
-    const { job, result } = await runImageEdit({ sourceFiles: references.map((reference) => reference.file), prompt: prompt.trim(), negativePrompt, resolution: autoEditInfo.detail, seed: effectiveSeed, steps, cfg, megapixels: autoEditInfo.megapixels }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
+    const runner = imageModel === 'qwen-image-edit-2511' ? runQwenImageEdit : runImageEdit;
+    const modelLabel = imageModel === 'qwen-image-edit-2511'
+      ? 'Qwen Image Edit 2511 · Official BF16'
+      : 'FLUX.2 Klein 9B · DarkBeast V2 BFS';
+    const { job, result } = await runner({ sourceFiles: references.map((reference) => reference.file), prompt: prompt.trim(), negativePrompt, resolution: autoEditInfo.detail, seed: effectiveSeed, steps, cfg, megapixels: autoEditInfo.megapixels }, { onStatus: setJobStatus, onWorkerStatus: setWorkerStatus, onJob: setActiveJob, signal: generationAbortRef.current?.signal });
     setJobStatus('completed');
-    setItems((current) => [{ id: result.generationId || job.id, title: prompt.trim(), url: result.thumbnailUrl || result.mediaUrl, originalUrl: result.mediaUrl, thumbnailUrl: result.thumbnailUrl || null, generated: true, model: 'FLUX.2 Klein 9B · DarkBeast V2 BFS', resolution: autoEditInfo.detail, seed: effectiveSeed, kind: 'image', mode: 'edit', persisted: true }, ...current]);
+    setItems((current) => [{ id: result.generationId || job.id, title: prompt.trim(), url: result.thumbnailUrl || result.mediaUrl, originalUrl: result.mediaUrl, thumbnailUrl: result.thumbnailUrl || null, generated: true, model: modelLabel, resolution: autoEditInfo.detail, seed: effectiveSeed, kind: 'image', mode: 'edit', persisted: true }, ...current]);
     if (section === 'Gallery') loadGallery({ append: false });
   };
 
@@ -43,7 +48,7 @@ export default function useGenerationController({ mode, isEdit, prompt, referenc
     const controller = new AbortController(); generationAbortRef.current = controller;
     setBusy(true); setError(''); setJobStatus(''); setWorkerStatus(null); setActiveJob(null); setCancelBusy(false);
     try {
-      if (isEdit) await runFluxEdit();
+      if (isEdit) await runImageModelEdit(generationOptions.imageModel || 'flux2-klein-9b');
       else if (mode === 'Image') throw new Error('Original image generation is not connected to a production workflow yet. The new presets are ready for that backend.');
       else if (mode === 'Video') await runLtxVideo(generationOptions);
       else throw new Error('Choose Image, Video, or Edit to generate media.');

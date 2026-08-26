@@ -1,0 +1,130 @@
+name: Qwen Live Persistence Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  persisted-studio-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install HTTP dependency
+        run: python -m pip install --upgrade "requests>=2.32,<3"
+      - name: Generate on Qwen and persist through Studio media API
+        env:
+          QWEN_GATEWAY: https://voidtrek--saga-qwen-image-edit-2511-gateway-web.modal.run
+          STUDIO_BASE: https://studio.faresuniform.uk
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import struct
+          import time
+          import zlib
+          import requests
+
+          gateway = os.environ['QWEN_GATEWAY'].rstrip('/')
+          studio = os.environ['STUDIO_BASE'].rstrip('/')
+
+          health_response = requests.get(gateway + '/health', timeout=60)
+          health_response.raise_for_status()
+          health = health_response.json()
+          worker = health.get('worker') or {}
+          checkpoint = health.get('checkpoint') or {}
+          acceleration = health.get('acceleration') or {}
+          if health.get('ready') is not True or worker.get('worker_id') != 'qwen-primary-01':
+              raise SystemExit(f'Qwen primary is not ready: {health}')
+          if health.get('precision') != 'civitai-bfloat16' or checkpoint.get('source') != 'civitai' or checkpoint.get('version_id') != 2553500:
+              raise SystemExit(f'Wrong Qwen checkpoint health: {health}')
+          if worker.get('checkpoint_file_id') != 2443737:
+              raise SystemExit(f'Wrong Qwen checkpoint file health: {health}')
+          if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != 4:
+              raise SystemExit(f'Wrong Qwen acceleration health: {health}')
+
+          width = height = 256
+          raw = b''.join(b'\x00' + bytes([48, 76, 118]) * width for _ in range(height))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          source = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+
+          prompt = 'SAGA deployment readiness proof: preserve the reference composition and turn it into a clean editorial poster with a centered white circle.'
+          submit = requests.post(
+              gateway + '/jobs/edit',
+              files=[('image_files', ('qwen-release-proof.png', source, 'image/png'))],
+              data={'prompt': prompt, 'negative_prompt': '', 'seed': '42', 'steps': '4', 'cfg': '1.0', 'megapixels': '0.25'},
+              timeout=120,
+          )
+          submit.raise_for_status()
+          queued = submit.json()
+          call_id = queued.get('call_id')
+          if queued.get('worker_id') != 'qwen-primary-01' or not call_id:
+              raise SystemExit(f'Unexpected Qwen submission: {queued}')
+          if queued.get('checkpoint_version_id') != 2553500:
+              raise SystemExit(f'Wrong Qwen checkpoint version: {queued}')
+          if queued.get('inference_steps') != 4 or float(queued.get('true_cfg_scale') or 0) != 1.0:
+              raise SystemExit(f'Wrong Qwen sampling profile: {queued}')
+
+          output = None
+          deadline = time.time() + 480
+          while time.time() < deadline:
+              poll = requests.get(f'{gateway}/jobs/{call_id}', timeout=120)
+              if poll.status_code == 202:
+                  time.sleep(4)
+                  continue
+              poll.raise_for_status()
+              output = poll.content
+              content_type = poll.headers.get('content-type', '')
+              if 'image/png' not in content_type or not output.startswith(b'\x89PNG\r\n\x1a\n') or len(output) < 10_000:
+                  raise SystemExit(f'Invalid Qwen result: type={content_type} bytes={len(output)}')
+              break
+          if output is None:
+              raise SystemExit('Qwen release-proof generation timed out')
+
+          persist = requests.post(
+              studio + '/api/media',
+              data=output,
+              headers={
+                  'Content-Type': 'image/png',
+                  'X-Saga-Model': 'Qwen Image Edit 2511 · Abliterated BF16 + Lightning',
+                  'X-Saga-Resolution': '512x512',
+                  'X-Saga-Prompt': prompt,
+                  'X-Saga-Negative-Prompt': '',
+                  'X-Saga-Seed': '42',
+              },
+              timeout=180,
+          )
+          if persist.status_code != 201:
+              raise SystemExit(f'Studio media persistence failed: HTTP {persist.status_code}: {persist.text[:1200]}')
+          saved = persist.json()
+          generation_id = saved.get('generationId')
+          media_url = saved.get('url')
+          if saved.get('persisted') is not True or saved.get('historyPersisted') is not True or not generation_id or not media_url:
+              raise SystemExit(f'Studio persistence incomplete: {saved}')
+
+          media = requests.get(studio + media_url, timeout=120)
+          if media.status_code != 200 or not media.content.startswith(b'\x89PNG\r\n\x1a\n') or len(media.content) < 10_000:
+              raise SystemExit(f'Persisted media unreadable: status={media.status_code} type={media.headers.get("content-type")} bytes={len(media.content)}')
+
+          print(json.dumps({
+              'ready': True,
+              'workerId': queued.get('worker_id'),
+              'callId': call_id,
+              'checkpointVersionId': queued.get('checkpoint_version_id'),
+              'checkpointFileId': worker.get('checkpoint_file_id'),
+              'steps': queued.get('inference_steps'),
+              'cfg': queued.get('true_cfg_scale'),
+              'generatedBytes': len(output),
+              'generationId': generation_id,
+              'r2Key': saved.get('key'),
+              'mediaUrl': media_url,
+              'mediaBytes': len(media.content),
+              'studioPersisted': True,
+              'historyPersisted': True,
+          }), flush=True)
+          PY
