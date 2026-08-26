@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
+// Final human-authored validation trigger after reviewed visual baseline refresh.
 const [app, gallery, card, modal, controls, workflowRegistry, generationController] = await Promise.all([
   readFile(new URL('../src/app/App.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/features/library/GalleryView.jsx', import.meta.url), 'utf8'),

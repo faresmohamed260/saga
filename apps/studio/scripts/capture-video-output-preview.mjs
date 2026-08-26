@@ -59,8 +59,9 @@ try {
   const advanced = page.locator('.saga-advanced-panel');
   await advanced.waitFor({ state: 'visible' });
   const closeAdvanced = advanced.getByRole('button', { name: 'Close advanced settings', exact: true });
-  await advanced.getByText('REDGraft LTX 2.5 · Sulphur2 INT8 ConvRot', { exact: true }).waitFor({ state: 'visible' });
+  await advanced.getByRole('button', { name: 'Reset to LTX defaults', exact: true }).waitFor({ state: 'visible' });
   const fixedSteps = advanced.locator('[data-ltx-fixed-steps="11"]');
+  await fixedSteps.waitFor({ state: 'visible' });
   const fixedStepText = (await fixedSteps.innerText()).replace(/\s+/g, ' ');
   if (!/Steps\s+Fixed distilled two-stage schedule\s+11/.test(fixedStepText) || /8\s*\+\s*3/.test(fixedStepText)) throw new Error(`LTX fixed recipe is unclear: ${await fixedSteps.innerText()}`);
   const cfg = advanced.locator('input[aria-label="CFG value"]');
@@ -100,7 +101,6 @@ try {
   await page.keyboard.press('Enter');
   if (!(await fpsTrigger.innerText()).includes('30 fps')) throw new Error('Frame-rate selection did not update to 30 fps');
 
-  // Auto aspect remains reference-aware even though the control moved into Advanced.
   await closeAdvanced.click();
   await advanced.waitFor({ state: 'hidden' });
   const chooserPromise = page.waitForEvent('filechooser');
@@ -116,7 +116,6 @@ try {
   await autoOption.click();
   if (!/Auto\s+4:3\s*·\s*From reference/.test(await aspectWithReference.innerText())) throw new Error(`Auto aspect did not follow 4:3 reference: ${await aspectWithReference.innerText()}`);
 
-  // CFG is editable and reaches the actual image-to-video request; fixed steps remain 11.
   await cfg.fill('1.4');
   await closeAdvanced.click();
   await advanced.waitFor({ state: 'hidden' });
@@ -133,7 +132,6 @@ try {
   if (diagnostics.submitted.workflowId !== 'ltx25-redgraft-video') throw new Error(`Video request did not use the production LTX workflow: ${JSON.stringify(diagnostics.submitted)}`);
   if (diagnostics.submitted.sourceKeys?.[0] !== 'visual-tests/reference-4x3.png') throw new Error(`Video request did not send uploaded reference key: ${JSON.stringify(diagnostics.submitted)}`);
 
-  // Mobile: Aspect/FPS stay out of the composer and remain accessible in Advanced.
   const mobile = await context.newPage();
   await mobile.setViewportSize({ width: 390, height: 844 });
   await mobile.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });

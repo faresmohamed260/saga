@@ -103,7 +103,7 @@ try {
 
   await page.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.locator('.saga-composer').waitFor({ state: 'visible', timeout: 20_000 });
-  await page.getByRole('heading', { name: 'Create from a reference', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('heading', { name: 'Create an image', exact: true }).waitFor({ state: 'visible' });
 
   const addImage = page.getByRole('button', { name: 'Upload reference images', exact: true });
   const chooserPromise = page.waitForEvent('filechooser');
@@ -121,7 +121,9 @@ try {
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
   const advanced = page.locator('.saga-advanced-panel');
   await advanced.waitFor({ state: 'visible' });
-  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  const modelSelector = advanced.getByRole('button', { name: 'Image model', exact: true });
+  await modelSelector.waitFor({ state: 'visible' });
+  if (!(await modelSelector.innerText()).includes('FLUX.2 Klein 9B')) throw new Error('FLUX image model selector was not active in Advanced');
   await advanced.locator('input[aria-label="Seed"]').fill('12345');
   await advanced.locator('textarea[aria-label="Negative prompt"]').fill('blur, text artifacts');
   await advanced.locator('input[aria-label="Steps value"]').fill('6');
