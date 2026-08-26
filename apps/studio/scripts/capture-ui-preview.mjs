@@ -121,7 +121,10 @@ try {
   const imageGenerate = desktop.locator('.saga-submit');
   await imageGenerate.waitFor({ state: 'visible' });
   if ((await imageGenerate.locator('.saga-submit-label').innerText()).trim() !== 'Generate') throw new Error('Image setup primary action must retain the Generate verb');
-  if (!(await imageGenerate.isDisabled())) throw new Error('Image setup Generate must remain disabled until a reference is attached');
+  if (!(await imageGenerate.isDisabled())) throw new Error('Image Generate must remain disabled until a prompt is entered');
+  await desktop.locator('.saga-prompt-shell textarea').fill('A cinematic studio portrait with soft window light');
+  if (await imageGenerate.isDisabled()) throw new Error('Image Generate must enable from prompt text without a reference');
+  await desktop.locator('.saga-prompt-shell textarea').fill('');
   const uploadBox = await upload.boundingBox();
   if (!uploadBox || Math.abs(uploadBox.width - uploadBox.height) > 1 || uploadBox.width < 36) throw new Error(`Image setup circular upload action is missing: ${JSON.stringify(uploadBox)}`);
   await shot(desktop, '01-create-image-centered.png');
@@ -209,7 +212,7 @@ try {
   const panelBox = await advanced.boundingBox();
   const viewport = desktop.viewportSize();
   if (!panelBox || !viewport || panelBox.x < 0 || panelBox.y < 0 || Math.abs(panelBox.x + panelBox.width - viewport.width) > 2 || Math.abs(panelBox.height - viewport.height) > 2) throw new Error(`Advanced right drawer is not viewport-aligned: ${JSON.stringify(panelBox)}`);
-  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  if (await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).count()) throw new Error('Advanced must not repeat the selected model in a separate MODEL card');
   await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
   await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
   await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
@@ -297,7 +300,7 @@ try {
   await expectText(desktop.locator('.saga-control-pill').filter({ has: desktop.locator('.saga-aspect-icon') }), '16:9', 'Persisted aspect');
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });
-  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  if (await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).count()) throw new Error('Advanced must not repeat the selected model in a separate MODEL card');
   await advanced.locator('input[aria-label="Steps value"]').waitFor({ state: 'visible' });
   await advanced.locator('input[aria-label="CFG value"]').waitFor({ state: 'visible' });
   await advanced.locator('textarea[aria-label="Negative prompt"]').waitFor({ state: 'visible' });
@@ -357,7 +360,7 @@ try {
   // FLUX Advanced defaults are real production values and Reset restores them.
   await settingsButton.click();
   await advanced.waitFor({ state: 'visible' });
-  await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).waitFor({ state: 'visible' });
+  if (await advanced.getByText('FLUX.2 Klein 9B · DarkBeast V2 BFS', { exact: true }).count()) throw new Error('Advanced must not repeat the selected model in a separate MODEL card');
   const fluxSteps = advanced.locator('input[aria-label="Steps value"]');
   const fluxCfg = advanced.locator('input[aria-label="CFG value"]');
   if (await fluxSteps.inputValue() !== '4' || await fluxCfg.inputValue() !== '1') throw new Error(`FLUX preset is not 4 steps / CFG 1.0: ${await fluxSteps.inputValue()} / ${await fluxCfg.inputValue()}`);

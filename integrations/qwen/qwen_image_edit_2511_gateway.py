@@ -143,6 +143,16 @@ def web():
             "worker": _state(),
         }
 
+    @api.post("/warm")
+    async def warm():
+        try:
+            worker_cls = modal.Cls.from_name(RUNTIME_APP_NAME, RUNTIME_CLASS_NAME)
+            call = worker_cls().warm.spawn()
+            return {"status": "waking", "call_id": call.object_id, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+        except Exception as exc:  # noqa: BLE001
+            status_code, error_code, state, detail = _failure_payload(exc)
+            return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID})
+
     @api.post("/jobs/edit")
     async def submit_edit(
         image_files: list[UploadFile] = File(...),

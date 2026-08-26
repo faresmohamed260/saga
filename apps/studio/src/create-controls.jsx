@@ -3,7 +3,7 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowUp, Check, ChevronDown, Clock3, Dice5, Image as ImageIcon, Plus,
+  ArrowUp, Check, ChevronDown, Clock3, Image as ImageIcon, LoaderCircle, Plus,
   RotateCcw, Sparkles, Video, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { setEditSizingPreference } from './generation-client.js';
@@ -169,6 +169,8 @@ function ReferenceStrip({ references, onRemove, onInsert }) {
           >
             <span className="saga-reference-thumb" style={{ backgroundImage: `url(${reference.preview})` }}>
               <b>{index + 1}</b>
+              {reference.uploadStatus === 'uploading' && <span className="saga-reference-upload-state" title="Uploading reference"><LoaderCircle className="spin" size={18}/></span>}
+              {reference.uploadStatus === 'error' && <span className="saga-reference-upload-state error" title={reference.uploadError || 'Upload failed'}><X size={17}/></span>}
             </span>
             <span className="saga-reference-copy">
               <strong>Image {index + 1}</strong>
@@ -586,24 +588,51 @@ function FancySelect({ label, value, options, onChange }) {
 
 function RangeField({ label, help, value, onChange, min, max, step, decimals = 0 }) {
   const safe = Number.isFinite(Number(value)) ? Number(value) : min;
-  const commit = (raw) => {
-    const next = Math.max(min, Math.min(max, Number(raw)));
-    if (Number.isFinite(next)) onChange(Number(next.toFixed(decimals)));
+  const [draft, setDraft] = useState(String(safe));
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(String(Number.isFinite(Number(value)) ? Number(value) : min));
+  }, [value, min]);
+  const commit = () => {
+    const parsed = Number(draft);
+    const fallback = Number.isFinite(Number(value)) ? Number(value) : min;
+    const next = Math.max(min, Math.min(max, Number.isFinite(parsed) && draft.trim() !== '' ? parsed : fallback));
+    const rounded = Number(next.toFixed(decimals));
+    setDraft(String(rounded));
+    onChange(rounded);
   };
+  const updateDraft = (raw) => {
+    const valid = decimals > 0 ? /^\d*(?:\.\d*)?$/.test(raw) : /^\d*$/.test(raw);
+    if (valid) setDraft(raw);
+  };
+  const rangeValue = Number.isFinite(Number(draft)) && draft.trim() !== '' ? Math.max(min, Math.min(max, Number(draft))) : safe;
   return (
     <div className="saga-advanced-range">
       <div className="saga-advanced-range-head">
         <div><strong>{label}</strong><small>{help}</small></div>
-        <input aria-label={`${label} value`} type="number" min={min} max={max} step={step} value={safe} onChange={(event) => commit(event.target.value)} />
+        <input aria-label={`${label} value`} inputMode={decimals > 0 ? 'decimal' : 'numeric'} type="text" value={draft} onFocus={() => { focusedRef.current = true; }} onChange={(event) => updateDraft(event.target.value)} onBlur={() => { focusedRef.current = false; commit(); }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
       </div>
-      <input aria-label={label} type="range" min={min} max={max} step={step} value={safe} onChange={(event) => commit(event.target.value)} />
+      <input aria-label={label} type="range" min={min} max={max} step={step} value={rangeValue} onChange={(event) => { const next = Number(event.target.value); setDraft(String(next)); onChange(Number(next.toFixed(decimals))); }} />
       <div className="saga-range-scale"><span>{min}</span><span>{max}</span></div>
     </div>
   );
 }
 
+function Dice3DIcon({ size = 17 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4.5 7.2 11.9 3l7.6 4.3-7.4 4.2L4.5 7.2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+      <path d="m4.5 7.2.1 8.7 7.5 4.2v-8.6L4.5 7.2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+      <path d="m19.5 7.3-.1 8.6-7.3 4.2v-8.6l7.4-4.2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+      <circle cx="9.3" cy="7.2" r="1" fill="currentColor"/><circle cx="14.8" cy="7.3" r="1" fill="currentColor"/>
+      <circle cx="8.1" cy="13.3" r="1" fill="currentColor"/><circle cx="8.1" cy="17" r="1" fill="currentColor"/>
+      <circle cx="16.1" cy="12.7" r="1" fill="currentColor"/><circle cx="14.2" cy="16.4" r="1" fill="currentColor"/>
+    </svg>
+  );
+}
+
 function AdvancedSettings({
-  open, onClose, anchorRef, mode, imageModel = 'flux2-klein-9b', onImageModelChange = () => {}, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,
+  open, onClose, anchorRef, mode, imageModel = 'flux2-klein-9b', onImageModelChange = () => {}, imageModelName = 'FLUX', seed, setSeed, randomizeSeed, setRandomizeSeed, steps, setSteps,
   cfg, setCfg, negativePrompt, setNegativePrompt,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
@@ -644,18 +673,13 @@ function AdvancedSettings({
         )}
         {preset ? (
           <>
-            <div className="saga-advanced-runtime" aria-label="Active production model">
-              <div><span>MODEL</span><strong>{preset.modelLabel}</strong></div>
-              <div><span>WORKFLOW</span><strong>{preset.workflowLabel}</strong></div>
-            </div>
-
             <section className="saga-advanced-card">
               <div className="saga-card-title"><strong>Sampling</strong><small>Defaults are tuned per production model.</small></div>
               <div className="saga-seed-row">
                 <div><strong>Seed</strong><small>Reuse a seed to reproduce a result.</small></div>
                 <div className="saga-seed-input">
                   <input aria-label="Seed" inputMode="numeric" value={seed} onChange={(event) => setSeed(event.target.value.replace(/[^0-9-]/g, ''))} />
-                  <button type="button" aria-label="Random seed" title="Random seed" onClick={() => setSeed(String(Math.floor(Math.random() * 2147483647)))}><Dice5 size={15} /></button>
+                  <button type="button" className={`saga-seed-random-toggle ${randomizeSeed ? 'active' : ''}`} aria-label={randomizeSeed ? 'Use fixed seed' : 'Randomize seed every generation'} aria-pressed={Boolean(randomizeSeed)} title={randomizeSeed ? 'Random seed on every generation' : 'Keep this seed fixed'} onClick={() => setRandomizeSeed(!randomizeSeed)}><Dice3DIcon size={17}/></button>
                 </div>
               </div>
               <label className="saga-negative-prompt">
@@ -787,7 +811,7 @@ export default function CreateWorkspace({
   mode, setMode, prompt, setPrompt, references, onAddReferences, onRemoveReference,
   error, jobStatus, busy, onGenerate, items, renderCard,
   aspect, setAspect, imageResolution, setImageResolution,
-  seed, setSeed, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,
+  seed, setSeed, randomizeSeed = false, setRandomizeSeed = () => {}, steps, setSteps, cfg, setCfg, negativePrompt, setNegativePrompt,
   settingsOpen, setSettingsOpen, autoEditInfo,
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
@@ -823,7 +847,7 @@ export default function CreateWorkspace({
   const primaryRatio = references[0]?.width && references[0]?.height ? references[0].width / references[0].height : 1;
   const imageDimensions = dimensionsForPreset(aspect, Number(imageResolution));
   const videoDimensions = videoDeliveryDimensions(videoResolution, videoAspect);
-  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Create from a reference';
+  const heading = isEdit ? 'Transform your references' : isVideo ? 'Create motion' : 'Create an image';
 
   useEffect(() => {
     if (autoEditInfo) autoBaselineRef.current = { ...autoEditInfo };
@@ -835,6 +859,7 @@ export default function CreateWorkspace({
       if (ASPECT_PRESETS.some((item) => item.value === saved.aspect)) setAspect(saved.aspect);
       if (IMAGE_RESOLUTIONS.some((item) => item.value === Number(saved.imageResolution))) setImageResolution(Number(saved.imageResolution));
       if (saved.seed != null) setSeed(String(saved.seed));
+      if (typeof saved.randomizeSeed === 'boolean') setRandomizeSeed(saved.randomizeSeed);
       if (Number.isFinite(Number(saved.steps))) setSteps(Math.max(1, Math.min(50, Number(saved.steps))));
       if (Number.isFinite(Number(saved.cfg))) setCfg(Math.max(0, Math.min(20, Number(saved.cfg))));
       if (typeof saved.negativePrompt === 'string') setNegativePrompt(saved.negativePrompt.slice(0, 2000));
@@ -857,6 +882,7 @@ export default function CreateWorkspace({
       aspect,
       imageResolution: Number(imageResolution),
       seed,
+      randomizeSeed,
       steps: Number(steps),
       cfg: Number(cfg),
       negativePrompt,
@@ -866,7 +892,7 @@ export default function CreateWorkspace({
       videoAudio,
     }));
   }, [
-    preferencesReady, mode, isEdit, aspect, imageResolution, seed, steps, cfg, negativePrompt,
+    preferencesReady, mode, isEdit, aspect, imageResolution, seed, randomizeSeed, steps, cfg, negativePrompt,
     editAuto, videoResolution, videoDuration, videoAudio,
   ]);
 
@@ -952,7 +978,7 @@ export default function CreateWorkspace({
         <div className="saga-stage-heading">
           <span>{isEdit ? 'EDIT' : isVideo ? 'VIDEO' : 'CREATE'}</span>
           <h1>{heading}</h1>
-          <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : `Add an image, describe the change, and generate with the live ${imageModelName} edit model.`}</p>
+          <p>{isEdit ? 'Describe the change and reference images directly in your prompt.' : isVideo ? 'Describe the shot, then set duration, framing, resolution, and audio.' : `Describe an image and generate it with ${imageModelName}. References are optional.`}</p>
         </div>
 
         <section
@@ -984,7 +1010,7 @@ export default function CreateWorkspace({
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Describe the change you want to make…'}
+                placeholder={isVideo ? 'Describe the scene, motion, and camera movement…' : 'Describe the image you want to create…'}
                 maxLength={2000}
                 disabled={busy}
               />
@@ -1115,10 +1141,10 @@ export default function CreateWorkspace({
               <button
                 type="button"
                 className="saga-submit"
-                title={isVideo ? 'Generate video' : references.length ? 'Generate image' : 'Add a reference image to generate'}
+                title={!prompt.trim() ? 'Enter a prompt to generate' : isVideo ? 'Generate video' : 'Generate image'}
                 aria-label={isVideo ? 'Generate video' : 'Generate image'}
-                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
-                disabled={busy || (!isVideo && references.length === 0)}
+                onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio, imageAspect: aspect, imageResolution: Number(imageResolution) })}
+                disabled={busy || !prompt.trim()}
               >
                 <span className="saga-submit-label">Generate</span>
                 <ArrowUp size={18} aria-hidden="true" />
@@ -1171,6 +1197,8 @@ export default function CreateWorkspace({
           imageModelName={imageModelName}
           seed={seed}
           setSeed={setSeed}
+          randomizeSeed={randomizeSeed}
+          setRandomizeSeed={setRandomizeSeed}
           steps={steps}
           setSteps={setSteps}
           cfg={cfg}

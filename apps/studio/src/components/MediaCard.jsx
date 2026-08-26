@@ -164,7 +164,6 @@ export default function MediaCard({
     ? imagePresetLabel(item)
     : item.resolution || 'Video';
   const conciseMeta = [
-    item.resolution || (item.kind === 'video' ? 'Video' : 'Image'),
     item.aspectRatio || null,
     item.frameRate ? `${item.frameRate}fps` : null,
   ].filter(Boolean).join(' · ');
@@ -321,9 +320,7 @@ export default function MediaCard({
       {history && (
         <div className="history-copy">
           <div className="history-prompt">{item.title}</div>
-          <div className="history-meta">
-            <span>{conciseMeta || (item.kind === 'video' ? 'Video' : 'Image')}</span>
-          </div>
+          {conciseMeta && <div className="history-meta"><span>{conciseMeta}</span></div>}
         </div>
       )}
       {!history && standardActions}

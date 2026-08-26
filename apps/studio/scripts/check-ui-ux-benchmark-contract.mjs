@@ -18,7 +18,7 @@ const checks = [
   [card.includes("item.kind !== 'video'"), 'Video cards still expose unsupported Edit actions'],
   [modal.includes('aria-modal="true"'), 'Media preview is not a real modal dialog'],
   [modal.includes("event.key === 'Escape'"), 'Media preview cannot close with Escape'],
-  [controls.includes('Create from a reference'), 'Image setup copy does not explain the real task'],
+  [controls.includes('Create an image') && controls.includes('References are optional'), 'Image setup copy does not explain text generation with optional references'],
 ];
 const failures = checks.filter(([ok]) => !ok).map(([, message]) => message);
 if (failures.length) {

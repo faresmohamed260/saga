@@ -15,6 +15,7 @@ import useLibraryController from '../hooks/useLibraryController.js';
 import useGenerationController from '../hooks/useGenerationController.js';
 import useMediaActions from '../hooks/useMediaActions.js';
 import { advancedPresetForMode } from '../features/create/model-presets.js';
+import { uploadLibraryReference } from '../generation-client.js';
 
 const SECTION_HASHES = { Create: 'create', Jobs: 'jobs', Gallery: 'gallery', Favorites: 'favorites', Collections: 'collections', Models: 'models', Workflows: 'workflows', Settings: 'settings' };
 const HASH_SECTIONS = { ...Object.fromEntries(Object.entries(SECTION_HASHES).map(([section, hash]) => [hash, section])), history: 'Gallery' };
@@ -120,6 +121,7 @@ export default function App() {
   const [jobsError, setJobsError] = useState('');
   const [jobActionBusy, setJobActionBusy] = useState('');
   const [seed, setSeed] = useState('42');
+  const [randomizeSeed, setRandomizeSeed] = useState(false);
   const [steps, setSteps] = useState(4);
   const [cfg, setCfg] = useState(1.0);
   const [negativePrompt, setNegativePrompt] = useState('');
@@ -154,7 +156,7 @@ export default function App() {
       setNegativePrompt(preset.negativePrompt || '');
     }
   };
-  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, steps, cfg, negativePrompt, autoEditInfo, section, setItems, loadGallery, setError, setSection, setJobsFilter });
+  const { busy, jobStatus, workerStatus, activeJob, cancelBusy, generate, viewActiveJob, cancelActiveJob } = useGenerationController({ mode, isEdit, prompt, references, seed, setSeed, randomizeSeed, steps, cfg, negativePrompt, autoEditInfo, aspect, imageResolution, section, setItems, loadGallery, setError, setSection, setJobsFilter });
   const mediaActions = useMediaActions({
     section, setSection, setMode, setPrompt, setSeed, setSteps, setCfg,
     references, setReferences, setError, setItems, selectedMedia, setSelectedMedia,
@@ -220,12 +222,23 @@ export default function App() {
   }, [section, jobsFilter]);
 
   const addReferences = async (files) => {
+    const candidates = mode === 'Video' ? Array.from(files || []).slice(0, 1) : Array.from(files || []);
     const valid = [];
-    for (const file of files) {
+    for (const file of candidates) {
       if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { setError('References must be PNG, JPEG, or WebP images.'); continue; }
       if (file.size > 25 * 1024 * 1024) { setError(`${file.name} is larger than 25 MB.`); continue; }
       const dimensions = await imageDimensions(file);
-      valid.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, file, preview: URL.createObjectURL(file), ...dimensions });
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const uploadPromise = uploadLibraryReference(file, dimensions)
+        .then((result) => {
+          setReferences((current) => current.map((reference) => reference.id === id ? { ...reference, uploadStatus: 'ready', sourceKey: result.key, uploadId: result.asset?.id || null } : reference));
+          return result;
+        })
+        .catch((uploadError) => {
+          setReferences((current) => current.map((reference) => reference.id === id ? { ...reference, uploadStatus: 'error', uploadError: uploadError?.message || 'Upload failed' } : reference));
+          return { error: uploadError };
+        });
+      valid.push({ id, file, preview: URL.createObjectURL(file), ...dimensions, uploadStatus: 'uploading', uploadPromise });
     }
     if (valid.length) {
       if (mode === 'Video') {
@@ -234,7 +247,6 @@ export default function App() {
           current.forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
           return next ? [next] : [];
         });
-        if (valid.length > 1) valid.slice(1).forEach((reference) => reference.preview && URL.revokeObjectURL(reference.preview));
       } else {
         setReferences((current) => [...current, ...valid]);
         setCreateMode('Edit');
@@ -257,6 +269,9 @@ export default function App() {
       file,
       preview: URL.createObjectURL(file),
       uploadId: asset.id,
+      sourceKey: asset.key,
+      uploadStatus: 'ready',
+      uploadPromise: Promise.resolve({ key: asset.key, asset }),
       ...dimensions,
     };
     setReferences((current) => {
@@ -329,7 +344,7 @@ export default function App() {
               prompt={prompt} setPrompt={setPrompt} references={references} onAddReferences={addReferences} onRemoveReference={removeReference}
               error={error} jobStatus={jobStatus} workerStatus={workerStatus} activeJob={activeJob} cancelBusy={cancelBusy} busy={busy} onGenerate={generate} onViewJob={viewActiveJob} onCancelJob={cancelActiveJob} items={visibleItems} renderCard={renderCard}
               aspect={aspect} setAspect={setAspect} imageResolution={imageResolution} setImageResolution={setImageResolution}
-              seed={seed} setSeed={setSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg} negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
+              seed={seed} setSeed={setSeed} randomizeSeed={randomizeSeed} setRandomizeSeed={setRandomizeSeed} steps={steps} setSteps={setSteps} cfg={cfg} setCfg={setCfg} negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
               settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} autoEditInfo={autoEditInfo}
             />}
       </main>

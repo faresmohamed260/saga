@@ -134,6 +134,15 @@ def web():
             status_code, error_code, state, detail = _failure_payload(exc)
             return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "build": GATEWAY_BUILD})
 
+    @api.post("/warm")
+    async def warm():
+        try:
+            call = _worker().health.spawn()
+            return {"status": "waking", "call_id": call.object_id, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+        except Exception as exc:  # noqa: BLE001
+            status_code, error_code, state, detail = _failure_payload(exc)
+            return JSONResponse(status_code=status_code, content={"error": detail, "errorCode": error_code, "workerState": state, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID})
+
     @api.post("/jobs/video")
     async def submit_video(
         prompt: str = Form(...),

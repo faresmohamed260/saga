@@ -29,7 +29,7 @@ expect(presets.includes("modelLabel: 'Qwen Image Edit 2511 · Abliterated BF16 +
 expect(workspace.includes('imageModel={imageModel}') && workspace.includes('onImageModelChange={chooseImageModel}') && controls.includes('label="Image model"') && controls.includes("{ value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B' }") && controls.includes("{ value: 'qwen-image-edit-2511', label: 'Qwen Image Edit 2511' }"), 'Advanced Image/Edit UI must expose FLUX and Qwen in a model dropdown');
 expect(workspace.includes('setActiveImageModel(nextModel)') && workspace.includes('imageModel,'), 'Selected image model must drive generation and Advanced settings');
 expect(controller.includes('runQwenImageEdit') && controller.includes('generationOptions.imageModel'), 'Generation controller must route Qwen explicitly');
-expect(client.includes("workflowId: 'qwen-image-edit-2511'") && client.includes('input.steps ?? 4') && client.includes('input.cfg ?? 1.0'), 'Qwen client must submit the four-step Lightning workflow defaults');
+expect(client.includes("input.workflowId || 'qwen-image-edit-2511'") && client.includes('input.steps ?? 4') && client.includes('input.cfg ?? 1.0'), 'Qwen client must submit edit or text-generation workflow IDs with four-step Lightning defaults');
 expect(runtime.includes('MODEL_REPO = "Qwen/Qwen-Image-Edit-2511"'), 'Qwen worker must retain the official Qwen 2511 pipeline configuration');
 expect(runtime.includes('CIVITAI_VERSION_ID = 2553500') && runtime.includes('CIVITAI_FILE_ID = 2443737') && runtime.includes('qwnImageEdit_v16Bf16.safetensors'), 'Qwen worker must pin the requested Civitai BF16 version and exact file ID');
 expect(runtime.includes('CIVITAI_EXPECTED_BYTES = 40861031560'), 'Qwen worker must pin the exact Civitai checkpoint byte size');
@@ -57,3 +57,6 @@ expect(gateway.includes('"source": "civitai"') && gateway.includes('CIVITAI_VERS
 expect(gateway.includes('"type": "lightning-lora"') && gateway.includes('LIGHTNING_DEFAULT_STEPS = 4'), 'Qwen gateway health must expose four-step Lightning acceleration metadata');
 expect(registry.includes('workersForWorkflow'), 'Worker registry routing must remain ecosystem-aware');
 console.log('Qwen Image Edit 2511 Civitai BF16 fallback integration contract passed.');
+
+expect(workflows.includes("'qwen-image-generate-2511'"), 'Qwen text-generation adapter workflow must be registered');
+expect(gateway.includes('@api.post("/warm")') && runtime.includes('def warm(self)'), 'Qwen worker must support non-blocking model warmup');

@@ -497,6 +497,10 @@ class QwenImageEdit2511Worker:
         )
 
     @modal.method()
+    def warm(self) -> dict[str, Any]:
+        return {"ready": True, "model": MODEL_REPO, "worker_id": WORKER_ID, "ecosystem": ECOSYSTEM_ID}
+
+    @modal.method()
     def edit(
         self,
         *,

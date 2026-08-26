@@ -9,6 +9,7 @@ import './create-advanced-mobile.css';
 
 const VIDEO_OUTPUT_STORAGE_KEY = 'saga-studio:video-output:v2';
 const IMAGE_MODEL_STORAGE_KEY = 'saga-studio:image-model:v1';
+const warmedWorkflows = new Set();
 
 function loadVideoOutputSettings() {
   if (typeof window === 'undefined') return { autoAspect: true, manualAspect: '16:9', frameRate: 24 };
@@ -57,6 +58,20 @@ export default function CreateWorkspace(props) {
   useEffect(() => {
     try { window.localStorage.setItem(IMAGE_MODEL_STORAGE_KEY, imageModel); } catch {}
   }, [imageModel]);
+
+  useEffect(() => {
+    const workflowId = mode === 'Video'
+      ? 'ltx25-redgraft-video'
+      : imageModel === 'qwen-image-edit-2511' ? 'qwen-image-edit-2511' : 'flux2-klein-image-edit';
+    if (warmedWorkflows.has(workflowId)) return;
+    warmedWorkflows.add(workflowId);
+    fetch('/api/warmup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId }),
+      keepalive: true,
+    }).catch(() => { warmedWorkflows.delete(workflowId); });
+  }, [mode, imageModel]);
 
   const chooseImageModel = useCallback((nextModel) => {
     if (!MODEL_ADVANCED_PRESETS[nextModel] || nextModel === 'ltx25-redgraft') return;

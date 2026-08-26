@@ -323,7 +323,7 @@
     margin:0 0 10px;
     border-bottom:1px solid rgba(255,255,255,.08);
   }
-  .gallery-mobile-controls>button,.gallery-mobile-select{
+  .gallery-mobile-controls>button{
     position:relative;
     display:flex;
     flex-direction:column;
@@ -340,29 +340,30 @@
     font-size:10px;
   }
   .gallery-mobile-controls>button.active{color:#fff;background:rgba(122,92,255,.10)}
-  .gallery-mobile-select select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 
   .gallery-mobile-filter-panel{
     display:grid;
     gap:9px;
     margin:0 0 12px;
     padding:12px;
+    overflow:hidden;
     border:1px solid rgba(255,255,255,.10);
     border-radius:12px;
     background:#0d1219;
   }
-  .gallery-mobile-filter-panel>label{
-    display:flex;
+  .gallery-mobile-filter-panel>label:not(.gallery-mobile-favorite){
+    display:grid;
+    grid-template-columns:minmax(68px,.72fr) minmax(0,1.28fr);
     align-items:center;
-    justify-content:space-between;
-    gap:12px;
+    gap:10px;
     min-height:42px;
     color:#aeb5c0;
     font-size:var(--saga-text-sm);
   }
   .gallery-mobile-filter-panel select{
-    min-width:155px;
-    max-width:66%;
+    width:100%;
+    min-width:0;
+    max-width:none;
     height:38px;
     padding:0 28px 0 9px;
     border:1px solid rgba(255,255,255,.11);
@@ -370,7 +371,7 @@
     background:#111720;
     color:#eef1f5;
   }
-  .gallery-mobile-filter-panel .gallery-model-filter select{width:auto;min-width:155px;max-width:66%}
+  .gallery-mobile-filter-panel .gallery-model-filter select{width:100%;min-width:0;max-width:none}
   .gallery-mobile-favorite{justify-content:flex-start!important}
   .gallery-mobile-favorite input{width:17px;height:17px;accent-color:#7a5cff}
   .gallery-clear-filters{
@@ -410,7 +411,7 @@
 @media(max-width:390px){
   .gallery-primary-tabs{gap:15px}
   .gallery-primary-tabs button{font-size:12px}
-  .gallery-mobile-controls>button,.gallery-mobile-select{font-size:9px}
+  .gallery-mobile-controls>button{font-size:9px}
   .gallery-manager{grid-template-columns:1.1fr repeat(4,minmax(0,1fr)) 34px!important;left:8px!important;right:8px!important}
   .gallery-manager button span{max-width:54px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }

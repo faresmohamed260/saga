@@ -323,14 +323,14 @@ export default function UploadsView({ search, onSearchChange, onUseReference }) 
         </div>
         <div className="uploads-view-strip">
           <button type="button" className={managing ? 'active' : ''} onClick={() => managing ? exitManage() : setManaging(true)}>{managing ? <X size={16}/> : <Check size={16}/>}<span>{managing ? 'Exit Batch Selection' : 'Batch Actions'}</span></button>
-          <label><ArrowDownUp size={15}/><span className="sr-only">Sort uploads</span><select aria-label="Sort uploads" value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>
+          <button type="button" className="uploads-sort-toggle" aria-label={`Sort uploads, ${sort === 'newest' ? 'newest first' : 'oldest first'}`} onClick={() => setSort((value) => value === 'newest' ? 'oldest' : 'newest')}><ArrowDownUp size={15}/><span>{sort === 'newest' ? 'Newest' : 'Oldest'}</span></button>
           <div className="uploads-density" role="group" aria-label="Upload card density"><LayoutGrid size={15}/><button type="button" className={density === 'compact' ? 'selected' : ''} onClick={() => changeDensity('compact')}>Compact</button><button type="button" className={density === 'comfortable' ? 'selected' : ''} onClick={() => changeDensity('comfortable')}>Comfortable</button></div>
         </div>
       </div>
 
       <div className="uploads-mobile-controls" aria-label="Uploads controls">
         <button type="button" className={mobileFiltersOpen || favoritesOnly ? 'active' : ''} aria-expanded={mobileFiltersOpen} onClick={() => setMobileFiltersOpen((value) => !value)}><SlidersHorizontal size={19}/><span>Filter</span></button>
-        <label><ArrowDownUp size={19}/><span>Sort</span><select aria-label="Mobile upload sort" value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>
+        <button type="button" className="uploads-sort-toggle" aria-label={`Sort uploads, ${sort === 'newest' ? 'newest first' : 'oldest first'}`} onClick={() => setSort((value) => value === 'newest' ? 'oldest' : 'newest')}><ArrowDownUp size={19}/><span>{sort === 'newest' ? 'Newest' : 'Oldest'}</span></button>
         <button type="button" onClick={() => changeDensity(density === 'compact' ? 'comfortable' : 'compact')}><LayoutGrid size={19}/><span>Layout</span></button>
         <button type="button" className={managing ? 'active' : ''} onClick={() => managing ? exitManage() : setManaging(true)}>{managing ? <X size={19}/> : <Check size={19}/>}<span>{managing ? 'Done' : 'Manage'}</span></button>
       </div>

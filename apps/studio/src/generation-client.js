@@ -27,6 +27,26 @@ function manualDimensions(aspect, longEdge) {
   return { width: round64(edge * ratio), height: round64(edge) };
 }
 
+export async function createTextGenerationSource(aspect = '1:1', resolution = 1080) {
+  if (typeof document === 'undefined') throw new Error('Text image generation requires a browser canvas.');
+  const dimensions = manualDimensions(aspect, resolution);
+  const canvas = document.createElement('canvas');
+  canvas.width = dimensions.width;
+  canvas.height = dimensions.height;
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) throw new Error('Could not prepare the text-generation canvas.');
+  context.fillStyle = '#808080';
+  context.fillRect(0, 0, dimensions.width, dimensions.height);
+  const blob = await new Promise((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the text-generation canvas.')), 'image/webp', 0.9));
+  return {
+    file: new File([blob], 'saga-text-generation-canvas.webp', { type: 'image/webp', lastModified: Date.now() }),
+    width: dimensions.width,
+    height: dimensions.height,
+    megapixels: Math.max(0.25, Math.min(4, (dimensions.width * dimensions.height) / 1_000_000)),
+    detail: `${dimensions.width} × ${dimensions.height} · Text generation`,
+  };
+}
+
 async function loadImageForCanvas(file) {
   if (typeof createImageBitmap === 'function') {
     const bitmap = await createImageBitmap(file);
@@ -107,6 +127,8 @@ async function applyEditSizing(input) {
     ...input,
     sourceFile: files[0] || input.sourceFile,
     sourceFiles: files.length ? files : input.sourceFiles,
+    sourceKey: '',
+    sourceKeys: [],
     resolution: `${dimensions.width} × ${dimensions.height} · Manual`,
     megapixels,
   };
@@ -137,7 +159,7 @@ async function responseException(response, fallback) {
   return error;
 }
 
-export async function uploadSourceFile(sourceFile) {
+export async function uploadSourceFile(sourceFile, { purpose = 'generation-source', dimensions = null } = {}) {
   const ticketResponse = await fetch('/api/uploads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -145,7 +167,7 @@ export async function uploadSourceFile(sourceFile) {
       filename: sourceFile.name || 'input.png',
       contentType: sourceFile.type || 'image/png',
       size: sourceFile.size,
-      purpose: 'generation-source',
+      purpose,
     }),
   });
   if (!ticketResponse.ok) throw new Error(await responseError(ticketResponse, 'Could not prepare source upload'));
@@ -158,7 +180,30 @@ export async function uploadSourceFile(sourceFile) {
     body: sourceFile,
   });
   if (!uploadResponse.ok) throw new Error(`Direct source upload failed (${uploadResponse.status})`);
-  return { key: ticket.key, contentType: ticket.contentType || sourceFile.type || 'application/octet-stream', filename: sourceFile.name || 'input.png' };
+  const uploaded = { key: ticket.key, contentType: ticket.contentType || sourceFile.type || 'application/octet-stream', filename: sourceFile.name || 'input.png' };
+  if (purpose !== 'library-upload') return uploaded;
+
+  const completeResponse = await fetch('/api/uploads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phase: 'complete',
+      key: ticket.key,
+      filename: sourceFile.name || 'input.png',
+      displayName: String(sourceFile.name || 'input').replace(/\.[^.]+$/, ''),
+      contentType: ticket.contentType || sourceFile.type || 'image/png',
+      size: sourceFile.size,
+      width: Number(dimensions?.width) || null,
+      height: Number(dimensions?.height) || null,
+    }),
+  });
+  if (!completeResponse.ok) throw new Error(await responseError(completeResponse, 'Could not save reusable upload'));
+  const completePayload = await completeResponse.json();
+  return { ...uploaded, asset: completePayload?.item || null };
+}
+
+export function uploadLibraryReference(sourceFile, dimensions = {}) {
+  return uploadSourceFile(sourceFile, { purpose: 'library-upload', dimensions });
 }
 
 export async function uploadSourceFiles(sourceFiles) {
@@ -167,7 +212,7 @@ export async function uploadSourceFiles(sourceFiles) {
   return Promise.all(files.map((file) => uploadSourceFile(file)));
 }
 
-export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sourceKeys, prompt, negativePrompt = '', resolution, seed, steps = 4, cfg = 1.0, megapixels = 1.0 }) {
+export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sourceKeys, workflowId = 'flux2-klein-image-edit', prompt, negativePrompt = '', resolution, seed, steps = 4, cfg = 1.0, megapixels = 1.0 }) {
   const files = Array.from(sourceFiles?.length ? sourceFiles : sourceFile ? [sourceFile] : []);
   let uploaded = [];
 
@@ -187,7 +232,7 @@ export async function submitImageEdit({ sourceFile, sourceFiles, sourceKey, sour
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      workflowId: 'flux2-klein-image-edit',
+      workflowId,
       sourceKeys: uploaded.map((item) => item.key),
       sourceFilenames: uploaded.map((item) => item.filename),
       sourceContentTypes: uploaded.map((item) => item.contentType),
@@ -297,6 +342,25 @@ export async function runImageEdit(input, options = {}) {
   if (options.onStatus) options.onStatus('running');
   const result = await waitForGeneration(submitted.job.id, options);
   return { job: submitted.job, result };
+}
+
+export async function runFluxImageGeneration(input, options = {}) {
+  if (options.onStatus) options.onStatus('preparing');
+  const source = await createTextGenerationSource(input.aspect, input.imageResolution);
+  if (options.onStatus) options.onStatus('uploading');
+  const submitted = await submitImageEdit({
+    ...input,
+    workflowId: 'flux2-klein-image-generate',
+    sourceFile: source.file,
+    sourceFiles: [source.file],
+    resolution: source.detail,
+    megapixels: source.megapixels,
+  });
+  if (options.onJob) options.onJob(submitted.job);
+  if (options.onWorkerStatus && submitted.worker) options.onWorkerStatus(submitted.worker);
+  if (options.onStatus) options.onStatus('running');
+  const result = await waitForGeneration(submitted.job.id, options);
+  return { job: submitted.job, result, source };
 }
 
 export async function runVideoGeneration(input, options = {}) {
