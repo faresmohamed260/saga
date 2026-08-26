@@ -20,8 +20,8 @@ CIVITAI_WEIGHT_NAME = "qwnImageEdit_v16Bf16.safetensors"
 CIVITAI_WEIGHT_SHA256 = "4F8CA1242C7FDBE6CFD1835833C66E9CDBCF23EA27C7B811B43BDA316F30A6DA"
 LIGHTNING_REPO = "lightx2v/Qwen-Image-Edit-2511-Lightning"
 LIGHTNING_WEIGHT_NAME = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
-LIGHTNING_MIN_STEPS = 4
-LIGHTNING_MAX_STEPS = 4
+LIGHTNING_MIN_STEPS = 1
+LIGHTNING_MAX_STEPS = 50
 LIGHTNING_DEFAULT_STEPS = 4
 LIGHTNING_TRUE_CFG_SCALE = 1.0
 
@@ -136,7 +136,7 @@ def web():
                 "type": "lightning-lora",
                 "repo": LIGHTNING_REPO,
                 "weight": LIGHTNING_WEIGHT_NAME,
-                "steps": [LIGHTNING_DEFAULT_STEPS],
+                "steps": {"min": LIGHTNING_MIN_STEPS, "max": LIGHTNING_MAX_STEPS},
                 "default_steps": LIGHTNING_DEFAULT_STEPS,
                 "true_cfg_scale": LIGHTNING_TRUE_CFG_SCALE,
             },
@@ -187,7 +187,7 @@ def web():
                 "inference_steps": effective_steps,
                 "true_cfg_scale": LIGHTNING_TRUE_CFG_SCALE,
                 "checkpoint_version_id": CIVITAI_VERSION_ID,
-                "acceleration": "lightning-lora-4step-bf16",
+                "acceleration": "lightning-lora-bf16",
             }
         except Exception as exc:  # noqa: BLE001
             print({"event": "qwen_gateway_spawn_failed", "error": repr(exc)}, flush=True)
@@ -235,7 +235,7 @@ def web():
             call.cancel(terminate_containers=False)
             return {"status": "cancelled", "call_id": call_id}
         except modal.exception.OutputExpiredError as exc:
-            raise HTTPException(status_code=410, detail="Qwen Image Edit 2511 job result expired") from exc
+            raise HTTPException(status_code=410, detail="Qwen runtime cancel failed: result expired") from exc
         except Exception as exc:  # noqa: BLE001
             print({"event": "qwen_gateway_cancel_failed", "call_id": call_id, "error": repr(exc)}, flush=True)
             raise HTTPException(status_code=502, detail=f"Qwen runtime cancel failed: {type(exc).__name__}: {exc}") from exc
