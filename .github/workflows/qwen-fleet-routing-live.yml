@@ -1,0 +1,95 @@
+name: Qwen Fleet Routing Live Gate
+
+on:
+  push:
+    branches:
+      - studio/qwen-image-edit-2511
+    paths:
+      - ".github/workflows/qwen-fleet-routing-live.yml"
+      - "apps/studio/api/_worker-registry.generated.js"
+      - "apps/studio/api/_worker-registry.js"
+      - "apps/studio/api/_workflows.js"
+      - "apps/studio/scripts/check-qwen-worker-registry-contract.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qwen-fleet-routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify Qwen failover contract
+        working-directory: apps/studio
+        run: node scripts/check-qwen-worker-registry-contract.mjs
+      - name: Verify live Qwen production pair
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, requests
+
+          source = pathlib.Path('apps/studio/api/_worker-registry.generated.js').read_text(encoding='utf-8')
+          workers = json.loads(re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[.*\])\s*;', source, re.S).group(1))
+          qwen = [worker for worker in workers if worker.get('ecosystem') == 'qwen-image-edit-2511']
+          if len(qwen) != 2 or {worker.get('role') for worker in qwen} != {'primary', 'standby'}:
+              raise SystemExit(f'Qwen production pair is invalid: {qwen}')
+          if {worker.get('id') for worker in qwen} != {'qwen-primary-01', 'qwen-standby-01'}:
+              raise SystemExit(f'Unexpected Qwen worker IDs: {qwen}')
+
+          for worker in qwen:
+              response = requests.get(worker['gatewayUrl'].rstrip('/') + '/health', timeout=60)
+              response.raise_for_status()
+              health = response.json()
+              live = health.get('worker') or {}
+              checkpoint = health.get('checkpoint') or {}
+              acceleration = health.get('acceleration') or {}
+              if health.get('ready') is not True:
+                  raise SystemExit(f"{worker['id']} ready=false: {health}")
+              if live.get('worker_id') != worker['id'] or live.get('ecosystem') != 'qwen-image-edit-2511':
+                  raise SystemExit(f"{worker['id']} identity mismatch: {health}")
+              if health.get('precision') != 'civitai-bfloat16':
+                  raise SystemExit(f"{worker['id']} wrong precision: {health}")
+              if checkpoint.get('source') != 'civitai' or int(checkpoint.get('version_id') or 0) != 2553500:
+                  raise SystemExit(f"{worker['id']} wrong checkpoint: {health}")
+              if int(live.get('checkpoint_file_id') or 0) != 2443737:
+                  raise SystemExit(f"{worker['id']} wrong checkpoint file: {health}")
+              if acceleration.get('type') != 'lightning-lora' or int(acceleration.get('default_steps') or 0) != 4:
+                  raise SystemExit(f"{worker['id']} wrong acceleration: {health}")
+              print(json.dumps({'worker': worker['id'], 'role': worker['role'], 'state': live.get('state'), 'ready': True}))
+          PY
+      - name: Prove standby accepts and cancels a Qwen edit
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, struct, zlib, requests
+
+          source = pathlib.Path('apps/studio/api/_worker-registry.generated.js').read_text(encoding='utf-8')
+          workers = json.loads(re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[.*\])\s*;', source, re.S).group(1))
+          worker = next(item for item in workers if item.get('id') == 'qwen-standby-01')
+          base = worker['gatewayUrl'].rstrip('/')
+
+          width = height = 64
+          raw = b''.join(b'\x00' + bytes([48, 72, 120]) * width for _ in range(height))
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+
+          response = requests.post(
+              base + '/jobs/edit',
+              files=[('image_files', ('qwen-standby-routing.png', png, 'image/png'))],
+              data={'prompt': 'Qwen standby routing acceptance check', 'seed': '42', 'steps': '4', 'cfg': '1.0', 'megapixels': '0.25'},
+              timeout=120,
+          )
+          response.raise_for_status()
+          queued = response.json()
+          if queued.get('worker_id') != 'qwen-standby-01' or not queued.get('call_id'):
+              raise SystemExit(f'Unexpected Qwen standby submission: {queued}')
+          cancelled = requests.delete(f"{base}/jobs/{queued['call_id']}", timeout=60)
+          cancelled.raise_for_status()
+          print(json.dumps({'worker': 'qwen-standby-01', 'callId': queued['call_id'], 'submitCancel': 'success'}))
+          PY
