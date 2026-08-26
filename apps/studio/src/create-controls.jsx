@@ -334,6 +334,13 @@ function PickerShell({ open, anchorRef, width, height, className = '', children,
       ref={popoverRef}
       className={`saga-picker ${className}`}
       style={position || { visibility: 'hidden' }}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        window.setTimeout(() => anchorRef.current?.focus(), 0);
+      }}
       onBlurCapture={(event) => {
         const next = event.relatedTarget;
         if (!next || popoverRef.current?.contains(next) || anchorRef.current?.contains(next)) return;
