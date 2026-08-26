@@ -7,5 +7,6 @@ import './create-controls.css';
 import './studio-polish.css';
 import './mobile-touch-targets.css';
 import './mobile-ui-cleanup.css';
+import './gallery-ui-polish.css';
 
 createRoot(document.getElementById('root')).render(<App />);
