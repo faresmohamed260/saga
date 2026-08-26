@@ -1,5 +1,5 @@
 import React, {
-  forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
+  forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -590,9 +590,9 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
   const safe = Number.isFinite(Number(value)) ? Number(value) : min;
   const [draft, setDraft] = useState(String(safe));
   const focusedRef = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!focusedRef.current) setDraft(String(Number.isFinite(Number(value)) ? Number(value) : min));
-  });
+  }, [value, min]);
   const commit = () => {
     const parsed = Number(draft);
     const fallback = Number.isFinite(Number(value)) ? Number(value) : min;
