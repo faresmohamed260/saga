@@ -16,8 +16,16 @@ replace_once(
     "  const editSubmit = page.getByRole('button', { name: 'Edit image', exact: true });",
     "  const editSubmit = page.getByRole('button', { name: 'Generate image', exact: true });",
 )
-replace_once(image, "after clicking Edit", "after clicking Generate")
-replace_once(image, "after clicking Edit", "after clicking Generate")
+replace_once(
+    image,
+    "  if (!diagnostics.sourceUpload) throw new Error('FLUX source upload ticket was not requested after clicking Edit');",
+    "  if (!diagnostics.sourceUpload) throw new Error('FLUX source upload ticket was not requested after clicking Generate');",
+)
+replace_once(
+    image,
+    "  if (!diagnostics.submitted) throw new Error('FLUX image-edit request was not submitted after clicking Edit');",
+    "  if (!diagnostics.submitted) throw new Error('FLUX image-edit request was not submitted after clicking Generate');",
+)
 replace_once(image, "Image Edit action remains enabled", "Image Generate action remains enabled")
 replace_once(image, "Image Edit action stayed disabled", "Image Generate action stayed disabled")
 
