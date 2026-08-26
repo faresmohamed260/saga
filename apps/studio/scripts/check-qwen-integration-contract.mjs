@@ -46,7 +46,7 @@ expect(runtime.includes('Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safeten
 expect(runtime.includes('load_lora_weights') && runtime.includes('set_adapters("lightning_4step"'), 'Qwen worker must load and activate the four-step Lightning adapter');
 expect(!/int8|fp8|gguf/i.test(runtime), 'Qwen fallback benchmark must not silently use a quantized base checkpoint');
 expect(runtime.includes('GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")'), 'Qwen worker must default to the four-A10 production tier');
-expect(runtime.includes('device_map="balanced"'), 'Qwen full-BF16 worker must shard the pipeline across GPUs');
+expect(runtime.includes('_dispatch_civitai_pipeline') && runtime.includes('dispatch_model') && runtime.includes('fuse_lora') && runtime.includes('unload_lora_weights'), 'Qwen Civitai worker must fuse Lightning before deterministic four-GPU dispatch');
 expect(runtime.includes('LIGHTNING_MIN_STEPS = 4') && runtime.includes('LIGHTNING_MAX_STEPS = 4'), 'Qwen worker must pin Lightning inference to four steps');
 expect(runtime.includes('CIVITAI_API_TOKEN') && civitaiPrefetch.includes('CIVITAI_API_TOKEN'), 'Qwen worker and staging helper must consume the repository Civitai secret without embedding credentials');
 expect(runtime.includes('true_cfg_scale=LIGHTNING_TRUE_CFG_SCALE') && runtime.includes('guidance_scale=1.0'), 'Qwen worker must use Lightning CFG 1 guidance');

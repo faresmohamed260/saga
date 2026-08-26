@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import io
 import os
 import time
@@ -32,6 +33,10 @@ LIGHTNING_MIN_STEPS = 4
 LIGHTNING_MAX_STEPS = 4
 LIGHTNING_DEFAULT_STEPS = 4
 LIGHTNING_TRUE_CFG_SCALE = 1.0
+TRANSFORMER_PRIMARY_GPU = 0
+TEXT_ENCODER_GPU = 1
+TRANSFORMER_SECONDARY_GPU = 2
+VAE_GPU = 3
 GPU_TYPE = os.environ.get("MODAL_QWEN_IMAGE_EDIT_GPU", "A10:4")
 WORKER_MEMORY_MB = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_MEMORY_MB", "98304"))
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("MODAL_QWEN_IMAGE_EDIT_TIMEOUT_SECONDS", "7200"))
@@ -267,6 +272,67 @@ def _lightning_download() -> Path:
     return LIGHTNING_DIR
 
 
+def _civitai_transformer_device_map(transformer: Any) -> tuple[dict[str, int], int]:
+    blocks = getattr(transformer, "transformer_blocks", None)
+    if blocks is None or len(blocks) < 2:
+        raise RuntimeError("Qwen Civitai transformer does not expose the expected transformer_blocks sequence")
+    split = len(blocks) // 2
+    mapping: dict[str, int] = {}
+    for name, _module in transformer.named_children():
+        if name == "transformer_blocks":
+            continue
+        mapping[name] = TRANSFORMER_SECONDARY_GPU if name in {"norm_out", "proj_out"} else TRANSFORMER_PRIMARY_GPU
+    for index in range(len(blocks)):
+        mapping[f"transformer_blocks.{index}"] = (
+            TRANSFORMER_PRIMARY_GPU if index < split else TRANSFORMER_SECONDARY_GPU
+        )
+    uncovered = []
+    keys = tuple(mapping)
+    for name, _parameter in transformer.named_parameters():
+        if not any(name == key or name.startswith(key + ".") for key in keys):
+            uncovered.append(name)
+    if uncovered:
+        raise RuntimeError(f"Qwen Civitai transformer device map left parameters uncovered: {uncovered[:12]}")
+    return mapping, split
+
+
+def _dispatch_civitai_pipeline(pipe: Any) -> tuple[Any, int]:
+    import torch
+    from accelerate import dispatch_model
+
+    gpu_count = torch.cuda.device_count()
+    if gpu_count < 4:
+        raise RuntimeError(f"Qwen Civitai BF16 worker requires four visible CUDA devices; found {gpu_count}")
+
+    transformer_map, split = _civitai_transformer_device_map(pipe.transformer)
+    pipe.transformer = dispatch_model(
+        pipe.transformer,
+        device_map=transformer_map,
+        main_device=torch.device(f"cuda:{TRANSFORMER_PRIMARY_GPU}"),
+        force_hooks=True,
+    )
+    pipe.text_encoder = dispatch_model(
+        pipe.text_encoder,
+        device_map={"": TEXT_ENCODER_GPU},
+        main_device=torch.device(f"cuda:{TEXT_ENCODER_GPU}"),
+        force_hooks=True,
+    )
+    pipe.vae = dispatch_model(
+        pipe.vae,
+        device_map={"": VAE_GPU},
+        main_device=torch.device(f"cuda:{VAE_GPU}"),
+        force_hooks=True,
+    )
+    if hasattr(pipe.vae, "enable_slicing"):
+        pipe.vae.enable_slicing()
+    if hasattr(pipe.vae, "enable_tiling"):
+        pipe.vae.enable_tiling()
+    pipe.set_progress_bar_config(disable=True)
+    gc.collect()
+    torch.cuda.empty_cache()
+    return pipe, split
+
+
 @app.function(image=image, timeout=7200, volumes={CACHE_DIR: cache_volume}, secrets=RUNTIME_SECRETS)
 def prefetch_qwen_image_edit_2511(force: bool = False) -> dict[str, Any]:
     if force:
@@ -338,9 +404,8 @@ class QwenImageEdit2511Worker:
         checkpoint_path = _civitai_checkpoint_download()
         lightning_path = _lightning_download()
         gpu_count = torch.cuda.device_count()
-        if gpu_count < 2:
-            raise RuntimeError(f"Qwen Image Edit requires a multi-GPU worker; visible CUDA devices={gpu_count}")
-        max_memory = {index: "22GB" for index in range(gpu_count)}
+        if gpu_count < 4:
+            raise RuntimeError(f"Qwen Image Edit requires four visible CUDA devices; found {gpu_count}")
 
         transformer_started = time.perf_counter()
         transformer = QwenImageTransformer2DModel.from_single_file(
@@ -348,8 +413,7 @@ class QwenImageEdit2511Worker:
             config=MODEL_REPO,
             subfolder="transformer",
             torch_dtype=torch.bfloat16,
-            device_map="balanced",
-            max_memory=max_memory,
+            low_cpu_mem_usage=True,
         )
         transformer_load_seconds = round(time.perf_counter() - transformer_started, 3)
         _set_worker_state(
@@ -366,24 +430,38 @@ class QwenImageEdit2511Worker:
             transformer=transformer,
             torch_dtype=torch.bfloat16,
             local_files_only=True,
-            device_map="balanced",
-            max_memory=max_memory,
+            low_cpu_mem_usage=True,
         )
+        # Load and fuse Lightning while the transformer is still colocated on CPU.
+        # Dispatching a PEFT adapter after a balanced device map can leave LoRA
+        # matmul weights on CPU while their activations live on cuda:1.
         self.pipe.load_lora_weights(
             str(lightning_path),
             weight_name=LIGHTNING_WEIGHT_NAME,
             adapter_name="lightning_4step",
         )
         self.pipe.set_adapters("lightning_4step", adapter_weights=1.0)
-        self.pipe.set_progress_bar_config(disable=True)
+        self.pipe.fuse_lora(
+            components=["transformer"],
+            adapter_names=["lightning_4step"],
+            lora_scale=1.0,
+            safe_fusing=True,
+        )
+        self.pipe.unload_lora_weights()
+        self.pipe, split = _dispatch_civitai_pipeline(self.pipe)
         startup_seconds = round(time.perf_counter() - started, 3)
-        device_map = getattr(self.pipe, "hf_device_map", None)
+        device_map = {
+            "transformer": f"cuda:{TRANSFORMER_PRIMARY_GPU}/cuda:{TRANSFORMER_SECONDARY_GPU}",
+            "text_encoder": f"cuda:{TEXT_ENCODER_GPU}",
+            "vae": f"cuda:{VAE_GPU}",
+        }
         _set_worker_state(
             "ready",
             startup_seconds=startup_seconds,
             transformer_load_seconds=transformer_load_seconds,
             gpu_count=gpu_count,
-            placement="balanced-multi-gpu",
+            placement="civitai-bf16-lightning-4xA10-sharded",
+            transformer_split_block=split,
             checkpoint_source="civitai",
             checkpoint_version_id=CIVITAI_VERSION_ID,
             checkpoint_file_id=CIVITAI_FILE_ID,
@@ -407,7 +485,12 @@ class QwenImageEdit2511Worker:
             gpu=GPU_TYPE,
             gpu_count=gpu_count,
             memory_mb=WORKER_MEMORY_MB,
-            placement="balanced-multi-gpu",
+            placement="civitai-bf16-lightning-4xA10-sharded",
+            transformer_primary_gpu=TRANSFORMER_PRIMARY_GPU,
+            text_encoder_gpu=TEXT_ENCODER_GPU,
+            transformer_secondary_gpu=TRANSFORMER_SECONDARY_GPU,
+            vae_gpt=VAE_GPU,
+            transformer_split_block=split,
             device_map=device_map,
             transformer_load_seconds=transformer_load_seconds,
             startup_seconds=startup_seconds,
@@ -461,7 +544,10 @@ class QwenImageEdit2511Worker:
         target_width = max(32, round(math.sqrt(target_area * ratio) / 32) * 32)
         target_height = max(32, round((target_width / ratio) / 32) * 32)
 
-        generator = torch.Generator(device="cuda").manual_seed(int(seed))
+        execution_device = getattr(self.pipe, "_execution_device", torch.device(f"cuda:{VAE_GPU}"))
+        if not isinstance(execution_device, torch.device):
+            execution_device = torch.device(execution_device)
+        generator = torch.Generator(device=execution_device).manual_seed(int(seed))
         with torch.inference_mode():
             result = self.pipe(
                 image=pil_images,
