@@ -1,0 +1,181 @@
+/* Gallery polish: shared toolbars, centered cards, flat search focus, and consistent control surfaces. */
+
+/* Page titles: keep the informative heading, remove duplicate purple eyebrows, and align page edges. */
+.history-eyebrow { display: none !important; }
+.history-header { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+.gallery-view { box-sizing: border-box; }
+
+/* Search is a single field. Never render a second focus/glow rectangle inside the shell. */
+.gallery-search,
+.gallery-search:focus,
+.gallery-search:focus-within,
+.gallery-search:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
+.gallery-search input,
+.gallery-search input:focus,
+.gallery-search input:focus-visible,
+.gallery-search input:active {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.gallery-search input::-webkit-search-decoration,
+.gallery-search input::-webkit-search-cancel-button,
+.gallery-search input::-webkit-search-results-button,
+.gallery-search input::-webkit-search-results-decoration { -webkit-appearance: none; }
+.gallery-search:focus-within { border-color: rgba(255,255,255,.22) !important; }
+
+/* Remove redundant/misleading controls. */
+.gallery-reset-filter { display: none !important; }
+.gallery-filter-strip > .gallery-reset-filter + .gallery-control-divider { display: none !important; }
+.gallery-favorites-filter > svg,
+.gallery-mobile-favorite > svg,
+.uploads-filter-strip label > svg,
+.uploads-mobile-filter-panel label > svg { display: none !important; }
+
+/* Dropdown triggers visually match Advanced: dark filled control, rounded border, no browser glow. */
+.gallery-inline-select {
+  position: relative;
+  min-height: 38px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 10px;
+  background: #141922;
+}
+.gallery-inline-select::after {
+  content: '';
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid #8f98a6;
+  border-bottom: 1.5px solid #8f98a6;
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+.gallery-inline-select select {
+  height: 38px !important;
+  padding: 0 30px 0 11px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: #e3e6eb !important;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.gallery-inline-select:focus-within,
+.gallery-inline-select:hover { border-color: rgba(177,163,255,.34); background: #171d27; }
+.gallery-inline-select option { background: #171c24 !important; color: #eef1f5 !important; }
+
+/* One visual toolbar language across Creatives and Uploads. */
+.gallery-desktop-controls,
+.uploads-desktop-controls {
+  min-height: 58px;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.gallery-filter-strip,
+.gallery-view-strip,
+.uploads-filter-strip,
+.uploads-view-strip { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.uploads-filter-strip > button,
+.uploads-filter-strip > label,
+.uploads-view-strip > button,
+.gallery-manage-trigger,
+.gallery-sort-toggle,
+.uploads-sort-toggle {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #aeb5c0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+.gallery-sort-toggle,
+.uploads-sort-toggle { min-width: 88px !important; flex: 0 0 auto !important; overflow: visible !important; }
+.gallery-sort-toggle svg,
+.uploads-sort-toggle svg { flex: 0 0 auto; }
+.gallery-sort-toggle span,
+.uploads-sort-toggle span { display: inline-block; line-height: 1; }
+.uploads-density { height: 36px !important; border-left: 1px solid rgba(255,255,255,.09); }
+
+/* Center card groups for every desktop/window width instead of pinning the last partial row left. */
+.gallery-grid,
+.uploads-grid {
+  justify-content: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+@media (max-width: 760px) {
+  .gallery-desktop-controls,
+  .uploads-desktop-controls { display: none !important; }
+
+  /* Creatives and Uploads use the same four-column mobile toolbar footprint. */
+  .gallery-mobile-controls,
+  .uploads-mobile-controls {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+    gap: 6px !important;
+    margin: 10px 0 14px !important;
+  }
+  .gallery-mobile-controls > button,
+  .uploads-mobile-controls > button {
+    min-height: 52px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    border: 0 !important;
+    border-radius: 9px !important;
+    background: transparent !important;
+    color: #a8afb9 !important;
+    font-size: 10px !important;
+    box-shadow: none !important;
+  }
+  .gallery-mobile-controls > button.active,
+  .uploads-mobile-controls > button.active { background: #141920 !important; color: #fff !important; }
+
+  .gallery-search-mobile { width: 100% !important; box-sizing: border-box !important; }
+  .gallery-search-mobile input { width: 100% !important; }
+
+  .gallery-mobile-filter-panel select {
+    border: 1px solid rgba(255,255,255,.11) !important;
+    border-radius: 9px !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    background: #171c24 !important;
+    color: #eef1f5 !important;
+  }
+
+  .gallery-grid,
+  .uploads-grid { justify-content: stretch !important; }
+}
