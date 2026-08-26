@@ -9,7 +9,7 @@ await mkdir(outputDir, { recursive: true });
 
 const diagnostics = { generatedAt: new Date().toISOString(), desktop: [], mobile: [], continuation: [], consoleErrors: [], pageErrors: [] };
 const destinations = [
-  ['Create', /Create from a reference|Transform your references|Create motion/],
+  ['Create', /Create an image|Transform your references|Create motion/],
   ['Jobs', 'Jobs & queue'],
   ['Gallery', 'Gallery'],
   ['Favorites', 'Favorites'],
@@ -77,7 +77,7 @@ async function runDesktop(browser) {
   });
   await navigateDesktop(page, 'Models', 'Production models');
   await page.getByRole('button', { name: 'Start image edit', exact: true }).click();
-  await page.getByRole('heading', { name: /Create from a reference|Transform your references/ }).waitFor({ state: 'visible', timeout: 5000 });
+  await page.getByRole('heading', { name: /Create an image|Transform your references/ }).waitFor({ state: 'visible', timeout: 5000 });
   if (!page.url().endsWith('#/create')) throw new Error('Model launch action did not enter Create');
   if (await page.locator('.saga-composer.is-video').count()) throw new Error('Stored Video preference overrode explicit Image-model launch');
   if (await page.getByRole('button', { name: 'Image', exact: true }).getAttribute('aria-pressed') !== 'true') throw new Error('Image launch did not activate the Image toggle');
