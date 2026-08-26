@@ -1,0 +1,46 @@
+name: Studio Mobile Gallery Create Follow-up
+
+on:
+  push:
+    branches:
+      - studio/mobile-gallery-create-followup
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[followup-applied]') && !contains(github.event.head_commit.message, '[followup-helper-cleanup]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: studio/mobile-gallery-create-followup
+          fetch-depth: 0
+      - name: Apply follow-up patch
+        run: python .github/scripts/apply_mobile_gallery_create_followup.py
+      - name: Compile worker Python
+        run: python -m py_compile integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py integrations/qwen/qwen_image_edit_2511_gateway.py integrations/qwen/qwen_image_edit_2511_app.py
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Install Studio dependencies
+        working-directory: apps/studio
+        run: npm install --no-audit --no-fund
+      - name: Build Studio
+        working-directory: apps/studio
+        run: npm run build
+      - name: Commit follow-up
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/studio integrations
+          if git diff --cached --quiet; then
+            echo "No follow-up changes to commit."
+            exit 0
+          fi
+          git commit -m "fix(studio): refine mobile gallery and create flow [followup-applied]"
+          git push origin HEAD:studio/mobile-gallery-create-followup
