@@ -1,0 +1,140 @@
+/* Mobile UI cleanup: tighter Create controls and flat input focus treatment. */
+
+/* Keep keyboard focus visible without purple glow boxes around text-entry surfaces. */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible,
+[contenteditable='true']:focus,
+[contenteditable='true']:focus-visible {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.gallery-search:focus-within,
+.workspace .saga-composer:focus-within,
+.workspace .saga-fancy-select.open > button,
+.workspace .saga-negative-prompt textarea:focus-visible,
+.workspace .saga-advanced-range-head input:focus-visible,
+.workspace .saga-seed-input:focus-within {
+  box-shadow: none !important;
+}
+
+.gallery-search:focus-within {
+  border-color: rgba(255,255,255,.18);
+}
+
+.workspace .saga-composer:focus-within {
+  border-color: #303641;
+}
+
+@media (max-width: 720px) {
+  .workspace .saga-toolbar {
+    gap: 3px;
+    padding: 0 6px 7px;
+  }
+
+  .workspace .saga-toolbar-left,
+  .workspace .saga-toolbar-right {
+    gap: 3px;
+  }
+
+  .workspace .saga-round-button {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .workspace .saga-round-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .workspace .saga-media-toggle {
+    height: 28px;
+    padding: 1px;
+  }
+
+  .workspace .saga-media-toggle button {
+    height: 26px;
+    min-width: 25px;
+    padding: 0 4px;
+    gap: 3px;
+    font-size: 10px;
+  }
+
+  .workspace .saga-media-toggle button.selected {
+    min-width: 48px;
+  }
+
+  .workspace .saga-media-toggle button svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .workspace .saga-control-pill,
+  .workspace .saga-auto-toggle {
+    height: 28px;
+    padding: 0 6px;
+    gap: 3px;
+    font-size: 10px;
+  }
+
+  .workspace .saga-control-pill svg,
+  .workspace .saga-auto-toggle svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .workspace .saga-audio-toggle {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .workspace .saga-audio-toggle svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .workspace .saga-submit {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    flex-basis: 30px;
+  }
+
+  .workspace .saga-submit svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .workspace .saga-resolution-trigger {
+    min-width: 76px;
+  }
+}
+
+@media (max-width: 390px) {
+  .workspace .saga-toolbar {
+    gap: 2px;
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+
+  .workspace .saga-toolbar-left,
+  .workspace .saga-toolbar-right {
+    gap: 2px;
+  }
+
+  .workspace .saga-control-pill,
+  .workspace .saga-auto-toggle {
+    padding: 0 5px;
+    font-size: 9px;
+  }
+
+  .workspace .saga-media-toggle button.selected {
+    min-width: 45px;
+  }
+}
