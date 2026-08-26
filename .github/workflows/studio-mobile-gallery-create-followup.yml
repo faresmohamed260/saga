@@ -18,19 +18,27 @@ jobs:
         with:
           ref: studio/mobile-gallery-create-followup
           fetch-depth: 0
-      - name: Normalize legacy Gallery sort markup for patch helper
+      - name: Normalize patch inputs
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
-          path = Path('apps/studio/src/features/library/GalleryView.jsx')
-          text = path.read_text()
+          gallery = Path('apps/studio/src/features/library/GalleryView.jsx')
+          text = gallery.read_text()
           replacement = '          <label className="gallery-sort gallery-inline-select"><ArrowDownUp size={16}/><span className="sr-only">Sort gallery</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort gallery"><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>'
           text, count = re.subn(r'\s*<label className="gallery-sort gallery-inline-select">[\s\S]*?</label>', '\n' + replacement, text, count=1)
           if count != 1:
               raise SystemExit(f'Gallery desktop sort normalization expected one match, found {count}')
-          path.write_text(text)
+          gallery.write_text(text)
+
+          helper = Path('.github/scripts/apply_mobile_gallery_create_followup.py')
+          helper_text = helper.read_text()
+          old = 'next_text, count = re.subn(range_pattern, range_replacement, text, count=1)'
+          new = 'next_text, count = re.subn(range_pattern, lambda _match: range_replacement, text, count=1)'
+          if old not in helper_text:
+              raise SystemExit('Range replacement helper anchor missing')
+          helper.write_text(helper_text.replace(old, new, 1))
           PY
       - name: Apply follow-up patch
         run: python .github/scripts/apply_mobile_gallery_create_followup.py
