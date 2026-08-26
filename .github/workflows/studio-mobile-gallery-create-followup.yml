@@ -42,6 +42,19 @@ jobs:
           PY
       - name: Apply follow-up patch
         run: python .github/scripts/apply_mobile_gallery_create_followup.py
+      - name: Align UX benchmark with text-only image generation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/studio/scripts/check-ui-ux-benchmark-contract.mjs')
+          text = path.read_text()
+          old = "[controls.includes('Create from a reference'), 'Image setup copy does not explain the real task'],"
+          new = "[controls.includes('Create an image') && controls.includes('References are optional'), 'Image setup copy does not explain text generation with optional references'],"
+          if old not in text:
+              raise SystemExit('UI/UX benchmark anchor missing')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Compile worker Python
         run: python -m py_compile integrations/comfyui/flux2_klein_gateway.py integrations/comfyui/ltx23_gateway.py integrations/qwen/qwen_image_edit_2511_gateway.py integrations/qwen/qwen_image_edit_2511_app.py
       - uses: actions/setup-node@v5
