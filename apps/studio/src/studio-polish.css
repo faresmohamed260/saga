@@ -151,3 +151,48 @@
 }
 .app-shell input::placeholder,
 .app-shell textarea::placeholder { color:var(--saga-color-text-subtle); opacity:1; }
+
+
+/* Jobs remain finite and viewport-safe instead of rendering the entire history at once. */
+.history-view .jobs-list{display:grid;gap:12px;max-width:100%;min-width:0}
+.history-view .job-card{max-width:100%;min-width:0;overflow:hidden}
+.history-view .job-card>div{min-width:0;max-width:100%}
+.history-view .job-card strong{max-width:100%}
+.history-view .saga-generation-progress,.history-view .saga-generation-progress-copy{min-width:0;max-width:100%}
+.history-view .jobs-list-more{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0 4px;color:var(--saga-color-text-subtle);font-size:var(--saga-text-xs)}
+.history-view .jobs-list-more .secondary-button{min-height:40px;padding:0 15px}
+@media(max-width:720px){.history-view .jobs-list-more{flex-direction:column}.history-view .jobs-list-more .secondary-button{width:100%;justify-content:center}}
+
+/* FancySelect menus render through a body portal, so their interaction layer cannot rely on a .workspace ancestor. */
+.saga-fancy-options-portal{
+  position:fixed;
+  z-index:2600;
+  padding:5px;
+  border:1px solid #303743;
+  border-radius:11px;
+  background:#171c23;
+  box-shadow:0 15px 40px rgba(0,0,0,.45);
+  overflow:auto;
+  overscroll-behavior:contain;
+  box-sizing:border-box;
+  pointer-events:auto;
+}
+.saga-fancy-options-portal button{
+  width:100%;
+  height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:0 9px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#bdc4cf;
+  font-size:var(--saga-text-xs);
+  text-align:left;
+  cursor:pointer;
+}
+.saga-fancy-options-portal button:hover,
+.saga-fancy-options-portal button[aria-selected=true]{background:#252a34;color:#fff}
+.saga-fancy-options-portal button:focus-visible{outline:var(--saga-focus-ring);outline-offset:-2px;background:#252a34;color:#fff}

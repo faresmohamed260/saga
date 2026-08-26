@@ -34,8 +34,15 @@ try {
   });
 
   await page.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-  const selector = page.getByRole('group', { name: 'Image model', exact: true });
-  await selector.getByRole('button', { name: 'Qwen', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
+  const advanced = page.locator('.saga-advanced-panel');
+  await advanced.waitFor({ state: 'visible', timeout: 5000 });
+  const modelSelector = advanced.getByRole('button', { name: 'Image model', exact: true });
+  await modelSelector.click();
+  await page.getByRole('option', { name: 'Qwen Image Edit 2511', exact: true }).click();
+  if (!(await modelSelector.innerText()).includes('Qwen Image Edit 2511')) throw new Error('Qwen model selection did not activate from Advanced');
+  await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
+  await advanced.waitFor({ state: 'hidden', timeout: 3000 });
   diagnostics.qwenSelected = true;
   const upload = page.getByRole('button', { name: 'Upload reference images', exact: true });
   const chooserPromise = page.waitForEvent('filechooser');
@@ -45,7 +52,6 @@ try {
   await page.locator('.saga-composer.is-edit').waitFor({ state: 'visible', timeout: 5000 });
   await page.locator('.saga-rich-prompt').fill('Make the reference look like a clean editorial photograph');
   await page.getByRole('button', { name: 'Advanced settings', exact: true }).click();
-  const advanced = page.locator('.saga-advanced-panel');
   await advanced.getByText('Qwen Image Edit 2511 · Abliterated BF16 + Lightning', { exact: true }).waitFor({ state: 'visible' });
   await advanced.getByText('Reset to Qwen defaults', { exact: true }).waitFor({ state: 'visible' });
   await advanced.getByText('4-step BF16 Lightning LoRA', { exact: true }).waitFor({ state: 'visible' });
@@ -53,7 +59,7 @@ try {
   const cfg = advanced.locator('input[aria-label="CFG value"]');
   if (Number(await cfg.inputValue()) !== 1) throw new Error('Qwen Advanced defaults did not switch to CFG 1');
   await page.getByRole('button', { name: 'Close advanced settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit image', exact: true }).click();
+  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
   for (let attempt = 0; attempt < 40 && !diagnostics.submitted; attempt += 1) await page.waitForTimeout(50);
   if (!diagnostics.submitted) throw new Error('Qwen image edit was not submitted');
   if (diagnostics.submitted.workflowId !== 'qwen-image-edit-2511') throw new Error(`Wrong Qwen workflow: ${JSON.stringify(diagnostics.submitted)}`);

@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
-const [ecosystemsRaw, workflows, presets, workspace, controller, client, runtime, gateway, registry, civitaiPrefetch] = await Promise.all([
+const [ecosystemsRaw, workflows, presets, workspace, controls, controller, client, runtime, gateway, registry, civitaiPrefetch] = await Promise.all([
   readFile(new URL('../../config/modal-worker-ecosystems.json', root), 'utf8'),
   readFile(new URL('api/_workflows.js', root), 'utf8'),
   readFile(new URL('src/features/create/model-presets.js', root), 'utf8'),
   readFile(new URL('src/features/create/CreateWorkspace.jsx', root), 'utf8'),
+  readFile(new URL('src/create-controls.jsx', root), 'utf8'),
   readFile(new URL('src/hooks/useGenerationController.js', root), 'utf8'),
   readFile(new URL('src/features/create/qwen-generation-client.js', root), 'utf8'),
   readFile(new URL('../../integrations/qwen/qwen_image_edit_2511_app.py', root), 'utf8'),
@@ -25,7 +26,7 @@ expect(workflows.includes("'qwen-image-edit-2511'") && workflows.includes("ecosy
 expect(workflows.includes('steps: 4') && workflows.includes('cfg: 1.0'), 'Qwen workflow must use Lightning 4-step / CFG 1 defaults');
 expect(workflows.includes('minSteps: 4') && workflows.includes('maxSteps: 4'), 'Qwen workflow must pin Lightning sampling to four steps');
 expect(presets.includes("modelLabel: 'Qwen Image Edit 2511 · Abliterated BF16 + Lightning'") && presets.includes("stepsDetail: '4-step BF16 Lightning LoRA'"), 'Qwen UI preset must identify the Civitai BF16 fallback plus four-step Lightning recipe');
-expect(workspace.includes('aria-label="Image model"') && workspace.includes('>FLUX</button>') && workspace.includes('>Qwen</button>'), 'Image/Edit UI must expose FLUX and Qwen model selection');
+expect(workspace.includes('imageModel={imageModel}') && workspace.includes('onImageModelChange={chooseImageModel}') && controls.includes('label="Image model"') && controls.includes("{ value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B' }") && controls.includes("{ value: 'qwen-image-edit-2511', label: 'Qwen Image Edit 2511' }"), 'Advanced Image/Edit UI must expose FLUX and Qwen in a model dropdown');
 expect(workspace.includes('setActiveImageModel(nextModel)') && workspace.includes('imageModel,'), 'Selected image model must drive generation and Advanced settings');
 expect(controller.includes('runQwenImageEdit') && controller.includes('generationOptions.imageModel'), 'Generation controller must route Qwen explicitly');
 expect(client.includes("workflowId: 'qwen-image-edit-2511'") && client.includes('input.steps ?? 4') && client.includes('input.cfg ?? 1.0'), 'Qwen client must submit the four-step Lightning workflow defaults');

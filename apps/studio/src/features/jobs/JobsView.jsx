@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, LoaderCircle, RotateCcw, X, XCircle } from 'lucide-react';
 import LibraryHeader from '../../components/LibraryHeader.jsx';
+
+const JOB_PAGE_SIZE = 10;
 
 const STATUS_COPY = {
   uploading: ['Uploading reference', 'Preparing the source image for generation.'],
@@ -77,6 +79,10 @@ function runtimePresentation(job) {
 }
 
 export default function JobsView({ jobs, filter, loading, error, actionBusyId, onFilterChange, onJobAction }) {
+  const [visibleCount, setVisibleCount] = useState(JOB_PAGE_SIZE);
+  useEffect(() => setVisibleCount(JOB_PAGE_SIZE), [filter]);
+  const visibleJobs = jobs.slice(0, visibleCount);
+
   return (
     <section className="history-view">
       <LibraryHeader eyebrow="Execution" title="Jobs & queue" description="Live generation lifecycle. Jobs update automatically while this page is open; completed media moves to Gallery." />
@@ -88,11 +94,11 @@ export default function JobsView({ jobs, filter, loading, error, actionBusyId, o
         </div>
       </div>
       {error && <div className="history-state error">{error}</div>}
-      {loading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <div style={{ display: 'grid', gap: 12 }}>{jobs.map((job) => {
+      {loading && jobs.length === 0 ? <div className="history-state"><LoaderCircle className="spin" size={22}/> Loading jobs…</div> : jobs.length === 0 ? <div className="history-state">No lifecycle jobs match this filter.</div> : <><div className="jobs-list">{visibleJobs.map((job) => {
         const cancelled = Boolean(job.metadata?.cancelled);
         const actionBusy = actionBusyId === job.id;
         const runtime = runtimePresentation(job);
-        return <article key={job.id} style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, background: 'rgba(255,255,255,.025)', padding: '16px 18px', display: 'grid', gap: 10 }}>
+        return <article className="job-card" key={job.id} style={{ border: '1px solid rgba(255,255,255,.08)', borderRadius: 14, background: 'rgba(255,255,255,.025)', padding: '16px 18px', display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
               <span style={{ textTransform: 'uppercase', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', padding: '5px 8px', borderRadius: 999, border: '1px solid rgba(255,255,255,.14)', opacity: job.status === 'failed' ? 1 : .8 }}>{cancelled ? 'cancelled' : job.status}</span>
@@ -122,7 +128,9 @@ export default function JobsView({ jobs, filter, loading, error, actionBusyId, o
           {job.error_message && <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(120,20,35,.14)', border: '1px solid rgba(255,100,120,.25)', color: '#ffb4c0', fontSize: 12 }}>{job.error_message}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>{['queued', 'running'].includes(job.status) && <button className="secondary-button" disabled={actionBusy} onClick={() => onJobAction(job, 'cancel')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <X size={16}/>} Cancel</button>}{job.status === 'failed' && <button className="secondary-button" disabled={actionBusy} onClick={() => onJobAction(job, 'retry')}>{actionBusy ? <LoaderCircle className="spin" size={16}/> : <RotateCcw size={16}/>} Retry</button>}</div>
         </article>;
-      })}</div>}
+      })}</div>
+      {visibleCount < jobs.length && <div className="jobs-list-more"><button type="button" className="secondary-button" onClick={() => setVisibleCount((current) => Math.min(current + JOB_PAGE_SIZE, jobs.length))}>Show more jobs</button><span>Showing {visibleJobs.length} of {jobs.length}</span></div>}
+      </>}
     </section>
   );
 }

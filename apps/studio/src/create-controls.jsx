@@ -4,7 +4,7 @@ import React, {
 import { createPortal } from 'react-dom';
 import {
   ArrowUp, Check, ChevronDown, Clock3, Dice5, Image as ImageIcon, Plus,
-  RotateCcw, SlidersHorizontal, Sparkles, Video, Volume2, VolumeX, X,
+  RotateCcw, Sparkles, Video, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { setEditSizingPreference } from './generation-client.js';
 import { AspectPicker, ASPECT_PRESETS } from './features/create/AspectPicker.jsx';
@@ -237,6 +237,7 @@ function useOutsideDismiss(open, refs, close, returnFocusRef = null, protectNest
     if (!open) return undefined;
     const onPointer = (event) => {
       if (refs.some((item) => item.current?.contains(event.target))) return;
+      if (protectNestedEscape && event.target?.closest?.('[data-advanced-trigger="true"], .saga-fancy-options-portal')) return;
       close();
     };
     const onKey = (event) => {
@@ -333,6 +334,13 @@ function PickerShell({ open, anchorRef, width, height, className = '', children,
       ref={popoverRef}
       className={`saga-picker ${className}`}
       style={position || { visibility: 'hidden' }}
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        window.setTimeout(() => anchorRef.current?.focus(), 0);
+      }}
       onBlurCapture={(event) => {
         const next = event.relatedTarget;
         if (!next || popoverRef.current?.contains(next) || anchorRef.current?.contains(next)) return;
@@ -595,7 +603,7 @@ function RangeField({ label, help, value, onChange, min, max, step, decimals = 0
 }
 
 function AdvancedSettings({
-  open, onClose, anchorRef, mode, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,
+  open, onClose, anchorRef, mode, imageModel = 'flux2-klein-9b', onImageModelChange = () => {}, imageModelName = 'FLUX', seed, setSeed, steps, setSteps,
   cfg, setCfg, negativePrompt, setNegativePrompt,
   videoAutoAspect, setVideoAutoAspect, videoManualAspect, setVideoManualAspect,
   videoAspect, videoReferenceInfo, videoFrameRate, setVideoFrameRate,
@@ -620,6 +628,20 @@ function AdvancedSettings({
       </header>
 
       <div className="saga-advanced-body">
+        {!isVideo && (
+          <section className="saga-advanced-card saga-model-selector-card">
+            <div className="saga-card-title"><strong>Image model</strong><small>Choose the production image-edit ecosystem.</small></div>
+            <FancySelect
+              label="Image model"
+              value={imageModel}
+              options={[
+                { value: 'flux2-klein-9b', label: 'FLUX.2 Klein 9B' },
+                { value: 'qwen-image-edit-2511', label: 'Qwen Image Edit 2511' },
+              ]}
+              onChange={onImageModelChange}
+            />
+          </section>
+        )}
         {preset ? (
           <>
             <div className="saga-advanced-runtime" aria-label="Active production model">
@@ -770,18 +792,17 @@ export default function CreateWorkspace({
   videoAspect = '16:9', composerStatusSlot = null,
   videoAutoAspect = true, setVideoAutoAspect = () => {}, videoManualAspect = '16:9', setVideoManualAspect = () => {},
   videoReferenceInfo = null, videoFrameRate = 24, setVideoFrameRate = () => {},
+  imageModel = 'flux2-klein-9b', onImageModelChange = () => {},
   imageModelName = 'FLUX', imageModelLabel = 'FLUX.2 Klein 9B',
 }) {
   const isEdit = mode === 'Edit';
   const isVideo = mode === 'Video';
-  const isImageSetup = mode === 'Image';
   const referenceInputRef = useRef(null);
   const promptRef = useRef(null);
   const resolutionButtonRef = useRef(null);
   const aspectButtonRef = useRef(null);
   const videoResolutionButtonRef = useRef(null);
   const durationButtonRef = useRef(null);
-  const settingsButtonRef = useRef(null);
   const modeEffectMountedRef = useRef(false);
   const dragDepthRef = useRef(0);
 
@@ -1092,34 +1113,16 @@ export default function CreateWorkspace({
             <div className="saga-toolbar-right">
               <span className="saga-prompt-count">{prompt.length} / 2000</span>
               <button
-                ref={settingsButtonRef}
-                type="button"
-                className={`saga-settings-button ${settingsOpen ? 'active' : ''}`}
-                title="Advanced settings"
-                aria-label="Advanced settings"
-                onClick={() => {
-                  setSettingsOpen((current) => !current);
-                  setAspectOpen(false);
-                  setResolutionOpen(false);
-                  setVideoResolutionOpen(false);
-                  setDurationOpen(false);
-                }}
-              >
-                <SlidersHorizontal size={18} />
-              </button>
-              {!isImageSetup && (
-              <button
                 type="button"
                 className="saga-submit"
-                title={isEdit ? 'Edit image' : 'Generate video'}
-                aria-label={isEdit ? 'Edit image' : 'Generate video'}
+                title={isVideo ? 'Generate video' : references.length ? 'Generate image' : 'Add a reference image to generate'}
+                aria-label={isVideo ? 'Generate video' : 'Generate image'}
                 onClick={() => onGenerate({ videoResolution, videoDuration, videoAudio })}
-                disabled={busy || (isEdit && references.length === 0)}
+                disabled={busy || (!isVideo && references.length === 0)}
               >
-                <span className="saga-submit-label">{isEdit ? 'Edit' : 'Generate'}</span>
+                <span className="saga-submit-label">Generate</span>
                 <ArrowUp size={18} aria-hidden="true" />
               </button>
-              )}
             </div>
           </div>
           {composerStatusSlot}
@@ -1161,8 +1164,10 @@ export default function CreateWorkspace({
         <AdvancedSettings
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
-          anchorRef={settingsButtonRef}
+          anchorRef={isVideo ? videoResolutionButtonRef : aspectButtonRef}
           mode={mode}
+          imageModel={imageModel}
+          onImageModelChange={onImageModelChange}
           imageModelName={imageModelName}
           seed={seed}
           setSeed={setSeed}

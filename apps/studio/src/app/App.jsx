@@ -112,7 +112,7 @@ export default function App() {
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('1:1');
   const [imageResolution, setImageResolution] = useState(1080);
-  const [mobileNav, setMobileNav] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 980);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [jobsFilter, setJobsFilter] = useState('active');
@@ -306,16 +306,16 @@ export default function App() {
   );
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${navigationOpen ? 'nav-open' : 'nav-closed'}`}>
       <Sidebar
         section={section}
-        mobileOpen={mobileNav}
-        onCloseMobile={() => setMobileNav(false)}
+        open={navigationOpen}
+        onClose={() => setNavigationOpen(false)}
         onSectionChange={setSection}
       />
 
       <main className="workspace">
-        <MobileTopbar onOpenNavigation={() => setMobileNav(true)} onOpenSettings={() => { setSection('Create'); setSettingsOpen(true); }} />
+        <MobileTopbar navigationOpen={navigationOpen} settingsOpen={settingsOpen} onOpenNavigation={() => setNavigationOpen((current) => !current)} onOpenSettings={() => { setSection('Create'); setSettingsOpen((current) => !current); }} />
 
         {section === 'Jobs' ? <JobsView jobs={jobs} filter={jobsFilter} loading={jobsLoading} error={jobsError} actionBusyId={jobActionBusy} onFilterChange={setJobsFilter} onRefresh={() => loadJobs({ filter: jobsFilter })} onJobAction={runJobAction} />
           : section === 'Gallery' ? <GalleryView items={galleryItems} kind={galleryKind} model={galleryModel} models={galleryModels} search={gallerySearch} sort={gallerySort} date={galleryDate} favoritesOnly={galleryFavoritesOnly} collections={collections} page={galleryPage} loading={galleryLoading} appending={galleryAppending} error={galleryError} onKindChange={setGalleryKind} onModelChange={setGalleryModel} onSearchChange={setGallerySearch} onSortChange={setGallerySort} onDateChange={setGalleryDate} onFavoritesOnlyChange={setGalleryFavoritesOnly} onOpenCollection={async (collection) => { await loadCollectionItems(collection); setSection('Collections'); }} onOpenCollections={() => setSection('Collections')} onRefresh={() => loadGallery({ append: false })} onLoadMore={() => loadGallery({ append: true })} renderCard={renderCard} onBulkFavorite={bulkFavorite} onBulkAddToCollection={bulkAddToCollection} onBulkDownload={bulkDownload} onBulkDelete={bulkDelete} onUseUploadReference={useUploadReference} />

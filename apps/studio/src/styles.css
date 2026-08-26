@@ -195,3 +195,26 @@ button { color: inherit; }
   .media-modal { padding:14px; }
   .media-modal-copy { align-items:flex-start; flex-direction:column; gap:5px; }
 }
+
+
+/* Universal collapsible navigation and persistent Studio topbar. */
+.app-shell{transition:grid-template-columns .22s ease}
+.sidebar{width:248px;transition:transform .22s ease,opacity .18s ease}
+.mobile-close{display:grid!important;place-items:center;width:32px;height:32px;cursor:pointer;border-radius:9px}
+.mobile-topbar{
+  display:flex;
+  height:64px;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  position:sticky;
+  top:0;
+  z-index:45;
+  background:rgba(8,10,15,.92);
+  backdrop-filter:blur(16px);
+}
+.mobile-brand{font-weight:700;font-size:16px}
+.mobile-topbar .icon-button{width:40px;height:40px;border:0;background:var(--saga-color-surface-2-alt);border-radius:var(--saga-radius-md);color:#dce0e8;display:grid;place-items:center;cursor:pointer}
+@media(max-width:980px){
+  .sidebar:not(.open){transform:translateX(-102%)}
+}
