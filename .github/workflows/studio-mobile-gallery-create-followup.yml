@@ -23,16 +23,14 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           path = Path('apps/studio/src/features/library/GalleryView.jsx')
           text = path.read_text()
-          old = '''              <label className="gallery-sort gallery-inline-select">
-                <ArrowDownUp size={15}/><span className="sr-only">Sort</span>
-                <select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort"><option value="newest">Newest</option><option value="oldest">Oldest</option></select>
-              </label>'''
-          new = '''          <label className="gallery-sort gallery-inline-select"><ArrowDownUp size={16}/><span className="sr-only">Sort gallery</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort gallery"><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>'''
-          if old not in text:
-              raise SystemExit('Gallery desktop sort normalization anchor not found')
-          path.write_text(text.replace(old, new, 1))
+          replacement = '          <label className="gallery-sort gallery-inline-select"><ArrowDownUp size={16}/><span className="sr-only">Sort gallery</span><select value={sort} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort gallery"><option value="newest">Newest</option><option value="oldest">Oldest</option></select></label>'
+          text, count = re.subn(r'\s*<label className="gallery-sort gallery-inline-select">[\s\S]*?</label>', '\n' + replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Gallery desktop sort normalization expected one match, found {count}')
+          path.write_text(text)
           PY
       - name: Apply follow-up patch
         run: python .github/scripts/apply_mobile_gallery_create_followup.py
