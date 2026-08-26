@@ -49,8 +49,9 @@ expect(app.includes('uploadLibraryReference') && client.includes("purpose: 'libr
 expect(library.includes("['Create', 'Gallery', 'Favorites', 'Collections']"), 'Favorites must refresh while Create is visible');
 expect(/item\.kind === 'video'[\s\S]*?setSteps\(11\)[\s\S]*?setCfg\(1\)/.test(await readFile(new URL('src/hooks/useMediaActions.js', root), 'utf8')), 'Reusing a video must restore the LTX production sampling preset');
 expect(!audioCss.includes('.saga-audio-toggle::after'), 'Audio must render only the circular button');
+expect(controls.includes('useLayoutEffect') && /useLayoutEffect\(\(\) => \{[\s\S]*?!focusedRef\.current[\s\S]*?setDraft[\s\S]*?\}, \[value, min\]\)/.test(controls), 'Steps/CFG drafts must synchronize external Reset values before paint without clobbering focused input');
 
 expect(!app.includes('setWorkflowId') && !app.includes('setModelId') && !controls.includes('saved.workflowId') && !controls.includes('saved.modelId'), 'Dead workflow/model presentation state must stay removed from Create');
 expect(!app.includes('setOutputs') && !controls.includes('saved.outputs'), 'Dead output-count presentation state must stay removed from Create');
-expect(controls.includes('aria-label=\"Recent work\"') && controls.includes('Current-session results appear first'), 'Create results must explain session-first Recent work semantics');
-console.log('Create Advanced contract passed: production presets, consolidated warmup, live LTX CFG transport, fixed 11-step recipe, dead presentation plumbing removed, and Recent work is explicit.');
+expect(controls.includes('aria-label="Recent work"') && controls.includes('Current-session results appear first'), 'Create results must explain session-first Recent work semantics');
+console.log('Create Advanced contract passed: production presets, consolidated warmup, live LTX CFG transport, synchronous numeric reset sync, fixed 11-step recipe, dead presentation plumbing removed, and Recent work is explicit.');
