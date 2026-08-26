@@ -79,8 +79,10 @@ def validate_health(health: dict) -> None:
     checkpoint = health.get('checkpoint') or {}
     if int(checkpoint.get('version_id') or 0) != EXPECTED_CHECKPOINT_VERSION_ID:
         raise SystemExit(f'Qwen gateway reports wrong Civitai checkpoint version: {health}')
-    if int(checkpoint.get('file_id') or 0) != EXPECTED_CHECKPOINT_FILE_ID:
-        raise SystemExit(f'Qwen gateway reports wrong Civitai checkpoint file: {health}')
+    worker = health.get('worker') or {}
+    checkpoint_file_id = checkpoint.get('file_id') or worker.get('checkpoint_file_id')
+    if int(checkpoint_file_id or 0) != EXPECTED_CHECKPOINT_FILE_ID:
+        raise SystemExit(f'Qwen worker reports wrong Civitai checkpoint file: {health}')
     acceleration = health.get('acceleration') or {}
     if acceleration.get('type') != 'lightning-lora' or acceleration.get('default_steps') != EXPECTED_STEPS:
         raise SystemExit(f'Qwen gateway is not serving the Lightning 4-step profile: {health}')
