@@ -1,0 +1,46 @@
+name: Fix RenderLab Phase 18 Proof Harness
+
+on:
+  push:
+    branches:
+      - ops/renderlab-phase18-upscale-live
+    paths:
+      - .github/workflows/renderlab-phase18-upscale-proof-harness-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/renderlab-phase18-upscale-live
+      - name: Correct final health assertion and remove this helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('.github/workflows/renderlab-phase18-upscale-corrected-full-proof.yml')
+          text=path.read_text(encoding='utf-8')
+          old="""          final=requests.get(base+'/health',timeout=120); final.raise_for_status(); fp=final.json(); worker=fp.get('worker') or {}; assert worker.get('ready') is True; assert worker.get('source_commit')=='33f616625268d08ba600f8db89388eec0328edb1'; assert worker.get('weight_sha256')=='2032ebf8f401dd3ce2fae5f3852117cb72101ec6ed8358faa64c2a3fa09ed4ac'\n"""
+          new="""          final=requests.get(base+'/health',timeout=120); final.raise_for_status(); fp=final.json(); worker=fp.get('worker') or {}; assert fp['ready'] is True; assert fp['source']['commit']=='33f616625268d08ba600f8db89388eec0328edb1'; assert fp['model']['sha256']=='2032ebf8f401dd3ce2fae5f3852117cb72101ec6ed8358faa64c2a3fa09ed4ac'; assert worker.get('worker_id')=='renderlab-upscale-01'; assert worker.get('ecosystem')=='image-upscale-v1'; assert worker.get('state')=='sleeping'; assert worker.get('ready') is True\n"""
+          if text.count(old)!=1:
+              raise SystemExit(f'final-health assertion target count={text.count(old)}')
+          path.write_text(text.replace(old,new,1),encoding='utf-8')
+          PY
+          git rm .github/workflows/renderlab-phase18-upscale-proof-harness-fix.yml
+          git diff --check
+          git diff -- .github/workflows/renderlab-phase18-upscale-corrected-full-proof.yml
+      - name: Commit corrected temporary proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/renderlab-phase18-upscale-corrected-full-proof.yml
+          git commit -am 'ops: correct RenderLab upscale final health proof'
+          git push origin HEAD:ops/renderlab-phase18-upscale-live
