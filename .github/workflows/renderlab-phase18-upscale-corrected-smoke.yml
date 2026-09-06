@@ -1,0 +1,99 @@
+name: RenderLab Phase 18 Upscale Corrected Smoke
+
+on:
+  push:
+    branches:
+      - ops/renderlab-phase18-upscale-live
+    paths:
+      - .github/workflows/renderlab-phase18-upscale-corrected-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renderlab-phase18-upscale-corrected-smoke
+  cancel-in-progress: false
+
+jobs:
+  redeploy-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      RENDERLAB_SOURCE_SHA: 3b7f4a4dcc27a64e1423cbd2c6d0993b24ceb3e8
+      MODAL_ACCOUNT_LABEL: modal-45
+      RENDERLAB_UPSCALE_WORKER_ID: renderlab-upscale-01
+      RENDERLAB_UPSCALE_STATE_DICT: renderlab-image-upscale-worker-state-v1
+      RENDERLAB_UPSCALE_GPU: A10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: faresmohamed260/renderlab
+          ref: ${{ env.RENDERLAB_SOURCE_SHA }}
+          path: renderlab-source
+      - name: Guard exact corrected source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C renderlab-source rev-parse HEAD)" = "$RENDERLAB_SOURCE_SHA"
+          python3 renderlab-source/workers/image-upscale/verify_worker.py
+          python3 -m py_compile renderlab-source/workers/image-upscale/modal_app.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tools
+        run: python -m pip install --upgrade "modal==1.4.2" "requests==2.32.5" "Pillow==11.2.1"
+      - name: Select Modal credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          accounts = payload.get('accounts') if isinstance(payload, dict) else payload
+          wanted = os.environ['MODAL_ACCOUNT_LABEL'].lower()
+          row = next((r for r in accounts if str(r.get('label') or r.get('name') or r.get('account') or '').lower() == wanted), None)
+          if not row: raise SystemExit('workspace not found')
+          tid = str(row.get('token_id') or '').strip(); secret = str(row.get('token_secret') or '').strip(); combined = str(row.get('api_key') or row.get('token') or '').strip()
+          if (not tid or not secret) and '.' in combined: tid, secret = combined.split('.', 1)
+          if not tid or not secret: raise SystemExit('workspace credentials incomplete')
+          print(f'::add-mask::{tid}'); print(f'::add-mask::{secret}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f: f.write(f'MODAL_TOKEN_ID={tid}\nMODAL_TOKEN_SECRET={secret}\n')
+          PY
+      - name: Redeploy corrected worker
+        run: modal deploy renderlab-source/workers/image-upscale/modal_app.py
+      - name: Prove corrected POST path and tiny 2x result
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=$(python - <<'PY'
+          import modal
+          print(modal.Function.from_name('renderlab-image-upscale', 'web').get_web_url())
+          PY
+          )
+          echo "::add-mask::$URL"
+          UPSCALE_GATEWAY_URL="$URL" python - <<'PY'
+          import io, json, os, time
+          import requests
+          from PIL import Image
+          base = os.environ['UPSCALE_GATEWAY_URL'].rstrip('/')
+          buf = io.BytesIO(); Image.new('RGB',(8,8),(12,34,56)).save(buf,format='PNG'); data=buf.getvalue()
+          health=requests.get(base+'/health',timeout=90); health.raise_for_status(); hp=health.json(); assert hp['ready'] is True
+          bad=requests.post(base+'/jobs/upscale',files={'image_file':('bad.png',data,'image/png')},data={'scale':'4'},timeout=90)
+          assert bad.status_code==400,(bad.status_code,bad.text[:1000])
+          good=requests.post(base+'/jobs/upscale',files={'image_file':('good.png',data,'image/png')},data={'scale':'2'},timeout=90)
+          assert good.status_code==200,(good.status_code,good.text[:1000]); body=good.json(); assert body['status']=='queued'; assert (body['output_width'],body['output_height'])==(16,16)
+          call_id=body['call_id']; deadline=time.time()+900
+          while time.time()<deadline:
+              poll=requests.get(base+'/jobs/'+call_id,timeout=90)
+              if poll.status_code==202: time.sleep(3); continue
+              assert poll.status_code==200,(poll.status_code,poll.text[:1000]); assert poll.headers.get('content-type','').startswith('image/png')
+              with Image.open(io.BytesIO(poll.content)) as out: assert out.size==(16,16); assert out.format=='PNG'
+              print(json.dumps({'correctedGateway':True,'invalidScaleStatus':bad.status_code,'callId':call_id,'output':[16,16],'bytes':len(poll.content)}))
+              break
+          else: raise TimeoutError('tiny corrected upscale did not complete')
+          PY
+      - name: Fetch app logs on failure
+        if: failure()
+        run: modal app logs renderlab-image-upscale --since 30m --tail 500 --timestamps --show-function-id --show-function-call-id --show-container-id
