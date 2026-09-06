@@ -1,0 +1,182 @@
+name: RenderLab Phase 18 Upscale Corrected Full Proof v2
+
+on:
+  push:
+    branches:
+      - ops/renderlab-phase18-upscale-live
+    paths:
+      - .github/workflows/renderlab-phase18-upscale-corrected-full-proof-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renderlab-phase18-upscale-corrected-full-proof-v2
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      RENDERLAB_SOURCE_SHA: 3b7f4a4dcc27a64e1423cbd2c6d0993b24ceb3e8
+      MODAL_ACCOUNT_LABEL: modal-45
+      RENDERLAB_UPSCALE_WORKER_ID: renderlab-upscale-01
+      RENDERLAB_UPSCALE_STATE_DICT: renderlab-image-upscale-worker-state-v1
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install proof tools
+        run: python -m pip install --upgrade "modal==1.4.2" "requests==2.32.5" "Pillow==11.2.1"
+      - name: Select Modal credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          payload=json.loads(os.environ['SAGA_MODAL_TOKENS_JSON']); accounts=payload.get('accounts') if isinstance(payload,dict) else payload; wanted=os.environ['MODAL_ACCOUNT_LABEL'].lower()
+          row=next((r for r in accounts if str(r.get('label') or r.get('name') or r.get('account') or '').lower()==wanted),None)
+          if not row: raise SystemExit('workspace not found')
+          tid=str(row.get('token_id') or '').strip(); secret=str(row.get('token_secret') or '').strip(); combined=str(row.get('api_key') or row.get('token') or '').strip()
+          if (not tid or not secret) and '.' in combined: tid,secret=combined.split('.',1)
+          if not tid or not secret: raise SystemExit('workspace credentials incomplete')
+          print(f'::add-mask::{tid}'); print(f'::add-mask::{secret}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f'MODAL_TOKEN_ID={tid}\nMODAL_TOKEN_SECRET={secret}\n')
+          PY
+      - name: Resolve deployed gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=$(python - <<'PY'
+          import modal
+          print(modal.Function.from_name('renderlab-image-upscale','web').get_web_url())
+          PY
+          )
+          test -n "$URL"
+          echo "::add-mask::$URL"
+          echo "UPSCALE_GATEWAY_URL=$URL" >> "$GITHUB_ENV"
+      - name: Run complete live acceptance matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/phase18-upscale-live-v2
+          python - <<'PY'
+          import io, json, os, time
+          from pathlib import Path
+          import requests
+          from PIL import Image
+
+          base=os.environ['UPSCALE_GATEWAY_URL'].rstrip('/')
+          evidence={'sourceSha':os.environ['RENDERLAB_SOURCE_SHA'],'modalAccount':os.environ['MODAL_ACCOUNT_LABEL'],'workerId':os.environ['RENDERLAB_UPSCALE_WORKER_ID'],'app':'renderlab-image-upscale','tests':[],'persistentFixtures':{'supabase':0,'r2':0}}
+          out_dir=Path('artifacts/phase18-upscale-live-v2')
+
+          def record(name,**fields):
+              evidence['tests'].append({'name':name,**fields}); print(json.dumps({'test':name,**fields},sort_keys=True),flush=True)
+
+          def png_bytes(size,rgba=False):
+              w,h=size
+              if rgba:
+                  image=Image.new('RGBA',size); px=image.load()
+                  for y in range(h):
+                      for x in range(w): px[x,y]=((x*7+y*3)%256,(x*5+40)%256,(y*11+80)%256,(x*17+y*13)%256)
+              else:
+                  image=Image.new('RGB',size); px=image.load()
+                  for y in range(h):
+                      for x in range(w): px[x,y]=((x*7+y*3)%256,(x*5+40)%256,(y*11+80)%256)
+              b=io.BytesIO(); image.save(b,format='PNG'); return b.getvalue()
+
+          def jpeg_orientation(size,orientation):
+              image=Image.new('RGB',size,(60,120,180)); exif=Image.Exif(); exif[274]=orientation; b=io.BytesIO(); image.save(b,format='JPEG',quality=90,exif=exif); return b.getvalue()
+
+          def submit(payload,name,ctype,scale=2):
+              r=requests.post(base+'/jobs/upscale',files={'image_file':(name,payload,ctype)},data={'scale':str(scale)},timeout=120)
+              try: body=r.json()
+              except Exception: body=r.text[:1000]
+              return r,body
+
+          def poll(call_id,timeout=1800):
+              deadline=time.time()+timeout; last=None
+              while time.time()<deadline:
+                  r=requests.get(base+'/jobs/'+call_id,timeout=120)
+                  if r.status_code==200 and r.headers.get('content-type','').startswith('image/png'): return r.content
+                  if r.status_code==202:
+                      state=r.json().get('worker_state')
+                      if state!=last: print(json.dumps({'callId':call_id,'workerState':state}),flush=True); last=state
+                      time.sleep(4); continue
+                  raise RuntimeError(f'poll failed status={r.status_code} body={r.text[:1000]}')
+              raise TimeoutError(f'call {call_id} did not complete')
+
+          health=requests.get(base+'/health',timeout=120); health.raise_for_status(); hp=health.json()
+          assert hp['ready'] is True and hp['async_jobs'] is True and hp['cancel_jobs'] is True
+          assert hp['upscale_scales']==[2] and hp['output_content_types']==['image/png']
+          assert hp['worker_id']==os.environ['RENDERLAB_UPSCALE_WORKER_ID'] and hp['ecosystem']=='image-upscale-v1'
+          assert hp['source']['commit']=='33f616625268d08ba600f8db89388eec0328edb1' and hp['source']['license']=='Apache-2.0'
+          assert hp['model']['sha256']=='2032ebf8f401dd3ce2fae5f3852117cb72101ec6ed8358faa64c2a3fa09ed4ac' and hp['model']['bytes']==67277475
+          assert hp['limits']['max_input_edge']==4096 and hp['limits']['max_input_pixels']==4194304 and hp['limits']['max_output_edge']==8192 and hp['limits']['max_output_pixels']==16777216
+          evidence['health']=hp; record('health-provenance',ready=True)
+
+          tiny=png_bytes((8,8)); bad,bbody=submit(tiny,'bad-scale.png','image/png',4); assert bad.status_code==400,(bad.status_code,bbody); record('fixed-scale-rejection',status=400)
+          over=png_bytes((4097,1)); r,body=submit(over,'oversized.png','image/png'); assert r.status_code==400,(r.status_code,body); assert '4096' in json.dumps(body); record('geometry-ceiling-rejection',status=400)
+
+          rgb=png_bytes((48,32)); r,b=submit(rgb,'rgb.png','image/png'); assert r.status_code==200,(r.status_code,b); assert b['status']=='queued' and (b['source_width'],b['source_height'])==(48,32) and (b['output_width'],b['output_height'])==(96,64) and b['alpha'] is False
+          out=poll(b['call_id'])
+          with Image.open(io.BytesIO(out)) as im: assert im.format=='PNG' and im.size==(96,64) and im.mode=='RGB'
+          (out_dir/'rgb-output.png').write_bytes(out); record('rgb-2x-result',source=[48,32],output=[96,64],bytes=len(out))
+
+          alpha=png_bytes((31,19),rgba=True); r,b=submit(alpha,'alpha.png','image/png'); assert r.status_code==200,(r.status_code,b); assert b['alpha'] is True
+          out=poll(b['call_id'])
+          with Image.open(io.BytesIO(out)) as im:
+              assert im.format=='PNG' and im.size==(62,38) and im.mode=='RGBA'; extrema=im.getchannel('A').getextrema(); assert extrema[0]<255 and extrema[1]>0
+          (out_dir/'alpha-output.png').write_bytes(out); record('alpha-2x-result',source=[31,19],output=[62,38],bytes=len(out))
+
+          exif=jpeg_orientation((30,20),6); r,b=submit(exif,'orientation-6.jpg','image/jpeg'); assert r.status_code==200,(r.status_code,b); assert (b['source_width'],b['source_height'])==(20,30) and (b['output_width'],b['output_height'])==(40,60)
+          out=poll(b['call_id'])
+          with Image.open(io.BytesIO(out)) as im: assert im.format=='PNG' and im.size==(40,60)
+          (out_dir/'exif-output.png').write_bytes(out); record('exif-orientation-2x-result',normalizedSource=[20,30],output=[40,60],bytes=len(out))
+
+          frames=[Image.new('RGBA',(12,10),(255,0,0,255)),Image.new('RGBA',(12,10),(0,0,255,255))]; buf=io.BytesIO(); frames[0].save(buf,format='WEBP',save_all=True,append_images=frames[1:],duration=100,loop=0)
+          r,b=submit(buf.getvalue(),'animated.webp','image/webp'); assert r.status_code==400,(r.status_code,b); assert 'animated or multi-frame' in json.dumps(b); record('animated-source-rejection',status=400)
+
+          cancel=png_bytes((2048,2048)); r,b=submit(cancel,'cancel.png','image/png'); assert r.status_code==200,(r.status_code,b); cid=b['call_id']; d=requests.delete(base+'/jobs/'+cid,timeout=120); assert d.status_code==200,(d.status_code,d.text[:1000]); dj=d.json(); assert dj['status']=='cancelled'
+          terminal=False
+          for _ in range(45):
+              follow=requests.get(base+'/jobs/'+cid,timeout=120)
+              if follow.status_code==202: time.sleep(2); continue
+              if follow.status_code==200 and follow.headers.get('content-type','').startswith('image/png'): raise AssertionError('cancelled job unexpectedly produced image result')
+              terminal=True; break
+          assert terminal; record('async-cancellation',deleteStatus=200,terminalWithoutImage=True)
+
+          boundary=png_bytes((4096,1024)); r,b=submit(boundary,'boundary.png','image/png'); assert r.status_code==200,(r.status_code,b); assert (b['source_width'],b['source_height'])==(4096,1024) and (b['output_width'],b['output_height'])==(8192,2048)
+          out=poll(b['call_id'],timeout=2400)
+          with Image.open(io.BytesIO(out)) as im: assert im.format=='PNG' and im.size==(8192,2048)
+          (out_dir/'boundary-output.png').write_bytes(out); record('accepted-boundary-result-transport',source=[4096,1024],output=[8192,2048],bytes=len(out))
+
+          final=requests.get(base+'/health',timeout=120); final.raise_for_status(); fp=final.json(); worker=fp.get('worker') or {}
+          assert fp['ready'] is True
+          assert fp['source']['commit']=='33f616625268d08ba600f8db89388eec0328edb1'
+          assert fp['model']['sha256']=='2032ebf8f401dd3ce2fae5f3852117cb72101ec6ed8358faa64c2a3fa09ed4ac'
+          assert worker.get('worker_id')=='renderlab-upscale-01' and worker.get('ecosystem')=='image-upscale-v1'
+          assert worker.get('state')=='sleeping' and worker.get('ready') is True
+          record('final-health',ready=True,workerState=worker.get('state'))
+          evidence['finalHealth']=fp; evidence['result']='passed'; evidence['testCount']=len(evidence['tests'])
+          (out_dir/'evidence.json').write_text(json.dumps(evidence,indent=2,sort_keys=True),encoding='utf-8')
+          print(json.dumps({'phase18A':'live-proof-passed','tests':len(evidence['tests']),'persistentFixtures':evidence['persistentFixtures']},sort_keys=True))
+          PY
+      - name: Hash evidence
+        if: always()
+        run: |
+          if [ -f artifacts/phase18-upscale-live-v2/evidence.json ]; then sha256sum artifacts/phase18-upscale-live-v2/evidence.json | tee artifacts/phase18-upscale-live-v2/evidence.sha256; fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderlab-phase18-upscale-corrected-live-proof-v2
+          path: artifacts/phase18-upscale-live-v2
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Fetch app logs on failure
+        if: failure()
+        run: modal app logs renderlab-image-upscale --since 1h --tail 1000 --timestamps --show-function-id --show-function-call-id --show-container-id
