@@ -1,0 +1,83 @@
+name: RenderLab Phase 18 Upscale Gateway Diagnose
+
+on:
+  push:
+    branches:
+      - ops/renderlab-phase18-upscale-live
+    paths:
+      - .github/workflows/renderlab-phase18-upscale-diagnose.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      MODAL_ACCOUNT_LABEL: modal-45
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tools
+        run: python -m pip install --upgrade "modal==1.4.2" "requests==2.32.5" "Pillow==11.2.1"
+      - name: Select Modal credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          accounts = payload.get('accounts') if isinstance(payload, dict) else payload
+          wanted = os.environ['MODAL_ACCOUNT_LABEL'].lower()
+          row = next((r for r in accounts if str(r.get('label') or r.get('name') or r.get('account') or '').lower() == wanted), None)
+          if not row:
+              raise SystemExit('workspace not found')
+          token_id = str(row.get('token_id') or '').strip()
+          token_secret = str(row.get('token_secret') or '').strip()
+          combined = str(row.get('api_key') or row.get('token') or '').strip()
+          if (not token_id or not token_secret) and '.' in combined:
+              token_id, token_secret = combined.split('.', 1)
+          if not token_id or not token_secret:
+              raise SystemExit('workspace credentials incomplete')
+          print(f'::add-mask::{token_id}')
+          print(f'::add-mask::{token_secret}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write(f'MODAL_TOKEN_ID={token_id}\nMODAL_TOKEN_SECRET={token_secret}\n')
+          PY
+      - name: Resolve gateway and probe request paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=$(python - <<'PY'
+          import modal
+          print(modal.Function.from_name('renderlab-image-upscale', 'web').get_web_url())
+          PY
+          )
+          echo "::add-mask::$URL"
+          UPSCALE_GATEWAY_URL="$URL" python - <<'PY'
+          import io, json, os
+          import requests
+          from PIL import Image
+          base = os.environ['UPSCALE_GATEWAY_URL'].rstrip('/')
+          buf = io.BytesIO(); Image.new('RGB', (8, 8), (10,20,30)).save(buf, format='PNG'); payload = buf.getvalue()
+          probes = []
+          h = requests.get(base + '/health', timeout=60)
+          probes.append({'case':'health','status':h.status_code,'contentType':h.headers.get('content-type'),'body':h.text[:1000]})
+          for label, data, content_type, scale in [
+              ('invalid-scale', payload, 'image/png', 4),
+              ('valid-scale', payload, 'image/png', 2),
+              ('invalid-content-type', b'not-image', 'text/plain', 2),
+              ('empty-image', b'', 'image/png', 2),
+          ]:
+              r = requests.post(base + '/jobs/upscale', files={'image_file':('probe.bin',data,content_type)}, data={'scale':str(scale)}, timeout=60)
+              probes.append({'case':label,'status':r.status_code,'contentType':r.headers.get('content-type'),'body':r.text[:2000]})
+          print(json.dumps(probes, indent=2))
+          PY
+      - name: Fetch deployed app logs
+        if: always()
+        shell: bash
+        run: modal app logs renderlab-image-upscale --since 30m --tail 1000 --timestamps --show-function-id --show-function-call-id --show-container-id
