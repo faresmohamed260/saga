@@ -1,0 +1,60 @@
+name: RenderLab Phase 18 Upscale Health Contract
+
+on:
+  push:
+    branches:
+      - ops/renderlab-phase18-upscale-live
+    paths:
+      - .github/workflows/renderlab-phase18-upscale-health-contract.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      MODAL_ACCOUNT_LABEL: modal-45
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade "modal==1.4.2" "requests==2.32.5"
+      - name: Select workspace and verify live health shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          payload=json.loads(os.environ['SAGA_MODAL_TOKENS_JSON']); accounts=payload.get('accounts') if isinstance(payload,dict) else payload; wanted=os.environ['MODAL_ACCOUNT_LABEL'].lower()
+          row=next((r for r in accounts if str(r.get('label') or r.get('name') or r.get('account') or '').lower()==wanted),None)
+          if not row: raise SystemExit('workspace not found')
+          tid=str(row.get('token_id') or '').strip(); secret=str(row.get('token_secret') or '').strip(); combined=str(row.get('api_key') or row.get('token') or '').strip()
+          if (not tid or not secret) and '.' in combined: tid,secret=combined.split('.',1)
+          if not tid or not secret: raise SystemExit('workspace credentials incomplete')
+          print(f'::add-mask::{tid}'); print(f'::add-mask::{secret}')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f'MODAL_TOKEN_ID={tid}\nMODAL_TOKEN_SECRET={secret}\n')
+          PY
+      - name: Resolve gateway and assert stable-vs-volatile health contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=$(python - <<'PY'
+          import modal
+          print(modal.Function.from_name('renderlab-image-upscale','web').get_web_url())
+          PY
+          )
+          echo "::add-mask::$URL"
+          UPSCALE_GATEWAY_URL="$URL" python - <<'PY'
+          import json, os, requests
+          r=requests.get(os.environ['UPSCALE_GATEWAY_URL'].rstrip('/')+'/health',timeout=90); r.raise_for_status(); h=r.json()
+          assert h['ready'] is True
+          assert h['source']['commit']=='33f616625268d08ba600f8db89388eec0328edb1'
+          assert h['model']['sha256']=='2032ebf8f401dd3ce2fae5f3852117cb72101ec6ed8358faa64c2a3fa09ed4ac'
+          worker=h.get('worker') or {}
+          assert worker.get('worker_id')=='renderlab-upscale-01'
+          assert worker.get('ecosystem')=='image-upscale-v1'
+          print(json.dumps({'ready':h['ready'],'sourceCommit':h['source']['commit'],'modelSha256':h['model']['sha256'],'workerState':worker.get('state'),'workerReady':worker.get('ready'),'workerKeys':sorted(worker.keys())},sort_keys=True))
+          PY
