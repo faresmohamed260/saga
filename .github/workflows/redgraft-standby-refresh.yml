@@ -1,0 +1,75 @@
+name: Refresh REDGraft Standby Identity
+
+on:
+  push:
+    branches: [ops/redgraft-recovery-20260907]
+    paths:
+      - ".github/workflows/redgraft-standby-refresh.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/redgraft-recovery-20260907
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Wake standby runtime and verify new identity
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          from scripts.modal_worker_fleet import ecosystem_config, load_accounts, run
+
+          ecosystem = ecosystem_config('ltx25-redgraft')
+          accounts = {account.label: account for account in load_accounts()}
+          account = accounts['modal-02']
+          code = (
+              "import modal; "
+              f"fn=modal.Function.from_name({ecosystem['gatewayApp']!r}, {ecosystem['gatewayFunction']!r}); "
+              "print(fn.get_web_url())"
+          )
+          result = run(account, ['python', '-c', code], timeout=120)
+          if result.returncode != 0:
+              raise SystemExit((result.stderr or result.stdout or '')[-1200:])
+          gateway = (result.stdout or '').strip().splitlines()[-1].rstrip('/')
+
+          with urllib.request.urlopen(gateway + '/runtime-health', timeout=420) as response:
+              runtime = json.loads(response.read().decode('utf-8'))
+          if runtime.get('ready') is not True:
+              raise SystemExit(f'Standby runtime health failed: {runtime}')
+
+          payload = None
+          for attempt in range(15):
+              with urllib.request.urlopen(gateway + '/health', timeout=60) as response:
+                  payload = json.loads(response.read().decode('utf-8'))
+              worker = payload.get('worker') or {}
+              if payload.get('ready') is True and worker.get('worker_id') == 'ltx-standby-02' and worker.get('ecosystem') == 'ltx25-redgraft':
+                  print(json.dumps({
+                      'account': 'modal-02',
+                      'workerId': 'ltx-standby-02',
+                      'gatewayUrl': gateway,
+                      'gatewayBuild': payload.get('build'),
+                      'runtimeBuild': runtime.get('runtime_build'),
+                      'state': worker.get('state'),
+                      'assetsCached': worker.get('assets_cached'),
+                  }, sort_keys=True))
+                  break
+              if attempt < 14:
+                  time.sleep(4)
+          else:
+              raise SystemExit(f'Standby identity did not refresh: {payload}')
+          PY
