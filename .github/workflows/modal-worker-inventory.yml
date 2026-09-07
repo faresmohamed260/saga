@@ -1,77 +1,42 @@
-name: Modal Worker Inventory
+name: Audit REDGraft Standby Workspace
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/modal-worker-inventory.yml"
-      - "scripts/modal_worker_fleet.py"
-      - "config/modal-worker-ecosystems.json"
   push:
-    branches: [studio/video-gallery-ux, studio/qwen-image-edit-2511]
+    branches: [ops/redgraft-recovery-20260907]
     paths:
       - ".github/workflows/modal-worker-inventory.yml"
-      - "scripts/modal_worker_fleet.py"
-      - "config/modal-worker-ecosystems.json"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: modal-worker-inventory-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  inventory:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
-      EXPECTED_MODAL_ACCOUNTS: "47"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ops/redgraft-recovery-20260907
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Inventory every configured Modal account
-        run: python scripts/modal_worker_fleet.py inventory --out modal-worker-inventory.json
-      - name: Validate roster coverage and publish summary
+      - name: Audit modal-47 only
         shell: bash
         run: |
           python - <<'PY'
-          import json, os
-          from pathlib import Path
-          payload = json.loads(Path('modal-worker-inventory.json').read_text(encoding='utf-8'))
-          rows = payload.get('accounts') or []
-          expected = int(os.environ.get('EXPECTED_MODAL_ACCOUNTS') or 0)
-          if len(rows) != expected:
-              raise SystemExit(f'Expected {expected} Modal accounts, inventoried {len(rows)}')
-          counts = {}
-          for row in rows:
-              state = str(row.get('state') or 'unknown')
-              counts[state] = counts.get(state, 0) + 1
-          dedicated = {'modal-44', 'modal-45', 'modal-46', 'modal-47'}
-          available = [str(row.get('account')) for row in rows if row.get('state') == 'available']
-          qwen_candidates = [label for label in available if label not in dedicated]
-          lines = [
-              '## Modal worker account inventory',
-              '',
-              f'- Accounts inventoried: **{len(rows)}**',
-              f"- Available: **{counts.get('available', 0)}**",
-              f"- Credit exhausted: **{counts.get('credit_exhausted', 0)}**",
-              f"- Disabled: **{counts.get('disabled', 0)}**",
-              f"- Other/error: **{len(rows) - counts.get('available', 0) - counts.get('credit_exhausted', 0) - counts.get('disabled', 0)}**",
-              f"- Available accounts: `{', '.join(available) or 'none'}`",
-              f"- Qwen candidates (excluding modal-44..47): `{', '.join(qwen_candidates) or 'none'}`",
-          ]
-          Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('\n'.join(lines) + '\n', encoding='utf-8')
-          print(json.dumps({'count': len(rows), 'states': counts, 'available': available, 'qwenCandidates': qwen_candidates}, sort_keys=True))
+          import json
+          from scripts.modal_worker_fleet import inventory_account, load_accounts
+          accounts = {account.label: account for account in load_accounts()}
+          account = accounts.get('modal-47')
+          if account is None:
+              raise SystemExit('modal-47 is missing from the configured roster')
+          row = inventory_account(account)
+          print(json.dumps(row, sort_keys=True))
+          if row.get('state') != 'available':
+              raise SystemExit(f"modal-47 is not available: {row.get('state')}")
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: modal-worker-inventory
-          path: modal-worker-inventory.json
-          if-no-files-found: error
-          retention-days: 7
