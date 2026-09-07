@@ -1,60 +1,38 @@
-name: Maintain Modal Worker Fleet
+name: Recover REDGraft LTX Standby
 
 on:
   push:
-    branches: [studio/video-gallery-ux]
+    branches: [ops/redgraft-recovery-20260907]
     paths:
-      - "scripts/modal_worker_maintenance.py"
-      - "integrations/comfyui/flux2_klein_app.py"
-      - "integrations/comfyui/flux2_klein_gateway.py"
-      - "integrations/comfyui/ltx23_app.py"
-      - "integrations/comfyui/ltx23_gateway.py"
+      - ".github/workflows/modal-worker-maintenance.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: modal-worker-maintenance
+  group: redgraft-ltx-standby-recovery
   cancel-in-progress: false
 
 jobs:
   redeploy:
-    name: ${{ matrix.worker_id }} on ${{ matrix.account }}
+    name: ltx-standby-01 on modal-47
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        include:
-          - account: modal-44
-            ecosystem: flux2-klein-9b
-            worker_id: flux-primary-01
-          - account: modal-45
-            ecosystem: flux2-klein-9b
-            worker_id: flux-standby-01
-          - account: modal-46
-            ecosystem: ltx25-redgraft
-            worker_id: ltx-primary-01
-          - account: modal-47
-            ecosystem: ltx25-redgraft
-            worker_id: ltx-standby-01
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
-      MODAL_FLUX2_KLEIN_GPU: A10
       MODAL_LTX25_GPU: A10
       MODAL_LTX25_MAX_CONTAINERS: "2"
       MODAL_LTX25_LOWVRAM: "0"
-      ACCOUNT: ${{ matrix.account }}
-      ECOSYSTEM: ${{ matrix.ecosystem }}
-      WORKER_ID: ${{ matrix.worker_id }}
+      ACCOUNT: modal-47
+      ECOSYSTEM: ltx25-redgraft
+      WORKER_ID: ltx-standby-01
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: studio/video-gallery-ux
+          ref: ops/redgraft-recovery-20260907
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -63,13 +41,11 @@ jobs:
       - name: Apply credit-workspace runtime compatibility
         shell: bash
         run: |
-          if [ "$ECOSYSTEM" = "ltx25-redgraft" ]; then
-            sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
-          fi
-      - name: Redeploy worker without reset or prefetch
+          sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+      - name: Redeploy standby without reset or prefetch
         shell: bash
         run: python scripts/modal_worker_maintenance.py "$ACCOUNT" "$ECOSYSTEM" "$WORKER_ID" > worker-maintenance.json
-      - name: Verify gateway identity and health
+      - name: Verify REDGraft standby gateway identity and health
         shell: bash
         run: |
           python - <<'PY'
@@ -85,5 +61,13 @@ jobs:
               raise SystemExit(f"Wrong worker identity: expected {os.environ['WORKER_ID']}, got {live}")
           if live.get('ecosystem') != os.environ['ECOSYSTEM']:
               raise SystemExit(f"Wrong ecosystem identity: expected {os.environ['ECOSYSTEM']}, got {live}")
-          print(json.dumps({'workerId': os.environ['WORKER_ID'], 'ready': True, 'state': live.get('state'), 'cachePreserved': True, 'prefetch': 'skipped'}))
+          print(json.dumps({
+              'workerId': os.environ['WORKER_ID'],
+              'ecosystem': os.environ['ECOSYSTEM'],
+              'gatewayUrl': row['gatewayUrl'],
+              'ready': True,
+              'state': live.get('state'),
+              'cachePreserved': True,
+              'prefetch': 'skipped',
+          }))
           PY
