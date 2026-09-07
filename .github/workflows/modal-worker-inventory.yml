@@ -1,4 +1,4 @@
-name: Inventory Spare Modal Capacity
+name: Select REDGraft Recovery Workspace
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 jobs:
-  inventory:
+  select:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -25,32 +25,41 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Inventory configured Modal roster
-        shell: bash
-        run: python scripts/modal_worker_fleet.py inventory --workers 8 --out modal-worker-inventory.json
-      - name: Report unused healthy recovery candidates
+      - name: Select and verify app-free recovery workspace
         shell: bash
         run: |
           python - <<'PY'
           import json
-          from pathlib import Path
-          payload = json.loads(Path('modal-worker-inventory.json').read_text(encoding='utf-8'))
+          from scripts.modal_worker_fleet import inventory_account, json_command, load_accounts
+
           reserved = {'modal-4', 'modal-5', 'modal-46', 'modal-47'}
-          candidates = [
-              row for row in payload.get('accounts', [])
-              if row.get('state') == 'available'
-              and row.get('account') not in reserved
-              and row.get('apps') == 0
-              and row.get('volumes') == 0
-              and row.get('dicts') == 0
-          ]
-          print(json.dumps({
-              'states': {
-                  state: sum(1 for row in payload.get('accounts', []) if row.get('state') == state)
-                  for state in sorted({str(row.get('state')) for row in payload.get('accounts', [])})
-              },
-              'unusedHealthyCandidates': [row.get('account') for row in candidates],
-          }, sort_keys=True))
+          candidates = []
+          for account in load_accounts():
+              if account.label in reserved:
+                  continue
+              apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
+              if apps is None:
+                  continue
+              if isinstance(apps, list) and len(apps) == 0:
+                  candidates.append(account)
+
           if not candidates:
-              raise SystemExit('No unused healthy Modal account is available for REDGraft recovery')
+              raise SystemExit('No app-free configured Modal workspace is accessible')
+
+          verified = None
+          attempts = []
+          for account in candidates:
+              row = inventory_account(account)
+              attempts.append({'account': account.label, 'state': row.get('state')})
+              if row.get('state') == 'available':
+                  verified = row
+                  break
+
+          print(json.dumps({
+              'appFreeCandidates': [account.label for account in candidates],
+              'verificationAttempts': attempts,
+              'selected': verified,
+          }, sort_keys=True))
+          if not verified:
+              raise SystemExit('No app-free candidate passed the compute availability probe')
           PY
