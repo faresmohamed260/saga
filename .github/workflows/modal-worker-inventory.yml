@@ -25,14 +25,15 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Select and verify app-free recovery workspace
+      - name: Select and verify probe-only recovery workspace
         shell: bash
         run: |
           python - <<'PY'
           import json
-          from scripts.modal_worker_fleet import inventory_account, json_command, load_accounts
+          from scripts.modal_worker_fleet import inventory_account, json_command, load_accounts, names
 
           reserved = {'modal-4', 'modal-5', 'modal-46', 'modal-47'}
+          disposable_apps = {'saga-worker-account-probe'}
           candidates = []
           for account in load_accounts():
               if account.label in reserved:
@@ -40,26 +41,27 @@ jobs:
               apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
               if apps is None:
                   continue
-              if isinstance(apps, list) and len(apps) == 0:
-                  candidates.append(account)
+              app_names = set(names(apps))
+              if app_names.issubset(disposable_apps):
+                  candidates.append((account, sorted(app_names)))
 
           if not candidates:
-              raise SystemExit('No app-free configured Modal workspace is accessible')
+              raise SystemExit('No probe-only configured Modal workspace is accessible')
 
           verified = None
           attempts = []
-          for account in candidates:
+          for account, app_names in candidates:
               row = inventory_account(account)
-              attempts.append({'account': account.label, 'state': row.get('state')})
+              attempts.append({'account': account.label, 'apps': app_names, 'state': row.get('state')})
               if row.get('state') == 'available':
                   verified = row
                   break
 
           print(json.dumps({
-              'appFreeCandidates': [account.label for account in candidates],
+              'probeOnlyCandidates': [account.label for account, _ in candidates],
               'verificationAttempts': attempts,
               'selected': verified,
           }, sort_keys=True))
           if not verified:
-              raise SystemExit('No app-free candidate passed the compute availability probe')
+              raise SystemExit('No probe-only candidate passed the compute availability probe')
           PY
