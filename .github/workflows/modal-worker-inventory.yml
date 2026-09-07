@@ -1,4 +1,4 @@
-name: Select REDGraft Recovery Workspace
+name: Inspect REDGraft Recovery Candidate
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 jobs:
-  select:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -25,43 +25,31 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Select and verify probe-only recovery workspace
+      - name: Inspect modal-01 app metadata
         shell: bash
         run: |
           python - <<'PY'
           import json
-          from scripts.modal_worker_fleet import inventory_account, json_command, load_accounts, names
-
-          reserved = {'modal-4', 'modal-5', 'modal-46', 'modal-47'}
-          disposable_apps = {'saga-worker-account-probe'}
-          candidates = []
-          for account in load_accounts():
-              if account.label in reserved:
+          from scripts.modal_worker_fleet import json_command, load_accounts
+          accounts = {account.label: account for account in load_accounts()}
+          account = accounts.get('modal-01')
+          if account is None:
+              raise SystemExit('modal-01 is missing from configured roster')
+          apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
+          if apps is None:
+              raise SystemExit('modal-01 app list failed')
+          rows = []
+          keyset = set()
+          for row in apps if isinstance(apps, list) else []:
+              if not isinstance(row, dict):
                   continue
-              apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
-              if apps is None:
-                  continue
-              app_names = set(names(apps))
-              if app_names.issubset(disposable_apps):
-                  candidates.append((account, sorted(app_names)))
-
-          if not candidates:
-              raise SystemExit('No probe-only configured Modal workspace is accessible')
-
-          verified = None
-          attempts = []
-          for account, app_names in candidates:
-              row = inventory_account(account)
-              attempts.append({'account': account.label, 'apps': app_names, 'state': row.get('state')})
-              if row.get('state') == 'available':
-                  verified = row
-                  break
-
-          print(json.dumps({
-              'probeOnlyCandidates': [account.label for account, _ in candidates],
-              'verificationAttempts': attempts,
-              'selected': verified,
-          }, sort_keys=True))
-          if not verified:
-              raise SystemExit('No probe-only candidate passed the compute availability probe')
+              keyset.update(str(key) for key in row.keys())
+              summary = {}
+              for key, value in row.items():
+                  lower = str(key).lower()
+                  if any(term in lower for term in ('name', 'description', 'state', 'status', 'created', 'stopped')):
+                      if value is None or isinstance(value, (str, int, float, bool)):
+                          summary[str(key)] = value
+              rows.append(summary)
+          print(json.dumps({'account': 'modal-01', 'appCount': len(apps) if isinstance(apps, list) else None, 'keys': sorted(keyset), 'apps': rows}, sort_keys=True))
           PY
