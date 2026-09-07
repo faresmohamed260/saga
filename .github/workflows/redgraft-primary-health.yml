@@ -13,7 +13,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -25,85 +25,41 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Inspect live LTX app/task state across configured workspaces
+      - name: Resolve recovered REDGraft gateways and identities
         shell: bash
         run: |
           python - <<'PY'
           import json
-          import re
           import urllib.request
           from concurrent.futures import ThreadPoolExecutor, as_completed
-          from scripts.modal_worker_fleet import ecosystem_config, json_command, load_accounts, run
+          from scripts.modal_worker_fleet import ecosystem_config, load_accounts, run
 
           ecosystem = ecosystem_config('ltx25-redgraft')
-          accounts = load_accounts()
+          accounts = {account.label: account for account in load_accounts()}
+          targets = ['modal-01', 'modal-02']
 
-          def task_count(value):
-              if value is None:
-                  return 0
-              if isinstance(value, bool):
-                  return int(value)
-              if isinstance(value, (int, float)):
-                  return max(0, int(value))
-              if isinstance(value, (list, tuple, set, dict)):
-                  return len(value)
-              match = re.search(r'\d+', str(value))
-              return int(match.group(0)) if match else 0
+          def inspect(label):
+              account = accounts[label]
+              code = (
+                  "import modal; "
+                  f"fn=modal.Function.from_name({ecosystem['gatewayApp']!r}, {ecosystem['gatewayFunction']!r}); "
+                  "print(fn.get_web_url())"
+              )
+              result = run(account, ['python', '-c', code], timeout=120)
+              if result.returncode != 0:
+                  return {'account': label, 'error': (result.stderr or result.stdout or '')[-1200:]}
+              gateway = (result.stdout or '').strip().splitlines()[-1].rstrip('/')
+              try:
+                  with urllib.request.urlopen(gateway + '/health', timeout=60) as response:
+                      health = json.loads(response.read().decode('utf-8'))
+                  return {'account': label, 'gatewayUrl': gateway, 'health': health}
+              except Exception as exc:
+                  return {'account': label, 'gatewayUrl': gateway, 'error': f'{type(exc).__name__}: {exc}'}
 
-          def inspect(account):
-              apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
-              if not isinstance(apps, list):
-                  return None
-              ltx_apps = []
-              total_tasks = 0
-              descriptions = set()
-              for row in apps:
-                  if not isinstance(row, dict):
-                      continue
-                  description = str(row.get('Description') or '').strip()
-                  if 'saga-ltx25' not in description:
-                      continue
-                  count = task_count(row.get('Tasks'))
-                  total_tasks += count
-                  descriptions.add(description)
-                  ltx_apps.append({'description': description, 'state': str(row.get('State') or ''), 'tasks': count})
-              if not ltx_apps:
-                  return None
-              return {'accountObj': account, 'account': account.label, 'ltxApps': ltx_apps, 'totalTasks': total_tasks, 'descriptions': descriptions}
-
-          found = []
-          with ThreadPoolExecutor(max_workers=min(16, max(1, len(accounts)))) as pool:
-              futures = [pool.submit(inspect, account) for account in accounts]
+          rows = []
+          with ThreadPoolExecutor(max_workers=2) as pool:
+              futures = {pool.submit(inspect, label): label for label in targets}
               for future in as_completed(futures):
-                  row = future.result()
-                  if row:
-                      found.append(row)
-
-          results = []
-          for row in sorted(found, key=lambda item: item['account']):
-              account = row.pop('accountObj')
-              descriptions = row.pop('descriptions')
-              gateway = None
-              health = None
-              health_error = None
-              if ecosystem['gatewayApp'] in descriptions:
-                  code = (
-                      "import modal; "
-                      f"fn=modal.Function.from_name({ecosystem['gatewayApp']!r}, {ecosystem['gatewayFunction']!r}); "
-                      "print(fn.get_web_url())"
-                  )
-                  result = run(account, ['python', '-c', code], timeout=120)
-                  if result.returncode == 0:
-                      gateway = (result.stdout or '').strip().splitlines()[-1].rstrip('/')
-                      try:
-                          with urllib.request.urlopen(gateway + '/health', timeout=45) as response:
-                              health = json.loads(response.read().decode('utf-8'))
-                      except Exception as exc:
-                          health_error = f'{type(exc).__name__}: {exc}'
-                  else:
-                      health_error = (result.stderr or result.stdout or '')[-1000:]
-              row.update({'gatewayUrl': gateway, 'health': health, 'healthError': health_error})
-              results.append(row)
-
-          print(json.dumps({'ltxWorkspaces': results}, sort_keys=True))
+                  rows.append(future.result())
+          print(json.dumps({'recovered': sorted(rows, key=lambda row: row['account'])}, sort_keys=True))
           PY
