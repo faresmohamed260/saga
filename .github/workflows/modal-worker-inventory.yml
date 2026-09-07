@@ -17,7 +17,7 @@ concurrency:
 jobs:
   recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -34,7 +34,7 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Select two healthy idle workspaces with dormant LTX state
+      - name: Select healthy zero-task primary and standby workspaces
         shell: bash
         run: |
           python - <<'PY'
@@ -58,8 +58,11 @@ jobs:
               match = re.search(r'\d+', str(value))
               return int(match.group(0)) if match else 0
 
-          candidates = []
+          idle = []
+          cached_ltx = []
+          by_label = {}
           for account in load_accounts():
+              by_label[account.label] = account
               if account.label in reserved:
                   continue
               apps, _ = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
@@ -76,53 +79,76 @@ jobs:
                       if description:
                           deployed_descriptions.add(description)
                       active_tasks += task_count(row.get('Tasks'))
-              if required_ltx_apps.issubset(deployed_descriptions) and active_tasks == 0:
-                  candidates.append(account)
+              if active_tasks == 0:
+                  idle.append(account.label)
+                  if required_ltx_apps.issubset(deployed_descriptions):
+                      cached_ltx.append(account.label)
 
-          selected = []
-          attempts = []
-          for account in candidates:
-              row = inventory_account(account)
-              attempts.append({'account': account.label, 'state': row.get('state')})
+          primary = None
+          verification = []
+          for label in cached_ltx:
+              row = inventory_account(by_label[label])
+              verification.append({'account': label, 'role': 'primary-candidate', 'state': row.get('state')})
               if row.get('state') == 'available':
-                  selected.append(account.label)
-              if len(selected) == 2:
+                  primary = label
                   break
+          if not primary:
+              raise SystemExit('No healthy zero-task workspace with existing LTX state is available for primary recovery')
 
-          print(json.dumps({
-              'idleLtxCandidates': [account.label for account in candidates],
-              'verificationAttempts': attempts,
-              'selected': selected,
-          }, sort_keys=True))
-          if len(selected) != 2:
-              raise SystemExit(f'Need two healthy idle LTX workspaces; selected {selected}')
-          Path('redgraft-selected.json').write_text(json.dumps({'accounts': selected}), encoding='utf-8')
+          standby = None
+          for label in idle:
+              if label == primary:
+                  continue
+              row = inventory_account(by_label[label])
+              verification.append({'account': label, 'role': 'standby-candidate', 'state': row.get('state')})
+              if row.get('state') == 'available':
+                  standby = label
+                  break
+          if not standby:
+              raise SystemExit('No second healthy zero-task workspace is available for LTX standby recovery')
+
+          selected = {'primary': primary, 'standby': standby}
+          print(json.dumps({'cachedLtxIdle': cached_ltx, 'idleCount': len(idle), 'verification': verification, 'selected': selected}, sort_keys=True))
+          Path('redgraft-selected.json').write_text(json.dumps(selected), encoding='utf-8')
           PY
       - name: Apply LTX 2.5 credit-workspace compatibility
         shell: bash
         run: sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
-      - name: Deploy primary and standby without reset or prefetch
+      - name: Recover cached primary without reset or prefetch
         shell: bash
         run: |
           python - <<'PY'
           import json
           import subprocess
           from pathlib import Path
-
-          accounts = json.loads(Path('redgraft-selected.json').read_text(encoding='utf-8'))['accounts']
-          workers = ['ltx-primary-01', 'ltx-standby-01']
-          rows = []
-          for account, worker_id in zip(accounts, workers):
-              result = subprocess.run(
-                  ['python', 'scripts/modal_worker_maintenance.py', account, 'ltx25-redgraft', worker_id],
-                  text=True,
-                  capture_output=True,
-                  check=True,
-              )
-              payload = json.loads(result.stdout.strip().splitlines()[-1])
-              rows.append(payload)
-              print(json.dumps({'account': account, 'workerId': worker_id, 'gatewayUrl': payload['gatewayUrl'], 'cache': payload.get('cache'), 'prefetch': payload.get('prefetch')}))
-          Path('redgraft-recovery.json').write_text(json.dumps({'workers': rows}, indent=2), encoding='utf-8')
+          selected = json.loads(Path('redgraft-selected.json').read_text(encoding='utf-8'))
+          result = subprocess.run(
+              ['python', 'scripts/modal_worker_maintenance.py', selected['primary'], 'ltx25-redgraft', 'ltx-primary-01'],
+              text=True,
+              capture_output=True,
+              check=True,
+          )
+          payload = json.loads(result.stdout.strip().splitlines()[-1])
+          Path('redgraft-primary.json').write_text(json.dumps(payload), encoding='utf-8')
+          print(json.dumps({'account': selected['primary'], 'workerId': 'ltx-primary-01', 'gatewayUrl': payload['gatewayUrl'], 'cache': payload.get('cache'), 'prefetch': payload.get('prefetch')}))
+          PY
+      - name: Initialize independent standby cache and deploy
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          selected = json.loads(Path('redgraft-selected.json').read_text(encoding='utf-8'))
+          result = subprocess.run(
+              ['python', 'scripts/modal_worker_fleet.py', 'deploy', selected['standby'], 'ltx25-redgraft', 'ltx-standby-01'],
+              text=True,
+              capture_output=True,
+              check=True,
+          )
+          payload = json.loads(result.stdout.strip().splitlines()[-1])
+          Path('redgraft-standby.json').write_text(json.dumps(payload), encoding='utf-8')
+          print(json.dumps({'account': selected['standby'], 'workerId': 'ltx-standby-01', 'gatewayUrl': payload['gatewayUrl'], 'prefetch': 'completed'}))
           PY
       - name: Verify both REDGraft gateways and identities
         shell: bash
@@ -130,15 +156,16 @@ jobs:
           python - <<'PY'
           import json
           import time
-          import urllib.error
           import urllib.request
           from pathlib import Path
 
-          rows = json.loads(Path('redgraft-recovery.json').read_text(encoding='utf-8'))['workers']
+          rows = [
+              json.loads(Path('redgraft-primary.json').read_text(encoding='utf-8')),
+              json.loads(Path('redgraft-standby.json').read_text(encoding='utf-8')),
+          ]
           verified = []
           for row in rows:
               url = row['gatewayUrl'].rstrip('/') + '/health'
-              payload = None
               last_error = None
               for attempt in range(12):
                   try:
