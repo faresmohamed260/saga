@@ -1,4 +1,4 @@
-name: Select REDGraft Recovery Workspace
+name: Recover REDGraft LTX Worker Pair
 
 on:
   push:
@@ -10,12 +10,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: redgraft-ltx-recovery
+  cancel-in-progress: false
+
 jobs:
-  select:
+  recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 45
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      MODAL_LTX25_GPU: A10
+      MODAL_LTX25_MAX_CONTAINERS: "2"
+      MODAL_LTX25_LOWVRAM: "0"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,50 +34,126 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Select and verify idle recovery workspace
+      - name: Select two healthy idle workspaces with dormant LTX state
         shell: bash
         run: |
           python - <<'PY'
           import json
+          import re
+          from pathlib import Path
           from scripts.modal_worker_fleet import inventory_account, json_command, load_accounts
 
-          reserved = {'modal-04', 'modal-05', 'modal-46', 'modal-47'}
-          disposable = {'saga-worker-account-probe'}
+          reserved = {'modal-44', 'modal-45', 'modal-46', 'modal-47'}
+          required_ltx_apps = {'saga-ltx25-video', 'saga-ltx25-gateway'}
+
+          def task_count(value):
+              if value is None:
+                  return 0
+              if isinstance(value, bool):
+                  return int(value)
+              if isinstance(value, (int, float)):
+                  return max(0, int(value))
+              if isinstance(value, (list, tuple, set, dict)):
+                  return len(value)
+              match = re.search(r'\d+', str(value))
+              return int(match.group(0)) if match else 0
+
           candidates = []
           for account in load_accounts():
               if account.label in reserved:
                   continue
-              apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
+              apps, _ = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
               if apps is None or not isinstance(apps, list):
                   continue
-              deployed = []
+              deployed_descriptions = set()
+              active_tasks = 0
               for row in apps:
                   if not isinstance(row, dict):
                       continue
-                  description = str(row.get('Description') or '').strip()
                   state = str(row.get('State') or '').strip().lower()
-                  if state == 'deployed' and description not in disposable:
-                      deployed.append(description or '<unnamed>')
-              if not deployed:
+                  description = str(row.get('Description') or '').strip()
+                  if state == 'deployed':
+                      if description:
+                          deployed_descriptions.add(description)
+                      active_tasks += task_count(row.get('Tasks'))
+              if required_ltx_apps.issubset(deployed_descriptions) and active_tasks == 0:
                   candidates.append(account)
 
-          if not candidates:
-              raise SystemExit('No configured Modal workspace is idle enough for REDGraft recovery')
-
-          verified = None
+          selected = []
           attempts = []
           for account in candidates:
               row = inventory_account(account)
               attempts.append({'account': account.label, 'state': row.get('state')})
               if row.get('state') == 'available':
-                  verified = row
+                  selected.append(account.label)
+              if len(selected) == 2:
                   break
 
           print(json.dumps({
-              'idleCandidates': [account.label for account in candidates],
+              'idleLtxCandidates': [account.label for account in candidates],
               'verificationAttempts': attempts,
-              'selected': verified,
+              'selected': selected,
           }, sort_keys=True))
-          if not verified:
-              raise SystemExit('No idle candidate passed the compute availability probe')
+          if len(selected) != 2:
+              raise SystemExit(f'Need two healthy idle LTX workspaces; selected {selected}')
+          Path('redgraft-selected.json').write_text(json.dumps({'accounts': selected}), encoding='utf-8')
+          PY
+      - name: Apply LTX 2.5 credit-workspace compatibility
+        shell: bash
+        run: sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+      - name: Deploy primary and standby without reset or prefetch
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          accounts = json.loads(Path('redgraft-selected.json').read_text(encoding='utf-8'))['accounts']
+          workers = ['ltx-primary-01', 'ltx-standby-01']
+          rows = []
+          for account, worker_id in zip(accounts, workers):
+              result = subprocess.run(
+                  ['python', 'scripts/modal_worker_maintenance.py', account, 'ltx25-redgraft', worker_id],
+                  text=True,
+                  capture_output=True,
+                  check=True,
+              )
+              payload = json.loads(result.stdout.strip().splitlines()[-1])
+              rows.append(payload)
+              print(json.dumps({'account': account, 'workerId': worker_id, 'gatewayUrl': payload['gatewayUrl'], 'cache': payload.get('cache'), 'prefetch': payload.get('prefetch')}))
+          Path('redgraft-recovery.json').write_text(json.dumps({'workers': rows}, indent=2), encoding='utf-8')
+          PY
+      - name: Verify both REDGraft gateways and identities
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          rows = json.loads(Path('redgraft-recovery.json').read_text(encoding='utf-8'))['workers']
+          verified = []
+          for row in rows:
+              url = row['gatewayUrl'].rstrip('/') + '/health'
+              payload = None
+              last_error = None
+              for attempt in range(12):
+                  try:
+                      with urllib.request.urlopen(url, timeout=90) as response:
+                          payload = json.loads(response.read().decode('utf-8'))
+                      live = payload.get('worker') or {}
+                      if payload.get('ready') is True and live.get('worker_id') == row['workerId'] and live.get('ecosystem') == 'ltx25-redgraft':
+                          verified.append({'account': row['account'], 'workerId': row['workerId'], 'gatewayUrl': row['gatewayUrl'], 'ready': True, 'state': live.get('state')})
+                          break
+                      last_error = f'not ready or wrong identity: {payload}'
+                  except Exception as exc:
+                      last_error = f'{type(exc).__name__}: {exc}'
+                  if attempt < 11:
+                      time.sleep(10)
+              else:
+                  raise SystemExit(f"Gateway verification failed for {row['workerId']} on {row['account']}: {last_error}")
+          print(json.dumps({'verifiedWorkers': verified}, sort_keys=True))
           PY
