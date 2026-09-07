@@ -1,4 +1,4 @@
-name: Inspect REDGraft Recovery Candidate
+name: Select REDGraft Recovery Workspace
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  select:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -25,31 +25,50 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Inspect modal-01 app metadata
+      - name: Select and verify idle recovery workspace
         shell: bash
         run: |
           python - <<'PY'
           import json
-          from scripts.modal_worker_fleet import json_command, load_accounts
-          accounts = {account.label: account for account in load_accounts()}
-          account = accounts.get('modal-01')
-          if account is None:
-              raise SystemExit('modal-01 is missing from configured roster')
-          apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
-          if apps is None:
-              raise SystemExit('modal-01 app list failed')
-          rows = []
-          keyset = set()
-          for row in apps if isinstance(apps, list) else []:
-              if not isinstance(row, dict):
+          from scripts.modal_worker_fleet import inventory_account, json_command, load_accounts
+
+          reserved = {'modal-04', 'modal-05', 'modal-46', 'modal-47'}
+          disposable = {'saga-worker-account-probe'}
+          candidates = []
+          for account in load_accounts():
+              if account.label in reserved:
                   continue
-              keyset.update(str(key) for key in row.keys())
-              summary = {}
-              for key, value in row.items():
-                  lower = str(key).lower()
-                  if any(term in lower for term in ('name', 'description', 'state', 'status', 'created', 'stopped')):
-                      if value is None or isinstance(value, (str, int, float, bool)):
-                          summary[str(key)] = value
-              rows.append(summary)
-          print(json.dumps({'account': 'modal-01', 'appCount': len(apps) if isinstance(apps, list) else None, 'keys': sorted(keyset), 'apps': rows}, sort_keys=True))
+              apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
+              if apps is None or not isinstance(apps, list):
+                  continue
+              deployed = []
+              for row in apps:
+                  if not isinstance(row, dict):
+                      continue
+                  description = str(row.get('Description') or '').strip()
+                  state = str(row.get('State') or '').strip().lower()
+                  if state == 'deployed' and description not in disposable:
+                      deployed.append(description or '<unnamed>')
+              if not deployed:
+                  candidates.append(account)
+
+          if not candidates:
+              raise SystemExit('No configured Modal workspace is idle enough for REDGraft recovery')
+
+          verified = None
+          attempts = []
+          for account in candidates:
+              row = inventory_account(account)
+              attempts.append({'account': account.label, 'state': row.get('state')})
+              if row.get('state') == 'available':
+                  verified = row
+                  break
+
+          print(json.dumps({
+              'idleCandidates': [account.label for account in candidates],
+              'verificationAttempts': attempts,
+              'selected': verified,
+          }, sort_keys=True))
+          if not verified:
+              raise SystemExit('No idle candidate passed the compute availability probe')
           PY
