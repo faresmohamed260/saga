@@ -1,4 +1,4 @@
-name: Inspect REDGraft Recovery State
+name: Inspect REDGraft Rekeyed State
 
 on:
   push:
