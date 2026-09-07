@@ -31,11 +31,12 @@ jobs:
           python - <<'PY'
           import json
           import re
-          import urllib.error
           import urllib.request
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           from scripts.modal_worker_fleet import ecosystem_config, json_command, load_accounts, run
 
           ecosystem = ecosystem_config('ltx25-redgraft')
+          accounts = load_accounts()
 
           def task_count(value):
               if value is None:
@@ -49,11 +50,10 @@ jobs:
               match = re.search(r'\d+', str(value))
               return int(match.group(0)) if match else 0
 
-          results = []
-          for account in load_accounts():
+          def inspect(account):
               apps, detail = json_command(account, ['modal', 'app', 'list', '--json'], timeout=45)
               if not isinstance(apps, list):
-                  continue
+                  return None
               ltx_apps = []
               total_tasks = 0
               descriptions = set()
@@ -66,14 +66,23 @@ jobs:
                   count = task_count(row.get('Tasks'))
                   total_tasks += count
                   descriptions.add(description)
-                  ltx_apps.append({
-                      'description': description,
-                      'state': str(row.get('State') or ''),
-                      'tasks': count,
-                  })
+                  ltx_apps.append({'description': description, 'state': str(row.get('State') or ''), 'tasks': count})
               if not ltx_apps:
-                  continue
+                  return None
+              return {'accountObj': account, 'account': account.label, 'ltxApps': ltx_apps, 'totalTasks': total_tasks, 'descriptions': descriptions}
 
+          found = []
+          with ThreadPoolExecutor(max_workers=min(16, max(1, len(accounts)))) as pool:
+              futures = [pool.submit(inspect, account) for account in accounts]
+              for future in as_completed(futures):
+                  row = future.result()
+                  if row:
+                      found.append(row)
+
+          results = []
+          for row in sorted(found, key=lambda item: item['account']):
+              account = row.pop('accountObj')
+              descriptions = row.pop('descriptions')
               gateway = None
               health = None
               health_error = None
@@ -93,15 +102,8 @@ jobs:
                           health_error = f'{type(exc).__name__}: {exc}'
                   else:
                       health_error = (result.stderr or result.stdout or '')[-1000:]
-
-              results.append({
-                  'account': account.label,
-                  'ltxApps': ltx_apps,
-                  'totalTasks': total_tasks,
-                  'gatewayUrl': gateway,
-                  'health': health,
-                  'healthError': health_error,
-              })
+              row.update({'gatewayUrl': gateway, 'health': health, 'healthError': health_error})
+              results.append(row)
 
           print(json.dumps({'ltxWorkspaces': results}, sort_keys=True))
           PY
