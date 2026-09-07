@@ -1,0 +1,59 @@
+name: Verify Recovered REDGraft Primary
+
+on:
+  push:
+    branches: [ops/redgraft-recovery-20260907]
+    paths:
+      - ".github/workflows/redgraft-primary-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/redgraft-recovery-20260907
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Resolve and verify modal-01 REDGraft primary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          from scripts.modal_worker_fleet import ecosystem_config, load_accounts, run
+
+          accounts = {account.label: account for account in load_accounts()}
+          account = accounts['modal-01']
+          ecosystem = ecosystem_config('ltx25-redgraft')
+          extra = {
+              'SAGA_MODAL_WORKER_ID': 'ltx-primary-01',
+              'SAGA_MODAL_WORKER_STATE_DICT': ecosystem['stateDict'],
+              'SAGA_MODAL_WORKER_VOLUME': ecosystem['volume'],
+          }
+          code = (
+              "import modal; "
+              f"fn=modal.Function.from_name({ecosystem['gatewayApp']!r}, {ecosystem['gatewayFunction']!r}); "
+              "print(fn.get_web_url())"
+          )
+          result = run(account, ['python', '-c', code], extra=extra, timeout=120)
+          if result.returncode != 0:
+              raise SystemExit((result.stderr or result.stdout)[-4000:])
+          gateway = (result.stdout or '').strip().splitlines()[-1].rstrip('/')
+          with urllib.request.urlopen(gateway + '/health', timeout=90) as response:
+              payload = json.loads(response.read().decode('utf-8'))
+          worker = payload.get('worker') or {}
+          if payload.get('ready') is not True or worker.get('worker_id') != 'ltx-primary-01' or worker.get('ecosystem') != 'ltx25-redgraft':
+              raise SystemExit(f'Primary health/identity mismatch: {payload}')
+          print(json.dumps({'account': 'modal-01', 'workerId': 'ltx-primary-01', 'gatewayUrl': gateway, 'health': payload}, sort_keys=True))
+          PY
