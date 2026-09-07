@@ -1,4 +1,4 @@
-name: Inspect REDGraft Rekeyed State
+name: Refresh REDGraft Rekeyed Identity
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -25,20 +25,23 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Resolve recovered REDGraft gateways and identities
+      - name: Refresh and verify recovered REDGraft identities
         shell: bash
         run: |
           python - <<'PY'
           import json
+          import time
           import urllib.request
-          from concurrent.futures import ThreadPoolExecutor, as_completed
           from scripts.modal_worker_fleet import ecosystem_config, load_accounts, run
 
           ecosystem = ecosystem_config('ltx25-redgraft')
           accounts = {account.label: account for account in load_accounts()}
-          targets = ['modal-01', 'modal-02']
-
-          def inspect(label):
+          targets = [
+              ('modal-01', 'ltx-primary-02'),
+              ('modal-02', 'ltx-standby-02'),
+          ]
+          verified = []
+          for label, expected_id in targets:
               account = accounts[label]
               code = (
                   "import modal; "
@@ -47,19 +50,33 @@ jobs:
               )
               result = run(account, ['python', '-c', code], timeout=120)
               if result.returncode != 0:
-                  return {'account': label, 'error': (result.stderr or result.stdout or '')[-1200:]}
+                  raise SystemExit((result.stderr or result.stdout or '')[-1200:])
               gateway = (result.stdout or '').strip().splitlines()[-1].rstrip('/')
-              try:
-                  with urllib.request.urlopen(gateway + '/health', timeout=60) as response:
-                      health = json.loads(response.read().decode('utf-8'))
-                  return {'account': label, 'gatewayUrl': gateway, 'health': health}
-              except Exception as exc:
-                  return {'account': label, 'gatewayUrl': gateway, 'error': f'{type(exc).__name__}: {exc}'}
 
-          rows = []
-          with ThreadPoolExecutor(max_workers=2) as pool:
-              futures = {pool.submit(inspect, label): label for label in targets}
-              for future in as_completed(futures):
-                  rows.append(future.result())
-          print(json.dumps({'recovered': sorted(rows, key=lambda row: row['account'])}, sort_keys=True))
+              with urllib.request.urlopen(gateway + '/runtime-health', timeout=420) as response:
+                  runtime = json.loads(response.read().decode('utf-8'))
+              if runtime.get('ready') is not True:
+                  raise SystemExit(f'Runtime health failed for {label}: {runtime}')
+
+              payload = None
+              for attempt in range(12):
+                  with urllib.request.urlopen(gateway + '/health', timeout=60) as response:
+                      payload = json.loads(response.read().decode('utf-8'))
+                  worker = payload.get('worker') or {}
+                  if payload.get('ready') is True and worker.get('worker_id') == expected_id and worker.get('ecosystem') == 'ltx25-redgraft':
+                      verified.append({
+                          'account': label,
+                          'workerId': expected_id,
+                          'gatewayUrl': gateway,
+                          'gatewayBuild': payload.get('build'),
+                          'runtimeBuild': runtime.get('runtime_build'),
+                          'state': worker.get('state'),
+                          'assetsCached': worker.get('assets_cached'),
+                      })
+                      break
+                  if attempt < 11:
+                      time.sleep(5)
+              else:
+                  raise SystemExit(f'Identity did not refresh for {label}/{expected_id}: {payload}')
+          print(json.dumps({'verifiedWorkers': verified}, sort_keys=True))
           PY
