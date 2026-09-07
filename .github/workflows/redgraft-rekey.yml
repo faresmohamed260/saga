@@ -1,0 +1,101 @@
+name: Rekey Recovered REDGraft Pair
+
+on:
+  push:
+    branches: [ops/redgraft-recovery-20260907]
+    paths:
+      - ".github/workflows/redgraft-rekey.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redgraft-ltx-rekey
+  cancel-in-progress: false
+
+jobs:
+  rekey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_TOKEN: ${{ secrets.CIVITAI_API_TOKEN }}
+      MODAL_LTX25_GPU: A10
+      MODAL_LTX25_MAX_CONTAINERS: "2"
+      MODAL_LTX25_LOWVRAM: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/redgraft-recovery-20260907
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Apply LTX 2.5 credit-workspace compatibility
+        shell: bash
+        run: sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
+      - name: Rekey recovered primary and standby without reset or prefetch
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          targets = [
+              ('modal-01', 'ltx-primary-02'),
+              ('modal-02', 'ltx-standby-02'),
+          ]
+          rows = []
+          for account, worker_id in targets:
+              result = subprocess.run(
+                  ['python', 'scripts/modal_worker_maintenance.py', account, 'ltx25-redgraft', worker_id],
+                  text=True,
+                  capture_output=True,
+                  check=True,
+              )
+              payload = json.loads(result.stdout.strip().splitlines()[-1])
+              rows.append(payload)
+              print(json.dumps(payload, sort_keys=True))
+          Path('redgraft-rekey.json').write_text(json.dumps({'workers': rows}), encoding='utf-8')
+          PY
+      - name: Verify rekeyed gateway identities
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          rows = json.loads(Path('redgraft-rekey.json').read_text(encoding='utf-8'))['workers']
+          verified = []
+          for row in rows:
+              last_error = None
+              for attempt in range(12):
+                  try:
+                      with urllib.request.urlopen(row['gatewayUrl'].rstrip('/') + '/health', timeout=90) as response:
+                          payload = json.loads(response.read().decode('utf-8'))
+                      worker = payload.get('worker') or {}
+                      if payload.get('ready') is True and worker.get('worker_id') == row['workerId'] and worker.get('ecosystem') == 'ltx25-redgraft':
+                          verified.append({
+                              'account': row['account'],
+                              'workerId': row['workerId'],
+                              'gatewayUrl': row['gatewayUrl'].rstrip('/'),
+                              'ready': True,
+                              'state': worker.get('state'),
+                              'build': payload.get('build'),
+                          })
+                          break
+                      last_error = f'identity mismatch: {payload}'
+                  except Exception as exc:
+                      last_error = f'{type(exc).__name__}: {exc}'
+                  if attempt < 11:
+                      time.sleep(10)
+              else:
+                  raise SystemExit(f"Gateway verification failed for {row['workerId']}: {last_error}")
+          print(json.dumps({'verifiedWorkers': verified}, sort_keys=True))
+          PY
