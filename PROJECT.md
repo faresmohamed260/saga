@@ -1,157 +1,151 @@
 # S.A.G.A. Project
 
-S.A.G.A. (Story Analysis, Generation, and Archives) analyzes source books into evidence-backed canon, generates grounded narrative and multimedia outputs, and packages auditable release artifacts.
+S.A.G.A. is being rebuilt as a web-first storytelling intelligence platform. The product goals remain: ingest books/stories, reconstruct evidence-backed canon, model characters/worlds/timelines, support narrative generation, and eventually produce grounded visual/audio/story outputs. The architecture is intentionally new.
 
-This file is the short current-state handoff for humans and AI sessions. Detailed subsystem behavior belongs in the existing documents indexed by `docs/README.md`.
+This file is the short source-of-truth handoff for the active rebuild.
 
-## Product / System Direction
+## Active Product Direction — S.A.G.A. v2
 
-The active S.A.G.A. architecture is contract-driven and modular rather than a monolithic book-processing application.
+The owner authorized a fresh rebuild on 2026-09-11.
 
-Primary active surfaces are:
+**Same goals and feature set; different architecture.**
 
-- `packages/` — reusable runtimes for agents, reasoning, retrieval, persistence, execution, identity, generation, observability, lineage, qualification, and deployment;
-- `integrations/` — provider implementations, including ComfyUI, Qwen, XCore/Modal, and audio integrations;
-- `apps/dashboard_api/` — stateless FastAPI control/query surface;
-- `apps/dashboard_pro/` — operator dashboard;
-- `deploy/production/` — production process/container topology;
-- `migrations/` and `supabase/` — active persistence/schema assets;
-- `tests/` and `scripts/` — automated validation and bounded operational entrypoints.
+The old contract-driven Python/nine-stage production architecture is now **S.A.G.A. v1 historical/reference material**. Its code, tests, qualification machinery, recovery documents, and provider integrations may be consulted for requirements, proven behavior, schemas, algorithms, evaluation ideas, and lessons learned, but v2 must not depend on them by default.
 
-`backup/reference/` is inert historical reference material and must not become an active dependency.
+The rebuild order is deliberate:
 
-The former `apps/studio/` generic image/video prototype has been retired from S.A.G.A. Its standalone successor is `faresmohamed260/renderlab`. S.A.G.A. keeps reusable visual-generation provider infrastructure only where it serves S.A.G.A.'s narrative-to-media pipeline. Public Modal worker routing metadata is owned by `config/modal-worker-registry.json`, not by an application UI.
+1. build the main web product frontend and backend;
+2. establish application data, auth, storage, jobs, and deployment contracts;
+3. only then design and implement the new agentic AI subsystem against those stable product contracts;
+4. progressively restore the original S.A.G.A. intelligence/generation capabilities through the new architecture.
 
-## Core Pipeline
+## Adopted v2 Stack
 
-The repository documents a nine-stage production path:
+The web stack follows the successful Studio/RenderLab family of technologies without importing RenderLab product state or ownership:
 
-1. source ingestion and analysis foundation;
-2. identity resolution;
-3. canon extraction;
-4. character/world modeling;
-5. generation planning;
-6. narrative generation and semantic support;
-7. visual generation and image QA;
-8. audiobook synthesis and transcription QA;
-9. EPUB, manifest, lineage, and qualification reporting.
+- **GitHub** — repository source of truth, CI, review, durable project continuity;
+- **Vercel** — primary web deployment;
+- **Next.js 16 + React 19 + TypeScript** — frontend and initial backend/API layer;
+- **Tailwind CSS + reusable maintained component primitives + Motion** — design system and interaction layer;
+- **Supabase** — Postgres, Auth, Realtime, and authoritative application records;
+- **Cloudflare** — DNS/CDN/security boundary where useful, but not S.A.G.A. object storage;
+- **Backblaze B2** — dedicated S.A.G.A. object storage;
+- **Agentic AI runtime** — deferred until the web application/backend foundation is stable.
 
-Generation-side systems consume persisted canon/retrieval artifacts rather than repeatedly reconstructing canon from raw source text.
+The current v2 web application lives under `apps/web/`.
 
-## Stack
+## Storage Decision
 
-- Python `>=3.10`; package version currently declared as `0.2.0rc20`
-- `uv`-locked Python dependency workflow
-- FastAPI and LangGraph
-- PostgreSQL/Supabase + pgvector/object storage through persistence contracts
-- Alembic migrations
-- provider integrations for reasoning, identity, visual generation, audio, and external compute
-- React/Vite operator dashboard under `apps/dashboard_pro/`
+S.A.G.A. v2 does **not** use the existing Cloudflare R2 allocation. R2 is already shared by other projects and should not become another hobby/demo cost/congestion dependency.
 
-## Verified Recovery Baseline — 2026-09-10
+Backblaze B2 is the selected v2 object store. GitHub repository secrets have been manually provisioned for bootstrap operations under these names:
 
-Repository continuity, surface ownership, protected-storage diagnostics, and the clean-source qualification control plane are complete through:
+- `SAGA_B2_KEY_ID`
+- `SAGA_B2_MASTER_APPLICATION_KEY`
 
-- PR #134 — repository governance, recovery manifests, reproducibility, secrets/assets/model documentation;
-- PR #135 — commit-by-commit triage of the 43 divergent local-side commits;
-- PR #137 — protected asset verification workflow/manifest and explicit RenderLab ownership for generic image/video product work;
-- PR #138 — recorded the first real protected-asset verification result;
-- PR #139 — retired `apps/studio/` and rehomed reusable S.A.G.A. worker metadata;
-- PR #140 — made retained live FLUX runtime/gateway deployments manual-only;
-- PR #141 — added bounded protected-R2 access/object/download diagnostics and jurisdiction-aware acquisition;
-- PR #145 — added the manual, `main`-only, exact-SHA clean-source production qualification workflow and fail-fast source/provider/pricing readiness gate.
+Never print or commit their values.
 
-Verified current clean `main` baseline:
+The master application key is **bootstrap/admin only**. Backblaze does not support master keys through its S3-compatible API. Normal S.A.G.A. web runtime storage must use a later bucket-scoped application key and the B2 S3 endpoint behind a provider-neutral storage interface.
 
-- commit: `67e852116af2efea9484daa6ddb343397c5322a9`;
-- tree: `f5cf499f280fbc2fb12c7e1a1bcafeb8577833b9`;
-- commit message: `Add clean-source production qualification workflow (#145)`.
+Planned object namespaces:
 
-PR #145 final head `8b00e732bfeda213b77dc77a44ebc60fabc46a8e` passed Backend Architecture CI and Required Check Compatibility. After merge, `main` push runs `34509072301` (Required Check Compatibility) and `34509072302` (Backend Architecture CI) also passed. The paid/live **Clean-Source Production Qualification** did not auto-run.
+- `sources/` — uploaded EPUB/PDF/source material;
+- `artifacts/analysis/` — durable non-database analysis artifacts where needed;
+- `generated/images/`;
+- `generated/audio/`;
+- `exports/`;
+- `temporary/` — explicitly disposable objects;
+- `_system/` — bounded storage validation/bootstrap objects.
 
-Detailed external-readiness evidence is recorded in `docs/validation/PHASE_0_EXTERNAL_READINESS_2026-09-10.md`.
+Supabase owns structured application/domain state; B2 owns large binary/object payloads. Do not use object storage as an ad-hoc replacement for relational application state.
 
-## Studio / RenderLab Boundary
+## v2 Architectural Boundary
 
-The retired Studio product surface is not part of active S.A.G.A. architecture. `apps/studio/`, Studio-only workflows/docs/helpers, and Studio-owned product persistence definitions were removed. The separate successor is `faresmohamed260/renderlab`.
+The initial application is web-native:
 
-S.A.G.A. retains only provider/runtime resources it owns and consumes for the narrative-to-media path, including `packages/visual_generation`, `packages/modal_runtime`, `integrations/comfyui`, `integrations/qwen`, and S.A.G.A.-owned worker configuration.
+```text
+Browser
+  -> Next.js web application on Vercel
+       -> Supabase Auth / Postgres / Realtime
+       -> Storage interface -> Backblaze B2
+       -> application API / job-control layer
+            -> future agentic AI runtime
+```
 
-Existing Studio-era remote database/storage/compute resources were not destructively removed during repository cleanup.
+The AI runtime must become a consumer/producer of stable application contracts rather than the top-level architecture of the product.
 
-## Last Recorded End-to-End Qualification
+## Legacy v1 Boundary
 
-`docs/production_qualification.md` records an accepted 2026-08-09 real-book run through all nine stages. It remains strong behavioral evidence but **not promotable release proof** because its source worktree contained 574 pending paths.
+The pre-v2 `packages/`, `integrations/`, `apps/dashboard_api/`, `apps/dashboard_pro/`, `deploy/production/`, Python migrations/runtime scripts, qualification workflows, and related tests/docs remain in the repository temporarily as **historical/reference surfaces** while v2 is established.
 
-The current production qualifier also enforces source freshness by filename/SHA. That historical input must not be assumed eligible for a new clean qualification against the same production library.
+Rules:
 
-## Current Phase-0 External Blockers
+- do not add new v2 behavior to those surfaces;
+- do not import them from `apps/web`;
+- do not make new architecture decisions merely to preserve their contracts;
+- reuse ideas or algorithms only through an explicit v2 implementation decision;
+- remove/archive obsolete v1 surfaces progressively after equivalent knowledge has been preserved where useful.
 
-Issue #142 remains open. The repository control plane is ready, but the external production environment is not.
-
-Read-only GitHub Actions diagnostics on 2026-09-10 established:
-
-- no `SAGA_SUPABASE_DB_URL` or explicit S.A.G.A. DB host/component configuration is currently available to Actions;
-- legacy `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present, but the only connected Supabase project inspected is RenderLab/retired-Studio infrastructure and is **not** S.A.G.A. production;
-- source freshness and persisted S.A.G.A. provider readiness therefore cannot currently be proven;
-- `SAGA_PROVIDER_COST_RATES_JSON` is absent;
-- explicit `OLLAMA_API_KEY` and `MISTRAL_API_KEY` fallbacks are absent; persisted alternatives remain unknown until the real S.A.G.A. DB is connected;
-- the R2 credential-name set is present, but bounded bucket listing returns `access_failed` for `default`, `eu`, `us`, and `fedramp`, so no supported jurisdiction is currently accessible;
-- because bucket listing fails, there is **no evidence yet that an individual protected object is missing**;
-- historical pre-retirement `apps/studio/api/_r2.js` used the exact same `R2_*` environment-variable namespace and defaulted to bucket `saga-studio-media`. This proves namespace reuse from Studio-era infrastructure, not that current secret values are identical.
-
-The diagnostic runs were `34514215596` and `34514460132`. They made no paid provider calls, uploaded no protected artifacts, and the temporary diagnostic workflow was removed after use.
+The separate `faresmohamed260/renderlab` project remains separate. S.A.G.A. may reuse proven engineering conventions/technology choices but not RenderLab product state, routes, schema ownership, storage credentials, or deployment assumptions.
 
 ## Active Phase
 
-**Phase 0 — Repository Baseline Recovery & Requalification**
+**S.A.G.A. v2 Phase 0 — Web Foundation & Storage Bootstrap**
 
-Contract: `docs/phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
+Tracking issue: **#148**
 
-Status: **ACTIVE — REPOSITORY/CONTROL-PLANE RECOVERY COMPLETE; EXTERNAL PRODUCTION CONFIGURATION + FRESH PROTECTED SOURCE BLOCK QUALIFICATION**
+Contract: `docs/phases/PHASE_V2_0_WEB_FOUNDATION.md`
 
-Phase 0 is no longer about reconstructing repository state. The remaining work is external qualification readiness and one exact-head clean-source qualification.
+Status: **ACTIVE**
 
-## Immediate Next Step
+The old v1 Phase-0 recovery/qualification issues #142 and #147 were closed as `not_planned` because the owner replaced that architecture with the v2 rebuild. Their evidence remains historical.
 
-1. configure the actual S.A.G.A. production Postgres/Supabase DB path in GitHub Actions, not the connected RenderLab/Studio project;
-2. configure legitimate versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal`; do not invent prices;
-3. verify the real persisted Modal/reasoning configuration, including a usable Ollama credential and Mistral access;
-4. reconfigure/rotate the repository R2 credentials so they explicitly target a S.A.G.A.-owned private protected-assets bucket/prefix with List/Get access;
-5. rerun `Protected Asset Verification` and require bucket access before classifying object presence;
-6. choose a manifest asset that passes production source-freshness checks; add metadata for another authorized unseen source if necessary, never the protected bytes;
-7. require private download plus committed SHA-256 verification;
-8. only after those prerequisites are green, manually dispatch **Clean-Source Production Qualification** from exact `main` and separately set `confirm_live_cost=true`;
-9. bind the persisted qualification report to the exact source/configuration and update the Phase-0 evidence before declaring Phase 0 complete.
+## Current Starting Baseline
 
-## Development Commands
+v2 branch:
 
-Python:
+- `v2/phase-0-web-foundation`
 
-```powershell
-uv sync --frozen --extra dev
-uv run pytest -q
-```
+Branch base / last v1 `main` before the v2 reset work:
 
-Operator dashboard:
+- `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
+- `Record Phase 0 external readiness blockers (#146)`
 
-```powershell
-cd apps\dashboard_pro
-npm ci
-npm test -- --run
+That SHA is a historical v1 boundary, not the target architecture for v2.
+
+## Immediate Work
+
+Phase 0 currently owns:
+
+1. repository governance reset for v2;
+2. `apps/web` Next.js/TypeScript scaffold;
+3. initial S.A.G.A. product shell and health/backend boundary;
+4. provider-neutral object-storage contract;
+5. Supabase server/client boundary ready for a new S.A.G.A.-owned project;
+6. v2-focused GitHub CI;
+7. Backblaze B2 account bootstrap through GitHub Actions using the two configured bootstrap secrets;
+8. creation and smoke validation of a dedicated private S.A.G.A. B2 bucket;
+9. durable non-secret recording of bucket endpoint/identity metadata;
+10. transition to Phase 1 for the main site frontend/backend product.
+
+**Agent/LLM pipeline implementation is explicitly out of scope until the web/backend foundation is stable.**
+
+## Validation Direction
+
+For v2 web changes, the primary deterministic checks will be executed from `apps/web`:
+
+```text
+npm install --no-audit --no-fund
+npm run lint
+npm run typecheck
+npm run test:unit
 npm run build
 ```
 
-API after configuring the required persistence environment:
-
-```powershell
-uv run saga-runtime-api
-```
-
-Production topology configuration is documented in `docs/deployment_operations.md`. Do not deploy merely because local/CI validation passes.
+The existing v1 Python CI may remain during transition, but a green v1 check is not evidence that v2 works and a v1 architecture constraint must not block an intentional v2 design decision unless it protects a repository-wide security/integrity rule.
 
 ## Working Convention
 
-The repository must remain sufficient for a new session with no conversation history to determine what S.A.G.A. is, what is active/historical, what has actually been validated, what phase is active, what remains blocked, and what exact work happens next.
+A new session must begin from this file and `AGENTS.md`, then read `docs/README.md`, `docs/DECISIONS.md`, and the active v2 phase contract.
 
-Durable project state belongs in the repository, not only in chat history.
+Durable decisions and verified results go back into the repository. Do not reconstruct current project state from chat history when the repository can establish it.
