@@ -28,6 +28,13 @@ REQUIRED_MODAL_PROVIDERS = (
     "modal_kokoro_tts",
 )
 
+# The current nine-stage qualification meters gpt_oss/retrieval as ``ollama``,
+# Mistral reasoning/vision/transcription as ``mistral``, and Modal endpoint work
+# (identity, visual rendering, TTS) as ``modal``. Provider-wide fallback rates make
+# qualification pricing robust to account rotation and model-level overrides; more
+# specific model/account rates may still override them at runtime.
+REQUIRED_PRICED_PROVIDERS = ("ollama", "mistral", "modal")
+
 
 def _value(environ: Mapping[str, str], *names: str) -> str:
     for name in names:
@@ -38,7 +45,7 @@ def _value(environ: Mapping[str, str], *names: str) -> str:
 
 
 def validate_cost_rates(environ: Mapping[str, str]) -> str:
-    """Return an empty string when versioned provider rates are valid."""
+    """Return an empty string when qualification pricing has safe fallback coverage."""
 
     raw = _value(environ, "SAGA_PROVIDER_COST_RATES_JSON")
     if not raw:
@@ -53,8 +60,22 @@ def validate_cost_rates(environ: Mapping[str, str]) -> str:
         rates = [CostRate.model_validate(item) for item in payload]
     except Exception:  # noqa: BLE001 - convert schema detail into bounded diagnostic
         return "provider_cost_rates_invalid"
-    if not rates or any(not str(rate.pricing_version or "").strip() for rate in rates):
+    if any(not str(rate.pricing_version or "").strip() for rate in rates):
         return "provider_cost_rates_invalid"
+
+    fallback_providers = {
+        str(rate.provider or "").strip()
+        for rate in rates
+        if not str(rate.account_alias or "").strip()
+        and not str(rate.model or "").strip()
+    }
+    missing = [
+        provider
+        for provider in REQUIRED_PRICED_PROVIDERS
+        if provider not in fallback_providers
+    ]
+    if missing:
+        return "provider_cost_rate_fallback_missing:" + ",".join(missing)
     return ""
 
 
@@ -187,6 +208,8 @@ def run_readiness_check() -> dict[str, Any]:
         ),
     )
     try:
+        # Production initialization validates the existing migration/schema contract;
+        # unlike test-harness mode it does not create tables.
         client.initialize()
         provider_rows = {
             name: client.provider_configs.get_provider_config(name)
