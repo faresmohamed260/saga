@@ -28,6 +28,7 @@ test("closed demo exposes no public sign-up operation", () => {
   assert.equal(runtimeSource.includes(".auth.signUp("), false);
   assert.equal(runtimeSource.includes('href="/signup"'), false);
   assert.match(read("src/features/account/login-form.tsx"), /invitation only/i);
+  assert.match(read("src/app/page.tsx"), /invitation-only/i);
 });
 
 test("service-role capability remains inside server source", () => {
@@ -54,6 +55,15 @@ test("admin invitation routes require active SAGA admin authorization", () => {
   assert.match(createRoute, /isActiveSagaAdmin/);
   assert.match(revokeRoute, /isActiveSagaAdmin/);
   assert.match(createRoute, /SAGA_PUBLIC_APP_URL/);
+});
+
+test("invitation confirmation claims access before password setup", () => {
+  const confirmRoute = read("src/app/auth/confirm/route.ts");
+  const passwordForm = read("src/features/account/set-password-form.tsx");
+  assert.match(confirmRoute, /claimSagaInvitation/);
+  assert.match(confirmRoute, /\/app\/welcome/);
+  assert.match(passwordForm, /auth\.updateUser\(\{ password \}\)/);
+  assert.doesNotMatch(passwordForm, /signUp/);
 });
 
 test("closed-demo migration denies direct browser table access", () => {

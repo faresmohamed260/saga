@@ -54,5 +54,5 @@ export async function GET(request: NextRequest) {
     return redirectWithinApp("/login?auth=unavailable");
   }
 
-  return redirectWithinApp("/app?welcome=1");
+  return redirectWithinApp("/app/welcome");
 }
