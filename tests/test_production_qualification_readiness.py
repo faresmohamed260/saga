@@ -9,11 +9,11 @@ def _cost_rates_json() -> str:
     return json.dumps(
         [
             {
-                "provider": "mistral",
-                "model": "mistral-small-2603",
+                "provider": provider,
                 "request_each": 0.01,
                 "pricing_version": "test-2026-09-10",
             }
+            for provider in readiness.REQUIRED_PRICED_PROVIDERS
         ]
     )
 
@@ -91,7 +91,33 @@ def test_validate_cost_rates_rejects_empty_invalid_or_unversioned_rates() -> Non
     )
 
 
-def test_validate_cost_rates_accepts_versioned_positive_rate() -> None:
+def test_validate_cost_rates_requires_provider_wide_fallbacks() -> None:
+    missing_modal = json.dumps(
+        [
+            {
+                "provider": "ollama",
+                "request_each": 0.01,
+                "pricing_version": "test",
+            },
+            {
+                "provider": "mistral",
+                "request_each": 0.01,
+                "pricing_version": "test",
+            },
+            {
+                "provider": "modal",
+                "model": "saga-image-runtime",
+                "request_each": 0.01,
+                "pricing_version": "test",
+            },
+        ]
+    )
+    assert readiness.validate_cost_rates(
+        {"SAGA_PROVIDER_COST_RATES_JSON": missing_modal}
+    ) == "provider_cost_rate_fallback_missing:modal"
+
+
+def test_validate_cost_rates_accepts_versioned_provider_fallbacks() -> None:
     assert (
         readiness.validate_cost_rates(
             {"SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json()}
