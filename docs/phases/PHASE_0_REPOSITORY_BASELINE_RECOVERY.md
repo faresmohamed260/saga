@@ -189,9 +189,12 @@ Phase 0 should accumulate evidence for these gates:
 - Ollama is documented as local/remote endpoint dependent, not as an assumed GitHub-hosted runner dependency and not as requiring an invented `OLLAMA_API_KEY`.
 - Deterministic local validation on the clean recovery worktree passed: frozen `uv` sync, one Alembic head `202608090400`, source secret scan with 850 files and 0 findings, architecture-boundary tests 4/4, full backend tests 338 passed / 3 skipped, Dashboard Pro tests 13/13, Dashboard Pro production build, production dependency audit with 0 high vulnerabilities, and production Compose config validation.
 - Remote GitHub validation on PR #134 head `8685f97cec6cca81c2a19536cbe0ab6057d7323c` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
+- Remote GitHub validation on PR #135 head `729b8f0f8db29d081db74487f80c937e0a0f1bfe` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
+- Remote GitHub validation on PR #137 head `17740232de4fa102a3382452cdc953e1857efc71` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
 - The 43 local-side commits on `codex/transaction-pool-rc36` were classified commit-by-commit. The old branch must not be merged wholesale because it would remove substantial newer GitHub work; focused future PRs may port selected code/evidence.
 - The final durable handoff report records merged PRs, secret-name status, protected asset status, CI evidence, and remaining local dependencies.
 - A manual protected-asset verification workflow now exists to download selected private assets from Cloudflare R2 into runner temp storage, verify SHA-256 against the manifest, and delete temporary bytes.
+- The first manual protected-asset verification run (`34432226628`) failed with Cloudflare R2 `403 Forbidden` while reading the documented object key, so the remaining blocker is private object placement/read permission rather than missing workflow wiring.
 - Studio ownership is now classified: future generic image/video platform work belongs in `faresmohamed260/renderlab`; S.A.G.A. retains its Studio files only as transitional/historical repository state until a focused cleanup PR is authorized.
 
 ## Exit Criteria
@@ -206,7 +209,7 @@ Phase 0 is complete only when:
 6. `apps/studio/` status is explicitly decided or intentionally deferred with its coupling documented;
 7. `PROJECT.md` records the verified completion evidence and names the next phase from actual results.
 
-Current status: the initial handoff branch has been merged, repository continuity has improved, local-side commits are triaged, Studio ownership is classified as RenderLab-owned going forward, and Tier 1 deterministic gates passed locally and in GitHub Actions for PR #134. Phase 0 is not complete until selected local-side code/evidence ports are handled through focused PRs, S.A.G.A. Studio cleanup is separately authorized/deferred, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
+Current status: the initial handoff branch has been merged, repository continuity has improved, local-side commits are triaged, Studio ownership is classified as RenderLab-owned going forward, and Tier 1 deterministic gates passed locally and in GitHub Actions for PRs #134, #135, and #137. Phase 0 is not complete until selected local-side code/evidence ports are handled through focused PRs, S.A.G.A. Studio cleanup is separately authorized/deferred, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded. The protected-asset prerequisite is now specific: fix Cloudflare R2 object placement/read permissions for the repository secrets and rerun `Protected Asset Verification`.
 
 ## Next Phase Rule
 
