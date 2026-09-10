@@ -1,6 +1,6 @@
 # S.A.G.A. v2 Phase 0 — Web Foundation & Storage Bootstrap
 
-**Status:** ACTIVE
+**Status:** ACTIVE — IMPLEMENTED; FINAL CI/PR MERGE REMAINS
 
 **Tracking:** #148
 
@@ -29,36 +29,34 @@ Pre-v2 boundary:
 - `main`: `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
 - branch: `v2/phase-0-web-foundation`
 
-The v1 recovery/control-plane work is complete enough to serve as historical evidence. Its remaining external qualification work was intentionally abandoned by the owner in favor of this rebuild. Issues #142 and #147 are closed `not_planned` for that reason.
+The v1 recovery/control-plane work is historical evidence. Its remaining qualification work was intentionally abandoned by the owner in favor of this rebuild. Issues #142 and #147 are closed `not_planned`.
 
-## In Scope
+## Implemented Phase Work
 
 ### Repository/governance reset
 
-- make v2 the active architecture in `PROJECT.md`, `AGENTS.md`, `docs/README.md`, and `docs/DECISIONS.md`;
-- classify pre-v2 runtime/code/docs as historical/reference;
-- preserve the v1 boundary in Git history rather than requiring compatibility in v2.
+Implemented:
+
+- v2 is the active architecture in `PROJECT.md`, `AGENTS.md`, `docs/README.md`, and `docs/DECISIONS.md`;
+- pre-v2 runtime/code/docs are classified historical/reference;
+- the clean v1 boundary remains available in Git history without becoming a compatibility constraint.
 
 ### Web application foundation
 
-Create `apps/web/` with:
+`apps/web/` now contains:
 
-- Next.js 16;
-- React 19;
-- TypeScript;
-- Tailwind CSS;
-- maintained component primitives and Motion-ready styling;
-- feature/server/lib organization modeled on successful Studio/RenderLab engineering conventions;
-- initial product shell suitable for continued UI development;
-- health/API route;
-- environment helpers;
-- Supabase server boundary;
-- provider-neutral object-storage contract;
-- B2 S3 implementation ready for a future scoped runtime key.
+- Next.js 16 + React 19 + TypeScript;
+- Tailwind CSS and Motion-ready visual foundation;
+- initial polished S.A.G.A. product shell;
+- `/api/health` integration-status route;
+- Supabase SSR server/configuration boundary;
+- provider-neutral `ObjectStorage` interface;
+- Backblaze B2 S3 runtime adapter that accepts only scoped runtime credentials;
+- structural tests preventing bootstrap master credentials and vendor SDK leakage into feature code.
 
-### CI
+### v2 web CI
 
-Add v2-specific GitHub Actions validation for:
+`.github/workflows/v2-web-ci.yml` validates:
 
 - dependency install;
 - lint;
@@ -66,26 +64,37 @@ Add v2-specific GitHub Actions validation for:
 - unit/structural tests;
 - production Next.js build.
 
-CI for v2 must be distinguishable from legacy Python gates.
+Initial run `34537327565` passed before the final workflow-boundary tests were added. Exact-final-head CI is still required before merge.
 
-### Backblaze B2 bootstrap
+### Backblaze B2 bootstrap — VALIDATED
 
-Repository secrets already provided manually:
+Repository bootstrap secrets:
 
 - `SAGA_B2_KEY_ID`
 - `SAGA_B2_MASTER_APPLICATION_KEY`
 
-The bootstrap path must:
+The first bootstrap run `34537390902` failed at authorization because the manually entered key-id value included surrounding line-break/whitespace formatting. No bucket or object work occurred in that failed run.
 
-- run through GitHub Actions;
-- authenticate without printing credential values;
-- create/reuse a uniquely named private S.A.G.A. bucket;
-- upload, download, checksum/byte-compare, and delete a small `_system/` smoke object;
-- report only safe bucket/account endpoint metadata;
-- preserve no protected/source data in the bootstrap test;
-- leave the long-term workflow manual-only after initial setup.
+The workflow was hardened to normalize surrounding whitespace without printing credentials. Run **`34537566675`** then passed completely:
 
-The master key is bootstrap-only and must not be used by the web runtime. Backblaze's S3-compatible API requires a non-master application key.
+- B2 account authorization: success;
+- dedicated private bucket create/reuse: success;
+- smoke object upload: success;
+- download: success;
+- byte-for-byte `cmp`: success;
+- smoke object deletion: success.
+
+Safe validated metadata is committed in `config/v2-storage.json`:
+
+- bucket: `saga-v2-faresmohamed260-1207062480`
+- bucket id: `b2af6d676af585d3aa0e0912`
+- region: `us-east-005`
+- S3 endpoint: `https://s3.us-east-005.backblazeb2.com`
+- visibility: private
+
+The temporary branch push trigger used to perform the bootstrap has been removed. `.github/workflows/v2-b2-bootstrap.yml` is now **manual-only**. Structural tests enforce that it has no `push` or `pull_request` trigger and does not publish artifacts.
+
+The master key remains bootstrap-only and is not consumed by `apps/web`. Normal runtime B2 S3 access still requires a later bucket-scoped non-master application key.
 
 ## Explicitly Out of Scope
 
@@ -111,10 +120,11 @@ The master key is bootstrap-only and must not be used by the web runtime. Backbl
 6. v2 must not import legacy Python/runtime code.
 7. RenderLab technology patterns may be referenced; RenderLab state/resources remain separate.
 8. Secret values never enter repository files, workflow artifacts, issue text, or logs.
+9. B2 master credentials are for bounded bootstrap/admin operations only; the web runtime uses a scoped application key.
 
 ## Target Initial Product Areas
 
-Phase 0 only establishes the shell, but the navigation/information architecture should anticipate:
+Phase 0 only establishes the shell, but Phase 1 information architecture should anticipate:
 
 - Home / dashboard
 - Library / sources
@@ -133,8 +143,6 @@ These labels describe product concepts, not final schema or route commitments.
 
 ## Storage Namespace
 
-Initial B2 namespace convention:
-
 ```text
 sources/
 artifacts/analysis/
@@ -145,7 +153,7 @@ temporary/
 _system/
 ```
 
-Object keys must later be scoped by project/source IDs rather than human titles where practical.
+Object keys should be scoped by application-generated project/source IDs rather than human titles where practical.
 
 ## Validation
 
@@ -161,32 +169,24 @@ npm run test:unit
 npm run build
 ```
 
-### Storage bootstrap gate
+### Storage bootstrap gate — PASSED
 
-A GitHub Actions run must prove:
+Evidence: GitHub Actions run `34537566675`.
 
-- bootstrap secrets are present;
-- B2 account authorization succeeds;
-- dedicated private bucket exists/is created;
-- small smoke object upload succeeds;
-- downloaded bytes match;
-- smoke object cleanup succeeds;
-- safe bucket ID/name/S3 endpoint can be recorded without credential disclosure.
+The gate proved credential authorization, private bucket availability, smoke upload/download/content comparison/delete, and safe metadata extraction without exposing credentials.
 
-## Exit Criteria
+## Remaining Exit Work
 
-Phase 0 closes when:
+Phase 0 now needs only repository-finalization evidence:
 
-1. governance points new sessions to v2;
-2. v1 is explicitly historical/reference;
-3. `apps/web` exists and is the active product surface;
-4. v2 CI passes on the exact final PR head;
-5. web production build succeeds without requiring live provider credentials;
-6. Supabase and storage server boundaries exist without direct vendor coupling in feature code;
-7. a dedicated private B2 bucket is created/reused and passes smoke validation;
-8. safe B2 bucket/endpoint metadata is committed to the v2 configuration/docs;
-9. master credentials remain bootstrap-only;
-10. `PROJECT.md` is updated with the exact merged v2 baseline and Phase 1 next step.
+1. run v2 CI on the exact final branch head, including workflow-boundary tests;
+2. inspect branch diff for secret leakage and accidental v1 coupling;
+3. open a focused PR against current `main` and require the applicable repository checks;
+4. merge the exact green head;
+5. record the merged v2 baseline in `PROJECT.md` if needed;
+6. close #148 and start Phase 1.
+
+A scoped B2 runtime key is intentionally a Phase-1 prerequisite for real source upload/read functionality rather than a blocker for the Phase-0 application/storage architecture.
 
 ## Phase 1 Direction
 
