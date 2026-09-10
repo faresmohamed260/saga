@@ -132,8 +132,6 @@ The intended manual qualification gate now requires, before protected-book proce
 - versioned provider-wide pricing fallbacks for metered `ollama`, `mistral`, and `modal` usage;
 - one manifest-selected protected EPUB downloaded from private R2 and hash-verified.
 
-The connected Supabase project visible to this ChatGPT session was read-only fingerprinted during this audit and did **not** contain the expected S.A.G.A. provider/usage/qualification tables. It was not treated as S.A.G.A. production persistence and was not mutated.
-
 ## Active Phase
 
 **Phase 0 — Repository Baseline Recovery & Requalification**
