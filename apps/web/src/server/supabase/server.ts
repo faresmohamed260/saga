@@ -1,13 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-import { requireSupabaseServerConfig } from "./config";
+import { getSupabasePublicConfig } from "./config";
 
 export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();
-  const { url, publishableKey } = requireSupabaseServerConfig();
+  const config = getSupabasePublicConfig();
+  if (!config) return null;
 
-  return createServerClient(url, publishableKey, {
+  const cookieStore = await cookies();
+  return createServerClient(config.url, config.publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -18,8 +19,7 @@ export async function createSupabaseServerClient() {
             cookieStore.set(name, value, options);
           }
         } catch {
-          // Server Components cannot always write cookies. Middleware/server actions
-          // will own refresh writes once authentication is enabled in Phase 1.
+          // Server Components cannot always write cookies. The root proxy owns refresh writes.
         }
       },
     },
