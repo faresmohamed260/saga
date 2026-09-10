@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import pytest
 
 from scripts import check_production_qualification_readiness as readiness
 
@@ -39,6 +42,19 @@ def _modal_row() -> dict[str, object]:
     }
 
 
+def _asset() -> dict[str, str]:
+    return {
+        "id": "fresh-book",
+        "filename": "Fresh Book.epub",
+        "sha256": "a" * 64,
+        "object_key": "protected/saga/Fresh Book.epub",
+    }
+
+
+def _write_manifest(path: Path) -> None:
+    path.write_text(json.dumps({"version": 1, "assets": [_asset()]}), encoding="utf-8")
+
+
 def test_static_readiness_accepts_explicit_runtime_database_url() -> None:
     env = {
         "SAGA_RUNTIME_DB_URL": "postgresql+psycopg://example.invalid/postgres",
@@ -51,6 +67,7 @@ def test_static_readiness_accepts_explicit_runtime_database_url() -> None:
 
 def test_static_readiness_accepts_component_database_configuration() -> None:
     env = {
+        "SAGA_SUPABASE_DB_HOST": "db.example.supabase.co",
         "SAGA_SUPABASE_DB_USER": "postgres.project",
         "SAGA_SUPABASE_DB_PASSWORD": "password",
         "SUPABASE_URL": "https://example.supabase.co",
@@ -58,6 +75,17 @@ def test_static_readiness_accepts_component_database_configuration() -> None:
         "SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json(),
     }
     assert readiness.static_readiness_errors(env) == []
+
+
+def test_static_readiness_rejects_component_database_without_remote_host() -> None:
+    env = {
+        "SAGA_SUPABASE_DB_USER": "postgres.project",
+        "SAGA_SUPABASE_DB_PASSWORD": "password",
+        "SUPABASE_URL": "https://example.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        "SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json(),
+    }
+    assert readiness.static_readiness_errors(env) == ["supabase_database_not_configured"]
 
 
 def test_static_readiness_reports_missing_contracts_without_values() -> None:
@@ -123,6 +151,52 @@ def test_validate_cost_rates_accepts_versioned_provider_fallbacks() -> None:
             {"SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json()}
         )
         == ""
+    )
+
+
+def test_select_qualification_asset_requires_one_known_manifest_asset(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest)
+
+    selected = readiness.select_qualification_asset(
+        asset_id="fresh-book",
+        manifest_path=manifest,
+    )
+    assert selected["filename"] == "Fresh Book.epub"
+
+    with pytest.raises(ValueError, match="qualification_asset_not_configured"):
+        readiness.select_qualification_asset(asset_id="", manifest_path=manifest)
+    with pytest.raises(ValueError, match="qualification_requires_single_asset"):
+        readiness.select_qualification_asset(asset_id="all", manifest_path=manifest)
+    with pytest.raises(ValueError, match="qualification_asset_unknown"):
+        readiness.select_qualification_asset(asset_id="missing", manifest_path=manifest)
+
+
+def test_asset_freshness_accepts_unseen_source() -> None:
+    assert (
+        readiness.asset_freshness_error(
+            existing_books=[{"source_uri": "Other Book.epub", "metadata": {"sha256": "b" * 64}}],
+            asset=_asset(),
+        )
+        == ""
+    )
+
+
+def test_asset_freshness_rejects_existing_filename_or_sha() -> None:
+    expected = "qualification_source_not_fresh:fresh-book"
+    assert (
+        readiness.asset_freshness_error(
+            existing_books=[{"source_uri": "/private/Fresh Book.epub"}],
+            asset=_asset(),
+        )
+        == expected
+    )
+    assert (
+        readiness.asset_freshness_error(
+            existing_books=[{"source_uri": "renamed.epub", "metadata": {"source_sha256": "A" * 64}}],
+            asset=_asset(),
+        )
+        == expected
     )
 
 
