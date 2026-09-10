@@ -106,11 +106,11 @@ Existing Studio-era remote database/storage/compute resources were not destructi
 
 The same record explicitly states that the run was **not promotable** because its source worktree was not a clean committed CI revision and reported 574 pending worktree paths at qualification time.
 
-Therefore the run remains valuable behavioral evidence, but it is not proof that current `main` is a clean, reproducible, promotable S.A.G.A. release.
+Therefore the run remains valuable behavioral evidence, but it is not proof that current `main` is a clean, reproducible, promotable S.A.G.A. release. Because the production qualifier enforces a freshness guard by source filename/SHA, that historical input must not be assumed to be eligible for the next clean qualification against the same production persistence.
 
 ## Current Qualification Blockers / Readiness
 
-Protected-book qualification remains externally blocked until the private source object is reachable and hash-valid. Issue #142 tracks that prerequisite.
+Protected-book qualification remains externally blocked until at least one authorized manifest asset is both reachable/hash-valid in private storage **and fresh in the production library**. Issue #142 tracks that prerequisite.
 
 The first GitHub protected-asset verification run (`34432226628`) reached R2 with all required secrets present and received `403 Forbidden` from the old `HeadObject` path. PR #141 replaced that ambiguous path with diagnostics that can distinguish:
 
@@ -119,18 +119,22 @@ The first GitHub protected-asset verification run (`34432226628`) reached R2 wit
 - `download_failed` — object visible but GetObject/download fails;
 - success — bytes download and still must pass the committed SHA-256 check.
 
-Repository audit also found that clean-source qualification lacked a GitHub Actions control plane. Issue #143 tracks the focused implementation under `phase-0/clean-source-qualification-workflow`.
+Repository audit also found that clean-source qualification lacked a GitHub Actions control plane. Issue #143 is being implemented by PR #145 on `phase-0/clean-source-qualification-workflow`.
 
-The intended manual qualification gate now requires, before protected-book processing:
+The intended manual qualification gate now requires, before protected-book processing or live reasoning/provider requests:
 
 - explicit authorization for live provider cost;
 - exact `GITHUB_SHA` / clean tracked checkout provenance;
+- a single explicitly selected protected manifest asset;
+- proof that the selected filename/SHA does not already exist in production persistence;
 - production Supabase schema/API/service-role readiness;
 - persisted provider credentials for `modal_xcore_litbank`, `modal_comfyui`, and `modal_kokoro_tts`;
-- active Ollama/gpt-oss reasoning configuration for current default reasoning stages;
+- an actual usable Ollama API key for the current default gpt-oss stages, not merely an Ollama provider-config row;
 - Mistral configured through persistence or `MISTRAL_API_KEY` for current Mistral reasoning/vision/transcription stages;
 - versioned provider-wide pricing fallbacks for metered `ollama`, `mistral`, and `modal` usage;
-- one manifest-selected protected EPUB downloaded from private R2 and hash-verified.
+- the selected protected EPUB downloaded from private R2 and hash-verified.
+
+If every currently listed protected asset is already present in production persistence, add metadata for another authorized unseen source to the manifest and private storage. Never commit the protected bytes.
 
 ## Active Phase
 
@@ -138,19 +142,21 @@ The intended manual qualification gate now requires, before protected-book proce
 
 Contract: `docs/phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
 
-Status: **ACTIVE — REPOSITORY BASELINE RECOVERED; CLEAN-SOURCE QUALIFICATION CONTROL PLANE IN PROGRESS; PRIVATE R2 SOURCE STILL BLOCKED**
+Status: **ACTIVE — REPOSITORY BASELINE RECOVERED; CLEAN-SOURCE QUALIFICATION CONTROL PLANE IN PR #145; FRESH PRIVATE SOURCE / LIVE CONFIGURATION REMAINS**
 
-Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to finish/validate the manual clean-source qualification workflow, resolve the private protected-source prerequisite, run exact-head qualification, and bind the result to committed source/configuration.
+Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to validate/merge the manual clean-source qualification workflow, resolve its private-source and provider/pricing prerequisites, run exact-head qualification, and bind the result to committed source/configuration.
 
 ## Immediate Next Step
 
-1. validate and merge issue #143 / `phase-0/clean-source-qualification-workflow` with core CI green;
-2. configure real, versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal` plus any desired specific overrides; do not invent prices;
-3. resolve issue #142 by dispatching `Protected Asset Verification` for `once-upon-a-broken-heart` with the correct R2 jurisdiction and fixing the exact reported category;
-4. make the selected object download successfully and match its committed SHA-256;
-5. ensure the persisted Supabase provider rows and required reasoning credentials are qualification-ready;
-6. manually dispatch **Clean-Source Production Qualification** on the exact `main` commit intended for evidence and explicitly authorize live cost;
-7. bind the resulting persisted report to the exact commit/configuration and update this file plus Phase 0 / qualification evidence before declaring Phase 0 complete.
+1. validate and merge PR #145 / issue #143 with core CI green;
+2. configure the actual S.A.G.A. production Supabase database/API/service-role path used by qualification;
+3. configure real, versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal` plus any desired specific overrides; do not invent prices;
+4. ensure persisted Modal provider rows and a usable Ollama credential plus Mistral access are qualification-ready;
+5. choose a protected manifest asset that passes the production freshness preflight; do not assume the historical `once-upon-a-broken-heart` asset is fresh;
+6. resolve issue #142 for that fresh asset by running `Protected Asset Verification` with the correct R2 jurisdiction and fixing the exact reported category;
+7. make the selected object download successfully and match its committed SHA-256;
+8. manually dispatch **Clean-Source Production Qualification** on the exact `main` commit intended for evidence and explicitly authorize live cost;
+9. bind the resulting persisted report to the exact commit/configuration and update this file plus Phase 0 / qualification evidence before declaring Phase 0 complete.
 
 ## Development Commands
 
