@@ -1,100 +1,123 @@
-# SAGA Modal Ecosystem Worker Fleet
+# S.A.G.A. Modal Ecosystem Worker Fleet
 
-This document is the product and runtime contract for SAGA's Modal worker fleet. It exists so worker orchestration and user-facing lifecycle feedback are implemented from one deliberate design rather than as unrelated loading indicators.
+This document defines S.A.G.A.'s retained Modal worker-fleet contract for visual-generation providers. It is infrastructure for S.A.G.A.'s narrative-to-media pipeline, not a generic image/video product contract.
 
-## Architecture
+The former `apps/studio/` product prototype has been retired from S.A.G.A.; its standalone successor is RenderLab. Worker infrastructure remains here only where S.A.G.A. itself consumes or qualifies it.
 
-A **Modal account is a credentials, quota, and billing boundary**. A **worker is one deployed model ecosystem inside an account**. Studio routes generation by ecosystem, never by account label.
+## Ownership
 
-Current fleet-v1 assignment:
+A **Modal account** is a credentials, quota, and billing boundary. A **worker** is one deployed model ecosystem inside an account.
+
+Machine-readable ownership is split deliberately:
+
+- `config/modal-worker-ecosystems.json` — model ecosystem/runtime definitions;
+- `config/modal-worker-registry.json` — non-secret active routing metadata;
+- `scripts/modal_worker_fleet.py` — inventory/reset/deploy operations;
+- `scripts/modal_worker_maintenance.py` — non-destructive worker maintenance;
+- provider implementations under `integrations/comfyui/` and `integrations/qwen/`.
+
+The public registry contains worker IDs, ecosystem IDs, gateway URLs, account labels, role/order, display names, enabled state, and deployment-version labels only. It must never contain credentials.
+
+## Current retained fleet
 
 | Ecosystem | Primary | Standby |
 | --- | --- | --- |
-| FLUX.2 Klein 9B | `flux-primary-01` | `flux-standby-01` |
-| REDGraft LTX 2.5 | `ltx-primary-01` | `ltx-standby-01` |
+| FLUX.2 Klein 9B | `flux-primary-01` (`modal-44`) | `flux-standby-01` (`modal-45`) |
+| REDGraft LTX 2.5 | `ltx-primary-01` (`modal-46`) | `ltx-standby-01` (`modal-47`) |
+| Qwen Image Edit 2511 | `qwen-primary-01` (`modal-42`) | `qwen-standby-01` (`modal-43`) |
 
-The account labels backing those workers are operational metadata and must never be exposed with credentials. The generated server-side registry contains worker IDs, ecosystem IDs, gateway URLs, role/order, and display names only.
+Exact gateway URLs and deployment labels are owned by `config/modal-worker-registry.json` so operational workflows do not depend on an application-specific generated JavaScript file.
 
 ## Provisioning contract
 
-A newly assigned worker account is reconciled from a clean state before its ecosystem is installed:
+A newly assigned dedicated worker account is reconciled before its ecosystem is installed:
 
 1. inventory and confirm the account can execute compute;
-2. stop every app returned by Modal's app inventory (running, deployed, or recently stopped);
-3. delete all named Volumes and worker-state Dicts in that dedicated account;
-4. deploy exactly one ecosystem runtime and its gateway;
+2. stop existing apps only when an explicit reprovision operation authorizes destructive reconciliation;
+3. delete old Volumes/Dicts only when that same explicit reprovision authorizes it;
+4. deploy exactly the intended ecosystem runtime and gateway;
 5. prefetch and verify the ecosystem's model assets into its persistent cache Volume;
-6. verify the gateway without invoking the GPU worker;
-7. publish only non-secret routing metadata to Studio.
+6. verify the gateway without unnecessarily waking GPU compute;
+7. publish non-secret routing metadata as workflow evidence;
+8. update `config/modal-worker-registry.json` through normal reviewed repository change when routing metadata changes.
 
-The account is dedicated after assignment. Routine code upgrades do not delete its model cache; destructive cleanup is reserved for initial assignment or an explicit reprovision operation.
+Provisioning workflows must not bot-push generated registry changes directly to protected `main`. They may produce an updated registry artifact for review.
+
+Routine code upgrades do not delete model caches. Destructive cleanup is reserved for explicit reprovision operations.
 
 ## Resource policy
 
-Each ecosystem worker has:
+Each ecosystem worker should preserve the provider-specific validated runtime policy while generally following:
 
-- `min_containers = 0` so GPU compute scales to zero;
-- `max_containers = 1` and `max_inputs = 1` so one worker does not thrash GPU memory between concurrent model loads;
+- scale to zero when idle where supported;
+- bounded per-worker concurrency to avoid model-memory thrash;
 - an idle scale-down window;
 - a persistent Modal Volume for model/checkpoint assets;
 - a lightweight Modal Dict for worker lifecycle state.
 
-A cold start should therefore pay container startup plus loading cached weights into RAM/VRAM, not repeated multi-gigabyte model downloads.
+A cold start should pay container startup plus loading cached weights into RAM/VRAM, not repeated multi-gigabyte model downloads.
 
-## Job routing and credit exhaustion
+Legacy cache directory names that contain `studio` may be retained temporarily when renaming them would invalidate an existing persistent cache. A legacy storage path name does not make the worker a Studio product dependency; any cache-path migration must be explicit and non-destructive.
 
-Submission tries workers in primary/standby order. Explicit credit/quota/budget failures and explicit worker-unavailable failures are eligible for standby routing. The accepted provider job ID is pinned to the worker that accepted it.
+## Routing and credit exhaustion
 
-Credit handling has two separate safety rules:
+Routing is ecosystem-affine. A Qwen request must not silently become a FLUX request, and an LTX request must not silently become another ecosystem merely because a worker is unavailable.
 
-- **Before a job is accepted:** retryable credit/unavailable failures may move to another worker immediately.
-- **After a job is accepted:** reassignment is allowed only when the provider gives strong evidence that execution did not proceed (`credit_exhausted` or an explicit safe unavailable state). Generic network errors, 5xx responses, and rate-limit responses must not duplicate an accepted generation.
+Submission tries enabled workers in primary/standby order. Explicit credit/quota/budget failures and explicit worker-unavailable failures may be eligible for standby routing. The accepted provider job ID must remain pinned to the worker that accepted it.
 
-If every configured worker for an ecosystem is out of credit, Studio returns `ALL_WORKERS_CREDIT_EXHAUSTED`; it must not fall back to the historical `modal-01` gateway or spin indefinitely.
+Safety rules:
 
-## Real worker states
+- **Before a job is accepted:** retryable credit/unavailable failures may move to another worker.
+- **After a job is accepted:** reassignment is allowed only when the provider gives strong evidence that execution did not proceed. Generic network errors, 5xx responses, and rate-limit responses must not duplicate an accepted generation.
 
-The backend owns the state machine. The UI does not invent percentages or fake stages.
+If every configured worker for an ecosystem is unavailable or out of credit, the runtime must fail explicitly rather than silently using an unrelated historical gateway.
 
-| State | Meaning | User-facing intent |
-| --- | --- | --- |
-| `queued` | accepted while the ecosystem worker is occupied | “Waiting for worker” |
-| `waking` | a job was accepted while compute was scaled to zero | “Starting worker” |
-| `loading` | container is starting and cached ecosystem assets are loading | “Loading model” |
-| `ready` | worker is warm and ready | “Worker ready” |
-| `generating` | model execution is active | “Generating image/video” |
-| `finalizing` | model output exists and is being packaged/persisted | “Finalizing result” |
-| `sleeping` | no GPU container is active | shown as idle status only; an accepted job converts this to `waking` |
-| `credit_exhausted` | worker/account cannot spend more | switch to standby when one exists; otherwise explicit terminal error |
-| `unavailable` | explicit provider/workspace unavailability | switch to standby when safe |
-| `failed` | terminal generation failure | explicit failure state |
+## Worker states
 
-## Production UI contract
+The backend owns the state machine. Consumer UIs must not invent fake progress percentages.
 
-The Create composer uses one compact lifecycle surface beneath the controls. It contains:
+| State | Meaning |
+| --- | --- |
+| `queued` | accepted while worker capacity is occupied |
+| `waking` | accepted while compute is scaled to zero |
+| `loading` | container/model assets are loading |
+| `ready` | worker is warm and ready |
+| `generating` | model execution is active |
+| `finalizing` | output exists and is being packaged/persisted |
+| `sleeping` | no GPU container is active |
+| `credit_exhausted` | account cannot spend more |
+| `unavailable` | explicit provider/workspace unavailability |
+| `failed` | terminal generation failure |
 
-- an explicit state title;
-- an ecosystem/worker name when known;
-- elapsed time while work is active;
-- an indeterminate activity track for real but non-quantified work;
-- explicit copy when a standby is being selected because the previous worker exhausted credits or became unavailable;
-- an explicit terminal “workers out of credits” message if no worker in that ecosystem can run the request.
+## Provider sampling facts retained from the prototype
 
-The surface is text-first and therefore does not rely on color alone. Settings may still be changed during a running job, but broader “changes apply to the next generation” behavior remains checklist Item 12 and is not part of this blocker.
+These are worker/runtime contracts, not Studio UI requirements:
+
+- FLUX.2 Klein image editing: default 4 steps, CFG 1.0.
+- Qwen Image Edit 2511: default 4 steps, true CFG 1.0.
+- REDGraft LTX 2.5: fixed 11 denoise transitions (8 base + 3 refine), CFG 1.0.
+
+Any change to these values requires provider/runtime validation.
+
+## GitHub Actions policy
+
+Worker operations are remote-capable through GitHub Actions, but live compute operations are intentionally cost/secret gated.
+
+- deterministic repository CI must not require live Modal credentials;
+- inventory, maintenance, provisioning, and real generation smoke tests are manual/bounded operational workflows unless a current phase explicitly promotes one to a required gate;
+- workflows must use the S.A.G.A. ecosystem/registry files, not `apps/studio/` paths or retired Studio branches;
+- workflow artifacts may contain public routing metadata but never credentials.
 
 ## Validation gate
 
-This blocker is complete only after all of the following are true:
+For a fleet state to be called validated:
 
-1. all 47 configured Modal accounts are inventoried without exposing credentials;
-2. credit-exhausted accounts are detected and excluded from assignment;
-3. primary + standby workers for both current ecosystems are cleanly provisioned;
-4. generated Studio worker registry contains the four provisioned workers and no credentials;
-5. deterministic routing tests cover credit exhaustion, unavailable workers, worker pinning, no legacy fallback, and safe poll-time reassignment;
-6. real FLUX and LTX generations succeed through the worker-aware Studio provider path;
-7. generated outputs pass delivery checks and Studio R2/Supabase persistence smoke;
-8. a controlled primary-credit failure proves standby routing without deliberately exhausting a real account;
-9. gateway health checks do not wake GPU compute and workers return to sleeping after their idle windows;
-10. desktop/mobile lifecycle screenshots are inspected professionally.
+1. ecosystem definitions and registry entries agree;
+2. each expected primary/standby pair reports the correct worker ID and ecosystem;
+3. gateway health checks succeed without exposing credentials;
+4. real generation is exercised when the phase requires live evidence;
+5. standby submit/cancel or failover behavior is exercised where required;
+6. S.A.G.A.'s stage-7 visual runtime remains independently tested through its package-level tests;
+7. evidence is bound to an exact repository/configuration state.
 
-Only after this gate passes may the normal UI polish checklist resume at Item 12.
+Historical Studio persistence/UI evidence may remain useful as dated evidence, but it does not define the current S.A.G.A. product contract.

@@ -8,23 +8,23 @@ This file is the short current-state handoff for humans and AI sessions. Detaile
 
 The active S.A.G.A. architecture is contract-driven and modular rather than a monolithic book-processing application.
 
-Primary active surfaces documented by the repository are:
+Primary active surfaces are:
 
 - `packages/` — reusable runtimes for agents, reasoning, retrieval, persistence, execution, identity, generation, observability, lineage, qualification, and deployment;
-- `integrations/` — provider implementations, including ComfyUI and XCore/Modal integration;
+- `integrations/` — provider implementations, including ComfyUI, Qwen, XCore/Modal, and audio integrations;
 - `apps/dashboard_api/` — stateless FastAPI control/query surface;
 - `apps/dashboard_pro/` — operator dashboard;
 - `deploy/production/` — production process/container topology;
-- `migrations/` and `supabase/` — persistence/schema assets;
+- `migrations/` and `supabase/` — active persistence/schema assets;
 - `tests/` and `scripts/` — automated validation and bounded operational entrypoints.
 
 `backup/reference/` is inert historical reference material and must not become an active dependency.
 
-`apps/studio/` remains present and has later repository activity than several S.A.G.A. core status documents. Generic image/video product ownership now belongs to the separate `faresmohamed260/renderlab` repository. Do not continue RenderLab feature work in S.A.G.A. by default, and do not delete the S.A.G.A. Studio files without a focused cleanup PR.
+The former `apps/studio/` generic image/video prototype has been retired from S.A.G.A. Its standalone successor is `faresmohamed260/renderlab`. S.A.G.A. keeps reusable visual-generation provider infrastructure only where it serves S.A.G.A.'s narrative-to-media pipeline. Public Modal worker routing metadata is owned by `config/modal-worker-registry.json`, not by an application UI.
 
 ## Core Pipeline
 
-The repository currently documents a nine-stage production path:
+The repository documents a nine-stage production path:
 
 1. source ingestion and analysis foundation;
 2. identity resolution;
@@ -55,18 +55,47 @@ Generation-side systems are expected to consume persisted canon/retrieval artifa
 
 - React/Vite dashboard under `apps/dashboard_pro/`
 
-## Current Verified Repository Baseline — 2026-09-10
+## Verified Recovery Baseline — 2026-09-10
 
-Repository audit starting point:
+The local-to-GitHub handoff/recovery work is complete through the following merged pull requests:
 
-- default branch: `main`;
-- audited `main` HEAD: `1d1fa6e9bb86feede9c9f5b89eec828eb15a2050`;
-- that commit is a merge of PR #131, `studio/mobile-button-input-cleanup`, dated 2026-08-26;
-- the latest observed `main` GitHub Actions run for that head includes successful `Studio CI` and `Required Check Compatibility` workflows;
-- Vercel status for that exact head is successful for the Studio deployment surface;
-- open PR #132 is additional Studio/Qwen UI work and is not part of the S.A.G.A. recovery/governance change.
+- PR #134 — repository governance, recovery manifests, reproducibility, secrets/assets/model documentation;
+- PR #135 — commit-by-commit triage of the 43 divergent local-side commits;
+- PR #137 — protected asset verification workflow/manifest and explicit RenderLab ownership for future generic image/video product work;
+- PR #138 — recorded the first real GitHub protected-asset verification result.
 
-This does **not** establish that the complete S.A.G.A. core pipeline is currently production-ready.
+Verified `main` immediately before the Studio retirement cleanup:
+
+- commit: `1944ea3a1c7d6733236869cec2e030dad4fdd470`;
+- tree: `fcba8e1e175b3bc9c657f6c31a4e60e32c9af9a2`;
+- commit message: `docs: record protected asset verification result (#138)`.
+
+Recovery validation already recorded on GitHub includes successful backend tests, migration checks, container builds, Dashboard Pro compatibility, and the then-attached Vercel status. Local recovery validation also recorded a frozen `uv` install, one Alembic head, source-secret scan, complete backend test gate, Dashboard Pro tests/build, production dependency audit, and production Compose validation.
+
+The repository is no longer dependent on undocumented state from the former local Codex checkout. Historical recovery evidence is indexed under `docs/recovery/`.
+
+## Studio Retirement Boundary
+
+The retired Studio product surface is not part of S.A.G.A.'s active architecture.
+
+The focused cleanup removes:
+
+- `apps/studio/`;
+- Studio-only UI/product documentation;
+- Studio-only GitHub Actions and patch helpers;
+- Studio-owned Supabase migration definitions that are not part of the S.A.G.A. core schema.
+
+The cleanup preserves and rehomes reusable S.A.G.A. infrastructure:
+
+- `packages/visual_generation` and the stage-7 visual contract;
+- `packages/modal_runtime`;
+- `integrations/comfyui`;
+- `integrations/qwen`;
+- `config/modal-worker-ecosystems.json`;
+- `config/modal-worker-registry.json` for non-secret worker routing metadata;
+- Modal worker inventory/maintenance/provisioning and bounded live-smoke tooling after removal of Studio branch/path dependencies.
+
+This repository cleanup does **not** delete live cloud resources or data. Existing Studio-era Supabase tables, R2 objects/buckets, Modal deployments, and RenderLab resources require separate explicit operations if they are ever migrated or decommissioned.
 
 ## Last Recorded End-to-End S.A.G.A. Qualification
 
@@ -74,65 +103,17 @@ This does **not** establish that the complete S.A.G.A. core pipeline is currentl
 
 The same record explicitly states that the run was **not promotable** because its source worktree was not a clean committed CI revision and reported 574 pending worktree paths at qualification time.
 
-Therefore:
+Therefore the run remains valuable behavioral evidence, but it is not proof that current `main` is a clean, reproducible, promotable S.A.G.A. release.
 
-- the run is valuable behavioral/qualification evidence;
-- it is not proof that current `main` is a clean, reproducible, promotable S.A.G.A. release;
-- Phase 0 must bind current claims to clean committed source and current CI before production readiness can be asserted.
+## Current External Blocker
 
-## Documentation Consistency Findings
+The protected-asset verification workflow is present and has run from GitHub. The first real remote run (`34432226628`) reached Cloudflare R2 but failed with `403 Forbidden` while reading the documented protected-book object key.
 
-The 2026-09-10 audit found several state layers that are individually useful but no longer form a reliable current handoff without reconciliation:
+This means:
 
-- `docs/system_agent_roadmap.md` describes most production slices as built and says the immediate next step is to merge a stabilization PR, yet `main` has since advanced through later Studio work;
-- `docs/architecture_hardening_audit.md` is an earlier architecture audit that still says the next step is rebuilding main agents, while the later roadmap says those agent groups were built;
-- `docs/production_qualification.md` contains strong real-book evidence but explicitly lacks clean promotable source provenance;
-- the repository contains both S.A.G.A. operator surfaces and `apps/studio/`, while the root README only lists the former as primary architecture surfaces.
-- local recovery audit found a separate dirty checkout at `codex/transaction-pool-rc36` with 43 local-side commits, 1000 remote-side commits absent from that branch, local credential files, protected commercial EPUBs, generated databases/backups, and untracked Studio/generation-core work.
-
-Until Phase 0 reconciles these items, use this file plus the active phase contract as the current handoff and treat older “next step” statements as dated evidence rather than instructions.
-
-## Current Recovery Artifacts — 2026-09-10
-
-The local-to-GitHub handoff branch is `recovery/local-to-github-handoff`.
-
-It starts from remote `main` at `1d1fa6e9bb86feede9c9f5b89eec828eb15a2050` and incorporates the repository-governance baseline from PR #133. The first recovery documentation commit is expected to supersede PR #133 if merged.
-
-New durable recovery references:
-
-- `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — local inventory, divergence, uncommitted work, heavy/generated exclusions, and reconciliation decisions.
-- `docs/recovery/LOCAL_COMMIT_TRIAGE.md` — commit-by-commit classification of the 43 local-side commits on `codex/transaction-pool-rc36`.
-- `docs/recovery/HANDOFF_REPORT_2026-09-10.md` — durable final report for this recovery pass.
-- `docs/validation/REPRODUCIBILITY.md` — CI/live validation tiers and runner/secrets/assets expectations.
-- `docs/operations/GITHUB_ACTIONS_SECRETS.md` — secret names and destinations without values.
-- `docs/operations/PROTECTED_TEST_ASSETS.md` — protected EPUB metadata and hashes without committing protected books.
-- `.github/workflows/protected-asset-verification.yml` — manual R2-backed protected asset hash verification.
-- `docs/operations/MODEL_PROVIDER_MANIFEST.md` — active, evaluation-only, and historical model/provider identities.
-
-This documentation does not by itself prove Phase 0 complete. Non-live gates and any authorized live-provider qualification still need exact-head evidence.
-
-## Current Recovery Validation — 2026-09-10
-
-Executed locally on clean recovery worktree `B:\Documents\PyCharm\saga-handoff` after applying recovery docs:
-
-- `uv sync --frozen --extra dev` — passed.
-- `uv run alembic heads` — one head: `202608090400`.
-- `uv run python -m scripts.check_source_secrets` — passed, 850 files scanned, 0 findings.
-- `uv run pytest -q tests/test_architecture_boundaries.py` — passed, 4 tests.
-- `uv run pytest -q` — passed, 338 passed, 3 skipped, 1 Starlette/httpx deprecation warning.
-- `cd apps/dashboard_pro && npm ci && npm test -- --run && npm run build` — install succeeded, tests passed 13/13, Vite production build succeeded.
-- `cd apps/dashboard_pro && npm audit --omit=dev --audit-level=high` — passed, 0 production vulnerabilities.
-- `docker compose -f deploy/production/compose.yaml config --quiet` with `SAGA_ENV_FILE=.env.example` and `SAGA_RELEASE_ID=release-ci-validation` — passed.
-
-Executed remotely on GitHub for PR #134 head `97b8200ad48dc835b8c7952de10dec998148da61`:
-
-- Backend Architecture CI / `test` — success.
-- Backend Architecture CI / `migrations` — success.
-- Backend Architecture CI / `containers` — success.
-- Required Check Compatibility / `dashboard-pro` — success.
-- Vercel status context — success for the Studio deployment surface.
-
-Live-provider, protected-asset, and clean-source production qualification gates were not run in this documentation step. They require configured GitHub/production secrets and authorized protected asset access.
+- GitHub-side protected-asset workflow wiring exists;
+- the remaining prerequisite is R2 object placement/read permission for the configured repository credentials;
+- protected-book clean-source qualification must not be claimed until that prerequisite is fixed and the workflow succeeds.
 
 ## Active Phase
 
@@ -140,20 +121,18 @@ Live-provider, protected-asset, and clean-source production qualification gates 
 
 Contract: `docs/phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
 
-Status: **ACTIVE / GOVERNANCE BASELINE BEING ESTABLISHED**
+Status: **ACTIVE — REPOSITORY CONTINUITY RECOVERED; STUDIO SPLIT RESOLVED; PROTECTED-ASSET REQUALIFICATION BLOCKED BY R2 ACCESS**
 
-The goal is not a redesign. The goal is to establish exactly what current committed S.A.G.A. can build, test, run, and qualify; resolve stale project-state documentation; isolate unrelated surfaces; and produce a clean reproducible baseline from which defects can be fixed in evidence-driven phases.
+Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to finish exact-head requalification from the clean repository and address only evidence-backed blockers.
 
 ## Immediate Next Step
 
-After this recovery documentation is reviewed/merged:
-
-1. review/merge PR #134 after confirming the added manifests are acceptable;
-2. use `docs/recovery/LOCAL_COMMIT_TRIAGE.md` to drive focused future PRs for any accepted local-side code ports;
-3. configure or confirm the GitHub Actions secrets in `docs/operations/GITHUB_ACTIONS_SECRETS.md`;
-4. decide the cleanup path for the transitional S.A.G.A. Studio files now that future generic image/video work belongs to RenderLab;
-5. run bounded clean-source S.A.G.A. qualification only after protected assets and live-provider prerequisites are available;
-6. update this file and the Phase 0 contract with exact CI/qualification evidence before declaring recovery complete.
+1. validate and merge the focused Studio retirement cleanup with S.A.G.A. core CI green;
+2. verify no active code/workflow path depends on `apps/studio/` and that reusable worker-fleet resources are owned by S.A.G.A. config/runtime paths;
+3. fix the documented Cloudflare R2 protected-asset read/object-placement issue;
+4. rerun `Protected Asset Verification` from GitHub;
+5. run the bounded clean-source S.A.G.A. qualification required by the current production contracts;
+6. bind the resulting evidence to the exact commit/configuration and update this file plus the Phase 0 contract before declaring Phase 0 complete.
 
 ## Development Commands
 

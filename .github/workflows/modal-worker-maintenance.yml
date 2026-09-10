@@ -1,14 +1,6 @@
 name: Maintain Modal Worker Fleet
 
 on:
-  push:
-    branches: [studio/video-gallery-ux]
-    paths:
-      - "scripts/modal_worker_maintenance.py"
-      - "integrations/comfyui/flux2_klein_app.py"
-      - "integrations/comfyui/flux2_klein_gateway.py"
-      - "integrations/comfyui/ltx23_app.py"
-      - "integrations/comfyui/ltx23_gateway.py"
   workflow_dispatch:
 
 permissions:
@@ -53,21 +45,15 @@ jobs:
       WORKER_ID: ${{ matrix.worker_id }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: studio/video-gallery-ux
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install Modal runtime CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Apply credit-workspace runtime compatibility
-        shell: bash
-        run: |
-          if [ "$ECOSYSTEM" = "ltx25-redgraft" ]; then
-            sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
-          fi
+      - name: Apply retained LTX credit-workspace compatibility
+        if: matrix.ecosystem == 'ltx25-redgraft'
+        run: sed -i 's#HF_REPO = "Lightricks/LTX-2.5"#HF_REPO = "comfyicu/LTX-2.5"#' integrations/comfyui/ltx23_app.py
       - name: Redeploy worker without reset or prefetch
-        shell: bash
         run: python scripts/modal_worker_maintenance.py "$ACCOUNT" "$ECOSYSTEM" "$WORKER_ID" > worker-maintenance.json
       - name: Verify gateway identity and health
         shell: bash
@@ -82,8 +68,13 @@ jobs:
               raise SystemExit(f"Gateway did not report ready: {payload}")
           live = payload.get('worker') or {}
           if live.get('worker_id') != os.environ['WORKER_ID']:
-              raise SystemExit(f"Wrong worker identity: expected {os.environ['WORKER_ID']}, got {live}")
+              raise SystemExit(f"Wrong worker identity: {live}")
           if live.get('ecosystem') != os.environ['ECOSYSTEM']:
-              raise SystemExit(f"Wrong ecosystem identity: expected {os.environ['ECOSYSTEM']}, got {live}")
-          print(json.dumps({'workerId': os.environ['WORKER_ID'], 'ready': True, 'state': live.get('state'), 'cachePreserved': True, 'prefetch': 'skipped'}))
+              raise SystemExit(f"Wrong ecosystem identity: {live}")
+          print(json.dumps({'workerId': os.environ['WORKER_ID'], 'ready': True, 'state': live.get('state')}))
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-${{ matrix.worker_id }}
+          path: worker-maintenance.json
+          retention-days: 7

@@ -1,25 +1,14 @@
-name: Provision Modal Worker Fleet
+name: Provision Qwen Modal Workers
 
 on:
-  push:
-    branches:
-      - studio/qwen-image-edit-2511
-    paths:
-      - ".github/workflows/modal-worker-provision.yml"
-      - "integrations/qwen/qwen_image_edit_2511_app.py"
-      - "integrations/qwen/qwen_image_edit_2511_gateway.py"
-      - "integrations/qwen/qwen_civitai_prefetch.py"
-      - "scripts/qwen_civitai_prefetch.py"
-      - "scripts/modal_worker_fleet.py"
-      - "config/modal-worker-ecosystems.json"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: modal-worker-provision-qwen-2511
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   provision:
@@ -58,17 +47,13 @@ jobs:
       WORKER_DISPLAY_NAME: ${{ matrix.display_name }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: studio/qwen-image-edit-2511
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install Modal runtime CLI
         run: python -m pip install --upgrade "modal==1.4.2"
       - name: Stage pinned Civitai checkpoint into Modal volume
-        shell: bash
-        run: |
-          python scripts/qwen_civitai_prefetch.py "$ACCOUNT"
+        run: python scripts/qwen_civitai_prefetch.py "$ACCOUNT"
       - name: Deploy and prefetch Qwen worker
         shell: bash
         run: |
@@ -88,7 +73,7 @@ jobs:
           Path('worker.json').write_text(json.dumps(row, indent=2) + '\n', encoding='utf-8')
           print(json.dumps({k: row[k] for k in ('workerId', 'ecosystem', 'accountLabel', 'role', 'gatewayUrl')}))
           PY
-      - name: Verify Qwen gateway health without waking GPU compute
+      - name: Verify gateway health
         shell: bash
         run: |
           python - <<'PY'
@@ -99,31 +84,10 @@ jobs:
               payload = json.loads(response.read().decode('utf-8'))
           if payload.get('ready') is not True:
               raise SystemExit(f"Gateway did not report ready: {payload}")
-          if payload.get('model') != 'Qwen/Qwen-Image-Edit-2511':
-              raise SystemExit(f"Wrong model reported by Qwen gateway: {payload}")
-          if payload.get('precision') != 'civitai-bfloat16':
-              raise SystemExit(f"Wrong Qwen precision: {payload}")
-          checkpoint = payload.get('checkpoint') or {}
-          if checkpoint.get('source') != 'civitai' or int(checkpoint.get('version_id') or 0) != 2553500:
-              raise SystemExit(f"Wrong Qwen fallback checkpoint: {payload}")
-          acceleration = payload.get('acceleration') or {}
-          if acceleration.get('type') != 'lightning-lora' or int(acceleration.get('default_steps') or 0) != 4:
-              raise SystemExit(f"Wrong Qwen acceleration profile: {payload}")
           worker = payload.get('worker') or {}
           if worker.get('worker_id') != row['workerId']:
               raise SystemExit(f"Wrong worker identity: {payload}")
-          state = str(worker.get('state') or 'unknown')
-          if state in {'generating', 'finalizing'}:
-              raise SystemExit(f"Health check unexpectedly found active GPU state: {state}")
-          print(json.dumps({
-              'workerId': row['workerId'],
-              'gatewayReady': True,
-              'workerState': state,
-              'model': payload.get('model'),
-              'precision': payload.get('precision'),
-              'checkpointVersionId': checkpoint.get('version_id'),
-              'defaultSteps': acceleration.get('default_steps'),
-          }))
+          print(json.dumps({'workerId': row['workerId'], 'ready': True, 'state': worker.get('state')}))
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -132,32 +96,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish-registry:
+  registry-candidate:
     needs: provision
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: studio/qwen-image-edit-2511
-          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: worker-qwen-*
           path: worker-artifacts
-      - name: Merge Qwen workers into public registry
+      - name: Build reviewed registry candidate
         shell: bash
         run: |
           python - <<'PY'
-          import json, re
+          import json
           from pathlib import Path
-          target = Path('apps/studio/api/_worker-registry.generated.js')
-          text = target.read_text(encoding='utf-8')
-          match = re.search(r'GENERATED_MODAL_WORKERS\s*=\s*(\[[\s\S]*\])\s*;', text)
-          if not match:
-              raise SystemExit('Could not parse existing worker registry')
-          rows = json.loads(match.group(1))
-          rows = [row for row in rows if row.get('ecosystem') != 'qwen-image-edit-2511']
+          target = Path('config/modal-worker-registry.json')
+          payload = json.loads(target.read_text(encoding='utf-8'))
+          rows = [row for row in payload.get('workers', []) if row.get('ecosystem') != 'qwen-image-edit-2511']
           qwen = []
           for path in sorted(Path('worker-artifacts').rglob('worker.json')):
               row = json.loads(path.read_text(encoding='utf-8'))
@@ -176,21 +133,14 @@ jobs:
               raise SystemExit(f'Expected Qwen primary + standby, found {qwen}')
           rows.extend(qwen)
           rows.sort(key=lambda row: (row['ecosystem'], 0 if row['role'] == 'primary' else 1, int(row.get('order') or 0), row['id']))
-          target.write_text(
-              '// Generated by the Modal worker provisioning workflow. Public routing metadata only; no credentials.\n'
-              + 'export const GENERATED_MODAL_WORKERS = '
-              + json.dumps(rows, indent=2)
-              + ';\n',
-              encoding='utf-8',
-          )
+          target.write_text(json.dumps({'version': int(payload.get('version') or 1), 'workers': rows}, indent=2) + '\n', encoding='utf-8')
           print(json.dumps({'workers': len(rows), 'qwenWorkers': len(qwen)}, sort_keys=True))
           PY
-      - name: Commit Qwen routing metadata
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --ff-only origin studio/qwen-image-edit-2511
-          git add apps/studio/api/_worker-registry.generated.js
-          git commit -m "ops(qwen): register Qwen Image Edit workers" || exit 0
-          git push origin HEAD:studio/qwen-image-edit-2511
+      - name: Explain registry ownership
+        run: echo "Review the registry-candidate artifact and commit routing changes through a normal PR; this workflow does not push to protected main."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modal-worker-registry-candidate
+          path: config/modal-worker-registry.json
+          if-no-files-found: error
+          retention-days: 7

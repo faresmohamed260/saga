@@ -2,6 +2,12 @@
 
 `packages/visual_generation` is the active, LangGraph-native visual planning and rendering slice. It has no legacy dependency and consumes only generated stories that passed `require_narrative_semantic_acceptance(...)`.
 
+## Product boundary
+
+S.A.G.A. visual generation is a narrative-to-media pipeline capability, not a standalone generic image/video product. The former `apps/studio/` prototype evolved into the separate `faresmohamed260/renderlab` project and is not an active S.A.G.A. UI surface.
+
+S.A.G.A. retains provider/runtime resources that serve this package: `packages/modal_runtime`, `integrations/comfyui`, `integrations/qwen`, `config/modal-worker-ecosystems.json`, and non-secret worker routing metadata in `config/modal-worker-registry.json`. These resources must be consumed through S.A.G.A.'s own contracts; generic RenderLab product behavior must not be recreated here as a shortcut.
+
 ## Ownership
 
 The package owns portable contracts and agents for:
@@ -43,6 +49,20 @@ Characters route to `character_sheet`; locations, creatures, objects, and scenes
 Technical QA rejects corrupt data, wrong dimensions, undersized payloads, black images, and blank images. Semantic QA uses a cost-efficient Mistral vision profile for general scoring. Exact cast limits use a separately injected hard-constraint profile, pinned to `mistral-medium-2604`, that audits the whole frame and records count, detection locations, uncertainty, provider, and model lineage. This avoids crop-edge counting errors while keeping the stronger model off routine planning and scoring calls.
 
 Explicit negative-prompt or target violations override contradictory numeric scores. Failed semantic providers fail closed. Accepted renders are preserved while only rejected targets are eligible for retry.
+
+## Worker/provider operations
+
+The S.A.G.A.-owned public worker registry is `config/modal-worker-registry.json`. It contains worker IDs, ecosystem IDs, gateway URLs, account labels, primary/standby roles, ordering, and deployment-version labels only; it contains no credentials.
+
+Current retained generation ecosystems include FLUX.2 Klein, Qwen Image Edit 2511, and REDGraft LTX 2.5. Model/provider status and exact qualification evidence remain governed by the model/provider and runtime documents rather than by UI presets.
+
+Known production sampling contracts preserved from the retired prototype are provider/runtime facts, not UI behavior:
+
+- FLUX.2 Klein image editing: default 4 steps, CFG 1.0.
+- Qwen Image Edit 2511: default 4 steps, true CFG 1.0.
+- REDGraft LTX 2.5: fixed 11 denoise transitions (8 base + 3 refine), CFG 1.0.
+
+Changing these contracts requires provider/runtime evidence and validation; do not derive them from RenderLab UI state.
 
 ## Operations
 
