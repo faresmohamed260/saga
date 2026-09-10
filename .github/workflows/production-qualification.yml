@@ -1,0 +1,269 @@
+name: Clean-Source Production Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      asset_id:
+        description: "Single protected asset id from the committed manifest; must be fresh in production persistence"
+        required: true
+        type: string
+      r2_jurisdiction:
+        description: "Cloudflare R2 bucket jurisdiction endpoint"
+        required: true
+        default: "default"
+        type: choice
+        options:
+          - default
+          - eu
+          - us
+          - fedramp
+      confirm_live_cost:
+        description: "I authorize this live provider qualification run and its provider costs"
+        required: true
+        default: false
+        type: boolean
+      timeout_seconds:
+        description: "Global qualification deadline in seconds"
+        required: true
+        default: "2400"
+        type: string
+      stage_timeout_seconds:
+        description: "Per-stage deadline in seconds"
+        required: true
+        default: "900"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-source-production-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+
+      SAGA_SUPABASE_DB_URL: ${{ secrets.SAGA_SUPABASE_DB_URL }}
+      SAGA_SUPABASE_DB_HOST: ${{ secrets.SAGA_SUPABASE_DB_HOST }}
+      SAGA_SUPABASE_DB_PORT: ${{ secrets.SAGA_SUPABASE_DB_PORT }}
+      SAGA_SUPABASE_DB_NAME: ${{ secrets.SAGA_SUPABASE_DB_NAME }}
+      SAGA_SUPABASE_DB_USER: ${{ secrets.SAGA_SUPABASE_DB_USER }}
+      SAGA_SUPABASE_DB_PASSWORD: ${{ secrets.SAGA_SUPABASE_DB_PASSWORD }}
+      SAGA_SUPABASE_POOLER_TENANT_ID: ${{ secrets.SAGA_SUPABASE_POOLER_TENANT_ID }}
+      SAGA_SUPABASE_API_URL: ${{ secrets.SAGA_SUPABASE_API_URL }}
+      SAGA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SAGA_SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      SAGA_PROVIDER_COST_RATES_JSON: ${{ vars.SAGA_PROVIDER_COST_RATES_JSON }}
+
+      SAGA_RUNTIME_DB_MODE: supabase_postgres
+      SAGA_RUNTIME_DB_PROVIDER: supabase
+      SAGA_RELEASE_ID: qualification-${{ github.sha }}
+      SAGA_QUALIFICATION_ASSET_ID: ${{ inputs.asset_id }}
+      SAGA_QUALIFICATION_R2_JURISDICTION: ${{ inputs.r2_jurisdiction }}
+      SAGA_QUALIFICATION_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+      SAGA_QUALIFICATION_STAGE_TIMEOUT_SECONDS: ${{ inputs.stage_timeout_seconds }}
+
+    steps:
+      - name: Require explicit live-cost authorization
+        shell: bash
+        env:
+          CONFIRM_LIVE_COST: ${{ inputs.confirm_live_cost }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM_LIVE_COST" != "true" ]; then
+            echo "::error title=Live qualification not authorized::Set confirm_live_cost=true only when provider usage/cost is explicitly authorized."
+            exit 10
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify exact committed main provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error title=Qualification must run from main::Dispatch this promotable qualification only from the main branch."
+            exit 9
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          printf 'Qualification source SHA: %s\n' "$GITHUB_SHA"
+          printf 'Release id: %s\n' "$SAGA_RELEASE_ID"
+
+      - name: Validate dispatch inputs and protected-storage configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SAGA_QUALIFICATION_ASSET_ID" ] || [ "$SAGA_QUALIFICATION_ASSET_ID" = "all" ]; then
+            echo "::error title=Qualification requires one source::asset_id must name exactly one protected manifest asset."
+            exit 11
+          fi
+          case "$SAGA_QUALIFICATION_TIMEOUT_SECONDS" in
+            ''|*[!0-9]*) echo "::error title=Invalid timeout::timeout_seconds must be an integer."; exit 12 ;;
+          esac
+          case "$SAGA_QUALIFICATION_STAGE_TIMEOUT_SECONDS" in
+            ''|*[!0-9]*) echo "::error title=Invalid stage timeout::stage_timeout_seconds must be an integer."; exit 13 ;;
+          esac
+          if [ "$SAGA_QUALIFICATION_TIMEOUT_SECONDS" -lt 60 ] || [ "$SAGA_QUALIFICATION_TIMEOUT_SECONDS" -gt 3600 ]; then
+            echo "::error title=Invalid timeout::timeout_seconds must be between 60 and 3600."
+            exit 12
+          fi
+          if [ "$SAGA_QUALIFICATION_STAGE_TIMEOUT_SECONDS" -lt 60 ] || [ "$SAGA_QUALIFICATION_STAGE_TIMEOUT_SECONDS" -gt 1800 ]; then
+            echo "::error title=Invalid stage timeout::stage_timeout_seconds must be between 60 and 1800."
+            exit 13
+          fi
+          test -n "$R2_ACCOUNT_ID" || { echo "::error title=R2 not configured::R2_ACCOUNT_ID is missing."; exit 14; }
+          test -n "$R2_BUCKET_NAME" || { echo "::error title=R2 not configured::R2_BUCKET_NAME is missing."; exit 14; }
+          test -n "$AWS_ACCESS_KEY_ID" || { echo "::error title=R2 not configured::R2_ACCESS_KEY_ID is missing."; exit 14; }
+          test -n "$AWS_SECRET_ACCESS_KEY" || { echo "::error title=R2 not configured::R2_SECRET_ACCESS_KEY is missing."; exit 14; }
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen runtime
+        run: uv sync --frozen --extra dev
+
+      - name: Normalize runtime persistence aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from packages.persistence_runtime.database_url import build_database_url_from_env
+
+          def first(*names: str) -> str:
+              for name in names:
+                  value = str(os.environ.get(name, "") or "").strip()
+                  if value:
+                      return value
+              return ""
+
+          values = {
+              "SAGA_RUNTIME_DB_URL": first("SAGA_RUNTIME_DB_URL") or build_database_url_from_env(),
+              "SAGA_SUPABASE_API_URL": first(
+                  "SAGA_SUPABASE_API_URL", "SAGA_SUPABASE_URL", "SUPABASE_API_URL", "SUPABASE_URL"
+              ),
+              "SAGA_SUPABASE_SERVICE_ROLE_KEY": first(
+                  "SAGA_SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"
+              ),
+          }
+          missing = [name for name, value in values.items() if not value]
+          if missing:
+              raise SystemExit("Missing runtime persistence configuration: " + ", ".join(missing))
+
+          env_file = Path(os.environ["GITHUB_ENV"])
+          with env_file.open("a", encoding="utf-8") as handle:
+              for name, value in values.items():
+                  delimiter = f"SAGA_{name}_EOF"
+                  handle.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
+          PY
+
+      - name: Fail fast on source, provider, and pricing readiness
+        run: |
+          uv run python -m scripts.check_production_qualification_readiness \
+            --asset-id "$SAGA_QUALIFICATION_ASSET_ID"
+
+      - name: Install AWS CLI after qualification readiness passes
+        run: python -m pip install --upgrade "awscli>=1.34,<2"
+
+      - name: Acquire protected qualification source from private R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/saga-protected-assets"
+          uv run python scripts/check_protected_asset_storage.py \
+            --asset-id "$SAGA_QUALIFICATION_ASSET_ID" \
+            --asset-dir "$RUNNER_TEMP/saga-protected-assets" \
+            --jurisdiction "$SAGA_QUALIFICATION_R2_JURISDICTION"
+
+      - name: Verify protected source hash and resolve filename
+        id: protected_source
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/verify_protected_assets.py \
+            --asset-dir "$RUNNER_TEMP/saga-protected-assets" \
+            --asset-id "$SAGA_QUALIFICATION_ASSET_ID"
+          uv run python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(
+              Path("docs/operations/protected_assets.manifest.json").read_text(encoding="utf-8")
+          )
+          asset_id = os.environ["SAGA_QUALIFICATION_ASSET_ID"]
+          matches = [item for item in manifest.get("assets", []) if item.get("id") == asset_id]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one manifest asset for {asset_id!r}")
+          filename = str(matches[0].get("filename") or "").strip()
+          if not filename or "\n" in filename or "\r" in filename:
+              raise SystemExit("Protected asset filename is invalid")
+          source = Path(os.environ["RUNNER_TEMP"]) / "saga-protected-assets" / filename
+          if not source.is_file():
+              raise SystemExit("Verified protected source is missing from the temporary directory")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"source={source}\n")
+          PY
+
+      - name: Run bounded nine-stage qualification
+        shell: bash
+        env:
+          QUALIFICATION_SOURCE: ${{ steps.protected_source.outputs.source }}
+        run: |
+          set -euo pipefail
+          run_id="qualification-gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          series_id="qualification-series-gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          uv run python -m scripts.run_production_qualification \
+            --source "$QUALIFICATION_SOURCE" \
+            --release-id "$SAGA_RELEASE_ID" \
+            --run-id "$run_id" \
+            --series-id "$series_id" \
+            --timeout-seconds "$SAGA_QUALIFICATION_TIMEOUT_SECONDS" \
+            --stage-timeout-seconds "$SAGA_QUALIFICATION_STAGE_TIMEOUT_SECONDS" \
+            --visual-max-attempts 2 \
+            --max-attempts 4 \
+            --retry-backoff-seconds 30 \
+            --report "$RUNNER_TEMP/saga-production-qualification-report.json"
+
+      - name: Record qualification summary metadata
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Clean-Source Production Qualification"
+            echo "- Source commit: \`$GITHUB_SHA\`"
+            echo "- Release id: \`$SAGA_RELEASE_ID\`"
+            echo "- Asset id: \`$SAGA_QUALIFICATION_ASSET_ID\`"
+            echo "- Protected bytes were kept only in runner temporary storage and are not uploaded as artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove protected and temporary qualification bytes
+        if: always()
+        shell: bash
+        run: |
+          rm -rf \
+            "$RUNNER_TEMP/saga-protected-assets" \
+            "$RUNNER_TEMP/saga-production-qualification-report.json"

@@ -16,6 +16,7 @@ Runs on ordinary pushes and pull requests where practical.
 | Architecture boundary | `uv run pytest -q tests/test_architecture_boundaries.py` | none | none | GitHub-hosted Ubuntu | Confirms active code does not import historical backup. |
 | Backend tests | `uv run pytest -q` | none for non-live tests | committed fixtures only | GitHub-hosted Ubuntu | Live-provider tests must remain env-gated. |
 | Protected storage diagnostic unit tests | `uv run pytest -q tests/test_protected_asset_storage.py` | none | none | GitHub-hosted Ubuntu | Covers endpoint selection, manifest selection, exact-key visibility, and bounded acquisition classification without contacting R2. |
+| Qualification readiness unit tests | `uv run pytest -q tests/test_production_qualification_readiness.py` | none | none | GitHub-hosted Ubuntu | Covers persistence aliases, explicit remote DB host requirements, manifest selection/source freshness, usable provider credentials, and provider-wide pricing fallbacks without contacting live providers. |
 | Production compose config | `SAGA_ENV_FILE=.env.example SAGA_RELEASE_ID=release-ci-validation docker compose -f deploy/production/compose.yaml config --quiet` | none | none | GitHub-hosted Ubuntu | Static topology validation. |
 | Container build | `deploy/production/Dockerfile.runtime`, `deploy/production/Dockerfile.frontend` | none | none | GitHub-hosted Ubuntu | Push disabled except publishing workflow. |
 | Dashboard Pro | `cd apps/dashboard_pro && npm ci && npm test -- --run && npm run build` | none | none | GitHub-hosted Ubuntu | Operator UI compatibility gate. |
@@ -35,12 +36,13 @@ Runs only when repository or environment secrets are configured.
 
 Manual or explicitly gated only.
 
-| Gate | Command or workflow | Required secrets | External assets/models | Runner | Notes |
+| Gate | Command or workflow | Required secrets / variables | External assets/models | Runner | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Production qualification | `python -m scripts.run_production_qualification` | Supabase, Modal, reasoning providers, TTS/transcription providers, object storage access | protected EPUB input | Prefer self-hosted or cost-controlled runner | Must bind evidence to exact commit and clean source. |
+| Clean-source production qualification | `.github/workflows/production-qualification.yml` -> `python -m scripts.run_production_qualification` | production Supabase DB/API/service-role configuration; persisted `modal_xcore_litbank`, `modal_comfyui`, `modal_kokoro_tts`; usable persisted Ollama API key or `OLLAMA_API_KEY`; Mistral persisted or `MISTRAL_API_KEY`; R2 protected-asset secrets; `vars.SAGA_PROVIDER_COST_RATES_JSON` | one explicitly selected protected EPUB that is unseen in production persistence plus live provider models | GitHub-hosted Ubuntu with explicit live-cost confirmation | Manual-only and `main`-only; binds release id to exact `GITHUB_SHA`, validates source/schema/provider/pricing readiness before protected download/live provider work, and removes protected/temp bytes afterward. |
+| Qualification readiness | `python -m scripts.check_production_qualification_readiness --asset-id <manifest-id>` | same Supabase/provider config plus `SAGA_PROVIDER_COST_RATES_JSON` | committed manifest metadata only | GitHub-hosted or controlled operator environment | Non-destructive schema/source/provider/pricing readiness check. Requires one fresh source, usable Ollama authentication, and provider-wide fallback rates for `ollama`, `mistral`, and `modal`. |
 | Modal worker inventory/provision | `.github/workflows/modal-worker-*.yml` | `SAGA_MODAL_TOKENS_JSON`, `HF_TOKEN`, `CIVITAI_API_TOKEN` where applicable | provider-hosted models only | GitHub-hosted trigger dispatching Modal | Expensive; keep dispatch/manual or explicitly gated. |
 | Visual generation live checks | visual generation scripts / Modal ComfyUI workflows | Supabase, persisted `modal_comfyui`, Mistral vision secrets | generated images in object storage | Cost-controlled | Do not run automatically on every PR. |
-| Audiobook live checks | audiobook scripts / Modal Kokoro + Mistral Voxtral | Supabase, persisted `modal_kokoro_tts`, `MISTRAL_API_KEY` | audio outputs in object storage | Cost-controlled | Do not run automatically on every PR. |
+| Audiobook live checks | audiobook scripts / Modal Kokoro + Mistral Voxtral | Supabase, persisted `modal_kokoro_tts`, `MISTRAL_API_KEY` or persisted Mistral | audio outputs in object storage | Cost-controlled | Do not run automatically on every PR. |
 
 ## Protected test data
 
@@ -53,14 +55,30 @@ The protected storage diagnostic helper intentionally does not print credentials
 - `download_failed` — the object is visible but cannot be downloaded;
 - success — bytes were downloaded, after which the independent hash verifier must still pass.
 
+Issue #142 tracks the private-source prerequisite. For clean-source qualification, storage success alone is insufficient: the selected manifest asset must also be absent from the production library by filename/SHA. The historical `once-upon-a-broken-heart` asset is behavioral evidence and must not be assumed fresh. If every listed source is stale in production, add metadata for another authorized unseen protected source and store the bytes only privately.
+
+## Qualification pricing contract
+
+Production qualification is stricter than “the providers returned output.” The qualification evaluator requires recorded usage charges to be priced and reconciled.
+
+`SAGA_PROVIDER_COST_RATES_JSON` is a non-secret runtime configuration value. For the current nine-stage qualification path it must contain valid versioned **provider-wide fallback** `CostRate` entries for:
+
+- `ollama` — gpt-oss/retrieval metering;
+- `mistral` — reasoning, visual semantic QA, and Voxtral transcription metering;
+- `modal` — Modal endpoint work such as identity, image generation, and TTS.
+
+More-specific account/model rates may coexist and override the fallbacks. Do not invent rates solely to make the evaluator green; rates must correspond to the intended accounting policy/provider pricing.
+
 ## Expected remote execution behavior
 
 - Normal PR CI should not require local Ollama, local books, local ComfyUI, local Neo4j, or the developer workstation.
-- Local Ollama account rotation is not available to GitHub-hosted runners unless explicitly replaced by an authenticated remote endpoint or self-hosted runner.
+- A GitHub-hosted clean qualification must not silently fall back to `127.0.0.1` for production Supabase or Ollama. Component DB configuration requires an explicit host; current gpt-oss reasoning requires a usable authenticated Ollama account/key unless a deliberately supported self-hosted runner path is selected.
+- A persisted Ollama provider row without a usable API key is not qualification-ready.
 - Modal and external model-provider checks must be manual or secret-gated.
 - Live FLUX runtime/gateway deployment is manual-only and must not fire on ordinary `main` pushes.
-- Dirty-worktree qualification is evidence only; promotable qualification requires a committed SHA and a clean source check.
-- Protected asset verification is manual-only and checks private storage visibility/object presence/download/hash, not production qualification by itself.
+- Dirty-worktree qualification is evidence only; promotable qualification requires a committed SHA, clean tracked source, a `main` dispatch, and a source that is fresh in production persistence.
+- Protected asset verification is manual-only and checks private storage visibility/object presence/download/hash, not source freshness or production qualification by itself.
+- Clean-source production qualification is manual-only, rejects non-`main` refs, requires `confirm_live_cost=true`, and never uploads the protected EPUB as an artifact.
 
 ## Latest deterministic recovery evidence
 
@@ -79,14 +97,17 @@ This proves the deterministic recovery state, not live provider readiness.
 
 ## Latest GitHub Actions evidence
 
-Exact clean baseline `961e679cd98405822f80def395ea83a8b43231d9` (PR #140 merged on 2026-09-10) passed Backend Architecture CI with:
+PR #141 at head `2bc87f62deb3e7a17d02ee41f30083ca6db292a3` passed:
 
-- active backend tests;
+- Backend Architecture CI / active backend tests;
 - migration upgrade, rollback, re-upgrade, and isolated restore;
 - production Compose validation;
 - runtime image build;
-- frontend image build.
+- frontend image build;
+- Required Check Compatibility / Dashboard Pro.
 
-Required Check Compatibility also passed. The same `main` push triggered no FLUX deployment workflow, confirming the manual-only live-provider guardrail.
+PR #141 merged as `b416eaf0f0b2431845e8b26a4a51d315881bcfa0`, adding protected-R2 diagnostic classification and updating Phase-0 evidence.
 
-The first protected-asset run `34432226628` predates the diagnostic helper and failed with an opaque `HeadObject` 403. Use the revised manual workflow before attributing that failure to permissions alone.
+PR #145 is the current qualification-control-plane change. Only CI attached to its **final head SHA** may be used as merge evidence; earlier green runs are superseded whenever the branch moves.
+
+The historical protected-asset run `34432226628` predates that diagnostic helper and failed with an opaque `HeadObject` 403. Use the revised manual workflow before attributing that failure to permissions alone.

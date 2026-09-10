@@ -1,6 +1,6 @@
 # Phase 0 — Repository Baseline Recovery & Requalification
 
-**Status:** ACTIVE — REPOSITORY CONTINUITY RECOVERED; STUDIO SPLIT COMPLETE; PROTECTED-ASSET STORAGE DIAGNOSIS / REQUALIFICATION REMAINS
+**Status:** ACTIVE — REPOSITORY BASELINE RECOVERED; CLEAN-SOURCE QUALIFICATION CONTROL PLANE IN PR #145; FRESH PRIVATE SOURCE / LIVE CONFIGURATION REMAINS
 
 ## Goal
 
@@ -14,9 +14,9 @@ The phase succeeds when a new session can identify exactly what current committe
 
 - Repository: `faresmohamed260/saga`
 - Default branch: `main`
-- Verified clean baseline through PR #140: `961e679cd98405822f80def395ea83a8b43231d9`
-- Verified tree: `92463b32f5e090a65900dcafb165105d1b1f5870`
-- Recovery/cleanup PRs #134, #135, #137, #138, #139, and #140 are merged evidence.
+- Verified clean baseline through PR #141: `b416eaf0f0b2431845e8b26a4a51d315881bcfa0`
+- Verified tree: `4b909b2718419a2d0f41e86d069bfabbd1e09e1d`
+- Recovery/cleanup PRs #134, #135, #137, #138, #139, #140, and #141 are merged evidence.
 
 ### Local-to-GitHub recovery
 
@@ -49,9 +49,9 @@ The former `apps/studio/` generic image/video prototype is retired. Its successo
 
 ### CI / deterministic recovery evidence
 
-On exact clean baseline `961e679cd98405822f80def395ea83a8b43231d9`, GitHub validation passed:
+PR #141 at head `2bc87f62deb3e7a17d02ee41f30083ca6db292a3` passed:
 
-- frozen dependency install as part of Backend Architecture CI;
+- frozen dependency install;
 - one Alembic migration head;
 - source-secret scan;
 - architecture-boundary checks;
@@ -62,9 +62,7 @@ On exact clean baseline `961e679cd98405822f80def395ea83a8b43231d9`, GitHub valid
 - frontend container build;
 - Required Check Compatibility / Dashboard Pro gate.
 
-PR #140 also proved that ordinary `main` merges no longer auto-trigger the retained FLUX live deployment workflows; those are explicit/manual operations.
-
-A green unrelated workflow does not prove end-to-end S.A.G.A. qualification.
+It merged as `b416eaf0f0b2431845e8b26a4a51d315881bcfa0`. A green unrelated workflow does not prove end-to-end S.A.G.A. qualification.
 
 ### Last recorded full qualification
 
@@ -78,27 +76,41 @@ It also explicitly records:
 - real pipeline/provider evidence;
 - **non-promotable source provenance because 574 worktree paths were pending**.
 
-Treat this as strong behavioral evidence, not current clean-release proof.
+Treat this as strong behavioral evidence, not current clean-release proof. The production qualifier also rejects a source filename/SHA already present in its production library, so this historical input must not be assumed to be fresh for the next clean qualification.
 
-### Protected-asset prerequisite
+### Protected-asset prerequisite — issue #142
 
 Protected commercial book bytes are intentionally absent from the public repository. Recovery recorded their filenames, hashes, purposes, and intended private object keys, but did not migrate the bytes.
 
 The first manual protected-asset verification run (`34432226628`) reached Cloudflare R2 with the required repository secrets present and failed with `403 Forbidden` on `HeadObject` for `once-upon-a-broken-heart`.
 
-The old workflow could not distinguish among:
-
-- wrong account/bucket/token scope or insufficient Object Read permission;
-- wrong R2 jurisdiction endpoint;
-- missing object at the committed manifest key.
-
-Phase 0 therefore hardens the protected-asset acquisition gate before assigning the blocker to one cause. The revised workflow/helper:
+PR #141 replaced that ambiguous acquisition path with a bounded helper/workflow that:
 
 - supports `default`, `eu`, `us`, and `fedramp` R2 endpoints;
 - attempts a bounded exact-prefix listing without printing the listing;
-- classifies bucket/credential/jurisdiction access separately from an absent manifest object;
-- distinguishes a visible object that still cannot be downloaded;
-- continues to verify the downloaded file against the committed SHA-256 and delete temporary bytes.
+- classifies `access_failed` separately from `object_missing`;
+- distinguishes a visible object that still cannot be downloaded as `download_failed`;
+- verifies the downloaded file against the committed SHA-256 and deletes temporary bytes.
+
+Issue #142 is the active external protected-source blocker. Phase 0 needs at least one manifest asset that is both reachable/hash-valid and **fresh against production persistence**. If all currently listed assets are already present in the production library, add metadata for another authorized unseen source and place its bytes only in private storage; never commit the book itself.
+
+### Qualification control plane — issue #143 / PR #145
+
+Repository audit after PR #141 found that S.A.G.A. already had `scripts/run_production_qualification.py` but did not have a GitHub Actions entrypoint capable of running the nine-stage qualification from exact committed source.
+
+PR #145 on `phase-0/clean-source-qualification-workflow` addresses that gap with:
+
+- `.github/workflows/production-qualification.yml` — manual-only workflow with explicit live-cost confirmation;
+- `scripts/check_production_qualification_readiness.py` — non-destructive fail-fast production schema/source/provider/pricing readiness check;
+- deterministic unit coverage for readiness behavior;
+- exact `GITHUB_SHA` release provenance;
+- private protected-source acquisition/hash verification and unconditional cleanup;
+- bounded global/stage deadlines and retries;
+- no automatic deployment or release promotion.
+
+The readiness gate mirrors the qualifier freshness rule before R2 download or live-provider work: one selected manifest asset must not already appear in the production library by source filename or committed SHA-256.
+
+Current nine-stage metering collapses to provider names `ollama`, `mistral`, and `modal`. Because qualification rejects unpriced charges, readiness requires valid versioned provider-wide fallback `CostRate` entries for all three. More-specific model/account rates may override those fallbacks. Ollama readiness also requires an actual API key in persisted account configuration or `OLLAMA_API_KEY`; a provider-config row by itself is not sufficient on a GitHub-hosted runner.
 
 ## Phase Work
 
@@ -136,7 +148,7 @@ The deterministic local and hosted gates recorded by recovery passed. Live/provi
 
 Current handoff/governance docs supersede stale immediate-next-step text in older snapshots. Historical audits remain useful evidence but do not control current work.
 
-The current authoritative handoff is reconciled through Studio retirement and the protected-asset diagnostic work. Older subsystem snapshots may still contain dated historical next-step text and should be corrected only when their owning subsystem is touched.
+The authoritative handoff is reconciled through Studio retirement, protected-storage diagnostics, and the current clean-source qualification workflow effort. Older subsystem snapshots may still contain dated historical next-step text and should be corrected only when their owning subsystem is touched.
 
 ### 0E — Surface ownership audit — COMPLETE
 
@@ -150,21 +162,27 @@ Ownership is resolved:
 - retained live FLUX deployments are manual-only after PR #140;
 - no destructive operation was performed against Studio-era remote database/storage/compute resources as part of repository cleanup.
 
-### 0F — Clean-source requalification — IN PROGRESS; BLOCKED ON PROTECTED ASSET AVAILABILITY
+### 0F — Clean-source requalification — IN PROGRESS
 
-Required sequence:
+Repository readiness work:
 
-1. land the protected-R2 diagnostic helper/workflow with core CI green;
-2. rerun the protected asset verification for `once-upon-a-broken-heart` using the correct jurisdiction;
-3. if the result is `access_failed`, repair account/bucket/jurisdiction/token scope;
-4. if the result is `object_missing`, migrate the authorized protected bytes to the committed manifest key outside the public repository;
-5. if the result is `download_failed`, repair object read access;
-6. once the object downloads and its SHA-256 matches, perform the bounded qualification path required by current production contracts;
-7. bind evidence to the exact commit SHA/configuration/release identity;
-8. record warnings and manual-review limitations honestly;
-9. do not promote/deploy merely because qualification passes.
+1. protected-R2 diagnostic acquisition path — **COMPLETE through PR #141**;
+2. clean-source GitHub qualification workflow + readiness gate — **IN PR #145 under issue #143**;
+3. protected source availability/hash/freshness — **EXTERNAL PREREQUISITE under issue #142**;
+4. actual exact-head nine-stage qualification — **NOT YET RUN**.
 
-If a live provider remains unavailable, record the exact external blocker and complete all unaffected validation rather than fabricating qualification.
+Qualification workflow preconditions include:
+
+- production Supabase DB/API/service-role configuration and current schema;
+- exactly one manifest-selected source that is unseen in the production library by filename/SHA;
+- persisted `modal_xcore_litbank`, `modal_comfyui`, and `modal_kokoro_tts` account credentials;
+- a usable persisted Ollama API key or explicit `OLLAMA_API_KEY` for current default gpt-oss reasoning stages;
+- Mistral persisted or available via `MISTRAL_API_KEY`;
+- versioned provider-wide pricing fallbacks for `ollama`, `mistral`, and `modal`;
+- the selected source reachable and hash-valid in private R2;
+- explicit live-cost authorization.
+
+If a live provider or source prerequisite remains unavailable, record the exact external blocker and complete all unaffected validation rather than fabricating qualification.
 
 ## Explicitly Out of Scope
 
@@ -191,8 +209,9 @@ If a live provider remains unavailable, record the exact external blocker and co
 | CI | Relevant core workflows attach to exact head and succeed |
 | Providers | Configuration requirements are documented; live checks only where authorized/available |
 | Protected storage | R2 access/object presence/download/hash outcomes are distinguishable without exposing protected bytes or secrets |
-| Qualification | Exact committed source is recorded; no dirty-worktree provenance |
-| Documentation | README/project/roadmap/qualification state agree on what is current |
+| Qualification readiness | Production schema, source freshness, usable provider credentials, pricing coverage, protected-source handling, explicit cost authorization, and exact-SHA provenance are checked before live work |
+| Qualification | Exact committed source/configuration/release identity recorded; no dirty-worktree provenance; evaluator accepts persisted report |
+| Documentation | README/project/phase/qualification state agree on what is current |
 | Studio split | `apps/studio/` and Studio-only automation are absent; reusable stage-7 resources have S.A.G.A.-owned contracts/configuration |
 
 ## Exit Criteria
@@ -204,18 +223,21 @@ Phase 0 is complete only when:
 3. exact clean committed source passes required non-live core gates, or every remaining failure is a specific accepted blocker;
 4. current documentation no longer points future sessions to stale immediate-next-step instructions;
 5. the retired Studio product surface remains removed without breaking the retained S.A.G.A. visual runtime;
-6. protected-asset verification succeeds and the required clean-source S.A.G.A. qualification runs, or a precise external prerequisite is explicitly accepted as deferred;
-7. `PROJECT.md` records verified completion evidence and names the next phase from actual results.
+6. the clean-source qualification workflow/readiness path is merged and validated;
+7. protected-asset verification succeeds for a source that is fresh in production persistence;
+8. the required exact-head clean-source S.A.G.A. qualification runs and its persisted report is accepted, or a precise external prerequisite is explicitly accepted as deferred;
+9. `PROJECT.md` records verified completion evidence and names the next phase from actual results.
 
 ## Current Next Step
 
-1. merge and validate the protected-R2 diagnostic helper/workflow;
-2. dispatch the protected-asset verification for `once-upon-a-broken-heart`;
-3. fix the exact category reported by that run rather than treating every 403 as the same failure;
-4. rerun until protected asset acquisition and hash verification succeed;
-5. run bounded clean-source S.A.G.A. qualification;
-6. update `PROJECT.md`, this phase record, and qualification evidence from the exact validated head;
-7. only then choose and expand the next implementation phase from evidence.
+1. validate and merge PR #145 / issue #143 with Backend Architecture CI and Required Check Compatibility green;
+2. configure the real S.A.G.A. production Supabase DB/API/service-role path and legitimate versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal`; do not invent prices;
+3. verify the persisted Modal rows, usable Ollama credential, and Mistral access required by the current pipeline;
+4. select a protected manifest asset that passes the production freshness preflight;
+5. resolve issue #142 for that selected fresh source by running the revised protected-asset verification and repairing the exact reported storage category;
+6. verify the protected source hash;
+7. manually dispatch the clean-source production qualification on the exact intended `main` SHA with explicit live-cost authorization;
+8. record the resulting qualification evidence and only then close Phase 0 / choose the next implementation phase.
 
 ## Next Phase Rule
 
