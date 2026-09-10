@@ -1,6 +1,21 @@
 from __future__ import annotations
 
+import json
+
 from scripts import check_production_qualification_readiness as readiness
+
+
+def _cost_rates_json() -> str:
+    return json.dumps(
+        [
+            {
+                "provider": "mistral",
+                "model": "mistral-small-2603",
+                "request_each": 0.01,
+                "pricing_version": "test-2026-09-10",
+            }
+        ]
+    )
 
 
 def _ready_reasoning() -> dict[str, object]:
@@ -29,6 +44,7 @@ def test_static_readiness_accepts_explicit_runtime_database_url() -> None:
         "SAGA_RUNTIME_DB_URL": "postgresql+psycopg://example.invalid/postgres",
         "SAGA_SUPABASE_API_URL": "https://example.supabase.co",
         "SAGA_SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        "SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json(),
     }
     assert readiness.static_readiness_errors(env) == []
 
@@ -39,6 +55,7 @@ def test_static_readiness_accepts_component_database_configuration() -> None:
         "SAGA_SUPABASE_DB_PASSWORD": "password",
         "SUPABASE_URL": "https://example.supabase.co",
         "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        "SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json(),
     }
     assert readiness.static_readiness_errors(env) == []
 
@@ -48,7 +65,39 @@ def test_static_readiness_reports_missing_contracts_without_values() -> None:
         "supabase_database_not_configured",
         "supabase_api_not_configured",
         "supabase_service_role_not_configured",
+        "provider_cost_rates_not_configured",
     ]
+
+
+def test_validate_cost_rates_rejects_empty_invalid_or_unversioned_rates() -> None:
+    assert readiness.validate_cost_rates({}) == "provider_cost_rates_not_configured"
+    assert (
+        readiness.validate_cost_rates({"SAGA_PROVIDER_COST_RATES_JSON": "not-json"})
+        == "provider_cost_rates_invalid"
+    )
+    assert (
+        readiness.validate_cost_rates({"SAGA_PROVIDER_COST_RATES_JSON": "[]"})
+        == "provider_cost_rates_invalid"
+    )
+    assert (
+        readiness.validate_cost_rates(
+            {
+                "SAGA_PROVIDER_COST_RATES_JSON": json.dumps(
+                    [{"provider": "mistral", "request_each": 0.01, "pricing_version": ""}]
+                )
+            }
+        )
+        == "provider_cost_rates_invalid"
+    )
+
+
+def test_validate_cost_rates_accepts_versioned_positive_rate() -> None:
+    assert (
+        readiness.validate_cost_rates(
+            {"SAGA_PROVIDER_COST_RATES_JSON": _cost_rates_json()}
+        )
+        == ""
+    )
 
 
 def test_modal_provider_requires_complete_persisted_credentials() -> None:
