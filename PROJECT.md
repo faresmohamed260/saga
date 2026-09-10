@@ -36,105 +36,71 @@ The repository documents a nine-stage production path:
 8. audiobook synthesis and transcription QA;
 9. EPUB, manifest, lineage, and qualification reporting.
 
-Generation-side systems are expected to consume persisted canon/retrieval artifacts rather than repeatedly reconstructing canon from raw source text.
+Generation-side systems consume persisted canon/retrieval artifacts rather than repeatedly reconstructing canon from raw source text.
 
 ## Stack
 
-### Python/runtime
-
-- Python `>=3.10`
-- package version currently declared as `0.2.0rc20`
+- Python `>=3.10`; package version currently declared as `0.2.0rc20`
 - `uv`-locked Python dependency workflow
-- FastAPI
-- LangGraph
+- FastAPI and LangGraph
 - PostgreSQL/Supabase + pgvector/object storage through persistence contracts
 - Alembic migrations
 - provider integrations for reasoning, identity, visual generation, audio, and external compute
-
-### Operator UI
-
-- React/Vite dashboard under `apps/dashboard_pro/`
+- React/Vite operator dashboard under `apps/dashboard_pro/`
 
 ## Verified Recovery Baseline — 2026-09-10
 
-Repository continuity, surface ownership, and protected-storage diagnostics are complete through these merged pull requests:
+Repository continuity, surface ownership, protected-storage diagnostics, and the clean-source qualification control plane are complete through:
 
 - PR #134 — repository governance, recovery manifests, reproducibility, secrets/assets/model documentation;
 - PR #135 — commit-by-commit triage of the 43 divergent local-side commits;
-- PR #137 — protected asset verification workflow/manifest and explicit RenderLab ownership for future generic image/video product work;
-- PR #138 — recorded the first real GitHub protected-asset verification result;
-- PR #139 — retired `apps/studio/` and rehomed reusable worker metadata under S.A.G.A.-owned configuration;
+- PR #137 — protected asset verification workflow/manifest and explicit RenderLab ownership for generic image/video product work;
+- PR #138 — recorded the first real protected-asset verification result;
+- PR #139 — retired `apps/studio/` and rehomed reusable S.A.G.A. worker metadata;
 - PR #140 — made retained live FLUX runtime/gateway deployments manual-only;
-- PR #141 — added bounded protected-R2 access/object/download diagnostics and jurisdiction-aware acquisition.
+- PR #141 — added bounded protected-R2 access/object/download diagnostics and jurisdiction-aware acquisition;
+- PR #145 — added the manual, `main`-only, exact-SHA clean-source production qualification workflow and fail-fast source/provider/pricing readiness gate.
 
-Verified current clean `main` baseline through PR #141:
+Verified current clean `main` baseline:
 
-- commit: `b416eaf0f0b2431845e8b26a4a51d315881bcfa0`;
-- tree: `4b909b2718419a2d0f41e86d069bfabbd1e09e1d`;
-- commit message: `Diagnose protected R2 asset availability before qualification (#141)`.
+- commit: `67e852116af2efea9484daa6ddb343397c5322a9`;
+- tree: `f5cf499f280fbc2fb12c7e1a1bcafeb8577833b9`;
+- commit message: `Add clean-source production qualification workflow (#145)`.
 
-PR #141 passed Backend Architecture CI (active backend tests, migration upgrade/rollback/re-upgrade and isolated restore, production Compose validation, runtime image build, frontend image build) plus Required Check Compatibility before merge.
+PR #145 final head `8b00e732bfeda213b77dc77a44ebc60fabc46a8e` passed Backend Architecture CI and Required Check Compatibility. After merge, `main` push runs `34509072301` (Required Check Compatibility) and `34509072302` (Backend Architecture CI) also passed. The paid/live **Clean-Source Production Qualification** did not auto-run.
 
-The repository is no longer dependent on undocumented state from the former local Codex checkout. Historical recovery evidence is indexed under `docs/recovery/`.
+Detailed external-readiness evidence is recorded in `docs/validation/PHASE_0_EXTERNAL_READINESS_2026-09-10.md`.
 
-## Studio Retirement Boundary
+## Studio / RenderLab Boundary
 
-The retired Studio product surface is not part of S.A.G.A.'s active architecture.
+The retired Studio product surface is not part of active S.A.G.A. architecture. `apps/studio/`, Studio-only workflows/docs/helpers, and Studio-owned product persistence definitions were removed. The separate successor is `faresmohamed260/renderlab`.
 
-Removed from S.A.G.A.:
+S.A.G.A. retains only provider/runtime resources it owns and consumes for the narrative-to-media path, including `packages/visual_generation`, `packages/modal_runtime`, `integrations/comfyui`, `integrations/qwen`, and S.A.G.A.-owned worker configuration.
 
-- `apps/studio/`;
-- Studio-only UI/product documentation;
-- Studio-only GitHub Actions and patch helpers;
-- Studio-owned Supabase migration definitions that were not part of the S.A.G.A. core schema.
+Existing Studio-era remote database/storage/compute resources were not destructively removed during repository cleanup.
 
-Preserved/reowned by S.A.G.A. where used by the narrative-to-media pipeline:
+## Last Recorded End-to-End Qualification
 
-- `packages/visual_generation` and the stage-7 visual contract;
-- `packages/modal_runtime`;
-- `integrations/comfyui`;
-- `integrations/qwen`;
-- `config/modal-worker-ecosystems.json`;
-- `config/modal-worker-registry.json`;
-- Modal worker inventory/maintenance/provisioning and bounded live-smoke tooling.
+`docs/production_qualification.md` records an accepted 2026-08-09 real-book run through all nine stages. It remains strong behavioral evidence but **not promotable release proof** because its source worktree contained 574 pending paths.
 
-Existing Studio-era remote database/storage/compute resources were not destructively removed as part of the repository cleanup.
+The current production qualifier also enforces source freshness by filename/SHA. That historical input must not be assumed eligible for a new clean qualification against the same production library.
 
-## Last Recorded End-to-End S.A.G.A. Qualification
+## Current Phase-0 External Blockers
 
-`docs/production_qualification.md` records an accepted real-book run from 2026-08-09 using `Once Upon a Broken Heart.epub` through all nine pipeline stages.
+Issue #142 remains open. The repository control plane is ready, but the external production environment is not.
 
-The same record explicitly states that the run was **not promotable** because its source worktree was not a clean committed CI revision and reported 574 pending worktree paths at qualification time.
+Read-only GitHub Actions diagnostics on 2026-09-10 established:
 
-Therefore the run remains valuable behavioral evidence, but it is not proof that current `main` is a clean, reproducible, promotable S.A.G.A. release. Because the production qualifier enforces a freshness guard by source filename/SHA, that historical input must not be assumed to be eligible for the next clean qualification against the same production persistence.
+- no `SAGA_SUPABASE_DB_URL` or explicit S.A.G.A. DB host/component configuration is currently available to Actions;
+- legacy `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present, but the only connected Supabase project inspected is RenderLab/retired-Studio infrastructure and is **not** S.A.G.A. production;
+- source freshness and persisted S.A.G.A. provider readiness therefore cannot currently be proven;
+- `SAGA_PROVIDER_COST_RATES_JSON` is absent;
+- explicit `OLLAMA_API_KEY` and `MISTRAL_API_KEY` fallbacks are absent; persisted alternatives remain unknown until the real S.A.G.A. DB is connected;
+- the R2 credential-name set is present, but bounded bucket listing returns `access_failed` for `default`, `eu`, `us`, and `fedramp`, so no supported jurisdiction is currently accessible;
+- because bucket listing fails, there is **no evidence yet that an individual protected object is missing**;
+- historical pre-retirement `apps/studio/api/_r2.js` used the exact same `R2_*` environment-variable namespace and defaulted to bucket `saga-studio-media`. This proves namespace reuse from Studio-era infrastructure, not that current secret values are identical.
 
-## Current Qualification Blockers / Readiness
-
-Protected-book qualification remains externally blocked until at least one authorized manifest asset is both reachable/hash-valid in private storage **and fresh in the production library**. Issue #142 tracks that prerequisite.
-
-The first GitHub protected-asset verification run (`34432226628`) reached R2 with all required secrets present and received `403 Forbidden` from the old `HeadObject` path. PR #141 replaced that ambiguous path with diagnostics that can distinguish:
-
-- `access_failed` — account/bucket/jurisdiction/token scope/Object Read problem;
-- `object_missing` — exact manifest key absent after successful prefix listing;
-- `download_failed` — object visible but GetObject/download fails;
-- success — bytes download and still must pass the committed SHA-256 check.
-
-Repository audit also found that clean-source qualification lacked a GitHub Actions control plane. Issue #143 is being implemented by PR #145 on `phase-0/clean-source-qualification-workflow`.
-
-The intended manual qualification gate now requires, before protected-book processing or live reasoning/provider requests:
-
-- explicit authorization for live provider cost;
-- exact `GITHUB_SHA` / clean tracked checkout provenance;
-- a single explicitly selected protected manifest asset;
-- proof that the selected filename/SHA does not already exist in production persistence;
-- production Supabase schema/API/service-role readiness;
-- persisted provider credentials for `modal_xcore_litbank`, `modal_comfyui`, and `modal_kokoro_tts`;
-- an actual usable Ollama API key for the current default gpt-oss stages, not merely an Ollama provider-config row;
-- Mistral configured through persistence or `MISTRAL_API_KEY` for current Mistral reasoning/vision/transcription stages;
-- versioned provider-wide pricing fallbacks for metered `ollama`, `mistral`, and `modal` usage;
-- the selected protected EPUB downloaded from private R2 and hash-verified.
-
-If every currently listed protected asset is already present in production persistence, add metadata for another authorized unseen source to the manifest and private storage. Never commit the protected bytes.
+The diagnostic runs were `34514215596` and `34514460132`. They made no paid provider calls, uploaded no protected artifacts, and the temporary diagnostic workflow was removed after use.
 
 ## Active Phase
 
@@ -142,21 +108,21 @@ If every currently listed protected asset is already present in production persi
 
 Contract: `docs/phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
 
-Status: **ACTIVE — REPOSITORY BASELINE RECOVERED; CLEAN-SOURCE QUALIFICATION CONTROL PLANE IN PR #145; FRESH PRIVATE SOURCE / LIVE CONFIGURATION REMAINS**
+Status: **ACTIVE — REPOSITORY/CONTROL-PLANE RECOVERY COMPLETE; EXTERNAL PRODUCTION CONFIGURATION + FRESH PROTECTED SOURCE BLOCK QUALIFICATION**
 
-Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to validate/merge the manual clean-source qualification workflow, resolve its private-source and provider/pricing prerequisites, run exact-head qualification, and bind the result to committed source/configuration.
+Phase 0 is no longer about reconstructing repository state. The remaining work is external qualification readiness and one exact-head clean-source qualification.
 
 ## Immediate Next Step
 
-1. validate and merge PR #145 / issue #143 with core CI green;
-2. configure the actual S.A.G.A. production Supabase database/API/service-role path used by qualification;
-3. configure real, versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal` plus any desired specific overrides; do not invent prices;
-4. ensure persisted Modal provider rows and a usable Ollama credential plus Mistral access are qualification-ready;
-5. choose a protected manifest asset that passes the production freshness preflight; do not assume the historical `once-upon-a-broken-heart` asset is fresh;
-6. resolve issue #142 for that fresh asset by running `Protected Asset Verification` with the correct R2 jurisdiction and fixing the exact reported category;
-7. make the selected object download successfully and match its committed SHA-256;
-8. manually dispatch **Clean-Source Production Qualification** on the exact `main` commit intended for evidence and explicitly authorize live cost;
-9. bind the resulting persisted report to the exact commit/configuration and update this file plus Phase 0 / qualification evidence before declaring Phase 0 complete.
+1. configure the actual S.A.G.A. production Postgres/Supabase DB path in GitHub Actions, not the connected RenderLab/Studio project;
+2. configure legitimate versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal`; do not invent prices;
+3. verify the real persisted Modal/reasoning configuration, including a usable Ollama credential and Mistral access;
+4. reconfigure/rotate the repository R2 credentials so they explicitly target a S.A.G.A.-owned private protected-assets bucket/prefix with List/Get access;
+5. rerun `Protected Asset Verification` and require bucket access before classifying object presence;
+6. choose a manifest asset that passes production source-freshness checks; add metadata for another authorized unseen source if necessary, never the protected bytes;
+7. require private download plus committed SHA-256 verification;
+8. only after those prerequisites are green, manually dispatch **Clean-Source Production Qualification** from exact `main` and separately set `confirm_live_cost=true`;
+9. bind the persisted qualification report to the exact source/configuration and update the Phase-0 evidence before declaring Phase 0 complete.
 
 ## Development Commands
 
@@ -186,13 +152,6 @@ Production topology configuration is documented in `docs/deployment_operations.m
 
 ## Working Convention
 
-The repository must remain sufficient for a new session with no conversation history to determine:
-
-- what S.A.G.A. currently is;
-- what is active vs historical/experimental;
-- what has actually been validated;
-- what phase is active;
-- what remains blocked or unresolved;
-- what exact work should happen next.
+The repository must remain sufficient for a new session with no conversation history to determine what S.A.G.A. is, what is active/historical, what has actually been validated, what phase is active, what remains blocked, and what exact work happens next.
 
 Durable project state belongs in the repository, not only in chat history.
