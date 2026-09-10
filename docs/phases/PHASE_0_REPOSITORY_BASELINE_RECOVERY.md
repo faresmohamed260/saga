@@ -185,6 +185,7 @@ Phase 0 should accumulate evidence for these gates:
 - Current Actions were classified into deterministic CI, bounded integration, and expensive/live-provider tiers.
 - Ollama is documented as local/remote endpoint dependent, not as an assumed GitHub-hosted runner dependency and not as requiring an invented `OLLAMA_API_KEY`.
 - Deterministic local validation on the clean recovery worktree passed: frozen `uv` sync, one Alembic head `202608090400`, source secret scan with 850 files and 0 findings, architecture-boundary tests 4/4, full backend tests 338 passed / 3 skipped, Dashboard Pro tests 13/13, Dashboard Pro production build, production dependency audit with 0 high vulnerabilities, and production Compose config validation.
+- Remote GitHub validation on PR #134 head `0605465c755d0f6886943694b00adbede09b4b31` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
 
 ## Exit Criteria
 
@@ -198,7 +199,7 @@ Phase 0 is complete only when:
 6. `apps/studio/` status is explicitly decided or intentionally deferred with its coupling documented;
 7. `PROJECT.md` records the verified completion evidence and names the next phase from actual results.
 
-Current status: this handoff branch improves repository continuity, records missing local knowledge, and verifies Tier 1 deterministic gates locally. Phase 0 is not complete until the branch is pushed/reviewed, GitHub Actions attach to the exact head, local-side commits are ported or rejected, Studio ownership is decided/deferred with coupling evidence, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
+Current status: this handoff branch improves repository continuity, records missing local knowledge, and verifies Tier 1 deterministic gates locally and in GitHub Actions for PR #134. Phase 0 is not complete until the branch is reviewed/merged, local-side commits are ported or rejected, Studio ownership is decided/deferred with coupling evidence, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
 
 ## Next Phase Rule
 

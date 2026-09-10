@@ -121,6 +121,14 @@ Executed locally on clean recovery worktree `B:\Documents\PyCharm\saga-handoff` 
 - `cd apps/dashboard_pro && npm audit --omit=dev --audit-level=high` — passed, 0 production vulnerabilities.
 - `docker compose -f deploy/production/compose.yaml config --quiet` with `SAGA_ENV_FILE=.env.example` and `SAGA_RELEASE_ID=release-ci-validation` — passed.
 
+Executed remotely on GitHub for PR #134 head `0605465c755d0f6886943694b00adbede09b4b31`:
+
+- Backend Architecture CI / `test` — success.
+- Backend Architecture CI / `migrations` — success.
+- Backend Architecture CI / `containers` — success.
+- Required Check Compatibility / `dashboard-pro` — success.
+- Vercel status context — success for the Studio deployment surface.
+
 Live-provider, protected-asset, and clean-source production qualification gates were not run in this documentation step. They require configured GitHub/production secrets and authorized protected asset access.
 
 ## Active Phase
@@ -137,7 +145,7 @@ The goal is not a redesign. The goal is to establish exactly what current commit
 
 After this recovery documentation is reviewed/merged:
 
-1. push/open the recovery PR and verify GitHub Actions against the exact branch head;
+1. review/merge PR #134 after confirming the added manifests are acceptable;
 2. port or reject the 43 local-side commits file-by-file against current `main`;
 3. configure or confirm the GitHub Actions secrets in `docs/operations/GITHUB_ACTIONS_SECRETS.md`;
 4. decide the final S.A.G.A. status of Studio versus RenderLab/separate ownership;

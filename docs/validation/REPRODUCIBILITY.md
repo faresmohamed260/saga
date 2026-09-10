@@ -65,3 +65,15 @@ On 2026-09-10, the clean recovery worktree `B:\Documents\PyCharm\saga-handoff` p
 - `docker compose -f deploy/production/compose.yaml config --quiet` with `.env.example` and `release-ci-validation`
 
 This proves the local deterministic recovery branch state, not live provider readiness.
+
+## Latest GitHub Actions evidence
+
+On 2026-09-10, PR #134 at head `0605465c755d0f6886943694b00adbede09b4b31` passed:
+
+- Backend Architecture CI / `test`
+- Backend Architecture CI / `migrations`
+- Backend Architecture CI / `containers`
+- Required Check Compatibility / `dashboard-pro`
+- Vercel status context
+
+GitHub emitted Node.js 20 deprecation annotations for `actions/checkout@v4` and `astral-sh/setup-uv@v6` being forced onto Node.js 24. The annotations did not fail the run, but the workflow dependencies should be reviewed during routine CI maintenance.
