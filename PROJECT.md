@@ -34,59 +34,91 @@ The web stack follows the successful Studio/RenderLab family of technologies wit
 
 The current v2 web application lives under `apps/web/`.
 
-## Storage Decision
+## Storage Foundation — VALIDATED
 
-S.A.G.A. v2 does **not** use the existing Cloudflare R2 allocation. R2 is already shared by other projects and should not become another hobby/demo cost/congestion dependency.
+S.A.G.A. v2 does **not** use the existing Cloudflare R2 allocation. Backblaze B2 is the selected v2 object store.
 
-Backblaze B2 is the selected v2 object store. GitHub repository secrets have been manually provisioned for bootstrap operations under these names:
+GitHub Actions run `34537566675` successfully:
+
+- authorized the B2 account using the configured bootstrap secrets;
+- created/reused a dedicated private S.A.G.A. bucket;
+- uploaded a small `_system/bootstrap/` object;
+- downloaded it and passed byte-for-byte comparison;
+- deleted the smoke object;
+- exposed only safe bucket/endpoint metadata.
+
+Validated non-secret storage configuration is committed in `config/v2-storage.json`:
+
+- provider: `backblaze-b2`
+- bucket: `saga-v2-faresmohamed260-1207062480`
+- region: `us-east-005`
+- S3 endpoint: `https://s3.us-east-005.backblazeb2.com`
+- visibility: private
+
+Bootstrap repository secrets:
 
 - `SAGA_B2_KEY_ID`
 - `SAGA_B2_MASTER_APPLICATION_KEY`
 
 Never print or commit their values.
 
-The master application key is **bootstrap/admin only**. Backblaze does not support master keys through its S3-compatible API. Normal S.A.G.A. web runtime storage must use a later bucket-scoped application key and the B2 S3 endpoint behind a provider-neutral storage interface.
+The master application key is **bootstrap/admin only**. Normal S.A.G.A. web runtime storage must use a later bucket-scoped application key through the B2 S3-compatible endpoint and the provider-neutral storage interface under `apps/web/src/server/storage/`.
 
 Planned object namespaces:
 
-- `sources/` — uploaded EPUB/PDF/source material;
-- `artifacts/analysis/` — durable non-database analysis artifacts where needed;
-- `generated/images/`;
-- `generated/audio/`;
-- `exports/`;
-- `temporary/` — explicitly disposable objects;
-- `_system/` — bounded storage validation/bootstrap objects.
+- `sources/`
+- `artifacts/analysis/`
+- `generated/images/`
+- `generated/audio/`
+- `exports/`
+- `temporary/`
+- `_system/`
 
-Supabase owns structured application/domain state; B2 owns large binary/object payloads. Do not use object storage as an ad-hoc replacement for relational application state.
+Supabase owns structured application/domain state; B2 owns large binary/object payloads.
 
 ## v2 Architectural Boundary
-
-The initial application is web-native:
 
 ```text
 Browser
   -> Next.js web application on Vercel
        -> Supabase Auth / Postgres / Realtime
-       -> Storage interface -> Backblaze B2
+       -> ObjectStorage -> Backblaze B2
        -> application API / job-control layer
             -> future agentic AI runtime
 ```
 
-The AI runtime must become a consumer/producer of stable application contracts rather than the top-level architecture of the product.
+The AI runtime becomes a consumer/producer of stable application contracts rather than the top-level architecture of the product.
+
+## Implemented v2 Foundation
+
+Current active implementation includes:
+
+- `apps/web/` Next.js/React/TypeScript application;
+- initial S.A.G.A. landing/product shell;
+- `/api/health` configuration-status endpoint;
+- Supabase SSR server/configuration boundary;
+- provider-neutral `ObjectStorage` contract;
+- Backblaze B2 S3 runtime adapter using **scoped runtime credential names only**;
+- structural tests preventing master B2 credentials from entering the web runtime;
+- `.github/workflows/v2-web-ci.yml` deterministic web gate;
+- `.github/workflows/v2-b2-bootstrap.yml` manual-only B2 administration/smoke workflow;
+- `config/v2-storage.json` validated safe storage metadata.
+
+The first v2 Web CI run `34537327565` passed install, lint, typecheck, tests, and production build before the final workflow-boundary tests were added. Final-head CI must be rerun before merge.
 
 ## Legacy v1 Boundary
 
-The pre-v2 `packages/`, `integrations/`, `apps/dashboard_api/`, `apps/dashboard_pro/`, `deploy/production/`, Python migrations/runtime scripts, qualification workflows, and related tests/docs remain in the repository temporarily as **historical/reference surfaces** while v2 is established.
+The pre-v2 `packages/`, `integrations/`, `apps/dashboard_api/`, `apps/dashboard_pro/`, `deploy/production/`, Python migrations/runtime scripts, qualification workflows, and related tests/docs remain temporarily as **historical/reference surfaces**.
 
 Rules:
 
 - do not add new v2 behavior to those surfaces;
 - do not import them from `apps/web`;
-- do not make new architecture decisions merely to preserve their contracts;
+- do not preserve their architecture merely for compatibility;
 - reuse ideas or algorithms only through an explicit v2 implementation decision;
-- remove/archive obsolete v1 surfaces progressively after equivalent knowledge has been preserved where useful.
+- remove/archive obsolete v1 surfaces progressively after useful knowledge has been preserved.
 
-The separate `faresmohamed260/renderlab` project remains separate. S.A.G.A. may reuse proven engineering conventions/technology choices but not RenderLab product state, routes, schema ownership, storage credentials, or deployment assumptions.
+The separate `faresmohamed260/renderlab` project remains separate. S.A.G.A. may reuse engineering conventions/technology choices but not RenderLab product state, routes, schema ownership, storage credentials, or deployment assumptions.
 
 ## Active Phase
 
@@ -96,43 +128,30 @@ Tracking issue: **#148**
 
 Contract: `docs/phases/PHASE_V2_0_WEB_FOUNDATION.md`
 
-Status: **ACTIVE**
+Status: **ACTIVE — FOUNDATION IMPLEMENTED; FINAL CI/PR MERGE REMAINS**
 
-The old v1 Phase-0 recovery/qualification issues #142 and #147 were closed as `not_planned` because the owner replaced that architecture with the v2 rebuild. Their evidence remains historical.
+The old v1 Phase-0 recovery/qualification issues #142 and #147 are closed `not_planned` because the owner replaced that architecture with the v2 rebuild.
 
-## Current Starting Baseline
+## Current Branch
 
-v2 branch:
-
-- `v2/phase-0-web-foundation`
-
-Branch base / last v1 `main` before the v2 reset work:
-
-- `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
-- `Record Phase 0 external readiness blockers (#146)`
-
-That SHA is a historical v1 boundary, not the target architecture for v2.
+- branch: `v2/phase-0-web-foundation`
+- pre-v2 boundary: `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
 
 ## Immediate Work
 
-Phase 0 currently owns:
+1. run final-head v2 web CI including the storage/workflow boundary tests;
+2. inspect the complete branch diff for v1/v2 boundary mistakes or secret leakage;
+3. open and merge the focused Phase-0 v2 PR only after exact-head checks pass;
+4. update the merged baseline/evidence;
+5. start **Phase 1 — Main Site Frontend & Backend**;
+6. provision a new S.A.G.A.-owned Supabase project/schema as Phase 1 needs it;
+7. create a bucket-scoped B2 runtime application key and add its runtime secrets before implementing real source upload/read paths.
 
-1. repository governance reset for v2;
-2. `apps/web` Next.js/TypeScript scaffold;
-3. initial S.A.G.A. product shell and health/backend boundary;
-4. provider-neutral object-storage contract;
-5. Supabase server/client boundary ready for a new S.A.G.A.-owned project;
-6. v2-focused GitHub CI;
-7. Backblaze B2 account bootstrap through GitHub Actions using the two configured bootstrap secrets;
-8. creation and smoke validation of a dedicated private S.A.G.A. B2 bucket;
-9. durable non-secret recording of bucket endpoint/identity metadata;
-10. transition to Phase 1 for the main site frontend/backend product.
+**Agent/LLM pipeline implementation remains out of scope until the web/backend product foundation is stable.**
 
-**Agent/LLM pipeline implementation is explicitly out of scope until the web/backend foundation is stable.**
+## v2 Validation
 
-## Validation Direction
-
-For v2 web changes, the primary deterministic checks will be executed from `apps/web`:
+From `apps/web`:
 
 ```text
 npm install --no-audit --no-fund
@@ -142,10 +161,10 @@ npm run test:unit
 npm run build
 ```
 
-The existing v1 Python CI may remain during transition, but a green v1 check is not evidence that v2 works and a v1 architecture constraint must not block an intentional v2 design decision unless it protects a repository-wide security/integrity rule.
+A green v1 Python workflow is not proof that v2 works. v2 changes require v2-specific exact-head CI evidence.
 
 ## Working Convention
 
-A new session must begin from this file and `AGENTS.md`, then read `docs/README.md`, `docs/DECISIONS.md`, and the active v2 phase contract.
+A new session begins from this file and `AGENTS.md`, then reads `docs/README.md`, `docs/DECISIONS.md`, and the active v2 phase contract.
 
-Durable decisions and verified results go back into the repository. Do not reconstruct current project state from chat history when the repository can establish it.
+Durable decisions and verified results go back into the repository. Do not reconstruct current project state from chat history when GitHub can establish it.
