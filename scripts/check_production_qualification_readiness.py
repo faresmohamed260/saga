@@ -13,6 +13,7 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
+from packages.observability_runtime import CostRate
 from packages.persistence_runtime import (
     PersistenceProfile,
     PersistenceRuntimeConfig,
@@ -33,6 +34,27 @@ def _value(environ: Mapping[str, str], *names: str) -> str:
         value = str(environ.get(name, "") or "").strip()
         if value:
             return value
+    return ""
+
+
+def validate_cost_rates(environ: Mapping[str, str]) -> str:
+    """Return an empty string when versioned provider rates are valid."""
+
+    raw = _value(environ, "SAGA_PROVIDER_COST_RATES_JSON")
+    if not raw:
+        return "provider_cost_rates_not_configured"
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return "provider_cost_rates_invalid"
+    if not isinstance(payload, list) or not payload:
+        return "provider_cost_rates_invalid"
+    try:
+        rates = [CostRate.model_validate(item) for item in payload]
+    except Exception:  # noqa: BLE001 - convert schema detail into bounded diagnostic
+        return "provider_cost_rates_invalid"
+    if not rates or any(not str(rate.pricing_version or "").strip() for rate in rates):
+        return "provider_cost_rates_invalid"
     return ""
 
 
@@ -76,6 +98,10 @@ def static_readiness_errors(environ: Mapping[str, str]) -> list[str]:
         "SUPABASE_SERVICE_ROLE_KEY",
     ):
         errors.append("supabase_service_role_not_configured")
+
+    cost_rate_error = validate_cost_rates(environ)
+    if cost_rate_error:
+        errors.append(cost_rate_error)
     return errors
 
 
@@ -127,6 +153,7 @@ def run_readiness_check() -> dict[str, Any]:
                 "database": True,
                 "supabase_api": True,
                 "supabase_service_role": True,
+                "provider_cost_rates": True,
                 "persisted_providers": False,
             },
         }
@@ -177,6 +204,7 @@ def run_readiness_check() -> dict[str, Any]:
                 "database": True,
                 "supabase_api": True,
                 "supabase_service_role": True,
+                "provider_cost_rates": True,
                 "persisted_providers": True,
             },
             "providers": {
