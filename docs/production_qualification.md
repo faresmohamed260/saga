@@ -68,7 +68,7 @@ That workflow is deliberately `workflow_dispatch` only. It must never run on ord
 Before downloading the protected source or making live reasoning/provider calls, the workflow must prove:
 
 1. the operator explicitly sets `confirm_live_cost=true`;
-2. checkout `HEAD` equals the workflow `GITHUB_SHA` and tracked source is clean;
+2. the dispatch is running from `refs/heads/main`, checkout `HEAD` equals the workflow `GITHUB_SHA`, and tracked source is clean;
 3. exactly one protected manifest `asset_id` is explicitly selected; there is no implicit historical-book default;
 4. timeout inputs and required protected-storage configuration are valid;
 5. frozen Python dependencies install successfully;
@@ -79,7 +79,7 @@ Before downloading the protected source or making live reasoning/provider calls,
    - `modal_xcore_litbank`;
    - `modal_comfyui`;
    - `modal_kokoro_tts`;
-10. the current Ollama/gpt-oss path has an actual usable API key in persisted account configuration or an explicitly supported `OLLAMA_API_KEY`; a provider-config row by itself is not enough on a GitHub-hosted runner;
+10. the current Ollama/gpt-oss path has an actual usable API key in persisted account configuration or `OLLAMA_API_KEY`; a provider-config row by itself is not enough on a GitHub-hosted runner;
 11. Mistral is configured either through persistence or `MISTRAL_API_KEY` for current Mistral reasoning/vision/transcription stages;
 12. `SAGA_PROVIDER_COST_RATES_JSON` contains valid, versioned provider-wide fallback rates for `ollama`, `mistral`, and `modal`; more-specific model/account rates may override those fallbacks;
 13. after readiness succeeds, the selected protected asset is reachable from private R2 storage and its SHA-256 matches `docs/operations/protected_assets.manifest.json`.
@@ -102,7 +102,7 @@ Issue #142 tracks the current private-source prerequisite. A historical `HeadObj
 
 ### Exact-source identity and bounded execution
 
-For GitHub qualification, the release identity is derived from the exact checked-out commit:
+For GitHub qualification, promotable evidence is restricted to a manual dispatch from `main`, and the release identity is derived from the exact checked-out commit:
 
 ```text
 qualification-${GITHUB_SHA}
@@ -131,7 +131,7 @@ Preferred Phase-0 reproduction path:
 1. configure the actual S.A.G.A. production Supabase path and qualification provider/pricing prerequisites;
 2. choose exactly one protected manifest asset that passes the production freshness preflight;
 3. resolve issue #142 for that fresh asset and make it reachable/hash-valid in private R2;
-4. manually dispatch **Clean-Source Production Qualification** on the exact `main` commit intended for qualification;
+4. manually dispatch **Clean-Source Production Qualification** from the exact `main` commit intended for qualification;
 5. choose the correct R2 jurisdiction and explicitly authorize live cost;
 6. preserve the resulting persisted qualification evidence and update `PROJECT.md` / Phase 0 from the exact result.
 
