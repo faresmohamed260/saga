@@ -28,8 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      B2_APPLICATION_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
-      B2_APPLICATION_KEY: ${{ secrets.SAGA_B2_MASTER_APPLICATION_KEY }}
+      SAGA_B2_RAW_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
+      SAGA_B2_RAW_MASTER_APPLICATION_KEY: ${{ secrets.SAGA_B2_MASTER_APPLICATION_KEY }}
       SAGA_B2_BOOTSTRAP_BUCKET: ${{ inputs.bucket_name || 'saga-v2-faresmohamed260-1207062480' }}
 
     steps:
@@ -45,8 +45,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$B2_APPLICATION_KEY_ID" || { echo "::error title=B2 bootstrap key missing::SAGA_B2_KEY_ID is not configured."; exit 10; }
-          test -n "$B2_APPLICATION_KEY" || { echo "::error title=B2 bootstrap key missing::SAGA_B2_MASTER_APPLICATION_KEY is not configured."; exit 10; }
+          test -n "$SAGA_B2_RAW_KEY_ID" || { echo "::error title=B2 bootstrap key missing::SAGA_B2_KEY_ID is not configured."; exit 10; }
+          test -n "$SAGA_B2_RAW_MASTER_APPLICATION_KEY" || { echo "::error title=B2 bootstrap key missing::SAGA_B2_MASTER_APPLICATION_KEY is not configured."; exit 10; }
           if ! [[ "$SAGA_B2_BOOTSTRAP_BUCKET" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{4,61}[A-Za-z0-9]$ ]]; then
             echo "::error title=Invalid B2 bucket name::Bucket name does not satisfy the bounded bootstrap naming rule."
             exit 11
@@ -59,6 +59,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export B2_APPLICATION_KEY_ID="$(printf '%s' "$SAGA_B2_RAW_KEY_ID" | tr -d '\r\n' | xargs)"
+          export B2_APPLICATION_KEY="$(printf '%s' "$SAGA_B2_RAW_MASTER_APPLICATION_KEY" | tr -d '\r\n' | xargs)"
+          test -n "$B2_APPLICATION_KEY_ID" && test -n "$B2_APPLICATION_KEY"
           b2 account authorize >/dev/null
 
       - name: Create or reuse private S.A.G.A. bucket
@@ -66,6 +69,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export B2_APPLICATION_KEY_ID="$(printf '%s' "$SAGA_B2_RAW_KEY_ID" | tr -d '\r\n' | xargs)"
+          export B2_APPLICATION_KEY="$(printf '%s' "$SAGA_B2_RAW_MASTER_APPLICATION_KEY" | tr -d '\r\n' | xargs)"
+          b2 account authorize >/dev/null
 
           bucket_id="$(b2 bucket list | awk -v name="$SAGA_B2_BOOTSTRAP_BUCKET" '$3 == name {print $1; exit}')"
           if [ -z "$bucket_id" ]; then
@@ -84,8 +90,8 @@ jobs:
           import os
           import urllib.request
 
-          key_id = os.environ["B2_APPLICATION_KEY_ID"]
-          application_key = os.environ["B2_APPLICATION_KEY"]
+          key_id = os.environ["B2_APPLICATION_KEY_ID"].strip()
+          application_key = os.environ["B2_APPLICATION_KEY"].strip()
           basic = base64.b64encode(f"{key_id}:{application_key}".encode()).decode()
           request = urllib.request.Request(
               "https://api.backblazeb2.com/b2api/v4/b2_authorize_account",
@@ -118,6 +124,10 @@ jobs:
           BUCKET_NAME: ${{ steps.bucket.outputs.bucket_name }}
         run: |
           set -euo pipefail
+          export B2_APPLICATION_KEY_ID="$(printf '%s' "$SAGA_B2_RAW_KEY_ID" | tr -d '\r\n' | xargs)"
+          export B2_APPLICATION_KEY="$(printf '%s' "$SAGA_B2_RAW_MASTER_APPLICATION_KEY" | tr -d '\r\n' | xargs)"
+          b2 account authorize >/dev/null
+
           source_file="$RUNNER_TEMP/saga-b2-smoke-source.txt"
           downloaded_file="$RUNNER_TEMP/saga-b2-smoke-download.txt"
           object_key="_system/bootstrap/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
