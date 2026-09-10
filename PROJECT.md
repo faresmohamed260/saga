@@ -57,20 +57,22 @@ Generation-side systems are expected to consume persisted canon/retrieval artifa
 
 ## Verified Recovery Baseline — 2026-09-10
 
-The local-to-GitHub handoff/recovery work is complete through the following merged pull requests:
+Repository continuity and surface ownership recovery is complete through these merged pull requests:
 
 - PR #134 — repository governance, recovery manifests, reproducibility, secrets/assets/model documentation;
 - PR #135 — commit-by-commit triage of the 43 divergent local-side commits;
 - PR #137 — protected asset verification workflow/manifest and explicit RenderLab ownership for future generic image/video product work;
-- PR #138 — recorded the first real GitHub protected-asset verification result.
+- PR #138 — recorded the first real GitHub protected-asset verification result;
+- PR #139 — retired `apps/studio/` and rehomed reusable worker metadata under S.A.G.A.-owned configuration;
+- PR #140 — made retained live FLUX runtime/gateway deployments manual-only.
 
-Verified `main` immediately before the Studio retirement cleanup:
+Verified clean baseline through PR #140:
 
-- commit: `1944ea3a1c7d6733236869cec2e030dad4fdd470`;
-- tree: `fcba8e1e175b3bc9c657f6c31a4e60e32c9af9a2`;
-- commit message: `docs: record protected asset verification result (#138)`.
+- commit: `961e679cd98405822f80def395ea83a8b43231d9`;
+- tree: `92463b32f5e090a65900dcafb165105d1b1f5870`;
+- commit message: `Make live FLUX deployments manual-only (#140)`.
 
-Recovery validation already recorded on GitHub includes successful backend tests, migration checks, container builds, Dashboard Pro compatibility, and the then-attached Vercel status. Local recovery validation also recorded a frozen `uv` install, one Alembic head, source-secret scan, complete backend test gate, Dashboard Pro tests/build, production dependency audit, and production Compose validation.
+On that exact commit, GitHub Backend Architecture CI passed backend tests, migration upgrade/rollback/re-upgrade plus isolated restore, production Compose validation, runtime container build, and frontend container build. Required Check Compatibility also passed. No FLUX deployment workflow fired from the #140 merge, confirming the manual-only provider guardrail.
 
 The repository is no longer dependent on undocumented state from the former local Codex checkout. Historical recovery evidence is indexed under `docs/recovery/`.
 
@@ -78,24 +80,24 @@ The repository is no longer dependent on undocumented state from the former loca
 
 The retired Studio product surface is not part of S.A.G.A.'s active architecture.
 
-The focused cleanup removes:
+Removed from S.A.G.A.:
 
 - `apps/studio/`;
 - Studio-only UI/product documentation;
 - Studio-only GitHub Actions and patch helpers;
-- Studio-owned Supabase migration definitions that are not part of the S.A.G.A. core schema.
+- Studio-owned Supabase migration definitions that were not part of the S.A.G.A. core schema.
 
-The cleanup preserves and rehomes reusable S.A.G.A. infrastructure:
+Preserved/reowned by S.A.G.A. where used by the narrative-to-media pipeline:
 
 - `packages/visual_generation` and the stage-7 visual contract;
 - `packages/modal_runtime`;
 - `integrations/comfyui`;
 - `integrations/qwen`;
 - `config/modal-worker-ecosystems.json`;
-- `config/modal-worker-registry.json` for non-secret worker routing metadata;
-- Modal worker inventory/maintenance/provisioning and bounded live-smoke tooling after removal of Studio branch/path dependencies.
+- `config/modal-worker-registry.json`;
+- Modal worker inventory/maintenance/provisioning and bounded live-smoke tooling.
 
-This repository cleanup does **not** delete live cloud resources or data. Existing Studio-era Supabase tables, R2 objects/buckets, Modal deployments, and RenderLab resources require separate explicit operations if they are ever migrated or decommissioned.
+Existing Studio-era remote database/storage/compute resources were not destructively removed as part of the repository cleanup.
 
 ## Last Recorded End-to-End S.A.G.A. Qualification
 
@@ -107,13 +109,17 @@ Therefore the run remains valuable behavioral evidence, but it is not proof that
 
 ## Current External Blocker
 
-The protected-asset verification workflow is present and has run from GitHub. The first real remote run (`34432226628`) reached Cloudflare R2 but failed with `403 Forbidden` while reading the documented protected-book object key.
+The protected-book qualification input is intentionally absent from the public repository. Recovery recorded its metadata and expected private R2 object key, but the protected bytes were not migrated during the repository handoff.
 
-This means:
+The first GitHub protected-asset verification run (`34432226628`) reached R2 with all required secrets present and received `403 Forbidden` from `HeadObject`. The old workflow could not distinguish among:
 
-- GitHub-side protected-asset workflow wiring exists;
-- the remaining prerequisite is R2 object placement/read permission for the configured repository credentials;
-- protected-book clean-source qualification must not be claimed until that prerequisite is fixed and the workflow succeeds.
+- wrong R2 jurisdiction endpoint;
+- wrong account/bucket/token scope or insufficient Object Read permission;
+- missing object at the manifest key.
+
+The protected-asset workflow is being hardened so it first tests private prefix visibility, detects an absent exact manifest key, supports `default`/`eu`/`us`/`fedramp` R2 endpoints, and only then downloads and verifies the SHA-256. This diagnostic work does not upload protected bytes or alter R2.
+
+Until a protected asset is reachable and hash-verified, clean-source protected-book qualification remains blocked.
 
 ## Active Phase
 
@@ -121,17 +127,21 @@ This means:
 
 Contract: `docs/phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
 
-Status: **ACTIVE — REPOSITORY CONTINUITY RECOVERED; STUDIO SPLIT RESOLVED; PROTECTED-ASSET REQUALIFICATION BLOCKED BY R2 ACCESS**
+Status: **ACTIVE — REPOSITORY CONTINUITY RECOVERED; STUDIO SPLIT COMPLETE; PROTECTED-ASSET STORAGE DIAGNOSIS / REQUALIFICATION REMAINS**
 
-Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to finish exact-head requalification from the clean repository and address only evidence-backed blockers.
+Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to classify/fix the protected-asset prerequisite, then run exact-head qualification from clean committed source.
 
 ## Immediate Next Step
 
-1. validate and merge the focused Studio retirement cleanup with S.A.G.A. core CI green;
-2. verify no active code/workflow path depends on `apps/studio/` and that reusable worker-fleet resources are owned by S.A.G.A. config/runtime paths;
-3. fix the documented Cloudflare R2 protected-asset read/object-placement issue;
-4. rerun `Protected Asset Verification` from GitHub;
-5. run the bounded clean-source S.A.G.A. qualification required by the current production contracts;
+1. land the protected-R2 diagnostic workflow/helper with core CI green;
+2. dispatch `Protected Asset Verification` for `once-upon-a-broken-heart` using the correct R2 jurisdiction;
+3. act on the bounded result:
+   - `access_failed` -> correct R2 account/bucket/jurisdiction/token scope;
+   - `object_missing` -> migrate the authorized protected asset bytes to the manifest object key outside the public repository;
+   - `download_failed` -> correct GetObject/read access;
+   - success -> proceed to bounded production qualification;
+4. rerun protected asset verification until the selected object hash matches the committed manifest;
+5. run the bounded clean-source S.A.G.A. qualification required by current production contracts;
 6. bind the resulting evidence to the exact commit/configuration and update this file plus the Phase 0 contract before declaring Phase 0 complete.
 
 ## Development Commands
