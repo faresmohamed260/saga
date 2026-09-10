@@ -10,27 +10,32 @@ Before substantial work, read in this order:
 2. `docs/README.md`
 3. `docs/DECISIONS.md`
 4. the active phase contract referenced by `PROJECT.md`
-5. the v2 subsystem documentation relevant to the task
+5. relevant `docs/v2/` subsystem documentation
 
-Verify the repository, active branch, and exact HEAD before writes. Do not infer current implementation state from chat history when GitHub can establish it.
+For frontend/UI work also read:
+
+- `docs/v2/UI_SYSTEM.md`
+- `docs/v2/DESIGN_WORKFLOW.md`
+
+Verify repository, active branch, and exact remote HEAD before writes. Do not infer current implementation state from chat history when GitHub can establish it.
 
 ## Current Architecture Boundary
 
 The owner authorized a fresh **S.A.G.A. v2** rebuild on 2026-09-11.
 
-The product goals remain, but the previous Python/nine-stage runtime architecture is no longer the active architecture.
+The product goals remain, but the previous Python/nine-stage runtime is no longer the active architecture.
 
 ### Active v2 surfaces
 
-- `apps/web/` — Next.js web product and initial backend/API layer
-- `docs/v2/` — current v2 architecture/subsystem contracts
-- `docs/phases/PHASE_V2_*.md` — active/progressive v2 phase contracts
+- `apps/web/` — Next.js web product and request-bounded backend/API layer
+- `docs/v2/` — active v2 architecture/UI/subsystem contracts
+- `docs/phases/PHASE_V2_*.md` — progressive v2 phase contracts
 - v2-specific GitHub Actions workflows
-- future v2 Supabase/schema and agent-runtime paths explicitly adopted by a v2 phase
+- v2-owned schema/migrations explicitly adopted by the active phase
 
 ### v1 historical/reference surfaces
 
-Until they are removed or archived, the pre-v2 Python/runtime surfaces are historical reference material, including:
+Until removed/archived, pre-v2 runtime surfaces are historical evidence only, including:
 
 - `packages/`
 - `integrations/`
@@ -38,157 +43,230 @@ Until they are removed or archived, the pre-v2 Python/runtime surfaces are histo
 - `apps/dashboard_pro/`
 - `deploy/production/`
 - pre-v2 migration/runtime/qualification scripts and tests
-- pre-v2 runtime/qualification/recovery documentation
+- pre-v2 runtime/qualification/recovery docs
+- `backup/reference/`
 
-Do not add new v2 functionality to v1 surfaces. Do not import v1 implementation into `apps/web`. Reuse a v1 algorithm, schema idea, evaluation method, prompt, or provider technique only by implementing it deliberately behind a v2-owned contract.
+Do not add new v2 functionality to v1 surfaces. Do not import v1 implementation into `apps/web`. Reuse old ideas only by deliberately implementing them behind v2-owned contracts.
 
-`backup/reference/` remains historical/inert.
+## RenderLab Is Read-Only Reference
 
-The separate `faresmohamed260/renderlab` repository remains a different product. S.A.G.A. may adopt proven engineering conventions or the same technology family, but must not copy RenderLab implementation state, product routes, database ownership, credentials, or deployment assumptions as if they were S.A.G.A. facts.
+`faresmohamed260/renderlab` is a different project.
+
+When relevant, inspect it **read-only** for:
+
+- project/repository setup conventions;
+- frontend/server ownership patterns;
+- Supabase/Auth/admin security lessons;
+- maintained component sourcing;
+- UI/design-system governance;
+- responsive/rendered validation discipline;
+- progressive phase planning.
+
+Never modify RenderLab as part of S.A.G.A. work.
+
+Do not copy or share:
+
+- RenderLab routes or product information architecture;
+- schema/table names or database ownership;
+- R2/storage resources or credentials;
+- deployment state;
+- brand/visual identity;
+- product-specific components or media/generation state;
+- implementation wholesale.
+
+If a RenderLab pattern is useful, express the underlying principle in a S.A.G.A.-owned contract and implement it independently.
+
+## Closed-Demo Access Model
+
+S.A.G.A. v2 is a **closed demo**.
+
+Hard rules:
+
+- no public self-service sign-up;
+- private application access requires a verified account;
+- admission is invitation-only;
+- admins create invitations for email addresses;
+- invitation emails are sent through a server-only provider/Auth-admin boundary;
+- Supabase Auth identity does not by itself grant S.A.G.A. access;
+- S.A.G.A. owns separate admission state;
+- only active admitted users enter private application routes;
+- unknown/pending/suspended/unverifiable identities fail closed;
+- browser code never receives Supabase service-role/Auth-admin capability;
+- authorization roles come from S.A.G.A. server-owned access records, never browser/user metadata;
+- invitation/public responses must not become email/account enumeration oracles.
+
+Production invitation/recovery email readiness requires verified Site URL/redirects/templates and production-capable SMTP or equivalent email hook. Do not claim live email readiness from code alone.
 
 ## v2 Product/Engineering Direction
 
-The rebuild order is:
+Development order:
 
-1. web frontend and backend product foundation;
-2. auth, relational application data, storage, jobs, deployment, and UX contracts;
-3. agentic AI architecture and execution layer;
+1. web frontend/backend product foundation;
+2. auth, relational data, storage, jobs, deployment, UX contracts;
+3. agentic AI architecture/execution layer;
 4. progressive restoration of S.A.G.A. analysis/canon/generation/media capabilities.
 
 Do not start broad agent/LLM implementation while the active phase says the web/backend foundation is incomplete.
 
 ## Adopted Web Stack
 
-Unless a later accepted decision changes it, v2 uses:
+Unless a later accepted decision changes it:
 
 - Next.js + React + TypeScript
 - Vercel
 - Supabase Postgres/Auth/Realtime
-- Tailwind CSS and maintained component primitives
-- Motion for intentional interaction/animation
+- Tailwind CSS + maintained accessible component primitives
+- Motion for purposeful interaction/continuity
 - Cloudflare for DNS/CDN/security where useful
 - Backblaze B2 for S.A.G.A. object storage
 - GitHub Actions for deterministic validation and bounded infrastructure operations
 
-Prefer the mature engineering patterns demonstrated by the Studio/RenderLab lineage: feature-oriented application organization, explicit server boundaries, environment validation, structural tests, typechecking, maintained UI primitives, and remote CI. Do not mechanically copy RenderLab code.
+Use Server Components by default. Add Client Components only where browser interaction/local state is actually needed.
+
+Keep provider/admin SDKs at server/infrastructure boundaries.
 
 ## Storage Rules
 
 S.A.G.A. v2 does not use the existing shared Cloudflare R2 allocation.
 
-Backblaze B2 is accessed through a v2-owned provider-neutral storage contract. Domain/features must not instantiate AWS/B2 SDK clients directly.
+Backblaze B2 is behind a v2-owned provider-neutral `ObjectStorage` boundary. Features/domain code must not construct AWS/B2 clients directly.
 
-Bootstrap repository secrets currently use these names:
+Bootstrap repository secrets:
 
 - `SAGA_B2_KEY_ID`
 - `SAGA_B2_MASTER_APPLICATION_KEY`
 
 Never print, commit, return, or artifact-upload their values.
 
-The master key is for bounded account/bootstrap operations only. It is not S3-compatible and must not become the normal web application's storage credential. Runtime B2 access will use a later bucket-scoped application key and explicit S3 endpoint/bucket configuration.
+The master key is bounded bootstrap/admin capability only. Normal runtime access must use a bucket-scoped application key.
 
-Structured domain/application state belongs in Supabase. Large binary/object payloads belong in B2. Do not turn object storage into an implicit database.
+Supabase owns structured application/domain state. B2 owns large binary/object payloads.
 
 ## Source-of-Truth Hierarchy
 
-1. current S.A.G.A. v2 repository code and authoritative v2 documentation;
-2. repository history/v1 code for historical evidence and requirements discovery;
-3. ChatGPT Project context for supplementary continuity and owner intent;
-4. external documentation/research as evidence;
-5. current chat as temporary context.
+1. current S.A.G.A. v2 repository code and authoritative v2 docs;
+2. S.A.G.A. history/v1 code for historical evidence and requirements discovery;
+3. read-only RenderLab reference when the active task explicitly benefits from its proven setup/process patterns;
+4. ChatGPT Project context for supplementary continuity/owner intent;
+5. external docs/research as evidence;
+6. current chat as temporary context.
 
-When the owner explicitly changes product direction, update the repository contract rather than continuing an obsolete phase merely because it was previously active.
+Never let RenderLab state override S.A.G.A. repository state.
 
 ## State Classification
 
-Use these labels precisely:
-
-- **Implemented** — code exists in the active v2 path.
+- **Implemented** — code exists in active v2 path.
 - **Validated** — implementation passed the v2-defined validation for the claim.
 - **Experimental** — implemented for evaluation, not adopted default.
 - **Proposed** — planned but not implemented.
-- **Research-backed candidate** — external/historical evidence supports evaluation but v2 has not adopted it.
-- **Deprecated/Historical** — preserved for evidence/reference, not active contract.
+- **Research-backed candidate** — evidence supports evaluation but v2 has not adopted it.
+- **Deprecated/Historical** — retained for evidence/reference, not active contract.
 
-A working v1 feature is not automatically an implemented v2 feature.
+A working v1 or RenderLab feature is not automatically an implemented S.A.G.A. feature.
 
 ## Architecture Discipline
 
-For each new v2 capability identify:
+For every new v2 capability identify:
 
 - owning application/domain boundary;
 - public input/output contract;
 - persistence owner;
-- storage owner when binary artifacts are involved;
+- object-storage owner when needed;
 - authorization boundary;
 - failure/retry semantics;
-- UI state and observability needs;
-- validation required before calling it complete.
+- UI state/observability needs;
+- deterministic validation required before completion.
 
-Keep SDK/provider code at infrastructure boundaries. UI/features should depend on S.A.G.A.-owned interfaces, not vendor clients.
-
-Prefer deterministic code for schemas, validation, state transitions, authorization, identifiers, job lifecycle, evidence/provenance, and orchestration invariants. Use LLMs/models later for bounded inference/judgment, not hidden application glue.
+Prefer deterministic code for schemas, validation, identifiers, state transitions, authorization, evidence/provenance, and job lifecycle. LLMs/models later perform bounded inference/judgment, not hidden application glue.
 
 ## UI/UX Discipline
 
 The main site is a product, not a debugging dashboard.
 
-- establish reusable design tokens/primitives before one-off styling spreads;
-- maintain accessibility and responsive behavior;
-- prefer intentional motion over gratuitous animation;
-- do not silently drift layouts between sessions;
-- encode important visual/product conventions in repository tests/docs where practical;
-- use feature-oriented components rather than giant page files;
-- design the user workflow around stories/projects/canon/media, not around internal AI pipeline stages.
+Read and obey `docs/v2/UI_SYSTEM.md` and `docs/v2/DESIGN_WORKFLOW.md`.
 
-## Research and v1 Reuse
+Baseline rules:
 
-S.A.G.A. has substantial prior research and implementation evidence. Treat it as an input to v2, not a constraint.
+- story/project/canon/media concepts drive navigation, not internal pipeline stages;
+- simple by default, powerful when needed;
+- semantic design tokens before one-off visual values;
+- maintained accessible primitives before custom generic controls;
+- feature components compose shared primitives rather than hand-styling the same mechanics repeatedly;
+- use spacing/alignment/tonal hierarchy before nested card stacks;
+- deliberate motion must communicate continuity/state and support reduced motion;
+- desktop and narrow/mobile are designed together;
+- rendered responsive review is separate from build success;
+- ordinary feature work stays in Integration Mode; redesign only when the owner explicitly asks to reopen a surface.
 
-When reusing an old idea:
+### Maintained primitive policy
+
+Before building a generic visible control/mechanic, search:
+
+1. existing S.A.G.A. component;
+2. existing S.A.G.A. primitive;
+3. shadcn/ui/Radix-compatible maintained primitive;
+4. Motion/maintained motion source when appropriate;
+5. another production-suitable maintained source after accessibility/license/performance review;
+6. custom generic mechanic only with a documented reason.
+
+Native hidden/file inputs may remain platform plumbing.
+
+## Auth / Server-Client Discipline
+
+- root/proxy/session-refresh logic is not product authorization policy;
+- private application authorization uses fresh server-verified identity;
+- product admission/role/status comes from S.A.G.A.-owned server records;
+- service-role/Auth Admin clients are server-only;
+- ordinary browser code uses public Supabase configuration only;
+- private queries/mutations are account/owner scoped;
+- admin routes reverify identity and active admin status server-side;
+- avoid a global client auth/admin store unless multiple real features prove it necessary.
+
+## Research and Reuse
+
+When reusing a v1 or RenderLab idea:
 
 1. identify the v2 capability/failure mode it serves;
-2. inspect v1 evidence/implementation;
-3. define the v2 contract first;
-4. port only the useful logic/idea;
+2. inspect the evidence/implementation;
+3. define the S.A.G.A. v2 contract first;
+4. implement only the useful principle/logic under S.A.G.A. ownership;
 5. add v2-native tests;
-6. record the decision if it changes architecture.
+6. record the decision when it changes architecture.
 
-Do not bulk-port legacy code to accelerate apparent progress.
+Do not bulk-port legacy or RenderLab code to accelerate apparent progress.
 
 ## Progressive Phase Planning
 
 Fully specify only the immediate active phase. Keep later phases at roadmap level until current evidence is stable.
 
-Before implementing a phase:
+Before implementation:
 
 1. verify exact repository state;
 2. state goal/user value;
-3. define in-scope/out-of-scope work;
-4. define affected data/provider/security boundaries;
-5. define validation and exit criteria.
+3. define in/out of scope;
+4. define data/provider/security boundaries;
+5. define validation/exit criteria.
 
-Before finishing a phase:
+Before phase completion:
 
-1. verify the implementation and exact head;
+1. verify implementation and exact head;
 2. inspect/run required CI;
-3. update `PROJECT.md`, decisions, and the phase contract;
-4. record blockers and the next concrete phase.
+3. perform rendered responsive review where UI changed;
+4. update `PROJECT.md`, decisions, and phase contract;
+5. record blockers and next concrete phase.
 
 ## GitHub / Remote-First Convention
 
-GitHub is the source of truth. Prefer repository operations and hosted CI over undocumented scratch/local state.
+GitHub is source of truth. Prefer repository operations and hosted CI over undocumented local state.
 
 - use focused branches/PRs;
-- do not merge stale CI evidence after a branch moves;
-- do not expose secrets in workflow commands/logs/artifacts;
+- do not merge stale CI evidence after branch movement;
+- do not expose secrets in workflow logs/artifacts;
 - live infrastructure mutations must be bounded and intentional;
-- provider-cost operations require explicit authorization when they can incur meaningful usage charges;
-- ordinary CI must remain free/non-live where practical.
+- provider-cost operations require explicit authorization when they may incur meaningful usage charges;
+- ordinary CI remains free/non-live where practical.
 
 ## v2 Validation Baseline
-
-For the web app, use the current scripts in `apps/web/package.json`. The intended minimum gate is:
 
 ```text
 cd apps/web
@@ -199,7 +277,9 @@ npm run test:unit
 npm run build
 ```
 
-A green legacy Python workflow does not validate v2. A v2 PR should have v2-specific CI evidence on its exact final head.
+A green legacy Python workflow does not validate v2. A v2 PR needs v2-specific exact-head evidence.
+
+UI changes also require actual rendered desktop/narrow review appropriate to the changed surface.
 
 ## Documentation Ownership
 
@@ -210,10 +290,10 @@ A green legacy Python workflow does not validate v2. A v2 PR should have v2-spec
 - v2 subsystem/architecture behavior -> `docs/v2/`
 - dated evidence -> `docs/validation/` only when useful
 
-Do not create competing status documents when an authoritative file already owns the information.
+Do not create competing status docs when an authoritative file already owns the information.
 
 ## Scope Discipline
 
-Follow the owner's requested scope. The current active rebuild explicitly prioritizes the main site frontend/backend before the agentic AI component.
+Follow the owner's requested scope. The current rebuild prioritizes the main site frontend/backend and closed-demo account/invitation foundation before the agentic AI subsystem.
 
-Do not revive the v1 production qualification/R2 repair path unless the owner explicitly reverses the v2 decision.
+Do not revive v1 production qualification/R2 repair unless the owner explicitly reverses the v2 direction.
