@@ -65,6 +65,9 @@ If a detailed document conflicts with current code or the current handoff, inves
 - `persistence_runtime.md` — persistence runtime
 - `storage_architecture.md` — storage/provider boundaries
 - `runtime_secrets.md` — runtime secret ownership
+- `operations/GITHUB_ACTIONS_SECRETS.md` — GitHub Actions secret names, owning services, workflow consumers, and migration status without values
+- `operations/PROTECTED_TEST_ASSETS.md` — protected/private book asset metadata, hashes, and secure CI acquisition rules
+- `operations/MODEL_PROVIDER_MANIFEST.md` — active/evaluation/historical model and provider identities without model weights or credentials
 - `modal_runtime.md` — Modal/general compute provider runtime
 - `modal-worker-fleet-design.md` — worker fleet design
 - `deployment_operations.md` — production build, rollout, rollback, backup, and recovery
@@ -77,11 +80,13 @@ If a detailed document conflicts with current code or the current handoff, inves
 ## Qualification and Evidence
 
 - `production_qualification.md` — last recorded real-book nine-stage qualification; currently accepted as evidence but explicitly non-promotable because the recorded source worktree was dirty
+- `validation/REPRODUCIBILITY.md` — validation tiers, required secrets/assets/models, runner expectations, and live-gate boundaries
 - additional validation scripts/tests under `scripts/` and `tests/` are authoritative only for the behavior they actually exercise
 
 ## Migration / Historical Material
 
 - `MIGRATION_REFERENCE.md` — migration/reference material; verify its intended use before applying it to active architecture
+- `recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — 2026-09-10 local-to-GitHub recovery inventory and reconciliation decisions
 - `../backup/reference/` — isolated historical implementation, not active dependency
 
 ## Documentation Maintenance Rules

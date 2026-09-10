@@ -88,8 +88,40 @@ The 2026-09-10 audit found several state layers that are individually useful but
 - `docs/architecture_hardening_audit.md` is an earlier architecture audit that still says the next step is rebuilding main agents, while the later roadmap says those agent groups were built;
 - `docs/production_qualification.md` contains strong real-book evidence but explicitly lacks clean promotable source provenance;
 - the repository contains both S.A.G.A. operator surfaces and `apps/studio/`, while the root README only lists the former as primary architecture surfaces.
+- local recovery audit found a separate dirty checkout at `codex/transaction-pool-rc36` with 43 local-side commits, 1000 remote-side commits absent from that branch, local credential files, protected commercial EPUBs, generated databases/backups, and untracked Studio/generation-core work.
 
 Until Phase 0 reconciles these items, use this file plus the active phase contract as the current handoff and treat older “next step” statements as dated evidence rather than instructions.
+
+## Current Recovery Artifacts — 2026-09-10
+
+The local-to-GitHub handoff branch is `recovery/local-to-github-handoff`.
+
+It starts from remote `main` at `1d1fa6e9bb86feede9c9f5b89eec828eb15a2050` and incorporates the repository-governance baseline from PR #133. The first recovery documentation commit is expected to supersede PR #133 if merged.
+
+New durable recovery references:
+
+- `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — local inventory, divergence, uncommitted work, heavy/generated exclusions, and reconciliation decisions.
+- `docs/validation/REPRODUCIBILITY.md` — CI/live validation tiers and runner/secrets/assets expectations.
+- `docs/operations/GITHUB_ACTIONS_SECRETS.md` — secret names and destinations without values.
+- `docs/operations/PROTECTED_TEST_ASSETS.md` — protected EPUB metadata and hashes without committing protected books.
+- `docs/operations/MODEL_PROVIDER_MANIFEST.md` — active, evaluation-only, and historical model/provider identities.
+
+This documentation does not by itself prove Phase 0 complete. Non-live gates and any authorized live-provider qualification still need exact-head evidence.
+
+## Current Recovery Validation — 2026-09-10
+
+Executed locally on clean recovery worktree `B:\Documents\PyCharm\saga-handoff` after applying recovery docs:
+
+- `uv sync --frozen --extra dev` — passed.
+- `uv run alembic heads` — one head: `202608090400`.
+- `uv run python -m scripts.check_source_secrets` — passed, 850 files scanned, 0 findings.
+- `uv run pytest -q tests/test_architecture_boundaries.py` — passed, 4 tests.
+- `uv run pytest -q` — passed, 338 passed, 3 skipped, 1 Starlette/httpx deprecation warning.
+- `cd apps/dashboard_pro && npm ci && npm test -- --run && npm run build` — install succeeded, tests passed 13/13, Vite production build succeeded.
+- `cd apps/dashboard_pro && npm audit --omit=dev --audit-level=high` — passed, 0 production vulnerabilities.
+- `docker compose -f deploy/production/compose.yaml config --quiet` with `SAGA_ENV_FILE=.env.example` and `SAGA_RELEASE_ID=release-ci-validation` — passed.
+
+Live-provider, protected-asset, and clean-source production qualification gates were not run in this documentation step. They require configured GitHub/production secrets and authorized protected asset access.
 
 ## Active Phase
 
@@ -103,14 +135,14 @@ The goal is not a redesign. The goal is to establish exactly what current commit
 
 ## Immediate Next Step
 
-After this governance change is reviewed/merged:
+After this recovery documentation is reviewed/merged:
 
-1. run an exact-head structural/CI audit of the S.A.G.A. core rather than relying on Studio-only green checks;
-2. reconcile existing S.A.G.A. workflow/test coverage against the claims in `README.md`, the roadmap, and qualification docs;
-3. classify `apps/studio/`, Studio workflows, open automation issues, and PR #132 without deleting or merging them by assumption;
-4. fix only blockers required to obtain a clean committed core baseline;
-5. rerun repository-level tests/builds and then a bounded clean-source S.A.G.A. qualification when prerequisites are available;
-6. update this file and the Phase 0 contract with exact evidence before declaring recovery complete.
+1. push/open the recovery PR and verify GitHub Actions against the exact branch head;
+2. port or reject the 43 local-side commits file-by-file against current `main`;
+3. configure or confirm the GitHub Actions secrets in `docs/operations/GITHUB_ACTIONS_SECRETS.md`;
+4. decide the final S.A.G.A. status of Studio versus RenderLab/separate ownership;
+5. run bounded clean-source S.A.G.A. qualification only after protected assets and live-provider prerequisites are available;
+6. update this file and the Phase 0 contract with exact CI/qualification evidence before declaring recovery complete.
 
 ## Development Commands
 

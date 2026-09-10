@@ -25,6 +25,20 @@ Recovering the baseline prevents future AI sessions from repeatedly rewriting wo
 - Latest audited `main` commit is the merge of PR #131 for Studio mobile control cleanup.
 - Open PR #132 contains additional Studio Gallery/Qwen UI work and must not be merged/closed as a side effect of this phase.
 
+### Local-to-GitHub recovery audit
+
+- Recovery branch: `recovery/local-to-github-handoff`
+- Governance source reused: PR #133 commit `5756e1c66df43594b2c6673a88fb6a330dcc13a1`
+- Audited local branch: `codex/transaction-pool-rc36`
+- Audited local HEAD: `0294bb260d426e81048dd982dae85e64db3f9318`
+- Divergence from remote `main`: 1000 remote-side commits and 43 local-side commits.
+- Local working tree: dirty, with modified ComfyUI/runtime files and untracked Studio/generation-core files.
+- Inventory: `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md`
+- Reproducibility manifest: `docs/validation/REPRODUCIBILITY.md`
+- Secrets manifest: `docs/operations/GITHUB_ACTIONS_SECRETS.md`
+- Protected asset manifest: `docs/operations/PROTECTED_TEST_ASSETS.md`
+- Model/provider manifest: `docs/operations/MODEL_PROVIDER_MANIFEST.md`
+
 ### Active architecture claims
 
 The root README describes:
@@ -163,6 +177,15 @@ Phase 0 should accumulate evidence for these gates:
 | Documentation | README/project/roadmap/qualification state agree on what is current |
 | Studio surface | Ownership/status is explicitly decided or remains a clearly documented blocker |
 
+## Handoff Evidence Added During Recovery
+
+- Local heavy generated outputs were classified as non-migratable by default, including multi-GB SQLite files, dumps, artifact zips, vector indices, audiobook outputs, caches, and build outputs.
+- Local secret-bearing files were inventoried only by path and field/variable name; values were not copied into repository files.
+- Commercial EPUB validation assets were recorded by filename, purpose, and SHA-256 while preserving the rule that bytes must not be committed to the public repository.
+- Current Actions were classified into deterministic CI, bounded integration, and expensive/live-provider tiers.
+- Ollama is documented as local/remote endpoint dependent, not as an assumed GitHub-hosted runner dependency and not as requiring an invented `OLLAMA_API_KEY`.
+- Deterministic local validation on the clean recovery worktree passed: frozen `uv` sync, one Alembic head `202608090400`, source secret scan with 850 files and 0 findings, architecture-boundary tests 4/4, full backend tests 338 passed / 3 skipped, Dashboard Pro tests 13/13, Dashboard Pro production build, production dependency audit with 0 high vulnerabilities, and production Compose config validation.
+
 ## Exit Criteria
 
 Phase 0 is complete only when:
@@ -174,6 +197,8 @@ Phase 0 is complete only when:
 5. the S.A.G.A. core has a clean-source qualification result, or a precise external prerequisite blocking that result is recorded;
 6. `apps/studio/` status is explicitly decided or intentionally deferred with its coupling documented;
 7. `PROJECT.md` records the verified completion evidence and names the next phase from actual results.
+
+Current status: this handoff branch improves repository continuity, records missing local knowledge, and verifies Tier 1 deterministic gates locally. Phase 0 is not complete until the branch is pushed/reviewed, GitHub Actions attach to the exact head, local-side commits are ported or rejected, Studio ownership is decided/deferred with coupling evidence, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
 
 ## Next Phase Rule
 
