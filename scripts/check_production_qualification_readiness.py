@@ -7,10 +7,12 @@ metadata. Secret values and provider payloads are never printed.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from packages.observability_runtime import CostRate
@@ -34,6 +36,7 @@ REQUIRED_MODAL_PROVIDERS = (
 # qualification pricing robust to account rotation and model-level overrides; more
 # specific model/account rates may still override them at runtime.
 REQUIRED_PRICED_PROVIDERS = ("ollama", "mistral", "modal")
+DEFAULT_MANIFEST_PATH = Path("docs/operations/protected_assets.manifest.json")
 
 
 def _value(environ: Mapping[str, str], *names: str) -> str:
@@ -88,6 +91,7 @@ def static_readiness_errors(environ: Mapping[str, str]) -> list[str]:
         "SUPABASE_DB_URL",
         "DATABASE_URL",
     )
+    db_host = _value(environ, "SAGA_SUPABASE_DB_HOST", "SUPABASE_DB_HOST")
     db_user = _value(environ, "SAGA_SUPABASE_DB_USER", "SUPABASE_DB_USER")
     db_tenant = _value(
         environ,
@@ -101,7 +105,7 @@ def static_readiness_errors(environ: Mapping[str, str]) -> list[str]:
         "SUPABASE_DB_PASSWORD",
         "POSTGRES_PASSWORD",
     )
-    if not explicit_db and not ((db_user or db_tenant) and db_password):
+    if not explicit_db and not (db_host and (db_user or db_tenant) and db_password):
         errors.append("supabase_database_not_configured")
 
     if not _value(
@@ -124,6 +128,56 @@ def static_readiness_errors(environ: Mapping[str, str]) -> list[str]:
     if cost_rate_error:
         errors.append(cost_rate_error)
     return errors
+
+
+def select_qualification_asset(
+    *,
+    asset_id: str,
+    manifest_path: Path = DEFAULT_MANIFEST_PATH,
+) -> dict[str, Any]:
+    requested = str(asset_id or "").strip()
+    if not requested:
+        raise ValueError("qualification_asset_not_configured")
+    if requested == "all":
+        raise ValueError("qualification_requires_single_asset")
+
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("qualification_asset_manifest_invalid")
+    matches = [
+        dict(item)
+        for item in payload.get("assets", [])
+        if isinstance(item, Mapping) and str(item.get("id") or "").strip() == requested
+    ]
+    if len(matches) != 1:
+        raise ValueError("qualification_asset_unknown")
+
+    asset = matches[0]
+    filename = str(asset.get("filename") or "").strip()
+    sha256 = str(asset.get("sha256") or "").strip().lower()
+    if not filename or "\n" in filename or "\r" in filename:
+        raise ValueError("qualification_asset_manifest_invalid")
+    if len(sha256) != 64 or any(char not in "0123456789abcdef" for char in sha256):
+        raise ValueError("qualification_asset_manifest_invalid")
+    return asset
+
+
+def asset_freshness_error(
+    *,
+    existing_books: Sequence[Mapping[str, Any]],
+    asset: Mapping[str, Any],
+) -> str:
+    """Mirror the qualifier freshness guard without exposing persisted book rows."""
+
+    asset_id = str(asset.get("id") or "").strip()
+    filename = str(asset.get("filename") or "").strip().casefold()
+    sha256 = str(asset.get("sha256") or "").strip().casefold()
+    for item in existing_books:
+        source_uri = str(item.get("source_uri") or "").casefold()
+        serialized = json.dumps(dict(item), sort_keys=True, default=str).casefold()
+        if (filename and filename in source_uri) or (sha256 and sha256 in serialized):
+            return f"qualification_source_not_fresh:{asset_id}"
+    return ""
 
 
 def modal_provider_has_tokens(row: Mapping[str, Any] | None) -> bool:
@@ -164,7 +218,11 @@ def _runtime_database_url() -> str:
     return str(os.getenv("SAGA_RUNTIME_DB_URL") or "").strip() or build_database_url_from_env()
 
 
-def run_readiness_check() -> dict[str, Any]:
+def run_readiness_check(
+    *,
+    asset_id: str,
+    manifest_path: Path = DEFAULT_MANIFEST_PATH,
+) -> dict[str, Any]:
     static_errors = static_readiness_errors(os.environ)
     if static_errors:
         return {
@@ -175,6 +233,24 @@ def run_readiness_check() -> dict[str, Any]:
                 "supabase_api": True,
                 "supabase_service_role": True,
                 "provider_cost_rates": True,
+                "source_freshness": False,
+                "persisted_providers": False,
+            },
+        }
+
+    try:
+        asset = select_qualification_asset(asset_id=asset_id, manifest_path=manifest_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        error_code = str(exc) if isinstance(exc, ValueError) and str(exc) else "qualification_asset_manifest_invalid"
+        return {
+            "status": "not_ready",
+            "errors": [error_code],
+            "checked": {
+                "database": True,
+                "supabase_api": True,
+                "supabase_service_role": True,
+                "provider_cost_rates": True,
+                "source_freshness": False,
                 "persisted_providers": False,
             },
         }
@@ -211,6 +287,28 @@ def run_readiness_check() -> dict[str, Any]:
         # Production initialization validates the existing migration/schema contract;
         # unlike test-harness mode it does not create tables.
         client.initialize()
+        freshness_error = asset_freshness_error(
+            existing_books=client.library.list_books(limit=10000),
+            asset=asset,
+        )
+        if freshness_error:
+            return {
+                "status": "not_ready",
+                "errors": [freshness_error],
+                "checked": {
+                    "database": True,
+                    "supabase_api": True,
+                    "supabase_service_role": True,
+                    "provider_cost_rates": True,
+                    "source_freshness": True,
+                    "persisted_providers": False,
+                },
+                "asset": {
+                    "asset_id": str(asset.get("id") or ""),
+                    "fresh": False,
+                },
+            }
+
         provider_rows = {
             name: client.provider_configs.get_provider_config(name)
             for name in REQUIRED_MODAL_PROVIDERS
@@ -228,7 +326,12 @@ def run_readiness_check() -> dict[str, Any]:
                 "supabase_api": True,
                 "supabase_service_role": True,
                 "provider_cost_rates": True,
+                "source_freshness": True,
                 "persisted_providers": True,
+            },
+            "asset": {
+                "asset_id": str(asset.get("id") or ""),
+                "fresh": True,
             },
             "providers": {
                 name: {"has_modal_credentials": modal_provider_has_tokens(row)}
@@ -251,8 +354,18 @@ def run_readiness_check() -> dict[str, Any]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--asset-id",
+        default=str(os.getenv("SAGA_QUALIFICATION_ASSET_ID") or "").strip(),
+    )
+    parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST_PATH))
+    args = parser.parse_args()
     try:
-        report = run_readiness_check()
+        report = run_readiness_check(
+            asset_id=args.asset_id,
+            manifest_path=Path(args.manifest),
+        )
     except Exception as exc:  # noqa: BLE001
         report = {
             "status": "error",
