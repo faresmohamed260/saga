@@ -1,115 +1,95 @@
 # S.A.G.A. Documentation Index
 
-This directory contains architecture, runtime, operations, evaluation, and historical evidence for S.A.G.A.
-
-`PROJECT.md` is the short current-state handoff. This file maps detailed documentation and defines how to interpret it.
+S.A.G.A. is in an owner-authorized fresh v2 rebuild. This index distinguishes the **active v2 contract** from retained **v1 historical/reference material**.
 
 ## Read First
 
-For substantial work, read:
+For substantial current work, read:
 
 1. `../AGENTS.md`
 2. `../PROJECT.md`
 3. `DECISIONS.md`
-4. the active phase contract referenced by `PROJECT.md`
-5. the subsystem documents relevant to the task
+4. the active v2 phase contract referenced by `PROJECT.md`
+5. the relevant document under `v2/`
 
-## Authority and Time
+Do not use an older runtime/qualification document as the current architecture merely because it contains more detail.
 
-Documentation is not automatically current merely because it exists.
+## Active v2 Governance
 
-Use documents according to their purpose:
+- `../AGENTS.md` — mandatory working rules and v2/v1 boundary
+- `../PROJECT.md` — current product direction, stack, active phase, and next work
+- `DECISIONS.md` — durable v2 decisions plus explicitly historical v1 decisions
+- `phases/PHASE_V2_0_WEB_FOUNDATION.md` — active web-foundation/storage-bootstrap phase
+- `v2/ARCHITECTURE.md` — current web-first architecture and ownership boundaries
 
-- **Current handoff:** `PROJECT.md`, `DECISIONS.md`, and the active phase contract.
-- **Current subsystem contract:** runtime/architecture documents whose behavior is verified against active code during the relevant work.
-- **Qualification/evidence:** dated validation records prove only the source/configuration recorded there.
-- **Audit snapshot:** earlier architecture/recovery audits are point-in-time evidence; their old “next step” text does not override the current handoff.
-- **Historical/migration reference:** documents explicitly labeled historical/reference must not become active implementation requirements without verification.
+## Active v2 Code/Operations
 
-If a detailed document conflicts with current code or the current handoff, investigate and update the authoritative project record rather than silently choosing a convenient version.
+- `../apps/web/` — new Next.js web product and initial backend/API layer
+- `../.github/workflows/v2-web-ci.yml` — v2 web deterministic CI
+- `../.github/workflows/v2-b2-bootstrap.yml` — bounded Backblaze B2 bootstrap/storage validation
 
-## Project Governance
+Additional v2 Supabase/schema and agent-runtime documents will be added only when their phase adopts those surfaces.
 
-- `../AGENTS.md` — mandatory AI/session working rules and validation discipline
-- `../PROJECT.md` — current architecture summary, verified baseline, active phase, blockers, and next step
-- `DECISIONS.md` — durable decisions and unresolved decisions requiring explicit resolution
-- `phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md` — current recovery/requalification phase contract
+## Historical v1 Material
 
-## System Architecture and Orchestration
+Everything below remains useful for requirements discovery, prior algorithms, evaluations, provider experiments, and lessons learned, but it does **not** define the active v2 architecture unless a v2 decision explicitly adopts part of it.
 
-- `system_agent_roadmap.md` — system intent, agent groups, runtime constraints, and accumulated progress record; current-status/next-step text must be reconciled against the current handoff
-- `agent_framework.md` — agent runtime/framework design
-- `production_orchestration_runtime.md` — top-level production orchestration
-- `execution_runtime.md` — execution/queue/runtime behavior
-- `lineage_runtime.md` — lineage and provenance
-- `observability_runtime.md` — observability contracts
-- `architecture_hardening_audit.md` — earlier architecture-hardening audit snapshot; not the current project handoff
+### v1 system/runtime documents
 
-## Analysis / Canon
+- `system_agent_roadmap.md`
+- `agent_framework.md`
+- `production_orchestration_runtime.md`
+- `execution_runtime.md`
+- `lineage_runtime.md`
+- `observability_runtime.md`
+- `analysis_foundation_runtime.md`
+- `identity_runtime.md`
+- `canon_extraction_runtime.md`
+- `character_world_modeling_runtime.md`
+- `retrieval_runtime.md`
+- `generation_planning_runtime.md`
+- `narrative_generation_runtime.md`
+- `visual_generation_runtime.md`
+- `audiobook_generation_runtime.md`
+- `persistence_runtime.md`
+- `storage_architecture.md`
+- `runtime_secrets.md`
+- `modal_runtime.md`
+- `deployment_operations.md`
+- `production_qualification.md`
 
-- `analysis_foundation_runtime.md` — ingestion/scene-analysis foundation
-- `identity_runtime.md` — active identity clustering/review ownership and validation reference
-- `canon_extraction_runtime.md` — canon extraction
-- `character_world_modeling_runtime.md` — character/world state modeling
-- `retrieval_runtime.md` — retrieval behavior and contracts
+### v1 recovery/qualification evidence
 
-## Generation
+- `phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
+- `validation/REPRODUCIBILITY.md`
+- `validation/PHASE_0_EXTERNAL_READINESS_2026-09-10.md`
+- `recovery/`
+- `operations/PROTECTED_TEST_ASSETS.md`
+- `operations/protected_assets.manifest.json`
+- `operations/MODEL_PROVIDER_MANIFEST.md`
+- `operations/GITHUB_ACTIONS_SECRETS.md`
 
-- `generation_planning_runtime.md` — story planning / blueprint generation
-- `narrative_generation_runtime.md` — narrative generation
-- `visual_generation_runtime.md` — S.A.G.A. stage-7 visual generation and QA; generic image/video product UI belongs in the separate RenderLab repository
-- `audiobook_generation_runtime.md` — audiobook generation and QA
-- `qwen-image-edit-2511-integration.md` — retained S.A.G.A. Qwen provider/runtime contract
-- `qwen-image-edit-2511-deployment-plan.md` — Qwen worker deployment gates
-- `qwen-image-edit-2511-status.md` — dated Qwen worker/provider evidence
+### historical code
 
-## Persistence / Providers / Operations
+- pre-v2 Python/runtime packages and integrations
+- pre-v2 Dashboard Pro/API applications
+- production deployment/qualification machinery
+- `backup/reference/`
 
-- `persistence_runtime.md` — persistence runtime
-- `storage_architecture.md` — storage/provider boundaries
-- `runtime_secrets.md` — runtime secret ownership
-- `operations/GITHUB_ACTIONS_SECRETS.md` — GitHub Actions secret names, owning services, current observed presence/readiness, and migration status without values
-- `operations/PROTECTED_TEST_ASSETS.md` — protected/private book metadata, hashes, secure CI acquisition rules, and current R2 access evidence
-- `operations/protected_assets.manifest.json` — machine-readable protected-asset IDs, object keys, filenames, and hashes consumed by manual verification
-- `operations/MODEL_PROVIDER_MANIFEST.md` — active/evaluation/historical model and provider identities without model weights or credentials
-- `modal_runtime.md` — Modal/general compute provider runtime
-- `modal-worker-fleet-design.md` — S.A.G.A.-owned Modal worker-fleet contract and public registry ownership
-- `../config/modal-worker-ecosystems.json` — machine-readable S.A.G.A. worker ecosystem definitions
-- `../config/modal-worker-registry.json` — non-secret active worker routing metadata rehomed from the retired Studio prototype
-- `deployment_operations.md` — production build, rollout, rollback, backup, and recovery
+The repository history at commit `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b` is the clean pre-v2 boundary after the final v1 recovery evidence PR.
 
-## Product / UI Surfaces
+## RenderLab Boundary
 
-- `dashboard_pro.md` — S.A.G.A. operator dashboard
+`faresmohamed260/renderlab` is a separate project. Its mature web engineering patterns and technology choices can inform S.A.G.A. v2, but RenderLab product state, routes, schemas, media ownership, R2 credentials, and deployment state are not S.A.G.A. state.
 
-The former S.A.G.A. `apps/studio/` prototype is retired. Its standalone successor is `faresmohamed260/renderlab`. Studio product/UI plans, polish checklists, visual-review workflows, and product persistence schema are not active S.A.G.A. documentation or architecture.
+## Documentation Maintenance
 
-## Qualification and Evidence
+When v2 changes:
 
-- `production_qualification.md` — historical real-book nine-stage qualification plus the current clean-source qualification contract
-- `validation/REPRODUCIBILITY.md` — validation tiers, required secrets/assets/models, runner expectations, and live-gate boundaries
-- `validation/PHASE_0_EXTERNAL_READINESS_2026-09-10.md` — post-PR-#145 read-only evidence for S.A.G.A. production DB configuration, provider/pricing readiness, protected-R2 access, and Studio-era R2 namespace provenance
-- `.github/workflows/protected-asset-verification.yml` — manual R2-backed protected asset availability/hash verification; never uploads protected bytes
-- `.github/workflows/production-qualification.yml` — manual, `main`-only, explicit-cost clean-source nine-stage qualification control plane
-- additional validation scripts/tests under `scripts/` and `tests/` are authoritative only for the behavior they actually exercise
+- current state/phase/next step -> `PROJECT.md`
+- durable cross-cutting architecture decision -> `DECISIONS.md`
+- current phase scope/evidence -> active `phases/PHASE_V2_*.md`
+- subsystem contract -> `v2/`
+- dated validation evidence -> `validation/` when worth preserving
 
-## Migration / Historical Material
-
-- `MIGRATION_REFERENCE.md` — migration/reference material; verify its intended use before applying it to active architecture
-- `recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — 2026-09-10 local-to-GitHub recovery inventory and reconciliation decisions; references to Studio describe historical recovery state
-- `recovery/LOCAL_COMMIT_TRIAGE.md` — commit-by-commit classification of the 43 local-side commits from `codex/transaction-pool-rc36`
-- `recovery/HANDOFF_REPORT_2026-09-10.md` — final durable report for the 2026-09-10 local-to-GitHub recovery pass
-- `../backup/reference/` — isolated historical implementation, not active dependency
-
-## Documentation Maintenance Rules
-
-When durable project state changes:
-
-- update `PROJECT.md` for baseline/phase/next-step changes;
-- update `DECISIONS.md` for durable decisions;
-- update the active phase contract for scope/evidence/exit state;
-- update the owning subsystem/operations document when its contract changes;
-- update `production_qualification.md` only with qualification evidence that actually ran;
-- use dated validation records for bounded external-readiness evidence that should not be confused with successful qualification.
-
-Do not mark work complete from a plan, attempted run, or unrelated green CI check.
+If v1 behavior is reused, document the new v2 ownership instead of making the old document active again.

@@ -1,97 +1,125 @@
 # S.A.G.A. Durable Decisions
 
-This file records cross-cutting decisions that future sessions must not silently reinterpret. Detailed subsystem decisions should remain in their owning runtime/architecture documents when appropriate.
+This file records cross-cutting decisions future sessions must not silently reinterpret.
 
-## D-001 — Repository Is the Persistent Source of Truth
+## Active v2 Decisions
 
-**Status:** Accepted
-
-S.A.G.A. repository code and current authoritative documentation define project state. ChatGPT Project context and conversations are supplementary continuity only.
-
-**Consequence:** A durable decision, completed phase, blocker, validation result, or architecture change must be recorded in the repository rather than existing only in chat history.
-
-## D-002 — Active Architecture Is Contract-Driven; Historical Backup Is Inert
+### D-001 — Repository Is the Persistent Source of Truth
 
 **Status:** Accepted
 
-The active rebuilt architecture uses reusable packages/integrations/application surfaces. `backup/reference/` is discovery/history material and active code must not import it.
+Current repository code and authoritative documentation define S.A.G.A. state. Chat/project memory is supplementary continuity.
 
-**Consequence:** Legacy behavior may inform requirements, but legacy implementation does not become an active dependency by convenience.
+**Consequence:** Durable architecture, phase state, validation evidence, and blockers must be recorded in GitHub.
 
-## D-003 — Runtime Ownership Boundaries Must Be Preserved
+### D-011 — S.A.G.A. v2 Is a Fresh Rebuild
 
-**Status:** Accepted
+**Status:** Accepted — owner decision 2026-09-11
 
-Provider access, persistence, execution, identity, retrieval, reasoning, generation, observability, and other cross-cutting capabilities should flow through their owning active runtimes/contracts rather than ad hoc direct integrations.
+S.A.G.A. keeps its product goals and intended capabilities but abandons the previous implementation architecture as the active system.
 
-**Consequence:** New agent or application code should not bypass an existing owning runtime merely to ship a local fix faster.
+The pre-v2 Python/nine-stage system becomes historical/reference material. v2 is not required to preserve its runtime package boundaries, deployment topology, persistence abstractions, qualification control plane, provider routing, or orchestration design.
 
-## D-004 — Analysis Produces Canon Memory; Generation Consumes It
+**Consequence:** Reuse requirements, algorithms, evaluations, schemas, prompts, and lessons selectively; do not bulk-port v1 code or treat v1 compatibility as a default requirement.
 
-**Status:** Accepted
-
-The analysis side owns durable canon construction. Story, visual, and audiobook generation should ground against persisted canon/retrieval/state artifacts when available rather than independently reconstructing canon from raw books.
-
-**Consequence:** Downstream fixes should not mask upstream canon/identity contamination when the upstream subsystem owns the defect.
-
-## D-005 — Research Is Evidence, Not Implementation State
+### D-012 — v2 Is Web-First
 
 **Status:** Accepted
 
-Papers, model cards, external repositories, deep-research reports, benchmarks, and proposed algorithms are candidates for controlled evaluation. They do not change S.A.G.A. architecture until implemented, evaluated, and explicitly adopted.
+The main application is built first as a web product. The initial architecture is:
 
-**Consequence:** Future sessions must label research-backed alternatives as candidates until repository evidence supports adoption.
+- Next.js + React + TypeScript;
+- Vercel deployment;
+- Supabase Postgres/Auth/Realtime;
+- Cloudflare DNS/CDN/security where useful;
+- dedicated object storage behind a S.A.G.A.-owned interface.
 
-## D-006 — Qualification Claims Must Be Bound to Reproducible Source
+The first active product surface is `apps/web/`.
 
-**Status:** Accepted
+**Consequence:** User-facing domain workflows, application state, auth, jobs, and storage contracts are designed before the new agentic AI runtime.
 
-A successful real-book/local/provider run is useful evidence, but production/promotable qualification requires traceable committed source and the required repository validation gates.
-
-**Consequence:** The 2026-08-09 accepted real-book qualification remains evidence, but its own dirty-worktree warning prevents it from proving that current `main` is a promotable release.
-
-## D-007 — Progressive Phase Planning
-
-**Status:** Accepted
-
-For substantial recovery/development cycles, keep later work at roadmap level and fully specify the immediate phase from verified current state. Completing a phase requires evidence and documentation updates before the next phase is expanded.
-
-**Consequence:** AI sessions should not create speculative detailed plans for many future phases while current-state evidence is still changing.
-
-## D-008 — Cross-Surface Cleanup Requires Explicit Ownership Evidence
+### D-013 — Agentic AI Follows the Web/Application Foundation
 
 **Status:** Accepted
 
-S.A.G.A. previously contained both its core product surfaces and the `apps/studio/` prototype. The prototype was not removed during initial recovery because ownership had to be established first.
+The new agentic AI subsystem is intentionally deferred until the web frontend/backend, application data model, storage, authentication, job lifecycle, and deployment contracts are stable enough to consume.
 
-**Consequence:** Destructive cross-surface cleanup requires an explicit ownership decision and focused change. That requirement was satisfied for Studio by D-009 and D-010; the same discipline applies to future ambiguous surfaces.
+**Consequence:** Phase 0/1 must not recreate the old pipeline as the top-level product architecture. Future agents operate behind application-owned contracts and write structured application state/artifacts.
 
-## D-009 — Generic Image/Video Studio Product Belongs In RenderLab
-
-**Status:** Accepted
-
-The generic image/video generation platform previously developed under the S.A.G.A. `apps/studio/` surface evolved into and is now owned by the separate `faresmohamed260/renderlab` repository.
-
-**Consequence:** Generic image/video product UI, gallery, media-library, product persistence, and product-specific feature work must not continue in S.A.G.A. by default. RenderLab is a separate project and its product state is not S.A.G.A. implementation state.
-
-## D-010 — Retire `apps/studio/`; Retain Reusable S.A.G.A. Visual Infrastructure
+### D-014 — Backblaze B2 Is the v2 Object Store
 
 **Status:** Accepted
 
-The owner explicitly authorized removal of the retired S.A.G.A. Studio prototype after confirming that its standalone successor is RenderLab. The focused cleanup removes `apps/studio/`, Studio-only workflows, UI/product documentation, patch helpers, and Studio-owned Supabase migration definitions from S.A.G.A.
+S.A.G.A. v2 will not use the existing shared Cloudflare R2 allocation. Backblaze B2 is selected for S.A.G.A.-dedicated object storage for the hobby/demo deployment.
 
-Reusable provider infrastructure that is also part of S.A.G.A.'s stage-7 visual-generation runtime remains in S.A.G.A., including `packages/visual_generation`, `packages/modal_runtime`, `integrations/comfyui`, `integrations/qwen`, the Modal ecosystem configuration, and operational worker tooling. Public worker routing metadata formerly stored in the Studio app is rehomed to `config/modal-worker-registry.json`.
+Supabase owns structured relational application state. B2 owns source files, generated media, exports, and other large binary/object payloads.
 
-Existing remote resources are not destroyed merely because their Studio source definitions are removed. In particular, this repository cleanup does not drop already-created `studio_*` database objects, delete R2 objects/buckets, stop Modal workers, or mutate RenderLab resources.
+**Consequence:** Do not make new S.A.G.A. storage depend on the RenderLab/Fares Uniform R2 allocation. Keep the object-store boundary replaceable.
 
-**Consequence:** Future S.A.G.A. work may reuse the retained model/provider fleet only through S.A.G.A.'s own runtime contracts. Do not restore Studio UI/product code as a shortcut. Any live cleanup or transfer of legacy Studio cloud resources requires its own explicit operation.
+### D-015 — Object Storage Is Provider-Neutral at the Domain Boundary
 
-## Open Decisions Requiring Evidence
+**Status:** Accepted
 
-These are not accepted decisions yet.
+Feature/domain code depends on a S.A.G.A.-owned storage interface rather than directly on B2/AWS SDK clients. The B2 runtime implementation may use Backblaze's S3-compatible API once a scoped application key exists.
 
-### O-002 — Current promotable S.A.G.A. release baseline
+**Consequence:** Vendor details remain in `apps/web/src/server/storage/` (or a later dedicated infrastructure package). Switching to another S3-compatible store should not require rewriting domain features.
 
-The repository has strong prior qualification evidence, and deterministic recovery CI is green, but clean-source protected-book qualification is still blocked by the documented Cloudflare R2 `403 Forbidden` asset-read prerequisite.
+### D-016 — B2 Master Key Is Bootstrap-Only
 
-Phase 0 must identify the exact commit/configuration that satisfies the current build/test/qualification gates before this decision can be closed.
+**Status:** Accepted
+
+Repository secrets `SAGA_B2_KEY_ID` and `SAGA_B2_MASTER_APPLICATION_KEY` are available for bounded Backblaze account/bootstrap operations. Their values must never be printed or committed.
+
+Backblaze master application keys are not S3-compatible, so they are not the normal web runtime credential.
+
+**Consequence:** GitHub Actions may use the master key to create/inspect/smoke-test the dedicated bucket through the B2 Native/CLI path. Normal web storage will later use a bucket-scoped application key and explicit S3 endpoint configuration.
+
+### D-017 — RenderLab Is an Engineering Reference, Not a Shared Product
+
+**Status:** Accepted
+
+S.A.G.A. v2 deliberately uses the same technology family and may reuse proven workflow conventions from the former Studio/RenderLab lineage. RenderLab remains a separate project.
+
+**Consequence:** Do not share database schema ownership, R2 credentials, routes, generated-media state, deployments, or product assumptions between the projects merely because the stacks are similar.
+
+### D-018 — Progressive v2 Phases
+
+**Status:** Accepted
+
+Fully specify the immediate v2 phase and keep later phases at roadmap level until current implementation evidence is stable.
+
+Current order:
+
+1. Phase 0 — web foundation + storage bootstrap;
+2. Phase 1 — main site frontend/backend product;
+3. later — agentic AI foundation and progressive restoration of S.A.G.A. intelligence/generation capabilities.
+
+## Still-Applicable General Principles From v1
+
+These principles remain useful across the rebuild even though their old implementation context is historical:
+
+- research is evidence, not implementation state;
+- analysis-derived canon should become durable application state before generation relies on it;
+- qualification/evaluation claims must be tied to reproducible source/configuration;
+- cross-project cleanup/reuse requires explicit ownership evidence;
+- deterministic code should own schemas, validation, identifiers, state transitions, authorization, and orchestration invariants.
+
+## Historical v1 Decisions
+
+The earlier D-002 through D-010 decisions described the pre-v2 contract-driven Python architecture, nine-stage runtime, Studio retirement, and v1 qualification/recovery boundaries. They remain valid **historical evidence about v1**, but they do not constrain v2 architecture except where an active decision above explicitly preserves the principle.
+
+The clean v1 boundary immediately before the rebuild is commit:
+
+`b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
+
+Do not reactivate the v1 Phase-0 qualification/R2 repair path unless the owner explicitly reverses the v2 rebuild decision.
+
+## Open v2 Decisions
+
+Do not decide these prematurely; resolve them in the phase that needs them:
+
+- exact new Supabase project and schema rollout strategy;
+- final runtime hosting/queue architecture for long-running agent jobs that exceed Vercel request limits;
+- agent framework/model-provider architecture;
+- GPU/provider strategy for future visual/audio generation;
+- whether B2 runtime access should be direct-to-browser presigned S3 uploads, server-mediated operations, or a hybrid per object type.
