@@ -34,6 +34,7 @@ Recovering the baseline prevents future AI sessions from repeatedly rewriting wo
 - Divergence from remote `main`: 1000 remote-side commits and 43 local-side commits.
 - Local working tree: dirty, with modified ComfyUI/runtime files and untracked Studio/generation-core files.
 - Inventory: `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md`
+- Local commit triage: `docs/recovery/LOCAL_COMMIT_TRIAGE.md`
 - Reproducibility manifest: `docs/validation/REPRODUCIBILITY.md`
 - Secrets manifest: `docs/operations/GITHUB_ACTIONS_SECRETS.md`
 - Protected asset manifest: `docs/operations/PROTECTED_TEST_ASSETS.md`
@@ -185,7 +186,8 @@ Phase 0 should accumulate evidence for these gates:
 - Current Actions were classified into deterministic CI, bounded integration, and expensive/live-provider tiers.
 - Ollama is documented as local/remote endpoint dependent, not as an assumed GitHub-hosted runner dependency and not as requiring an invented `OLLAMA_API_KEY`.
 - Deterministic local validation on the clean recovery worktree passed: frozen `uv` sync, one Alembic head `202608090400`, source secret scan with 850 files and 0 findings, architecture-boundary tests 4/4, full backend tests 338 passed / 3 skipped, Dashboard Pro tests 13/13, Dashboard Pro production build, production dependency audit with 0 high vulnerabilities, and production Compose config validation.
-- Remote GitHub validation on PR #134 head `97b8200ad48dc835b8c7952de10dec998148da61` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
+- Remote GitHub validation on PR #134 head `8685f97cec6cca81c2a19536cbe0ab6057d7323c` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
+- The 43 local-side commits on `codex/transaction-pool-rc36` were classified commit-by-commit. The old branch must not be merged wholesale because it would remove substantial newer GitHub work; focused future PRs may port selected code/evidence.
 
 ## Exit Criteria
 
@@ -199,7 +201,7 @@ Phase 0 is complete only when:
 6. `apps/studio/` status is explicitly decided or intentionally deferred with its coupling documented;
 7. `PROJECT.md` records the verified completion evidence and names the next phase from actual results.
 
-Current status: this handoff branch improves repository continuity, records missing local knowledge, and verifies Tier 1 deterministic gates locally and in GitHub Actions for PR #134. Phase 0 is not complete until the branch is reviewed/merged, local-side commits are ported or rejected, Studio ownership is decided/deferred with coupling evidence, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
+Current status: the initial handoff branch has been merged, repository continuity has improved, local-side commits are triaged, and Tier 1 deterministic gates passed locally and in GitHub Actions for PR #134. Phase 0 is not complete until selected local-side code/evidence ports are handled through focused PRs, Studio ownership is decided/deferred with coupling evidence, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
 
 ## Next Phase Rule
 

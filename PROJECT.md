@@ -101,6 +101,7 @@ It starts from remote `main` at `1d1fa6e9bb86feede9c9f5b89eec828eb15a2050` and i
 New durable recovery references:
 
 - `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — local inventory, divergence, uncommitted work, heavy/generated exclusions, and reconciliation decisions.
+- `docs/recovery/LOCAL_COMMIT_TRIAGE.md` — commit-by-commit classification of the 43 local-side commits on `codex/transaction-pool-rc36`.
 - `docs/validation/REPRODUCIBILITY.md` — CI/live validation tiers and runner/secrets/assets expectations.
 - `docs/operations/GITHUB_ACTIONS_SECRETS.md` — secret names and destinations without values.
 - `docs/operations/PROTECTED_TEST_ASSETS.md` — protected EPUB metadata and hashes without committing protected books.
@@ -146,7 +147,7 @@ The goal is not a redesign. The goal is to establish exactly what current commit
 After this recovery documentation is reviewed/merged:
 
 1. review/merge PR #134 after confirming the added manifests are acceptable;
-2. port or reject the 43 local-side commits file-by-file against current `main`;
+2. use `docs/recovery/LOCAL_COMMIT_TRIAGE.md` to drive focused future PRs for any accepted local-side code ports;
 3. configure or confirm the GitHub Actions secrets in `docs/operations/GITHUB_ACTIONS_SECRETS.md`;
 4. decide the final S.A.G.A. status of Studio versus RenderLab/separate ownership;
 5. run bounded clean-source S.A.G.A. qualification only after protected assets and live-provider prerequisites are available;

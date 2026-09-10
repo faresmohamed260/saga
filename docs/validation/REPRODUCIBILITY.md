@@ -68,7 +68,7 @@ This proves the local deterministic recovery branch state, not live provider rea
 
 ## Latest GitHub Actions evidence
 
-On 2026-09-10, PR #134 at head `97b8200ad48dc835b8c7952de10dec998148da61` passed:
+On 2026-09-10, PR #134 at head `8685f97cec6cca81c2a19536cbe0ab6057d7323c` passed:
 
 - Backend Architecture CI / `test`
 - Backend Architecture CI / `migrations`
