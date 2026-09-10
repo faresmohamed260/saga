@@ -57,22 +57,23 @@ Generation-side systems are expected to consume persisted canon/retrieval artifa
 
 ## Verified Recovery Baseline — 2026-09-10
 
-Repository continuity and surface ownership recovery is complete through these merged pull requests:
+Repository continuity, surface ownership, and protected-storage diagnostics are complete through these merged pull requests:
 
 - PR #134 — repository governance, recovery manifests, reproducibility, secrets/assets/model documentation;
 - PR #135 — commit-by-commit triage of the 43 divergent local-side commits;
 - PR #137 — protected asset verification workflow/manifest and explicit RenderLab ownership for future generic image/video product work;
 - PR #138 — recorded the first real GitHub protected-asset verification result;
 - PR #139 — retired `apps/studio/` and rehomed reusable worker metadata under S.A.G.A.-owned configuration;
-- PR #140 — made retained live FLUX runtime/gateway deployments manual-only.
+- PR #140 — made retained live FLUX runtime/gateway deployments manual-only;
+- PR #141 — added bounded protected-R2 access/object/download diagnostics and jurisdiction-aware acquisition.
 
-Verified clean baseline through PR #140:
+Verified current clean `main` baseline through PR #141:
 
-- commit: `961e679cd98405822f80def395ea83a8b43231d9`;
-- tree: `92463b32f5e090a65900dcafb165105d1b1f5870`;
-- commit message: `Make live FLUX deployments manual-only (#140)`.
+- commit: `b416eaf0f0b2431845e8b26a4a51d315881bcfa0`;
+- tree: `4b909b2718419a2d0f41e86d069bfabbd1e09e1d`;
+- commit message: `Diagnose protected R2 asset availability before qualification (#141)`.
 
-On that exact commit, GitHub Backend Architecture CI passed backend tests, migration upgrade/rollback/re-upgrade plus isolated restore, production Compose validation, runtime container build, and frontend container build. Required Check Compatibility also passed. No FLUX deployment workflow fired from the #140 merge, confirming the manual-only provider guardrail.
+PR #141 passed Backend Architecture CI (active backend tests, migration upgrade/rollback/re-upgrade and isolated restore, production Compose validation, runtime image build, frontend image build) plus Required Check Compatibility before merge.
 
 The repository is no longer dependent on undocumented state from the former local Codex checkout. Historical recovery evidence is indexed under `docs/recovery/`.
 
@@ -107,19 +108,31 @@ The same record explicitly states that the run was **not promotable** because it
 
 Therefore the run remains valuable behavioral evidence, but it is not proof that current `main` is a clean, reproducible, promotable S.A.G.A. release.
 
-## Current External Blocker
+## Current Qualification Blockers / Readiness
 
-The protected-book qualification input is intentionally absent from the public repository. Recovery recorded its metadata and expected private R2 object key, but the protected bytes were not migrated during the repository handoff.
+Protected-book qualification remains externally blocked until the private source object is reachable and hash-valid. Issue #142 tracks that prerequisite.
 
-The first GitHub protected-asset verification run (`34432226628`) reached R2 with all required secrets present and received `403 Forbidden` from `HeadObject`. The old workflow could not distinguish among:
+The first GitHub protected-asset verification run (`34432226628`) reached R2 with all required secrets present and received `403 Forbidden` from the old `HeadObject` path. PR #141 replaced that ambiguous path with diagnostics that can distinguish:
 
-- wrong R2 jurisdiction endpoint;
-- wrong account/bucket/token scope or insufficient Object Read permission;
-- missing object at the manifest key.
+- `access_failed` — account/bucket/jurisdiction/token scope/Object Read problem;
+- `object_missing` — exact manifest key absent after successful prefix listing;
+- `download_failed` — object visible but GetObject/download fails;
+- success — bytes download and still must pass the committed SHA-256 check.
 
-The protected-asset workflow is being hardened so it first tests private prefix visibility, detects an absent exact manifest key, supports `default`/`eu`/`us`/`fedramp` R2 endpoints, and only then downloads and verifies the SHA-256. This diagnostic work does not upload protected bytes or alter R2.
+Repository audit also found that clean-source qualification lacked a GitHub Actions control plane. Issue #143 tracks the focused implementation under `phase-0/clean-source-qualification-workflow`.
 
-Until a protected asset is reachable and hash-verified, clean-source protected-book qualification remains blocked.
+The intended manual qualification gate now requires, before protected-book processing:
+
+- explicit authorization for live provider cost;
+- exact `GITHUB_SHA` / clean tracked checkout provenance;
+- production Supabase schema/API/service-role readiness;
+- persisted provider credentials for `modal_xcore_litbank`, `modal_comfyui`, and `modal_kokoro_tts`;
+- active Ollama/gpt-oss reasoning configuration for current default reasoning stages;
+- Mistral configured through persistence or `MISTRAL_API_KEY` for current Mistral reasoning/vision/transcription stages;
+- versioned provider-wide pricing fallbacks for metered `ollama`, `mistral`, and `modal` usage;
+- one manifest-selected protected EPUB downloaded from private R2 and hash-verified.
+
+The connected Supabase project visible to this ChatGPT session was read-only fingerprinted during this audit and did **not** contain the expected S.A.G.A. provider/usage/qualification tables. It was not treated as S.A.G.A. production persistence and was not mutated.
 
 ## Active Phase
 
@@ -127,22 +140,19 @@ Until a protected asset is reachable and hash-verified, clean-source protected-b
 
 Contract: `docs/phases/PHASE_0_REPOSITORY_BASELINE_RECOVERY.md`
 
-Status: **ACTIVE — REPOSITORY CONTINUITY RECOVERED; STUDIO SPLIT COMPLETE; PROTECTED-ASSET STORAGE DIAGNOSIS / REQUALIFICATION REMAINS**
+Status: **ACTIVE — REPOSITORY BASELINE RECOVERED; CLEAN-SOURCE QUALIFICATION CONTROL PLANE IN PROGRESS; PRIVATE R2 SOURCE STILL BLOCKED**
 
-Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to classify/fix the protected-asset prerequisite, then run exact-head qualification from clean committed source.
+Phase 0 is no longer about reconstructing undocumented local state. The remaining work is to finish/validate the manual clean-source qualification workflow, resolve the private protected-source prerequisite, run exact-head qualification, and bind the result to committed source/configuration.
 
 ## Immediate Next Step
 
-1. land the protected-R2 diagnostic workflow/helper with core CI green;
-2. dispatch `Protected Asset Verification` for `once-upon-a-broken-heart` using the correct R2 jurisdiction;
-3. act on the bounded result:
-   - `access_failed` -> correct R2 account/bucket/jurisdiction/token scope;
-   - `object_missing` -> migrate the authorized protected asset bytes to the manifest object key outside the public repository;
-   - `download_failed` -> correct GetObject/read access;
-   - success -> proceed to bounded production qualification;
-4. rerun protected asset verification until the selected object hash matches the committed manifest;
-5. run the bounded clean-source S.A.G.A. qualification required by current production contracts;
-6. bind the resulting evidence to the exact commit/configuration and update this file plus the Phase 0 contract before declaring Phase 0 complete.
+1. validate and merge issue #143 / `phase-0/clean-source-qualification-workflow` with core CI green;
+2. configure real, versioned provider-wide `SAGA_PROVIDER_COST_RATES_JSON` fallbacks for `ollama`, `mistral`, and `modal` plus any desired specific overrides; do not invent prices;
+3. resolve issue #142 by dispatching `Protected Asset Verification` for `once-upon-a-broken-heart` with the correct R2 jurisdiction and fixing the exact reported category;
+4. make the selected object download successfully and match its committed SHA-256;
+5. ensure the persisted Supabase provider rows and required reasoning credentials are qualification-ready;
+6. manually dispatch **Clean-Source Production Qualification** on the exact `main` commit intended for evidence and explicitly authorize live cost;
+7. bind the resulting persisted report to the exact commit/configuration and update this file plus Phase 0 / qualification evidence before declaring Phase 0 complete.
 
 ## Development Commands
 
