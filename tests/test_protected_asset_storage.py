@@ -8,6 +8,14 @@ import pytest
 from scripts import check_protected_asset_storage as storage
 
 
+def _manifest(object_key: str = "protected/saga/book.epub") -> dict[str, list[dict[str, str]]]:
+    return {
+        "assets": [
+            {"id": "book", "object_key": object_key, "filename": "book.epub"}
+        ]
+    }
+
+
 def test_resolve_r2_endpoint_default() -> None:
     assert (
         storage.resolve_r2_endpoint("abc123", "default")
@@ -59,17 +67,32 @@ def test_exact_object_visible_requires_exact_key() -> None:
     assert storage.exact_object_visible(listing, "protected/saga/other.epub") is False
 
 
-def test_acquire_assets_classifies_missing_object(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    manifest = {
-        "assets": [
-            {
-                "id": "book",
-                "object_key": "protected/saga/book.epub",
-                "filename": "book.epub",
-            }
-        ]
-    }
+def test_acquire_assets_classifies_access_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_run(args: list[str]):
+        assert args[:2] == ["s3api", "list-objects-v2"]
+        return storage.subprocess.CompletedProcess(
+            args=["aws", *args], returncode=1, stdout="", stderr="forbidden"
+        )
 
+    monkeypatch.setattr(storage, "_run_aws", fake_run)
+    assert (
+        storage.acquire_assets(
+            manifest=_manifest(),
+            requested_asset_id="book",
+            destination=tmp_path,
+            account_id="abc123",
+            bucket_name="private-bucket",
+            jurisdiction="default",
+        )
+        == 20
+    )
+
+
+def test_acquire_assets_classifies_missing_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     def fake_run(args: list[str]):
         assert args[:2] == ["s3api", "list-objects-v2"]
         return storage.subprocess.CompletedProcess(
@@ -82,7 +105,7 @@ def test_acquire_assets_classifies_missing_object(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(storage, "_run_aws", fake_run)
     assert (
         storage.acquire_assets(
-            manifest=manifest,
+            manifest=_manifest(),
             requested_asset_id="book",
             destination=tmp_path,
             account_id="abc123",
@@ -93,13 +116,41 @@ def test_acquire_assets_classifies_missing_object(monkeypatch: pytest.MonkeyPatc
     )
 
 
-def test_acquire_assets_downloads_visible_object(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_acquire_assets_classifies_download_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     object_key = "protected/saga/book.epub"
-    manifest = {
-        "assets": [
-            {"id": "book", "object_key": object_key, "filename": "book.epub"}
-        ]
-    }
+
+    def fake_run(args: list[str]):
+        if args[0] == "s3api":
+            return storage.subprocess.CompletedProcess(
+                args=["aws", *args],
+                returncode=0,
+                stdout=json.dumps({"Contents": [{"Key": object_key}]}),
+                stderr="",
+            )
+        return storage.subprocess.CompletedProcess(
+            args=["aws", *args], returncode=1, stdout="", stderr="forbidden"
+        )
+
+    monkeypatch.setattr(storage, "_run_aws", fake_run)
+    assert (
+        storage.acquire_assets(
+            manifest=_manifest(object_key),
+            requested_asset_id="book",
+            destination=tmp_path,
+            account_id="abc123",
+            bucket_name="private-bucket",
+            jurisdiction="default",
+        )
+        == 22
+    )
+
+
+def test_acquire_assets_downloads_visible_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    object_key = "protected/saga/book.epub"
     calls: list[list[str]] = []
 
     def fake_run(args: list[str]):
@@ -120,7 +171,7 @@ def test_acquire_assets_downloads_visible_object(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(storage, "_run_aws", fake_run)
     assert (
         storage.acquire_assets(
-            manifest=manifest,
+            manifest=_manifest(object_key),
             requested_asset_id="book",
             destination=tmp_path,
             account_id="abc123",
