@@ -31,15 +31,18 @@ test("closed demo exposes no public sign-up operation", () => {
   assert.match(read("src/app/page.tsx"), /invitation-only/i);
 });
 
-test("service-role capability remains inside server source", () => {
-  const serviceRoleUsers = collectFiles(srcRoot)
-    .filter((path) => /\.(ts|tsx)$/.test(path))
-    .filter((path) => readFileSync(path, "utf8").includes("SUPABASE_SERVICE_ROLE_KEY"))
+test("Supabase secret-key capability remains inside server source", () => {
+  const runtimeFiles = collectFiles(srcRoot).filter((path) => /\.(ts|tsx)$/.test(path));
+  const secretKeyUsers = runtimeFiles
+    .filter((path) => readFileSync(path, "utf8").includes("SUPABASE_SECRET_KEY"))
     .map((path) => path.replaceAll("\\", "/"));
+  const legacyServiceRoleUsers = runtimeFiles
+    .filter((path) => readFileSync(path, "utf8").includes("SUPABASE_SERVICE_ROLE_KEY"));
 
-  assert.equal(serviceRoleUsers.length, 1);
-  assert.match(serviceRoleUsers[0], /\/src\/server\/supabase\/config\.ts$/);
-  assert.equal(read("src/lib/supabase/browser.ts").includes("SERVICE_ROLE"), false);
+  assert.equal(secretKeyUsers.length, 1);
+  assert.match(secretKeyUsers[0], /\/src\/server\/supabase\/config\.ts$/);
+  assert.equal(legacyServiceRoleUsers.length, 0);
+  assert.equal(read("src/lib/supabase/browser.ts").includes("SECRET_KEY"), false);
 });
 
 test("private application layout fails closed through server account state", () => {
@@ -58,6 +61,7 @@ test("admin routes require active SAGA admin authorization", () => {
     assert.match(source, /isActiveSagaAdmin/);
   }
   assert.match(invitationRoute, /SAGA_PUBLIC_APP_URL/);
+  assert.doesNotMatch(invitationRoute, /request\.nextUrl\.origin/);
 });
 
 test("invitation confirmation claims access before password setup", () => {
@@ -67,6 +71,12 @@ test("invitation confirmation claims access before password setup", () => {
   assert.match(confirmRoute, /\/app\/welcome/);
   assert.match(passwordForm, /auth\.updateUser\(\{ password \}\)/);
   assert.doesNotMatch(passwordForm, /signUp/);
+});
+
+test("hosted invitation template contract is documented for SSR token-hash confirmation", () => {
+  const supabaseReadme = read("supabase/README.md");
+  assert.match(supabaseReadme, /\{\{ \.RedirectTo \}\}\?token_hash=\{\{ \.TokenHash \}\}&type=invite/);
+  assert.match(supabaseReadme, /SUPABASE_SECRET_KEY/);
 });
 
 test("closed-demo migration denies browser access and protects admin mutations", () => {

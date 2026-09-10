@@ -9,8 +9,11 @@ This directory owns the **new v2 web application's** Supabase schema. It does no
 - `saga_account_access`
 - `saga_invitations`
 - privileged `saga_claim_invitation(...)`
+- privileged `saga_admin_set_account_access(...)`
 
-Raw access/invitation tables have RLS enabled and browser grants revoked. Normal browser code must never use service-role credentials.
+Raw access/invitation tables have RLS enabled and browser grants revoked. Browser code uses only the project's publishable key. Privileged server code uses a current Supabase `sb_secret_...` key through `SUPABASE_SECRET_KEY`; never place that secret in a `NEXT_PUBLIC_*` variable or client bundle.
+
+The database role used by Supabase secret keys is still `service_role`, so SQL grants in the migration intentionally target `service_role` even though application configuration uses the newer secret-key format rather than the legacy `service_role` JWT key.
 
 ## First-admin bootstrap
 
@@ -29,17 +32,47 @@ values ('<exact-auth-user-uuid>', 'admin', 'active');
 
 That out-of-band bootstrap is the only initial bypass. Subsequent product access should be invitation-driven and server-authorized.
 
-## Email delivery
+## API-key contract
 
-The application records the S.A.G.A. invitation first, then requests email delivery through Supabase Auth Admin.
+For a new hosted S.A.G.A. Supabase project, use the current key model:
 
-Before production/demo invitations are relied upon, verify in the S.A.G.A. Supabase project:
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` -> `sb_publishable_...`, browser-safe only when RLS/policies protect exposed data;
+- `SUPABASE_SECRET_KEY` -> `sb_secret_...`, server-only elevated key that bypasses RLS;
+- `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_URL` -> project URL.
 
-- Site URL;
-- redirect allowlist including `/auth/confirm` on the real app origin;
-- invitation template/link contract;
-- recovery template if recovery is later enabled;
-- production-capable custom SMTP or equivalent email hook;
-- sender-domain authentication and practical rate limits.
+Do not introduce the legacy `SUPABASE_SERVICE_ROLE_KEY` into the new v2 deployment unless a documented compatibility blocker forces a temporary fallback.
 
-Code success does not prove recipient delivery.
+## Invitation email delivery
+
+The application records the S.A.G.A. invitation first, then requests delivery through Supabase Auth Admin with `redirectTo` set to the trusted canonical URL:
+
+```text
+https://<saga-origin>/auth/confirm
+```
+
+`SAGA_PUBLIC_APP_URL` is required by the admin invitation endpoint. Production invitation URLs are never derived from the incoming request `Host`/origin.
+
+### Hosted invite template contract
+
+The SSR confirmation endpoint expects a token hash. Configure the hosted **Invite user** email template so the action URL reaches the exact `redirectTo` supplied by S.A.G.A. and adds the token hash/type:
+
+```html
+<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite">
+  Accept S.A.G.A. invitation
+</a>
+```
+
+Do not rely on a default flow that returns the authenticated session only in a URL fragment; server-side route handlers cannot read browser fragments. If the template contract changes, change `/auth/confirm` and this document together.
+
+Before demo invitations are relied upon, verify in the S.A.G.A. Supabase project:
+
+- Site URL points at the canonical S.A.G.A. deployment;
+- redirect allowlist includes the exact `/auth/confirm` URL and only justified local/preview entries;
+- Invite user template matches the token-hash contract above;
+- recovery/password templates are configured before recovery is exposed;
+- production-capable custom SMTP or an equivalent Auth email hook/provider is configured;
+- sender domain authentication and practical delivery/rate limits are verified;
+- provider email tracking/link rewriting is disabled for authentication mail;
+- invitation behavior is tested with providers/security gateways that prefetch links, because URL prefetch can consume one-time Auth links.
+
+Supabase accepting an invitation request is not proof that the recipient received the message. S.A.G.A. UI/API language must preserve that distinction.

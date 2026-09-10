@@ -6,7 +6,7 @@ export function createSupabaseAdminClient() {
   const config = getSupabaseAdminConfig();
   if (!config) return null;
 
-  return createClient(config.url, config.serviceRoleKey, {
+  return createClient(config.url, config.secretKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

@@ -9,7 +9,7 @@ export type SupabasePublicConfig = {
 };
 
 export type SupabaseAdminConfig = SupabasePublicConfig & {
-  serviceRoleKey: string;
+  secretKey: string;
 };
 
 export function getSupabasePublicConfig(): SupabasePublicConfig | null {
@@ -25,9 +25,9 @@ export function getSupabasePublicConfig(): SupabasePublicConfig | null {
 
 export function getSupabaseAdminConfig(): SupabaseAdminConfig | null {
   const publicConfig = getSupabasePublicConfig();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!publicConfig || !serviceRoleKey) return null;
-  return { ...publicConfig, serviceRoleKey };
+  const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
+  if (!publicConfig || !secretKey) return null;
+  return { ...publicConfig, secretKey };
 }
 
 export function supabaseConfigurationStatus(): IntegrationStatus {

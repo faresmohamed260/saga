@@ -15,6 +15,23 @@ function authorizationError(state: Awaited<ReturnType<typeof getCurrentSagaAccou
   );
 }
 
+function invitationRedirectUrl() {
+  const configuredOrigin = process.env.SAGA_PUBLIC_APP_URL?.trim();
+  if (!configuredOrigin) return null;
+
+  try {
+    const origin = new URL(configuredOrigin);
+    if (origin.username || origin.password || origin.search || origin.hash) return null;
+    if (origin.pathname !== "/") return null;
+    if (origin.protocol !== "https:" && !(origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname))) {
+      return null;
+    }
+    return new URL("/auth/confirm", origin).toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const state = await getCurrentSagaAccountState();
   if (!isActiveSagaAdmin(state)) return authorizationError(state);
@@ -41,11 +58,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid invitation request." }, { status: 400 });
   }
 
-  const configuredOrigin = process.env.SAGA_PUBLIC_APP_URL?.trim();
-  let redirectTo: string;
-  try {
-    redirectTo = new URL("/auth/confirm", configuredOrigin || request.nextUrl.origin).toString();
-  } catch {
+  const redirectTo = invitationRedirectUrl();
+  if (!redirectTo) {
     return NextResponse.json({ error: "Invitation delivery is not configured." }, { status: 503 });
   }
 
