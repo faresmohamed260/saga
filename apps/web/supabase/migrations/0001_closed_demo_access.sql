@@ -63,8 +63,7 @@ begin
   end if;
 
   if exists (select 1 from public.saga_account_access where user_id = p_user_id) then
-    return query
-      select * from public.saga_account_access where user_id = p_user_id;
+    return query select * from public.saga_account_access where user_id = p_user_id;
     return;
   end if;
 
@@ -93,12 +92,96 @@ begin
      and claimed_at is null
      and revoked_at is null;
 
-  return query
-    select * from public.saga_account_access where user_id = p_user_id;
+  return query select * from public.saga_account_access where user_id = p_user_id;
 end;
 $$;
 
 revoke all on function public.saga_claim_invitation(uuid, text) from public, anon, authenticated;
 grant execute on function public.saga_claim_invitation(uuid, text) to service_role;
+
+create or replace function public.saga_admin_set_account_access(
+  p_actor_user_id uuid,
+  p_target_user_id uuid,
+  p_role text default null,
+  p_status text default null
+)
+returns setof public.saga_account_access
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor public.saga_account_access%rowtype;
+  v_target public.saga_account_access%rowtype;
+  v_next_role text;
+  v_next_status text;
+  v_active_admin_count integer;
+begin
+  if p_actor_user_id is null or p_target_user_id is null then
+    raise exception 'saga_admin_invalid_request';
+  end if;
+  if p_role is not null and p_role not in ('member', 'admin') then
+    raise exception 'saga_admin_invalid_request';
+  end if;
+  if p_status is not null and p_status not in ('active', 'suspended') then
+    raise exception 'saga_admin_invalid_request';
+  end if;
+  if p_role is null and p_status is null then
+    raise exception 'saga_admin_invalid_request';
+  end if;
+
+  select * into v_actor
+    from public.saga_account_access
+   where user_id = p_actor_user_id
+   for update;
+
+  if not found or v_actor.role <> 'admin' or v_actor.status <> 'active' then
+    raise exception 'saga_admin_required';
+  end if;
+
+  perform 1
+    from public.saga_account_access
+   where role = 'admin' and status = 'active'
+   order by user_id
+   for update;
+
+  select * into v_target
+    from public.saga_account_access
+   where user_id = p_target_user_id
+   for update;
+
+  if not found then
+    raise exception 'saga_admin_account_not_found';
+  end if;
+
+  v_next_role := coalesce(p_role, v_target.role);
+  v_next_status := coalesce(p_status, v_target.status);
+
+  if p_target_user_id = p_actor_user_id and (v_next_role <> 'admin' or v_next_status <> 'active') then
+    raise exception 'saga_admin_self_lockout';
+  end if;
+
+  if v_target.role = 'admin' and v_target.status = 'active'
+     and (v_next_role <> 'admin' or v_next_status <> 'active') then
+    select count(*) into v_active_admin_count
+      from public.saga_account_access
+     where role = 'admin' and status = 'active';
+    if v_active_admin_count <= 1 then
+      raise exception 'saga_admin_last_active_admin';
+    end if;
+  end if;
+
+  update public.saga_account_access
+     set role = v_next_role,
+         status = v_next_status,
+         updated_at = now()
+   where user_id = p_target_user_id;
+
+  return query select * from public.saga_account_access where user_id = p_target_user_id;
+end;
+$$;
+
+revoke all on function public.saga_admin_set_account_access(uuid, uuid, text, text) from public, anon, authenticated;
+grant execute on function public.saga_admin_set_account_access(uuid, uuid, text, text) to service_role;
 
 commit;

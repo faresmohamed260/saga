@@ -49,12 +49,15 @@ test("private application layout fails closed through server account state", () 
   assert.match(layout, /redirect\("\/login"\)/);
 });
 
-test("admin invitation routes require active SAGA admin authorization", () => {
-  const createRoute = read("src/app/api/admin/invitations/route.ts");
-  const revokeRoute = read("src/app/api/admin/invitations/[invitationId]/route.ts");
-  assert.match(createRoute, /isActiveSagaAdmin/);
-  assert.match(revokeRoute, /isActiveSagaAdmin/);
-  assert.match(createRoute, /SAGA_PUBLIC_APP_URL/);
+test("admin routes require active SAGA admin authorization", () => {
+  const invitationRoute = read("src/app/api/admin/invitations/route.ts");
+  const invitationDeleteRoute = read("src/app/api/admin/invitations/[invitationId]/route.ts");
+  const accountListRoute = read("src/app/api/admin/accounts/route.ts");
+  const accountUpdateRoute = read("src/app/api/admin/accounts/[userId]/route.ts");
+  for (const source of [invitationRoute, invitationDeleteRoute, accountListRoute, accountUpdateRoute]) {
+    assert.match(source, /isActiveSagaAdmin/);
+  }
+  assert.match(invitationRoute, /SAGA_PUBLIC_APP_URL/);
 });
 
 test("invitation confirmation claims access before password setup", () => {
@@ -66,10 +69,13 @@ test("invitation confirmation claims access before password setup", () => {
   assert.doesNotMatch(passwordForm, /signUp/);
 });
 
-test("closed-demo migration denies direct browser table access", () => {
+test("closed-demo migration denies browser access and protects admin mutations", () => {
   const migration = read("supabase/migrations/0001_closed_demo_access.sql");
   assert.match(migration, /enable row level security/);
   assert.match(migration, /revoke all on table public\.saga_account_access from anon, authenticated/);
   assert.match(migration, /revoke all on table public\.saga_invitations from anon, authenticated/);
   assert.match(migration, /grant execute on function public\.saga_claim_invitation\(uuid, text\) to service_role/);
+  assert.match(migration, /saga_admin_self_lockout/);
+  assert.match(migration, /saga_admin_last_active_admin/);
+  assert.match(migration, /grant execute on function public\.saga_admin_set_account_access\(uuid, uuid, text, text\) to service_role/);
 });
