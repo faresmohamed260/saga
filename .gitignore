@@ -32,6 +32,12 @@ dist/
 node_modules/
 *.egg-info/
 
+# Web/runtime environment secrets
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
 # Modal ComfyUI local credentials/state
 modal_comfyui/modal_tokens.json
 modal_comfyui/pool_state.json
