@@ -1,0 +1,99 @@
+name: Production Qualification Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      asset_id:
+        description: "Single protected asset id from the committed manifest to check for production freshness"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-qualification-readiness-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SAGA_SUPABASE_DB_URL: ${{ secrets.SAGA_SUPABASE_DB_URL }}
+      SAGA_SUPABASE_DB_HOST: ${{ secrets.SAGA_SUPABASE_DB_HOST }}
+      SAGA_SUPABASE_DB_PORT: ${{ secrets.SAGA_SUPABASE_DB_PORT }}
+      SAGA_SUPABASE_DB_NAME: ${{ secrets.SAGA_SUPABASE_DB_NAME }}
+      SAGA_SUPABASE_DB_USER: ${{ secrets.SAGA_SUPABASE_DB_USER }}
+      SAGA_SUPABASE_DB_PASSWORD: ${{ secrets.SAGA_SUPABASE_DB_PASSWORD }}
+      SAGA_SUPABASE_POOLER_TENANT_ID: ${{ secrets.SAGA_SUPABASE_POOLER_TENANT_ID }}
+      SAGA_SUPABASE_API_URL: ${{ secrets.SAGA_SUPABASE_API_URL }}
+      SAGA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SAGA_SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      SAGA_PROVIDER_COST_RATES_JSON: ${{ vars.SAGA_PROVIDER_COST_RATES_JSON }}
+      SAGA_RUNTIME_DB_MODE: supabase_postgres
+      SAGA_RUNTIME_DB_PROVIDER: supabase
+      SAGA_QUALIFICATION_ASSET_ID: ${{ inputs.asset_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require main-branch readiness evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error title=Readiness must run from main::Dispatch production qualification readiness only from the main branch."
+            exit 9
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Validate selected asset id
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SAGA_QUALIFICATION_ASSET_ID" ] || [ "$SAGA_QUALIFICATION_ASSET_ID" = "all" ]; then
+            echo "::error title=Readiness requires one source::asset_id must name exactly one protected manifest asset."
+            exit 10
+          fi
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen runtime
+        run: uv sync --frozen --extra dev
+
+      - name: Run bounded production readiness check
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run python -m scripts.check_production_qualification_readiness \
+            --asset-id "$SAGA_QUALIFICATION_ASSET_ID" 2>&1)"
+          rc=$?
+          set -e
+
+          printf '%s\n' "$output"
+          {
+            echo "### Production Qualification Readiness"
+            echo "- Source commit: \`$GITHUB_SHA\`"
+            echo "- Asset id: \`$SAGA_QUALIFICATION_ASSET_ID\`"
+            echo "- Exit code: \`$rc\`"
+            echo "- This workflow reads production persistence/configuration only; it does not download protected bytes or call live generation providers."
+            echo '```json'
+            printf '%s\n' "$output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$rc"
