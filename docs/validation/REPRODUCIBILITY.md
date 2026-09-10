@@ -38,7 +38,7 @@ Manual or explicitly gated only.
 
 | Gate | Command or workflow | Required secrets / variables | External assets/models | Runner | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Clean-source production qualification | `.github/workflows/production-qualification.yml` -> `python -m scripts.run_production_qualification` | production Supabase DB/API/service-role configuration; persisted `modal_xcore_litbank`, `modal_comfyui`, `modal_kokoro_tts`; usable persisted Ollama API key or explicitly supported `OLLAMA_API_KEY`; Mistral persisted or `MISTRAL_API_KEY`; R2 protected-asset secrets; `vars.SAGA_PROVIDER_COST_RATES_JSON` | one explicitly selected protected EPUB that is unseen in production persistence plus live provider models | GitHub-hosted Ubuntu with explicit live-cost confirmation | Manual-only; binds release id to exact `GITHUB_SHA`, validates source/schema/provider/pricing readiness before protected download/live provider work, and removes protected/temp bytes afterward. |
+| Clean-source production qualification | `.github/workflows/production-qualification.yml` -> `python -m scripts.run_production_qualification` | production Supabase DB/API/service-role configuration; persisted `modal_xcore_litbank`, `modal_comfyui`, `modal_kokoro_tts`; usable persisted Ollama API key or `OLLAMA_API_KEY`; Mistral persisted or `MISTRAL_API_KEY`; R2 protected-asset secrets; `vars.SAGA_PROVIDER_COST_RATES_JSON` | one explicitly selected protected EPUB that is unseen in production persistence plus live provider models | GitHub-hosted Ubuntu with explicit live-cost confirmation | Manual-only and `main`-only; binds release id to exact `GITHUB_SHA`, validates source/schema/provider/pricing readiness before protected download/live provider work, and removes protected/temp bytes afterward. |
 | Qualification readiness | `python -m scripts.check_production_qualification_readiness --asset-id <manifest-id>` | same Supabase/provider config plus `SAGA_PROVIDER_COST_RATES_JSON` | committed manifest metadata only | GitHub-hosted or controlled operator environment | Non-destructive schema/source/provider/pricing readiness check. Requires one fresh source, usable Ollama authentication, and provider-wide fallback rates for `ollama`, `mistral`, and `modal`. |
 | Modal worker inventory/provision | `.github/workflows/modal-worker-*.yml` | `SAGA_MODAL_TOKENS_JSON`, `HF_TOKEN`, `CIVITAI_API_TOKEN` where applicable | provider-hosted models only | GitHub-hosted trigger dispatching Modal | Expensive; keep dispatch/manual or explicitly gated. |
 | Visual generation live checks | visual generation scripts / Modal ComfyUI workflows | Supabase, persisted `modal_comfyui`, Mistral vision secrets | generated images in object storage | Cost-controlled | Do not run automatically on every PR. |
@@ -76,9 +76,9 @@ More-specific account/model rates may coexist and override the fallbacks. Do not
 - A persisted Ollama provider row without a usable API key is not qualification-ready.
 - Modal and external model-provider checks must be manual or secret-gated.
 - Live FLUX runtime/gateway deployment is manual-only and must not fire on ordinary `main` pushes.
-- Dirty-worktree qualification is evidence only; promotable qualification requires a committed SHA, clean tracked source, and a source that is fresh in production persistence.
+- Dirty-worktree qualification is evidence only; promotable qualification requires a committed SHA, clean tracked source, a `main` dispatch, and a source that is fresh in production persistence.
 - Protected asset verification is manual-only and checks private storage visibility/object presence/download/hash, not source freshness or production qualification by itself.
-- Clean-source production qualification is manual-only, requires `confirm_live_cost=true`, and never uploads the protected EPUB as an artifact.
+- Clean-source production qualification is manual-only, rejects non-`main` refs, requires `confirm_live_cost=true`, and never uploads the protected EPUB as an artifact.
 
 ## Latest deterministic recovery evidence
 
@@ -110,4 +110,4 @@ PR #141 merged as `b416eaf0f0b2431845e8b26a4a51d315881bcfa0`, adding protected-R
 
 PR #145 is the current qualification-control-plane change. Only CI attached to its **final head SHA** may be used as merge evidence; earlier green runs are superseded whenever the branch moves.
 
-The historical protected-asset run `34432226628` predates the diagnostic helper and failed with an opaque `HeadObject` 403. Use the revised manual workflow before attributing that failure to permissions alone.
+The historical protected-asset run `34432226628` predates that diagnostic helper and failed with an opaque `HeadObject` 403. Use the revised manual workflow before attributing that failure to permissions alone.
