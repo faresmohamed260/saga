@@ -192,18 +192,31 @@ def modal_provider_has_tokens(row: Mapping[str, Any] | None) -> bool:
     return False
 
 
+def ollama_reasoning_ready(
+    summary: Mapping[str, Any],
+    *,
+    environ: Mapping[str, str],
+) -> bool:
+    accounts = list(dict(summary.get("ollama") or {}).get("accounts") or [])
+    persisted_key = any(
+        isinstance(item, Mapping) and bool(item.get("has_api_key")) for item in accounts
+    )
+    return persisted_key or bool(_value(environ, "OLLAMA_API_KEY"))
+
+
 def provider_readiness_errors(
     *,
     provider_rows: Mapping[str, Mapping[str, Any] | None],
     reasoning_summary: Mapping[str, Any],
+    environ: Mapping[str, str] | None = None,
 ) -> list[str]:
+    resolved_environ = environ or {}
     errors: list[str] = []
     for provider_name in REQUIRED_MODAL_PROVIDERS:
         if not modal_provider_has_tokens(provider_rows.get(provider_name)):
             errors.append(f"provider_not_ready:{provider_name}")
 
-    ollama = dict(reasoning_summary.get("ollama") or {})
-    if not bool(ollama.get("configured")):
+    if not ollama_reasoning_ready(reasoning_summary, environ=resolved_environ):
         errors.append("reasoning_not_ready:ollama")
 
     mistral = dict(reasoning_summary.get("mistral") or {})
@@ -240,8 +253,15 @@ def run_readiness_check(
 
     try:
         asset = select_qualification_asset(asset_id=asset_id, manifest_path=manifest_path)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        error_code = str(exc) if isinstance(exc, ValueError) and str(exc) else "qualification_asset_manifest_invalid"
+    except json.JSONDecodeError:
+        error_code = "qualification_asset_manifest_invalid"
+    except OSError:
+        error_code = "qualification_asset_manifest_invalid"
+    except ValueError as exc:
+        error_code = str(exc) or "qualification_asset_manifest_invalid"
+    else:
+        error_code = ""
+    if error_code:
         return {
             "status": "not_ready",
             "errors": [error_code],
@@ -317,6 +337,7 @@ def run_readiness_check(
         provider_errors = provider_readiness_errors(
             provider_rows=provider_rows,
             reasoning_summary=reasoning_summary,
+            environ=os.environ,
         )
         return {
             "status": "ready" if not provider_errors else "not_ready",
@@ -338,8 +359,9 @@ def run_readiness_check(
                 for name, row in provider_rows.items()
             },
             "reasoning": {
-                "ollama_configured": bool(
-                    dict(reasoning_summary.get("ollama") or {}).get("configured")
+                "ollama_configured": ollama_reasoning_ready(
+                    reasoning_summary,
+                    environ=os.environ,
                 ),
                 "mistral_configured": bool(
                     dict(reasoning_summary.get("mistral") or {}).get("configured")
