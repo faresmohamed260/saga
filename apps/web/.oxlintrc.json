@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn"
+  },
+  "rules": {
+    "no-debugger": "error"
+  },
+  "ignorePatterns": [
+    ".next/**",
+    "test-results/**"
+  ]
+}
