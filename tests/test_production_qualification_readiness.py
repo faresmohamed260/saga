@@ -23,7 +23,10 @@ def _cost_rates_json() -> str:
 
 def _ready_reasoning() -> dict[str, object]:
     return {
-        "ollama": {"configured": True},
+        "ollama": {
+            "configured": True,
+            "accounts": [{"label": "member-01", "has_api_key": True}],
+        },
         "mistral": {"configured": False, "has_env_api_key": True},
     }
 
@@ -211,6 +214,13 @@ def test_modal_provider_requires_complete_persisted_credentials() -> None:
     )
 
 
+def test_ollama_readiness_requires_a_usable_key_not_just_a_config_row() -> None:
+    summary = {"ollama": {"configured": True, "accounts": [{"label": "member-01", "has_api_key": False}]}}
+    assert readiness.ollama_reasoning_ready(summary, environ={}) is False
+    assert readiness.ollama_reasoning_ready(summary, environ={"OLLAMA_API_KEY": "env-key"}) is True
+    assert readiness.ollama_reasoning_ready(_ready_reasoning(), environ={}) is True
+
+
 def test_provider_readiness_accepts_current_nine_stage_contract() -> None:
     rows = {name: _modal_row() for name in readiness.REQUIRED_MODAL_PROVIDERS}
     assert (
@@ -231,7 +241,7 @@ def test_provider_readiness_reports_missing_modal_and_reasoning_contracts() -> N
     errors = readiness.provider_readiness_errors(
         provider_rows=rows,
         reasoning_summary={
-            "ollama": {"configured": False},
+            "ollama": {"configured": True, "accounts": []},
             "mistral": {"configured": False, "has_env_api_key": False},
         },
     )
@@ -248,7 +258,7 @@ def test_provider_readiness_accepts_persisted_mistral_key() -> None:
     errors = readiness.provider_readiness_errors(
         provider_rows=rows,
         reasoning_summary={
-            "ollama": {"configured": True},
+            "ollama": {"configured": True, "accounts": [{"label": "member-01", "has_api_key": True}]},
             "mistral": {"configured": True, "has_env_api_key": False},
         },
     )
