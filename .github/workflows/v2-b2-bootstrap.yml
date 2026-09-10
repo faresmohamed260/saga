@@ -1,0 +1,159 @@
+name: SAGA v2 B2 Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      bucket_name:
+        description: "Private B2 bucket name to create/reuse"
+        required: true
+        default: "saga-v2-faresmohamed260-1207062480"
+        type: string
+  # Temporary branch trigger used only to perform the owner-authorized initial bootstrap.
+  # Remove before this workflow is merged to main; long-term operation is manual-only.
+  push:
+    branches:
+      - v2/phase-0-web-foundation
+    paths:
+      - ".github/workflows/v2-b2-bootstrap.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v2-b2-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      B2_APPLICATION_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.SAGA_B2_MASTER_APPLICATION_KEY }}
+      SAGA_B2_BOOTSTRAP_BUCKET: ${{ inputs.bucket_name || 'saga-v2-faresmohamed260-1207062480' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require bootstrap credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$B2_APPLICATION_KEY_ID" || { echo "::error title=B2 bootstrap key missing::SAGA_B2_KEY_ID is not configured."; exit 10; }
+          test -n "$B2_APPLICATION_KEY" || { echo "::error title=B2 bootstrap key missing::SAGA_B2_MASTER_APPLICATION_KEY is not configured."; exit 10; }
+          if ! [[ "$SAGA_B2_BOOTSTRAP_BUCKET" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{4,61}[A-Za-z0-9]$ ]]; then
+            echo "::error title=Invalid B2 bucket name::Bucket name does not satisfy the bounded bootstrap naming rule."
+            exit 11
+          fi
+
+      - name: Install pinned Backblaze CLI
+        run: python -m pip install --disable-pip-version-check "b2==4.7.1"
+
+      - name: Authorize B2 account
+        shell: bash
+        run: |
+          set -euo pipefail
+          b2 account authorize >/dev/null
+
+      - name: Create or reuse private S.A.G.A. bucket
+        id: bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bucket_id="$(b2 bucket list | awk -v name="$SAGA_B2_BOOTSTRAP_BUCKET" '$3 == name {print $1; exit}')"
+          if [ -z "$bucket_id" ]; then
+            b2 bucket create "$SAGA_B2_BOOTSTRAP_BUCKET" allPrivate >/dev/null
+            bucket_id="$(b2 bucket list | awk -v name="$SAGA_B2_BOOTSTRAP_BUCKET" '$3 == name {print $1; exit}')"
+          fi
+
+          if [ -z "$bucket_id" ]; then
+            echo "::error title=B2 bucket unavailable::The dedicated S.A.G.A. bucket could not be created or resolved."
+            exit 12
+          fi
+
+          endpoint_metadata="$(python - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.request
+
+          key_id = os.environ["B2_APPLICATION_KEY_ID"]
+          application_key = os.environ["B2_APPLICATION_KEY"]
+          basic = base64.b64encode(f"{key_id}:{application_key}".encode()).decode()
+          request = urllib.request.Request(
+              "https://api.backblazeb2.com/b2api/v4/b2_authorize_account",
+              headers={"Authorization": f"Basic {basic}"},
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              payload = json.load(response)
+          endpoint = payload["apiInfo"]["storageApi"]["s3ApiUrl"].rstrip("/")
+          host = endpoint.removeprefix("https://").split("/", 1)[0]
+          parts = host.split(".")
+          if len(parts) < 4 or parts[0] != "s3":
+              raise SystemExit("Backblaze returned an unexpected S3 endpoint format")
+          print(json.dumps({"endpoint": endpoint, "region": parts[1]}))
+          PY
+          )"
+
+          endpoint="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["endpoint"])' "$endpoint_metadata")"
+          region="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["region"])' "$endpoint_metadata")"
+
+          {
+            echo "bucket_name=$SAGA_B2_BOOTSTRAP_BUCKET"
+            echo "bucket_id=$bucket_id"
+            echo "s3_endpoint=$endpoint"
+            echo "region=$region"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test upload, download, compare and delete
+        shell: bash
+        env:
+          BUCKET_NAME: ${{ steps.bucket.outputs.bucket_name }}
+        run: |
+          set -euo pipefail
+          source_file="$RUNNER_TEMP/saga-b2-smoke-source.txt"
+          downloaded_file="$RUNNER_TEMP/saga-b2-smoke-download.txt"
+          object_key="_system/bootstrap/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
+
+          printf 'saga-v2-b2-smoke:%s:%s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" > "$source_file"
+
+          cleanup() {
+            b2 rm "b2://${BUCKET_NAME}/${object_key}" >/dev/null 2>&1 || true
+            rm -f "$source_file" "$downloaded_file"
+          }
+          trap cleanup EXIT
+
+          b2 file upload "$BUCKET_NAME" "$source_file" "$object_key" >/dev/null
+          b2 file download "b2://${BUCKET_NAME}/${object_key}" "$downloaded_file" >/dev/null
+          cmp "$source_file" "$downloaded_file"
+          b2 rm "b2://${BUCKET_NAME}/${object_key}" >/dev/null
+          trap - EXIT
+          rm -f "$source_file" "$downloaded_file"
+
+      - name: Record safe bootstrap metadata
+        shell: bash
+        env:
+          BUCKET_NAME: ${{ steps.bucket.outputs.bucket_name }}
+          BUCKET_ID: ${{ steps.bucket.outputs.bucket_id }}
+          S3_ENDPOINT: ${{ steps.bucket.outputs.s3_endpoint }}
+          B2_REGION: ${{ steps.bucket.outputs.region }}
+        run: |
+          set -euo pipefail
+          echo "B2_BOOTSTRAP_RESULT status=success bucket_name=$BUCKET_NAME bucket_id=$BUCKET_ID s3_endpoint=$S3_ENDPOINT region=$B2_REGION"
+          {
+            echo "### S.A.G.A. v2 B2 bootstrap"
+            echo "- status: success"
+            echo "- bucket: \`$BUCKET_NAME\`"
+            echo "- bucket id: \`$BUCKET_ID\`"
+            echo "- S3 endpoint: \`$S3_ENDPOINT\`"
+            echo "- region: \`$B2_REGION\`"
+            echo "- smoke test: upload/download/byte-compare/delete passed"
+            echo "- credential values were not printed or persisted"
+          } >> "$GITHUB_STEP_SUMMARY"
