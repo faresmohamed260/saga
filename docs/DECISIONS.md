@@ -66,20 +66,25 @@ The repository currently contains S.A.G.A. core surfaces plus `apps/studio/` and
 
 **Consequence:** Do not delete, merge, migrate, or redefine those surfaces merely to make the repository look cleaner. Phase 0 must classify ownership and coupling from code/history first, and any destructive separation requires an explicit decision.
 
+## D-009 — Generic Image/Video Studio Product Belongs In RenderLab
+
+**Status:** Accepted
+
+The generic image/video generation platform previously developed under the S.A.G.A. `apps/studio/` surface is now owned by the separate `faresmohamed260/renderlab` repository.
+
+The existing S.A.G.A. `apps/studio/` files and Studio-specific workflow history remain real repository state and may be needed as historical or migration reference, but they are not the default place for new generic image/video product development.
+
+**Consequence:** Do not continue RenderLab feature work in S.A.G.A. by default. Do not delete the S.A.G.A. Studio files as part of recovery without a separate explicit removal/migration PR. Treat active RenderLab work as external product work and S.A.G.A. Studio as transitional/historical until cleanup is separately authorized.
+
 ## Open Decisions Requiring Evidence
 
 These are not accepted decisions yet.
 
-### O-001 — Final status of `apps/studio/` inside the S.A.G.A. repository
+### O-001 — Cleanup path for `apps/studio/` inside the S.A.G.A. repository
 
-Determine whether it is:
+Decision D-009 assigns future generic image/video product ownership to RenderLab. Remaining evidence needed: whether S.A.G.A. should delete `apps/studio/`, move it under a historical/reference path, or keep it temporarily until RenderLab reaches feature parity and deployment parity.
 
-- still an actively supported S.A.G.A.-adjacent surface;
-- retained historical/reference implementation;
-- a separately owned product surface that should eventually be isolated;
-- or another explicitly documented status.
-
-Do not decide this from naming alone. Audit dependencies, deployment, workflows, storage/schema coupling, and history.
+Do not perform destructive cleanup without a focused PR that verifies RenderLab already owns the required deployment and history.
 
 ### O-002 — Current promotable S.A.G.A. release baseline
 

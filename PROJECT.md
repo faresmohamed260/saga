@@ -20,7 +20,7 @@ Primary active surfaces documented by the repository are:
 
 `backup/reference/` is inert historical reference material and must not become an active dependency.
 
-`apps/studio/` remains present and has later repository activity than several S.A.G.A. core status documents. Its final status relative to the S.A.G.A. core is intentionally unresolved until the active recovery phase audits it. Do not silently classify, delete, or expand it.
+`apps/studio/` remains present and has later repository activity than several S.A.G.A. core status documents. Generic image/video product ownership now belongs to the separate `faresmohamed260/renderlab` repository. Do not continue RenderLab feature work in S.A.G.A. by default, and do not delete the S.A.G.A. Studio files without a focused cleanup PR.
 
 ## Core Pipeline
 
@@ -106,6 +106,7 @@ New durable recovery references:
 - `docs/validation/REPRODUCIBILITY.md` — CI/live validation tiers and runner/secrets/assets expectations.
 - `docs/operations/GITHUB_ACTIONS_SECRETS.md` — secret names and destinations without values.
 - `docs/operations/PROTECTED_TEST_ASSETS.md` — protected EPUB metadata and hashes without committing protected books.
+- `.github/workflows/protected-asset-verification.yml` — manual R2-backed protected asset hash verification.
 - `docs/operations/MODEL_PROVIDER_MANIFEST.md` — active, evaluation-only, and historical model/provider identities.
 
 This documentation does not by itself prove Phase 0 complete. Non-live gates and any authorized live-provider qualification still need exact-head evidence.
@@ -150,7 +151,7 @@ After this recovery documentation is reviewed/merged:
 1. review/merge PR #134 after confirming the added manifests are acceptable;
 2. use `docs/recovery/LOCAL_COMMIT_TRIAGE.md` to drive focused future PRs for any accepted local-side code ports;
 3. configure or confirm the GitHub Actions secrets in `docs/operations/GITHUB_ACTIONS_SECRETS.md`;
-4. decide the final S.A.G.A. status of Studio versus RenderLab/separate ownership;
+4. decide the cleanup path for the transitional S.A.G.A. Studio files now that future generic image/video work belongs to RenderLab;
 5. run bounded clean-source S.A.G.A. qualification only after protected assets and live-provider prerequisites are available;
 6. update this file and the Phase 0 contract with exact CI/qualification evidence before declaring recovery complete.
 

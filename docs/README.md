@@ -67,6 +67,7 @@ If a detailed document conflicts with current code or the current handoff, inves
 - `runtime_secrets.md` — runtime secret ownership
 - `operations/GITHUB_ACTIONS_SECRETS.md` — GitHub Actions secret names, owning services, workflow consumers, and migration status without values
 - `operations/PROTECTED_TEST_ASSETS.md` — protected/private book asset metadata, hashes, and secure CI acquisition rules
+- `operations/protected_assets.manifest.json` — machine-readable protected-asset IDs, object keys, filenames, and hashes consumed by manual verification
 - `operations/MODEL_PROVIDER_MANIFEST.md` — active/evaluation/historical model and provider identities without model weights or credentials
 - `modal_runtime.md` — Modal/general compute provider runtime
 - `modal-worker-fleet-design.md` — worker fleet design
@@ -81,6 +82,7 @@ If a detailed document conflicts with current code or the current handoff, inves
 
 - `production_qualification.md` — last recorded real-book nine-stage qualification; currently accepted as evidence but explicitly non-promotable because the recorded source worktree was dirty
 - `validation/REPRODUCIBILITY.md` — validation tiers, required secrets/assets/models, runner expectations, and live-gate boundaries
+- `.github/workflows/protected-asset-verification.yml` — manual R2-backed protected asset availability/hash verification; never uploads protected bytes
 - additional validation scripts/tests under `scripts/` and `tests/` are authoritative only for the behavior they actually exercise
 
 ## Migration / Historical Material

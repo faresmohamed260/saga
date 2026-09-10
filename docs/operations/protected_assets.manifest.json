@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "updated": "2026-09-10",
+  "assets": [
+    {
+      "id": "once-upon-a-broken-heart",
+      "filename": "Once Upon a Broken Heart.epub",
+      "format": "epub",
+      "sha256": "89F8E1A7DD808A8D40280608F5499F520FDF16AA01206F7A5F62AFED9247B7A5",
+      "purpose": "Last recorded full production qualification input",
+      "redistributable": false,
+      "object_key": "protected/saga/Once Upon a Broken Heart.epub"
+    },
+    {
+      "id": "the-lost-sisters",
+      "filename": "The Lost Sisters.epub",
+      "format": "epub",
+      "sha256": "38AC0F672B820EB3D9347BA4587FDE9AD1859F87C46434561D253D391F46AF90",
+      "purpose": "Identity/runtime/live validation reference",
+      "redistributable": false,
+      "object_key": "protected/saga/The Lost Sisters.epub"
+    },
+    {
+      "id": "acotar-1",
+      "filename": "A Court of Thorns and Roses.epub",
+      "format": "epub",
+      "sha256": "FAFCB0E4420BA70C6E1F78749882CBFF2E3B6D2207A62305F10F9996A1033BCF",
+      "purpose": "Local ACOTAR pipeline configuration",
+      "redistributable": false,
+      "object_key": "protected/saga/A Court of Thorns and Roses.epub"
+    },
+    {
+      "id": "acotar-2",
+      "filename": "A Court of Mist and Fury.epub",
+      "format": "epub",
+      "sha256": "10A2CBB71FFEA040CEA51BCC2D6D20F1602B3D3BD731F0436022F5C82A194FBB",
+      "purpose": "Local ACOTAR pipeline configuration",
+      "redistributable": false,
+      "object_key": "protected/saga/A Court of Mist and Fury.epub"
+    },
+    {
+      "id": "acotar-3",
+      "filename": "A Court of Wings and Ruin.epub",
+      "format": "epub",
+      "sha256": "4D8D79FE1B0B3DF3F01F335BB79C78D41CBD8B1765280E820A657CBFD1FB7A0F",
+      "purpose": "Local ACOTAR pipeline configuration",
+      "redistributable": false,
+      "object_key": "protected/saga/A Court of Wings and Ruin.epub"
+    },
+    {
+      "id": "acotar-4",
+      "filename": "A Court of Frost and Starlight.epub",
+      "format": "epub",
+      "sha256": "5A02FA8D59425B265A86D022BED9025D3BA3B29E30D892D777300B7758812FB3",
+      "purpose": "Local ACOTAR pipeline configuration",
+      "redistributable": false,
+      "object_key": "protected/saga/A Court of Frost and Starlight.epub"
+    },
+    {
+      "id": "acotar-5",
+      "filename": "A Court of Silver Flames.epub",
+      "format": "epub",
+      "sha256": "D1A17DFE07AFBA50097519A3267099B75EFEFDB2056B53E2901D6935AB905E60",
+      "purpose": "Local ACOTAR pipeline configuration",
+      "redistributable": false,
+      "object_key": "protected/saga/A Court of Silver Flames.epub"
+    }
+  ]
+}
