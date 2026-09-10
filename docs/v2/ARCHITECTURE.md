@@ -40,67 +40,41 @@ S.A.G.A. v2 is a web-first rebuild of the same storytelling-intelligence product
 
 ### GitHub
 
-Owns:
-
-- source of truth;
-- pull requests/reviews;
-- deterministic CI;
-- bounded bootstrap/maintenance workflows;
-- durable architecture/phase evidence.
+Owns source of truth, pull requests/reviews, deterministic CI, bounded bootstrap/maintenance workflows, and durable architecture/phase evidence.
 
 ### Vercel
 
-Owns the web deployment of `apps/web`:
+Owns the web deployment of `apps/web`: Next.js rendering, request-bounded route handlers/server actions, public frontend assets, and web environment configuration.
 
-- Next.js rendering;
-- route handlers/server actions suitable for request-bounded work;
-- public frontend assets;
-- environment configuration for the web application.
-
-Vercel must not be treated as the eventual execution host for arbitrarily long agent/model workloads. Long-running work will use a later job/worker architecture.
+Vercel is not the eventual execution host for arbitrarily long agent/model workloads. Long-running work will use a later durable job/worker architecture.
 
 ### Supabase
 
-Owns structured application state:
-
-- authentication/user identity;
-- projects/workspaces;
-- source metadata;
-- chapters/scenes and later analysis entities;
-- job/run records and status;
-- canon/character/location/event/application records;
-- artifact metadata/references;
-- authorization/RLS policy;
-- realtime status updates where useful.
+Owns structured application state including authentication/user identity, projects/workspaces, source metadata, chapters/scenes, later analysis/canon entities, job/run records, artifact metadata, authorization/RLS, and useful realtime status updates.
 
 Supabase Storage is not the default large-object store for v2.
 
 ### Backblaze B2
 
-Owns large binary/object payloads:
+Owns large binary/object payloads: uploaded sources, non-relational analysis artifacts, generated image/audio media, exports, and temporary processing payloads.
 
-- uploaded source books/files;
-- analysis artifacts that do not belong as relational rows;
-- generated images/audio;
-- exports;
-- temporary processing payloads.
+B2 access stays behind the S.A.G.A.-owned `ObjectStorage` interface.
 
-B2 access is behind a S.A.G.A. storage interface.
+The dedicated private storage foundation was validated by GitHub Actions run `34537566675`. Safe authoritative storage metadata is committed at `config/v2-storage.json`:
+
+- bucket: `saga-v2-faresmohamed260-1207062480`
+- bucket id: `b2af6d676af585d3aa0e0912`
+- region: `us-east-005`
+- S3 endpoint: `https://s3.us-east-005.backblazeb2.com`
+- visibility: private
+
+The validation performed create/reuse, upload, download, byte comparison, and deletion of a small `_system/bootstrap/` object. No application/source data was used.
 
 ### Cloudflare
 
-May own:
-
-- DNS;
-- CDN/proxy behavior;
-- security/rate-limit rules;
-- custom domain routing.
-
-Cloudflare R2 is deliberately not the v2 S.A.G.A. object store.
+May own DNS, CDN/proxy behavior, security/rate-limit rules, and custom-domain routing. Cloudflare R2 is deliberately not the v2 S.A.G.A. object store.
 
 ## Web Application Structure
-
-Initial target:
 
 ```text
 apps/web/
@@ -127,36 +101,37 @@ Rules:
 
 ## Storage Contract
 
-Feature/domain code should depend on operations shaped approximately like:
+Feature/domain code depends on S.A.G.A.-owned operations rather than vendor SDKs:
 
 ```ts
 interface ObjectStorage {
-  createUploadUrl(input): Promise<SignedUpload>
-  createReadUrl(input): Promise<SignedRead>
+  createUploadUrl(input): Promise<SignedObjectUrl>
+  createReadUrl(input): Promise<SignedObjectUrl>
   head(key): Promise<ObjectMetadata | null>
   delete(key): Promise<void>
 }
 ```
 
-The exact contract may evolve with upload requirements, but direct `S3Client` construction outside the storage implementation is prohibited.
+Direct `S3Client` construction outside the storage infrastructure implementation is prohibited and covered by structural tests.
 
 ### Runtime B2 configuration
 
-Long-term web runtime variables:
+Normal web runtime variables:
 
 - `SAGA_B2_BUCKET`
 - `SAGA_B2_ENDPOINT`
+- `SAGA_B2_REGION`
 - `SAGA_B2_APPLICATION_KEY_ID`
 - `SAGA_B2_APPLICATION_KEY`
 
-These are intentionally different from bootstrap master-key names.
+The non-secret bucket/endpoint/region values are already known from `config/v2-storage.json`. A later bucket-scoped application key must provide the two secret runtime credential values before real web upload/read functionality is enabled.
 
-Bootstrap/admin secrets:
+Bootstrap/admin secrets are deliberately separate:
 
 - `SAGA_B2_KEY_ID`
 - `SAGA_B2_MASTER_APPLICATION_KEY`
 
-The master key is not S3-compatible and is never used by the normal Next.js B2 S3 client.
+The master credential is never consumed by `apps/web`. It remains limited to the manual `.github/workflows/v2-b2-bootstrap.yml` account/bootstrap path.
 
 ## Initial Object-Key Convention
 
@@ -170,28 +145,21 @@ temporary/{scope}/{id}
 _system/{operation}/{id}
 ```
 
-Do not use book titles/user strings as the primary isolation boundary. Application-generated IDs should own object namespaces.
+Application-generated IDs, not human titles, own object namespace/isolation boundaries where practical.
 
 ## Initial Backend Boundary
 
 The first backend is the server side of the Next.js application plus Supabase.
 
-Use request-bounded server work for:
-
-- authentication/session handling;
-- CRUD;
-- signed upload/download URL creation;
-- project/source metadata operations;
-- job creation/status reads;
-- bounded orchestration/control-plane operations.
+Use request-bounded server work for authentication/session handling, CRUD, signed upload/download URL creation, project/source metadata operations, job creation/status reads, and bounded control-plane operations.
 
 Do not run long book-analysis/model jobs synchronously in a Vercel request.
 
+The current `/api/health` route is deliberately non-invasive: it reports only whether required integration configuration is present and does not contact Supabase or B2.
+
 ## Future Job/Agent Boundary
 
-When the AI phase begins, the web application should submit durable jobs rather than invoking a hidden monolithic pipeline.
-
-Conceptual flow:
+When the AI phase begins, the web application submits durable jobs rather than invoking a hidden monolithic pipeline:
 
 ```text
 user action
@@ -208,7 +176,7 @@ The specific queue, worker host, framework, and model providers remain open deci
 
 ## Product Information Architecture
 
-The UI should be designed around user concepts rather than old pipeline stage numbers:
+The UI is designed around user concepts rather than old pipeline stages:
 
 - Library / Sources
 - Projects / Stories
@@ -226,41 +194,24 @@ These are product areas, not a commitment to one table or route per item.
 
 ## v1 Reuse Boundary
 
-Useful v1 knowledge includes:
+Useful v1 knowledge includes source parsing lessons, chapter/scene concepts, identity-resolution research/evaluation, canon/evidence concepts, event/timeline/world modeling, narrative planning/generation concepts, visual/audio workflows, and provenance/evaluation lessons.
 
-- source parsing lessons;
-- chapter/scene concepts;
-- identity-resolution research/evaluation;
-- canon/evidence concepts;
-- event/timeline/world modeling;
-- narrative planning/generation concepts;
-- visual/audio workflows;
-- provenance/evaluation lessons.
-
-Do not preserve v1 implementation layers solely for compatibility. Reimplement useful behavior behind the v2 application's contracts.
+Do not preserve v1 implementation layers solely for compatibility. Reimplement useful behavior behind v2 application contracts.
 
 ## Security / Cost Principles
 
 - no provider secrets in client bundles;
-- server-only service credentials;
+- server-only privileged credentials;
 - RLS for user-owned Supabase data;
 - signed/short-lived object access where appropriate;
-- master B2 credential restricted to bootstrap operations;
+- master B2 credential restricted to manual bootstrap/admin operations;
+- bucket-scoped non-master B2 credentials for web runtime;
 - free/non-live CI by default;
 - paid model work later requires explicit bounded execution/cost policy;
 - hobby/demo resource limits are architecture inputs, not afterthoughts.
 
-## What Is Deliberately Undecided
+## Deliberately Undecided
 
-Phase 0 does not lock:
+Phase 0 does not lock the agent framework, long-running worker/queue provider, LLM/model providers, vector/retrieval implementation, GPU execution provider, final visual/audio model stack, final analysis/canon schema, or final direct-upload strategy.
 
-- agent framework;
-- long-running worker/queue provider;
-- LLM/model provider set;
-- vector/retrieval implementation;
-- GPU execution provider;
-- final visual/audio model stack;
-- final database schema for analysis/canon;
-- final direct-upload strategy.
-
-Those decisions should be made from the needs of the validated web product rather than inherited from v1.
+Those decisions will be made from the needs of the validated web product rather than inherited from v1.
