@@ -8,13 +8,6 @@ on:
         required: true
         default: "saga-v2-faresmohamed260-1207062480"
         type: string
-  # Temporary branch trigger used only to perform the owner-authorized initial bootstrap.
-  # Remove before this workflow is merged to main; long-term operation is manual-only.
-  push:
-    branches:
-      - v2/phase-0-web-foundation
-    paths:
-      - ".github/workflows/v2-b2-bootstrap.yml"
 
 permissions:
   contents: read
@@ -30,7 +23,7 @@ jobs:
     env:
       SAGA_B2_RAW_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
       SAGA_B2_RAW_MASTER_APPLICATION_KEY: ${{ secrets.SAGA_B2_MASTER_APPLICATION_KEY }}
-      SAGA_B2_BOOTSTRAP_BUCKET: ${{ inputs.bucket_name || 'saga-v2-faresmohamed260-1207062480' }}
+      SAGA_B2_BOOTSTRAP_BUCKET: ${{ inputs.bucket_name }}
 
     steps:
       - name: Checkout
