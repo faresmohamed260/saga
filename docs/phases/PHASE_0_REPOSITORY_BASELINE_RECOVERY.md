@@ -35,6 +35,7 @@ Recovering the baseline prevents future AI sessions from repeatedly rewriting wo
 - Local working tree: dirty, with modified ComfyUI/runtime files and untracked Studio/generation-core files.
 - Inventory: `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md`
 - Local commit triage: `docs/recovery/LOCAL_COMMIT_TRIAGE.md`
+- Final handoff report: `docs/recovery/HANDOFF_REPORT_2026-09-10.md`
 - Reproducibility manifest: `docs/validation/REPRODUCIBILITY.md`
 - Secrets manifest: `docs/operations/GITHUB_ACTIONS_SECRETS.md`
 - Protected asset manifest: `docs/operations/PROTECTED_TEST_ASSETS.md`
@@ -188,6 +189,7 @@ Phase 0 should accumulate evidence for these gates:
 - Deterministic local validation on the clean recovery worktree passed: frozen `uv` sync, one Alembic head `202608090400`, source secret scan with 850 files and 0 findings, architecture-boundary tests 4/4, full backend tests 338 passed / 3 skipped, Dashboard Pro tests 13/13, Dashboard Pro production build, production dependency audit with 0 high vulnerabilities, and production Compose config validation.
 - Remote GitHub validation on PR #134 head `8685f97cec6cca81c2a19536cbe0ab6057d7323c` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
 - The 43 local-side commits on `codex/transaction-pool-rc36` were classified commit-by-commit. The old branch must not be merged wholesale because it would remove substantial newer GitHub work; focused future PRs may port selected code/evidence.
+- The final durable handoff report records merged PRs, secret-name status, protected asset status, CI evidence, and remaining local dependencies.
 
 ## Exit Criteria
 

@@ -88,6 +88,7 @@ If a detailed document conflicts with current code or the current handoff, inves
 - `MIGRATION_REFERENCE.md` — migration/reference material; verify its intended use before applying it to active architecture
 - `recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — 2026-09-10 local-to-GitHub recovery inventory and reconciliation decisions
 - `recovery/LOCAL_COMMIT_TRIAGE.md` — commit-by-commit classification of the 43 local-side commits from `codex/transaction-pool-rc36`
+- `recovery/HANDOFF_REPORT_2026-09-10.md` — final durable report for the 2026-09-10 local-to-GitHub recovery pass
 - `../backup/reference/` — isolated historical implementation, not active dependency
 
 ## Documentation Maintenance Rules

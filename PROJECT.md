@@ -102,6 +102,7 @@ New durable recovery references:
 
 - `docs/recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — local inventory, divergence, uncommitted work, heavy/generated exclusions, and reconciliation decisions.
 - `docs/recovery/LOCAL_COMMIT_TRIAGE.md` — commit-by-commit classification of the 43 local-side commits on `codex/transaction-pool-rc36`.
+- `docs/recovery/HANDOFF_REPORT_2026-09-10.md` — durable final report for this recovery pass.
 - `docs/validation/REPRODUCIBILITY.md` — CI/live validation tiers and runner/secrets/assets expectations.
 - `docs/operations/GITHUB_ACTIONS_SECRETS.md` — secret names and destinations without values.
 - `docs/operations/PROTECTED_TEST_ASSETS.md` — protected EPUB metadata and hashes without committing protected books.
