@@ -1,0 +1,56 @@
+name: SAGA v2 Web CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "v2/**"
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/v2-web-ci.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/v2-web-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v2-web-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and structural tests
+        run: npm run test:unit
+
+      - name: Production build
+        run: npm run build
