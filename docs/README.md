@@ -37,7 +37,7 @@ If a detailed document conflicts with current code or the current handoff, inves
 
 ## System Architecture and Orchestration
 
-- `system_agent_roadmap.md` — system intent, agent groups, runtime constraints, and accumulated progress record; current-status/next-step text must be reconciled during Phase 0
+- `system_agent_roadmap.md` — system intent, agent groups, runtime constraints, and accumulated progress record; current-status/next-step text must be reconciled against the current handoff
 - `agent_framework.md` — agent runtime/framework design
 - `production_orchestration_runtime.md` — top-level production orchestration
 - `execution_runtime.md` — execution/queue/runtime behavior
@@ -57,8 +57,11 @@ If a detailed document conflicts with current code or the current handoff, inves
 
 - `generation_planning_runtime.md` — story planning / blueprint generation
 - `narrative_generation_runtime.md` — narrative generation
-- `visual_generation_runtime.md` — visual generation and QA
+- `visual_generation_runtime.md` — S.A.G.A. stage-7 visual generation and QA; generic image/video product UI belongs in the separate RenderLab repository
 - `audiobook_generation_runtime.md` — audiobook generation and QA
+- `qwen-image-edit-2511-integration.md` — retained S.A.G.A. Qwen provider/runtime contract
+- `qwen-image-edit-2511-deployment-plan.md` — Qwen worker deployment gates
+- `qwen-image-edit-2511-status.md` — dated Qwen worker/provider evidence
 
 ## Persistence / Providers / Operations
 
@@ -70,17 +73,20 @@ If a detailed document conflicts with current code or the current handoff, inves
 - `operations/protected_assets.manifest.json` — machine-readable protected-asset IDs, object keys, filenames, and hashes consumed by manual verification
 - `operations/MODEL_PROVIDER_MANIFEST.md` — active/evaluation/historical model and provider identities without model weights or credentials
 - `modal_runtime.md` — Modal/general compute provider runtime
-- `modal-worker-fleet-design.md` — worker fleet design
+- `modal-worker-fleet-design.md` — S.A.G.A.-owned Modal worker-fleet contract and public registry ownership
+- `../config/modal-worker-ecosystems.json` — machine-readable S.A.G.A. worker ecosystem definitions
+- `../config/modal-worker-registry.json` — non-secret active worker routing metadata rehomed from the retired Studio prototype
 - `deployment_operations.md` — production build, rollout, rollback, backup, and recovery
 
 ## Product / UI Surfaces
 
 - `dashboard_pro.md` — S.A.G.A. operator dashboard
-- Studio-specific documents and workflows may also exist in the repository. Their long-term status relative to the S.A.G.A. core is an explicit Phase 0 audit item; do not infer that they are either primary S.A.G.A. architecture or safe to delete.
+
+The former S.A.G.A. `apps/studio/` prototype is retired. Its standalone successor is `faresmohamed260/renderlab`. Studio product/UI plans, polish checklists, visual-review workflows, and product persistence schema are not active S.A.G.A. documentation or architecture.
 
 ## Qualification and Evidence
 
-- `production_qualification.md` — last recorded real-book nine-stage qualification; currently accepted as evidence but explicitly non-promotable because the recorded source worktree was dirty
+- `production_qualification.md` — last recorded real-book nine-stage qualification; accepted as evidence but explicitly non-promotable because the recorded source worktree was dirty
 - `validation/REPRODUCIBILITY.md` — validation tiers, required secrets/assets/models, runner expectations, and live-gate boundaries
 - `.github/workflows/protected-asset-verification.yml` — manual R2-backed protected asset availability/hash verification; never uploads protected bytes
 - additional validation scripts/tests under `scripts/` and `tests/` are authoritative only for the behavior they actually exercise
@@ -88,7 +94,7 @@ If a detailed document conflicts with current code or the current handoff, inves
 ## Migration / Historical Material
 
 - `MIGRATION_REFERENCE.md` — migration/reference material; verify its intended use before applying it to active architecture
-- `recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — 2026-09-10 local-to-GitHub recovery inventory and reconciliation decisions
+- `recovery/LOCAL_TO_GITHUB_HANDOFF_INVENTORY.md` — 2026-09-10 local-to-GitHub recovery inventory and reconciliation decisions; references to Studio describe historical recovery state
 - `recovery/LOCAL_COMMIT_TRIAGE.md` — commit-by-commit classification of the 43 local-side commits from `codex/transaction-pool-rc36`
 - `recovery/HANDOFF_REPORT_2026-09-10.md` — final durable report for the 2026-09-10 local-to-GitHub recovery pass
 - `../backup/reference/` — isolated historical implementation, not active dependency

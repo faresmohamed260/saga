@@ -1,12 +1,6 @@
 name: Test FLUX.2 Klein A10 resolutions
 
 on:
-  push:
-    branches:
-      - studio/flux2-resolution-r2
-    paths:
-      - ".github/flux2-resolution-test-trigger.txt"
-      - ".github/workflows/test-flux2-klein-resolutions.yml"
   workflow_dispatch:
 
 permissions:
@@ -18,27 +12,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
       - name: Create source image
         run: |
           python - <<'PY'
           import struct, zlib
-          w=h=512
-          rows=[]
+          w = h = 512
+          rows = []
           for y in range(h):
-              row=bytearray()
+              row = bytearray()
               for x in range(w):
-                  row.extend(((x//2)%256,(y//2)%256,128))
-              rows.append(b'\x00'+bytes(row))
-          raw=b''.join(rows)
-          def chunk(t,d):
-              return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
-          png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
-          open('source.png','wb').write(png)
+                  row.extend(((x // 2) % 256, (y // 2) % 256, 128))
+              rows.append(b'\x00' + bytes(row))
+          raw = b''.join(rows)
+          def chunk(t, d):
+              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
+          open('source.png', 'wb').write(png)
           PY
-
+      - name: Resolve registered FLUX primary gateway
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          workers = json.loads(Path('config/modal-worker-registry.json').read_text(encoding='utf-8'))['workers']
+          worker = next(w for w in workers if w.get('id') == 'flux-primary-01' and w.get('enabled', True))
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f"API_URL={worker['gatewayUrl'].rstrip('/')}/edit\n")
+          PY
       - name: Run sequential resolution tests
-        env:
-          API_URL: https://faresmohamed260--saga-flux2-klein-gateway-web.modal.run/edit
+        shell: bash
         run: |
           set -euo pipefail
           printf "megapixels,http_status,seconds,bytes\n" > resolution-results.csv
@@ -60,34 +64,11 @@ jobs:
             test "$status" = "200"
             test "$bytes" -gt 1000
           done
-          cat resolution-results.csv
-
-      - name: Upload outputs
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: flux2-klein-resolution-smoke
           path: |
             resolution-results.csv
             out-*.png
-
-      - name: Publish results issue
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          JOB_STATUS: ${{ job.status }}
-        shell: bash
-        run: |
-          TITLE="[automation] FLUX.2 Klein resolution smoke"
-          RESULTS="No results file was produced."
-          if [ -f resolution-results.csv ]; then
-            RESULTS=$(cat resolution-results.csv)
-          fi
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BODY=$(printf 'Status: **%s**\n\n```csv\n%s\n```\n\nRun: %s\n' "$JOB_STATUS" "$RESULTS" "$RUN_URL")
-          ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search '"[automation] FLUX.2 Klein resolution smoke" in:title' --json number --jq '.[0].number // empty')
-          if [ -n "$ISSUE" ]; then
-            gh issue edit "$ISSUE" --repo "${{ github.repository }}" --body "$BODY"
-          else
-            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
-          fi
+          retention-days: 3

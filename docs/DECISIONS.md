@@ -58,36 +58,40 @@ For substantial recovery/development cycles, keep later work at roadmap level an
 
 **Consequence:** AI sessions should not create speculative detailed plans for many future phases while current-state evidence is still changing.
 
-## D-008 — No Silent Cross-Surface Cleanup
+## D-008 — Cross-Surface Cleanup Requires Explicit Ownership Evidence
 
 **Status:** Accepted
 
-The repository currently contains S.A.G.A. core surfaces plus `apps/studio/` and Studio-specific workflows/issues/PR history. Their coexistence is real repository state even where documentation is inconsistent.
+S.A.G.A. previously contained both its core product surfaces and the `apps/studio/` prototype. The prototype was not removed during initial recovery because ownership had to be established first.
 
-**Consequence:** Do not delete, merge, migrate, or redefine those surfaces merely to make the repository look cleaner. Phase 0 must classify ownership and coupling from code/history first, and any destructive separation requires an explicit decision.
+**Consequence:** Destructive cross-surface cleanup requires an explicit ownership decision and focused change. That requirement was satisfied for Studio by D-009 and D-010; the same discipline applies to future ambiguous surfaces.
 
 ## D-009 — Generic Image/Video Studio Product Belongs In RenderLab
 
 **Status:** Accepted
 
-The generic image/video generation platform previously developed under the S.A.G.A. `apps/studio/` surface is now owned by the separate `faresmohamed260/renderlab` repository.
+The generic image/video generation platform previously developed under the S.A.G.A. `apps/studio/` surface evolved into and is now owned by the separate `faresmohamed260/renderlab` repository.
 
-The existing S.A.G.A. `apps/studio/` files and Studio-specific workflow history remain real repository state and may be needed as historical or migration reference, but they are not the default place for new generic image/video product development.
+**Consequence:** Generic image/video product UI, gallery, media-library, product persistence, and product-specific feature work must not continue in S.A.G.A. by default. RenderLab is a separate project and its product state is not S.A.G.A. implementation state.
 
-**Consequence:** Do not continue RenderLab feature work in S.A.G.A. by default. Do not delete the S.A.G.A. Studio files as part of recovery without a separate explicit removal/migration PR. Treat active RenderLab work as external product work and S.A.G.A. Studio as transitional/historical until cleanup is separately authorized.
+## D-010 — Retire `apps/studio/`; Retain Reusable S.A.G.A. Visual Infrastructure
+
+**Status:** Accepted
+
+The owner explicitly authorized removal of the retired S.A.G.A. Studio prototype after confirming that its standalone successor is RenderLab. The focused cleanup removes `apps/studio/`, Studio-only workflows, UI/product documentation, patch helpers, and Studio-owned Supabase migration definitions from S.A.G.A.
+
+Reusable provider infrastructure that is also part of S.A.G.A.'s stage-7 visual-generation runtime remains in S.A.G.A., including `packages/visual_generation`, `packages/modal_runtime`, `integrations/comfyui`, `integrations/qwen`, the Modal ecosystem configuration, and operational worker tooling. Public worker routing metadata formerly stored in the Studio app is rehomed to `config/modal-worker-registry.json`.
+
+Existing remote resources are not destroyed merely because their Studio source definitions are removed. In particular, this repository cleanup does not drop already-created `studio_*` database objects, delete R2 objects/buckets, stop Modal workers, or mutate RenderLab resources.
+
+**Consequence:** Future S.A.G.A. work may reuse the retained model/provider fleet only through S.A.G.A.'s own runtime contracts. Do not restore Studio UI/product code as a shortcut. Any live cleanup or transfer of legacy Studio cloud resources requires its own explicit operation.
 
 ## Open Decisions Requiring Evidence
 
 These are not accepted decisions yet.
 
-### O-001 — Cleanup path for `apps/studio/` inside the S.A.G.A. repository
-
-Decision D-009 assigns future generic image/video product ownership to RenderLab. Remaining evidence needed: whether S.A.G.A. should delete `apps/studio/`, move it under a historical/reference path, or keep it temporarily until RenderLab reaches feature parity and deployment parity.
-
-Do not perform destructive cleanup without a focused PR that verifies RenderLab already owns the required deployment and history.
-
 ### O-002 — Current promotable S.A.G.A. release baseline
 
-The repository has strong prior qualification evidence but no current clean-source qualification is established by the 2026-09-10 audit.
+The repository has strong prior qualification evidence, and deterministic recovery CI is green, but clean-source protected-book qualification is still blocked by the documented Cloudflare R2 `403 Forbidden` asset-read prerequisite.
 
-Phase 0 must identify the exact commit/configuration that can satisfy the current build/test/qualification gates before this decision can be closed.
+Phase 0 must identify the exact commit/configuration that satisfies the current build/test/qualification gates before this decision can be closed.

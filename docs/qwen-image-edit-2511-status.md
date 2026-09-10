@@ -1,6 +1,6 @@
 # Qwen Image Edit 2511 status
 
-Deployment readiness: **passed** for PR #127.
+Deployment readiness: **historically passed for the recorded PR #127 deployment; requalification is required before treating the current repository head as live-validated.**
 
 ## Production model
 
@@ -22,14 +22,16 @@ The explicit sharding replaced the earlier balanced device-map path that could l
 
 - Primary: `qwen-primary-01` (`modal-42`)
 - Standby: `qwen-standby-01` (`modal-43`)
-- Provision run: `32913577794`
-- Both workers are registered under the Qwen ecosystem only; there is no FLUX fallback.
+- Historical provision run: `32913577794`
+- Both workers belong to the Qwen ecosystem only; there is no FLUX fallback.
+- Current repository routing metadata: `config/modal-worker-registry.json`.
 
-## Release evidence
+## Recorded evidence
 
 - Live inference smoke: run `32913997676` — primary and standby both completed real Qwen edits with the pinned Civitai checkpoint and 4-step Lightning profile.
 - Fleet/failover gate: run `32916056920` — static routing contract, both live worker health checks, and a direct standby submit/cancel all passed.
-- Live Studio persistence proof: run `32917454087`, job `98024036360` — `qwen-primary-01` generated a valid 108,238-byte PNG, Studio persisted it to Cloudflare R2, inserted generation history, and read the persisted media back successfully. Generation ID: `dd197cc8-2541-467b-aeb2-fb2745237841`.
-- Studio build/contracts verify the Qwen workflow, model selector, pinned runtime metadata, worker registry, persistence hooks, and Gallery/Jobs integration.
+- Historical Studio persistence proof: run `32917454087`, job `98024036360` — `qwen-primary-01` generated a valid 108,238-byte PNG and the retired Studio prototype persisted/read it through Cloudflare R2 and Supabase. Generation ID: `dd197cc8-2541-467b-aeb2-fb2745237841`.
 
-The Vercel branch preview is protected by Vercel Authentication, so unauthenticated GitHub Actions cannot POST through the preview API. That protection was not weakened for testing. The live worker path and the production R2/Supabase persistence layer were instead verified independently, while the branch Studio API wiring is covered by its build and integration contracts.
+The Studio product/build assertions from that historical deployment no longer define current S.A.G.A. behavior because `apps/studio/` was retired after its standalone successor became RenderLab.
+
+For current S.A.G.A. validation, use the retained provider implementation, `config/modal-worker-ecosystems.json`, `config/modal-worker-registry.json`, and the S.A.G.A.-owned manual live-smoke workflows. Bind any new readiness claim to the exact tested commit and deployed worker configuration.

@@ -2,11 +2,7 @@ name: Deploy FLUX.2 Klein gateway
 
 on:
   push:
-    branches:
-      - main
-      - studio/flux2-resolution-r2
-      - studio/async-provider-jobs
-      - studio/job-retry-cancel
+    branches: [main]
     paths:
       - "integrations/comfyui/flux2_klein_gateway.py"
       - ".github/workflows/deploy-flux2-klein-gateway.yml"
@@ -33,32 +29,33 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          raw=os.environ.get('SAGA_MODAL_TOKENS_JSON','').strip()
+          raw = os.environ.get('SAGA_MODAL_TOKENS_JSON', '').strip()
           if not raw:
               raise SystemExit('SAGA_MODAL_TOKENS_JSON is not configured')
-          payload=json.loads(raw)
-          accounts=payload.get('accounts') if isinstance(payload,dict) else payload
-          if not isinstance(accounts,list) or not accounts:
+          payload = json.loads(raw)
+          accounts = payload.get('accounts') if isinstance(payload, dict) else payload
+          if not isinstance(accounts, list) or not accounts:
               raise SystemExit('Modal roster is empty')
-          selected=None
+          selected = None
           for account in accounts:
-              if not isinstance(account,dict):
+              if not isinstance(account, dict):
                   continue
-              label=str(account.get('label') or account.get('name') or account.get('account') or '').strip().lower()
-              if label in {'modal-01','modal01','modal-1','account-01','account-1'}:
-                  selected=account; break
-          selected=selected or accounts[0]
-          token_id=str(selected.get('token_id') or '').strip()
-          token_secret=str(selected.get('token_secret') or '').strip()
-          combined=str(selected.get('api_key') or selected.get('token') or '').strip()
+              label = str(account.get('label') or account.get('name') or account.get('account') or '').strip().lower()
+              if label in {'modal-01', 'modal01', 'modal-1', 'account-01', 'account-1'}:
+                  selected = account
+                  break
+          selected = selected or accounts[0]
+          token_id = str(selected.get('token_id') or '').strip()
+          token_secret = str(selected.get('token_secret') or '').strip()
+          combined = str(selected.get('api_key') or selected.get('token') or '').strip()
           if (not token_id or not token_secret) and '.' in combined:
-              token_id,token_secret=combined.split('.',1)
+              token_id, token_secret = combined.split('.', 1)
           if not token_id or not token_secret:
               raise SystemExit('modal-01 credentials are incomplete')
           print(f'::add-mask::{token_id}')
           print(f'::add-mask::{token_secret}')
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:
-              f.write(f'MODAL_TOKEN_ID={token_id}\nMODAL_TOKEN_SECRET={token_secret}\n')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'MODAL_TOKEN_ID={token_id}\nMODAL_TOKEN_SECRET={token_secret}\n')
           PY
       - name: Deploy gateway
         run: modal deploy integrations/comfyui/flux2_klein_gateway.py

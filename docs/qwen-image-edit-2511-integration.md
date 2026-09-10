@@ -1,6 +1,6 @@
 # Qwen Image Edit 2511 integration
 
-S.A.G.A. Studio treats Qwen Image Edit 2511 as a first-class image-edit ecosystem alongside FLUX.2 Klein and the LTX video ecosystem.
+Qwen Image Edit 2511 is retained as a S.A.G.A. visual-generation provider ecosystem. It is not tied to the retired `apps/studio/` product surface.
 
 ## Model
 
@@ -18,10 +18,16 @@ The runtime loads the Civitai transformer on CPU, assembles the pipeline, loads 
 
 ## Runtime contract
 
-The Qwen gateway mirrors the existing asynchronous image-edit contract: health reporting, multi-reference uploads, submit, polling, cancellation, real worker lifecycle states, and failover-compatible availability/credit errors. The fleet remains ecosystem-affine: Qwen jobs are routed only to workers registered under `qwen-image-edit-2511` and never fall back to a FLUX worker.
+The Qwen gateway implements the asynchronous image-edit contract: health reporting, multi-reference uploads, submit, polling, cancellation, real worker lifecycle states, and failover-compatible availability/credit errors.
 
-The primary worker is `qwen-primary-01` on `modal-42`; the standby is `qwen-standby-01` on `modal-43`. Both gateways report the pinned Civitai version and Lightning profile.
+The fleet remains ecosystem-affine: Qwen jobs are routed only to workers registered under `qwen-image-edit-2511` and never fall back to a FLUX worker.
 
-## Studio behavior
+Current non-secret worker routing metadata is owned by `config/modal-worker-registry.json`; ecosystem/runtime definitions are owned by `config/modal-worker-ecosystems.json` and the provider implementation under `integrations/qwen/`.
 
-Image and Edit surfaces expose an explicit FLUX/Qwen model choice. Changing the selected model updates its Advanced defaults. Qwen uses 4 steps and CFG 1.0 by default. Upload, drag/drop, multiple references, progress, Jobs, cancellation, persisted output, and Gallery behavior remain shared with the existing image-edit experience.
+The recorded primary worker is `qwen-primary-01` on `modal-42`; the recorded standby is `qwen-standby-01` on `modal-43`. Both gateways report the pinned Civitai version and Lightning profile in the recorded validated deployment.
+
+## S.A.G.A. consumption boundary
+
+S.A.G.A. may use Qwen through its own stage-7 visual-generation/provider contracts for narrative-driven image creation or editing. Generic image-edit product UI, gallery, job-management, and media-library behavior belong to the separate RenderLab project and must not be reconstructed in S.A.G.A.
+
+Any future direct S.A.G.A. integration should be implemented through the owning visual/provider runtime rather than by restoring the former Studio API or React surface.

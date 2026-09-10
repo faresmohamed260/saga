@@ -54,7 +54,7 @@ The active contract-driven architecture is under `packages/`, `integrations/`, `
 
 `backup/reference/` is historical reference material. Active code must not depend on it.
 
-`apps/studio/` also exists and has received later repository activity than some S.A.G.A. core documentation. Its long-term ownership/status is being reconciled by the active repository-recovery phase. Do not delete it, treat it as the S.A.G.A. core UI, or expand it by default unless the current phase/user request explicitly requires that work.
+The former `apps/studio/` prototype is not a S.A.G.A. product surface. Its standalone successor is the separate `faresmohamed260/renderlab` repository. Do not recreate, restore, or continue generic Studio/RenderLab product work inside S.A.G.A. Shared visual-generation infrastructure may remain in S.A.G.A. only where it is owned by S.A.G.A.'s narrative-to-media pipeline and active runtime contracts.
 
 ## Research and Experiment Discipline
 
