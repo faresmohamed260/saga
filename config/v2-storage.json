@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "provider": "backblaze-b2",
+  "bucket": {
+    "name": "saga-v2-faresmohamed260-1207062480",
+    "id": "b2af6d676af585d3aa0e0912",
+    "region": "us-east-005",
+    "s3_endpoint": "https://s3.us-east-005.backblazeb2.com",
+    "visibility": "private"
+  },
+  "namespaces": [
+    "sources/",
+    "artifacts/analysis/",
+    "generated/images/",
+    "generated/audio/",
+    "exports/",
+    "temporary/",
+    "_system/"
+  ],
+  "bootstrap": {
+    "validated": true,
+    "github_actions_run_id": 34537566675,
+    "validated_at": "2026-09-10T22:28:07Z",
+    "smoke_test": "upload-download-byte-compare-delete"
+  },
+  "runtime_credentials": {
+    "strategy": "bucket-scoped-application-key",
+    "master_key_allowed": false
+  }
+}
