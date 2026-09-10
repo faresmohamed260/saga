@@ -1,12 +1,6 @@
 name: Deploy FLUX.2 Klein 9B to modal-01
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "integrations/comfyui/flux2_klein_app.py"
-      - "integrations/comfyui/workflows/flux2_klein_9b_image_edit_api.json"
-      - ".github/workflows/deploy-flux2-klein-modal01.yml"
   workflow_dispatch:
 
 permissions:
