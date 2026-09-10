@@ -91,10 +91,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify exact committed source provenance
+      - name: Verify exact committed main provenance
         shell: bash
         run: |
           set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error title=Qualification must run from main::Dispatch this promotable qualification only from the main branch."
+            exit 9
+          fi
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=no)"
           printf 'Qualification source SHA: %s\n' "$GITHUB_SHA"
