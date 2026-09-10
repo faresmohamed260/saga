@@ -2,75 +2,88 @@
 
 This file documents required secret/variable names and destinations. It must never contain secret values.
 
+Observed presence/status below is evidence from 2026-09-10 only. Presence is not proof that a credential points to the correct S.A.G.A. resource or has sufficient permissions. Detailed bounded evidence: `../validation/PHASE_0_EXTERNAL_READINESS_2026-09-10.md`.
+
 ## Repository secrets
 
-| Secret | Owning service | Used by | Required for normal CI | Scope / permissions | Migration status |
+| Secret | Owning service | Used by | Required for normal CI | Scope / permissions | Current qualification status |
 | --- | --- | --- | --- | --- | --- |
-| `SAGA_MODAL_TOKENS_JSON` | Modal | Modal worker inventory, provision, maintenance, Flux/Qwen/LTX deploy and live smoke workflows | No | JSON roster of Modal accounts; least privilege per Modal account | Present as repository secret on 2026-09-10. The clean-source qualification path prefers the active persisted provider rows instead of enabling env fallback. |
-| `HF_TOKEN` | Hugging Face | Modal worker provision/maintenance, model prefetch/deploy workflows | No | Read access to required gated/private model files only | Present as repository secret on 2026-09-10. |
-| `CIVITAI_API_TOKEN` | Civitai | Modal worker provision/maintenance and model prefetch workflows | No | Read/download access to selected model files only | Present as repository secret on 2026-09-10. |
-| `SAGA_SUPABASE_DB_URL` | Supabase Postgres | real Supabase validation, clean-source production qualification, release/backup checks | No | Application database user or pooler URL appropriate to the workflow | Required for integration/live gates unless complete component DB configuration is supplied. |
-| `SAGA_SUPABASE_DB_HOST` | Supabase Postgres | component-based DB configuration / qualification | No | Explicit remote database/pooler hostname | Required when qualification uses component DB configuration; it must not be omitted and allowed to fall back to localhost. |
-| `SAGA_SUPABASE_DB_PORT` | Supabase Postgres | component-based DB configuration / qualification | No | Port only; not sensitive alone | Optional; runtime default applies when the remote host/user/password contract is otherwise complete. |
-| `SAGA_SUPABASE_DB_NAME` | Supabase Postgres | component-based DB configuration / qualification | No | Database name only | Optional; runtime default applies when appropriate. |
-| `SAGA_SUPABASE_DB_USER` | Supabase Postgres | component-based DB configuration / qualification | No | Least-privilege application DB user | Required with host/password unless a pooler tenant identifier constructs the username. |
-| `SAGA_SUPABASE_DB_PASSWORD` | Supabase Postgres | component-based DB configuration / qualification | No | Password for DB user | Required with component DB configuration. |
-| `SAGA_SUPABASE_POOLER_TENANT_ID` | Supabase Postgres | component-based pooler DB configuration / qualification | No | Project/tenant identifier used to construct pooler username | Optional alternative to an explicit component DB user. |
-| `SAGA_SUPABASE_API_URL` or `SUPABASE_URL` | Supabase Storage/API | object storage, runtime validation, clean-source qualification | No | Project API URL | `SUPABASE_URL` present as repository secret on 2026-09-10; S.A.G.A.-prefixed alias not observed. |
-| `SAGA_SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | Supabase | server-side runtime storage/database operations and clean-source qualification | No | Service-role key; server/Actions only; never expose to browser | `SUPABASE_SERVICE_ROLE_KEY` present as repository secret on 2026-09-10; S.A.G.A.-prefixed alias not observed. |
-| `MISTRAL_API_KEY` | Mistral | visual semantic QA, narrative/reasoning providers, Voxtral transcription, clean-source qualification when Mistral is not persisted | No | Provider key with model access needed for selected live gates | Not observed in repository secrets on 2026-09-10. Qualification accepts active persisted Mistral config as an alternative. |
-| `OLLAMA_API_KEY` | Ollama cloud | optional clean-source qualification/runtime authentication fallback | No | API key for an authenticated Ollama cloud endpoint | Optional. `.github/workflows/production-qualification.yml` maps this secret when present; active persisted Ollama accounts with usable API keys remain the preferred path. |
-| `GEMINI_API_KEY` | Google Gemini | reasoning fallback/live provider checks where configured | No | Provider key with selected model access | Not observed in repository secrets on 2026-09-10. Optional unless a workflow enables Gemini. |
-| `OPENROUTER_API_KEY` | OpenRouter | general compute/reasoning fallback if configured | No | Provider key with selected model access | Not observed in repository secrets on 2026-09-10. Optional unless configured. |
-| `GROQ_API_KEY` | Groq | general compute/reasoning fallback if configured | No | Provider key with selected model access | Not observed in repository secrets on 2026-09-10. Optional unless configured. |
-| `OLLAMA_BASE_URL` | Ollama/self-hosted inference | live local/remote Ollama checks only | No | URL to authenticated remote or self-hosted runner endpoint if used | Optional for separately documented self-hosted/live checks. A GitHub-hosted clean qualification must not assume workstation-local Ollama. |
-| `R2_ACCOUNT_ID` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Account identifier only | Present as repository secret on 2026-09-10. |
-| `R2_BUCKET_NAME` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Bucket identifier only | Present as repository secret on 2026-09-10. |
-| `R2_ACCESS_KEY_ID` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Object Read / List scope for the private protected-asset bucket/prefix | Present as repository secret on 2026-09-10. |
-| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Secret half of R2 access key; keep server/Actions-only | Present as repository secret on 2026-09-10. |
-| `SAGA_PROTECTED_ASSET_STORAGE_*` | Protected object storage | future provider-neutral protected EPUB acquisition if adopted | No | Read-only credentials for private asset bucket/prefix | S.A.G.A.-prefixed generic names not observed on 2026-09-10. Current workflows use the explicit R2 names above. |
-| `SATURN_TOKEN` | Saturn/integration-specific | unclear from current recovery audit | No | Unknown; inspect owning workflow before use | Present as repository secret on 2026-09-10; ownership requires follow-up audit. |
+| `SAGA_MODAL_TOKENS_JSON` | Modal | Modal worker inventory/provision/maintenance/live-smoke workflows | No | JSON roster of Modal accounts | Previously observed present. Clean-source qualification intentionally prefers persisted provider rows. |
+| `HF_TOKEN` | Hugging Face | Modal worker/model provisioning | No | Read access to required model files | Previously observed present; not a clean-source preflight substitute for persisted provider readiness. |
+| `CIVITAI_API_TOKEN` | Civitai | Modal worker/model provisioning | No | Read/download access to selected model files | Previously observed present. |
+| `SAGA_SUPABASE_DB_URL` | S.A.G.A. production Postgres | clean-source qualification / real runtime validation | No | Production application/pooler database URL | **Absent in bounded Actions diagnostic on 2026-09-10.** |
+| `SAGA_SUPABASE_DB_HOST` | S.A.G.A. production Postgres | component DB configuration | No | Explicit remote database/pooler hostname | **Absent in bounded Actions diagnostic.** |
+| `SAGA_SUPABASE_DB_PORT` | S.A.G.A. production Postgres | component DB configuration | No | Port | No usable complete component DB contract was available. |
+| `SAGA_SUPABASE_DB_NAME` | S.A.G.A. production Postgres | component DB configuration | No | Database name | No usable complete component DB contract was available. |
+| `SAGA_SUPABASE_DB_USER` | S.A.G.A. production Postgres | component DB configuration | No | Least-privilege DB user | No usable complete component DB contract was available. |
+| `SAGA_SUPABASE_DB_PASSWORD` | S.A.G.A. production Postgres | component DB configuration | No | DB password | No usable complete component DB contract was available. |
+| `SAGA_SUPABASE_POOLER_TENANT_ID` | S.A.G.A. production Postgres | component pooler configuration | No | Project/tenant identifier | No usable complete component DB contract was available. |
+| `SAGA_SUPABASE_API_URL` or `SUPABASE_URL` | Supabase API/Storage | runtime storage / qualification | No | API URL for the **same S.A.G.A. production project** | Legacy `SUPABASE_URL` was present; S.A.G.A.-prefixed alias was not observed. Presence alone is not ownership proof. |
+| `SAGA_SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | Supabase | server-side runtime/qualification | No | Service-role key for the **same S.A.G.A. production project** | Legacy `SUPABASE_SERVICE_ROLE_KEY` was present; S.A.G.A.-prefixed alias was not observed. Presence alone is not ownership proof. |
+| `OLLAMA_API_KEY` | Ollama cloud | optional qualification/runtime authentication fallback | No | API key for authenticated remote Ollama | **Absent** in bounded Actions diagnostic. Persisted S.A.G.A. provider configuration remains the preferred path but cannot be inspected until the real DB is connected. |
+| `MISTRAL_API_KEY` | Mistral | qualification fallback for current reasoning/vision/transcription stages | No | Provider key with required model access | **Absent** in bounded Actions diagnostic. Persisted Mistral remains acceptable but currently uninspectable without the real S.A.G.A. DB. |
+| `GEMINI_API_KEY` | Google Gemini | optional reasoning fallback/live checks | No | Provider key with selected model access | Optional unless configured by an owning workflow. |
+| `OPENROUTER_API_KEY` | OpenRouter | optional general-compute fallback | No | Provider key | Optional unless configured. |
+| `GROQ_API_KEY` | Groq | optional general-compute fallback | No | Provider key | Optional unless configured. |
+| `OLLAMA_BASE_URL` | Ollama/self-hosted inference | separately documented live/self-hosted checks | No | Remote/self-hosted endpoint | A GitHub-hosted clean qualification must not assume workstation-local Ollama. |
+| `R2_ACCOUNT_ID` | Cloudflare R2 | protected-asset verification / qualification acquisition | No | Account identifier for a S.A.G.A.-owned protected-assets bucket | Name/value presence observed, but **current credentials cannot list the configured bucket on any supported jurisdiction endpoint**. |
+| `R2_BUCKET_NAME` | Cloudflare R2 | protected-asset verification / qualification acquisition | No | S.A.G.A.-owned private protected-assets bucket | Name/value presence observed, but target ownership/readability is not established. |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 | protected-asset verification / qualification acquisition | No | List/Get on protected-assets bucket/prefix | Name/value presence observed; current bounded probe returns `access_failed` before object diagnosis. |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 | protected-asset verification / qualification acquisition | No | Secret half of R2 credential | Name/value presence observed; current bounded probe returns `access_failed` before object diagnosis. |
+| `SAGA_PROTECTED_ASSET_STORAGE_*` | future provider-neutral storage | future abstraction if adopted | No | Read-only protected asset credentials | Not the current workflow contract. |
+| `SATURN_TOKEN` | Saturn/integration-specific | ownership unclear | No | Inspect owning workflow before use | Present during recovery audit; unrelated to current qualification until an owning contract says otherwise. |
 
-`GITHUB_TOKEN` is provided by GitHub Actions and is used by publish/provenance workflows with workflow-declared permissions.
+`GITHUB_TOKEN` is provided by GitHub Actions and is used only according to workflow-declared permissions.
 
 ## Repository / Actions variables
 
-These values are configuration, not credentials. They should not contain secrets.
-
-| Variable | Used by | Requirement | Notes |
+| Variable | Used by | Requirement | Current status |
 | --- | --- | --- | --- |
-| `SAGA_PROVIDER_COST_RATES_JSON` | `.github/workflows/production-qualification.yml`, usage governance / production qualification | Required for clean-source qualification | JSON array of active `CostRate` objects. Current qualification readiness requires valid versioned provider-wide fallback rates for `ollama`, `mistral`, and `modal`; more-specific account/model entries may override those fallbacks. Do not fabricate prices simply to satisfy the gate. |
+| `SAGA_PROVIDER_COST_RATES_JSON` | `.github/workflows/production-qualification.yml`, usage governance | Required for clean-source qualification | **Absent in bounded Actions diagnostic on 2026-09-10.** Must contain legitimate versioned provider-wide fallback `CostRate` entries for `ollama`, `mistral`, and `modal`; do not fabricate prices. |
 
-The checked-in production example intentionally leaves `SAGA_PROVIDER_COST_RATES_JSON=[]` as a placeholder. An empty array is **not** qualification-ready because the evaluator rejects unpriced charges.
+The checked-in production example may use an empty placeholder, but `[]` is not qualification-ready because the evaluator rejects unpriced charges.
 
-## Persisted provider configuration required by qualification
+## Current production-persistence boundary
 
-Not every live credential belongs in GitHub Actions secrets. The current runtime contract stores provider accounts/configuration in S.A.G.A. persistence and the clean-source qualification preflight checks those rows before downloading a protected book or calling live providers.
+The clean-source qualification preflight requires the actual S.A.G.A. production persistence path. On 2026-09-10 the bounded diagnostic returned:
 
-Required persisted Modal providers for the current nine-stage path:
+```text
+PRODUCTION_DB_RESULT status=not_configured
+```
 
-- `modal_xcore_litbank` — identity/coreference;
-- `modal_comfyui` — stage-7 image generation;
-- `modal_kokoro_tts` — stage-8 speech synthesis.
+The only project visible through the connected Supabase app was inspected read-only and contained RenderLab/retired-Studio tables (`generation_*`, `media_*`, `renderlab_*`, `studio_*`). It is **not** S.A.G.A. production and must not be used for S.A.G.A. source-freshness or persisted-provider claims.
 
-The current default reasoning path also requires at least one **usable Ollama API key**. Prefer the persisted Ollama account configuration; `OLLAMA_API_KEY` is an explicit workflow fallback when configured as a repository/environment secret. Merely having an `ollama` provider row does not make a GitHub-hosted runner qualification-ready; without a usable key the runtime can fall back toward its local Ollama URL. Mistral may be persisted or supplied via `MISTRAL_API_KEY`.
+Until the real S.A.G.A. database path is configured, these required persisted qualification providers remain **unknown**, not failed:
 
-The qualification readiness gate also checks the selected manifest asset against production persistence by filename/SHA before protected-storage download. This is not a secret requirement, but it prevents reusing a book already processed by the production library as if it were an unseen qualification source.
+- `modal_xcore_litbank`;
+- `modal_comfyui`;
+- `modal_kokoro_tts`;
+- Ollama/gpt-oss accounts;
+- Mistral provider configuration.
 
-Do not copy provider payloads, persisted book rows, tokens, or cost-rate values into documentation or workflow logs.
+## R2 namespace ownership warning
 
-## Local secrets found during recovery
+Historical source at pre-retirement commit `1944ea3a1c7d6733236869cec2e030dad4fdd470` shows retired `apps/studio/api/_r2.js` consumed the exact names:
 
-- `deploy/neo4j/.env` existed in the former local recovery environment and included `NEO4J_PASSWORD`. Neo4j is not currently a documented production dependency for the active S.A.G.A. runtime.
-- `deploy/ollama/accounts.local.json` existed locally and contained account `email`, `password`, and `api_key` fields for local Ollama/account-rotation experiments.
+- `R2_ACCOUNT_ID`;
+- `R2_BUCKET_NAME`;
+- `R2_ACCESS_KEY_ID`;
+- `R2_SECRET_ACCESS_KEY`.
 
-These local values were not copied into this document or committed. If any are still required, migrate them through the active persisted provider contract or an explicitly documented GitHub secret/environment path first.
+That helper defaulted its bucket to `saga-studio-media`.
 
-## Rotation notes
+This proves the **environment-variable namespace was Studio-era infrastructure**. It does not prove current GitHub secret values are identical, because GitHub does not expose values. Therefore these generic `R2_*` names should be reconfigured/rotated with explicit S.A.G.A. protected-asset ownership before qualification rather than trusted based on presence alone.
 
-- Rotate any secret pasted into chat or used from an old local file before relying on it for production.
-- Keep Supabase service-role credentials server-side only.
-- Prefer short-lived or environment-scoped provider keys for expensive live-provider workflows.
-- Remove secrets from GitHub when the owning workflow is removed or moved to a different repository.
-- Do not enable `SAGA_MODAL_ALLOW_ENV_FALLBACK` merely to bypass missing persisted qualification provider configuration; repair the active provider state instead.
-- Do not make a GitHub-hosted qualification depend on developer-workstation localhost services unless a self-hosted runner contract is explicitly adopted and documented.
+Read-only diagnostic run `34514460132` returned `access_failed` for `default`, `eu`, `us`, and `fedramp`. No supported endpoint demonstrated bucket listing, so object presence/hash is not yet classifiable.
+
+## Rotation / repair notes
+
+- Configure `SAGA_SUPABASE_DB_URL` or a complete explicit remote S.A.G.A. component DB contract before any live qualification attempt.
+- Ensure Supabase API URL/service-role aliases belong to the same S.A.G.A. production project as the DB.
+- Configure legitimate versioned pricing before provider calls.
+- Prefer persisted provider configuration; env fallbacks are explicit alternatives, not a reason to bypass persistence ownership.
+- Reconfigure/rotate R2 credentials to a S.A.G.A.-owned protected-assets bucket/prefix with List/Get access.
+- Keep Supabase service-role and provider credentials server-side only.
+- Remove secrets when their owning workflow/product is retired.
+- Do not enable environment fallbacks merely to bypass missing persisted qualification state.
+- Do not make GitHub-hosted qualification depend on developer-workstation localhost services.

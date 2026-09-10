@@ -22,9 +22,9 @@ Use documents according to their purpose:
 
 - **Current handoff:** `PROJECT.md`, `DECISIONS.md`, and the active phase contract.
 - **Current subsystem contract:** runtime/architecture documents whose behavior is verified against active code during the relevant work.
-- **Qualification evidence:** dated validation records such as `production_qualification.md`; they prove only the source/configuration recorded there.
-- **Audit snapshot:** documents such as `architecture_hardening_audit.md`; valuable evidence of a point in time, but their old “next step” text does not override the current project handoff.
-- **Historical/migration reference:** documents explicitly labeled historical/reference; never treat them as active implementation requirements without verification.
+- **Qualification/evidence:** dated validation records prove only the source/configuration recorded there.
+- **Audit snapshot:** earlier architecture/recovery audits are point-in-time evidence; their old “next step” text does not override the current handoff.
+- **Historical/migration reference:** documents explicitly labeled historical/reference must not become active implementation requirements without verification.
 
 If a detailed document conflicts with current code or the current handoff, investigate and update the authoritative project record rather than silently choosing a convenient version.
 
@@ -68,8 +68,8 @@ If a detailed document conflicts with current code or the current handoff, inves
 - `persistence_runtime.md` — persistence runtime
 - `storage_architecture.md` — storage/provider boundaries
 - `runtime_secrets.md` — runtime secret ownership
-- `operations/GITHUB_ACTIONS_SECRETS.md` — GitHub Actions secret names, owning services, workflow consumers, and migration status without values
-- `operations/PROTECTED_TEST_ASSETS.md` — protected/private book asset metadata, hashes, and secure CI acquisition rules
+- `operations/GITHUB_ACTIONS_SECRETS.md` — GitHub Actions secret names, owning services, current observed presence/readiness, and migration status without values
+- `operations/PROTECTED_TEST_ASSETS.md` — protected/private book metadata, hashes, secure CI acquisition rules, and current R2 access evidence
 - `operations/protected_assets.manifest.json` — machine-readable protected-asset IDs, object keys, filenames, and hashes consumed by manual verification
 - `operations/MODEL_PROVIDER_MANIFEST.md` — active/evaluation/historical model and provider identities without model weights or credentials
 - `modal_runtime.md` — Modal/general compute provider runtime
@@ -86,9 +86,11 @@ The former S.A.G.A. `apps/studio/` prototype is retired. Its standalone successo
 
 ## Qualification and Evidence
 
-- `production_qualification.md` — last recorded real-book nine-stage qualification; accepted as evidence but explicitly non-promotable because the recorded source worktree was dirty
+- `production_qualification.md` — historical real-book nine-stage qualification plus the current clean-source qualification contract
 - `validation/REPRODUCIBILITY.md` — validation tiers, required secrets/assets/models, runner expectations, and live-gate boundaries
+- `validation/PHASE_0_EXTERNAL_READINESS_2026-09-10.md` — post-PR-#145 read-only evidence for S.A.G.A. production DB configuration, provider/pricing readiness, protected-R2 access, and Studio-era R2 namespace provenance
 - `.github/workflows/protected-asset-verification.yml` — manual R2-backed protected asset availability/hash verification; never uploads protected bytes
+- `.github/workflows/production-qualification.yml` — manual, `main`-only, explicit-cost clean-source nine-stage qualification control plane
 - additional validation scripts/tests under `scripts/` and `tests/` are authoritative only for the behavior they actually exercise
 
 ## Migration / Historical Material
@@ -106,9 +108,8 @@ When durable project state changes:
 - update `PROJECT.md` for baseline/phase/next-step changes;
 - update `DECISIONS.md` for durable decisions;
 - update the active phase contract for scope/evidence/exit state;
-- update the owning subsystem document when its contract changes;
-- update `production_qualification.md` only with qualification evidence that actually ran.
-
-Do not create a new status file when an existing authoritative file already owns that information.
+- update the owning subsystem/operations document when its contract changes;
+- update `production_qualification.md` only with qualification evidence that actually ran;
+- use dated validation records for bounded external-readiness evidence that should not be confused with successful qualification.
 
 Do not mark work complete from a plan, attempted run, or unrelated green CI check.
