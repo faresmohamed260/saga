@@ -71,3 +71,11 @@ It must never return:
   - [tests/test_real_runtime_stack.py](B:\Documents\PyCharm\graduationProject\tests\test_real_runtime_stack.py)
 
 The runtime-stack validator now expects the Ollama provider config to already be stored in the persistence runtime and uses the clean path instead of relying on direct reasoning env secrets.
+
+## GitHub Actions Secret Migration
+
+Repository and environment secret names for CI/live qualification are tracked in `docs/operations/GITHUB_ACTIONS_SECRETS.md`.
+
+The manifest records only variable names, owning services, workflow consumers, and migration status. It must not contain actual token, password, service-role, or access-key values.
+
+Protected book/test-asset credentials are optional and exist only for gated qualification workflows. They are documented separately in `docs/operations/PROTECTED_TEST_ASSETS.md`.
