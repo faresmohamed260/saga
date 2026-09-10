@@ -14,6 +14,8 @@ This report is the durable handoff record for the one-time local-to-GitHub recov
 | Post-PR #134 `main` SHA | `6e02c0e720d9b871c27921aa9ba010bb2921fa3b` |
 | Local commit triage PR | PR #135, merged 2026-09-10 |
 | Post-PR #135 `main` SHA | `8d81639c56fc3a1df27de16e8819e414fec2d0eb` |
+| Protected asset / Studio ownership PR | PR #137, merged 2026-09-10 |
+| Post-PR #137 `main` SHA | `c617fbd7a2612941906c4507717f868f8a9edc7c` |
 | Duplicate governance PR | PR #133 closed as superseded by PR #134 |
 | Remaining open local-history PR | PR #54 remains draft/historical evidence; do not merge as-is |
 
@@ -97,6 +99,8 @@ GitHub validation:
 
 - PR #134 final head `8685f97cec6cca81c2a19536cbe0ab6057d7323c` — Backend Architecture CI `test`, `migrations`, `containers`; Required Check Compatibility; Vercel; Vercel Preview Comments all passed.
 - PR #135 head `729b8f0f8db29d081db74487f80c937e0a0f1bfe` — Backend Architecture CI `test`, `migrations`, `containers`; Required Check Compatibility; Vercel; Vercel Preview Comments all passed.
+- PR #137 head `17740232de4fa102a3382452cdc953e1857efc71` — Backend Architecture CI `test`, `migrations`, `containers`; Required Check Compatibility; Vercel; Vercel Preview Comments all passed.
+- Manual `Protected Asset Verification` run `34432226628` on `main` for `once-upon-a-broken-heart` reached Cloudflare R2 with repository secrets present, then failed during object access with `403 Forbidden` on `HeadObject`. This confirms the GitHub workflow wiring exists, but the current R2 credentials/object placement do not yet permit reading the documented protected asset key.
 
 CI emitted Node.js 20 deprecation annotations for some actions forced onto Node.js 24. This is maintenance work, not a current gate failure.
 
@@ -107,7 +111,7 @@ The repository no longer depends on undocumented local knowledge for the recover
 Remaining unresolved dependencies/blockers:
 
 - Live-provider qualification still requires configured provider secrets and cost-controlled execution.
-- Protected-asset qualification now has a manual R2 hash-verification workflow, but production qualification still requires authorized objects and the live qualification workflow to consume them.
+- Protected-asset qualification now has a manual R2 hash-verification workflow, but the first remote run failed with R2 `403 Forbidden`; finishing this gate requires fixing the private R2 object path and/or read permissions for the repository secrets.
 - Some local-side code/evidence may still be valuable, but it must be ported through focused PRs from `docs/recovery/LOCAL_COMMIT_TRIAGE.md`.
 - Studio product ownership is assigned to `faresmohamed260/renderlab` going forward. S.A.G.A. still needs a focused cleanup/deprecation PR before deleting or relocating existing Studio files.
 - `SATURN_TOKEN` exists as a repository secret but its current owning workflow/service was not identified in this recovery pass.

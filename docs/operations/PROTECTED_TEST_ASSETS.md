@@ -37,6 +37,11 @@ Current workflow:
 
 It is manual-only through `workflow_dispatch`. It uses the existing Cloudflare R2 repository secret names, downloads selected objects into `$RUNNER_TEMP`, verifies hashes with `scripts/verify_protected_assets.py`, and removes the temporary directory in an `always()` cleanup step. It does not upload protected assets as artifacts.
 
+First remote verification evidence:
+
+- GitHub Actions run `34432226628`, dispatched on 2026-09-10 for `once-upon-a-broken-heart`, reached the R2 download step with the required repository secrets present.
+- R2 returned `403 Forbidden` on `HeadObject` for the documented object key. Treat protected-asset CI as wired but not yet operational until the R2 object key and read permissions are corrected, then rerun the workflow.
+
 Supported workflow variables:
 
 - `R2_ACCOUNT_ID`
