@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
 import { InvitationManager } from "@/features/admin/invitation-manager";
+import type { SagaInvitationSummary } from "@/lib/api/admin";
 import { getCurrentSagaAccountState, isActiveSagaAdmin } from "@/server/account/current";
 import { listPendingSagaInvitations } from "@/server/admin/invitations";
 
@@ -9,7 +10,7 @@ export default async function AdminPage() {
   const state = await getCurrentSagaAccountState();
   if (!isActiveSagaAdmin(state)) redirect("/app");
 
-  let invitations = [];
+  let invitations: SagaInvitationSummary[] = [];
   try {
     invitations = await listPendingSagaInvitations();
   } catch {

@@ -12,6 +12,8 @@ export type SagaAccountState =
   | { status: "suspended"; identity: SagaIdentity; access: SagaAccountAccess }
   | { status: "active"; identity: SagaIdentity; access: SagaAccountAccess };
 
+type ActiveSagaAccountState = Extract<SagaAccountState, { status: "active" }>;
+
 function verifiedIdentity(user: User | null): SagaIdentity | null {
   if (!user || user.is_anonymous === true || typeof user.id !== "string") return null;
   return {
@@ -47,6 +49,6 @@ export async function getCurrentSagaAccountState(): Promise<SagaAccountState> {
   }
 }
 
-export function isActiveSagaAdmin(state: SagaAccountState) {
+export function isActiveSagaAdmin(state: SagaAccountState): state is ActiveSagaAccountState {
   return state.status === "active" && state.access.role === "admin";
 }
