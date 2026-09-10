@@ -1,6 +1,6 @@
 # Production Qualification
 
-This document separates historical behavioral evidence from the current clean-source qualification contract. A successful run is promotable evidence only when it is bound to exact committed source, the required provider/storage configuration, complete usage pricing, and the repository-defined qualification checks.
+This document separates historical behavioral evidence from the current clean-source qualification contract. A successful run is promotable evidence only when it is bound to exact committed source, an unseen qualification input, the required provider/storage configuration, complete usage pricing, and the repository-defined qualification checks.
 
 ## Historical Accepted Run — 2026-08-09
 
@@ -36,6 +36,7 @@ Real Supabase validation passed controlled queued cancellation, lease-expiry wor
 - Providers exposed request latency/status but not billable token or compute usage; estimated cost was unavailable for that run.
 - Manual image review found moderate hand fidelity and scene-action alignment issues despite automated acceptance. These remain visual quality-policy evidence rather than blank/corrupt-output failures.
 - **The run is not a promotable release baseline** because its source worktree was not a clean committed CI revision.
+- The current qualifier rejects a source filename/SHA that already exists in production persistence. Therefore this historical book must not be assumed to be eligible for the next clean-source qualification against the same production library.
 
 ### Historical regression gates
 
@@ -64,37 +65,40 @@ That workflow is deliberately `workflow_dispatch` only. It must never run on ord
 
 ### Preconditions
 
-Before any protected-book processing, the workflow must prove:
+Before downloading the protected source or making live reasoning/provider calls, the workflow must prove:
 
 1. the operator explicitly sets `confirm_live_cost=true`;
 2. checkout `HEAD` equals the workflow `GITHUB_SHA` and tracked source is clean;
-3. frozen Python dependencies install successfully;
-4. a production Supabase database/API/service-role configuration is available;
-5. the production schema matches the current migration contract;
-6. persisted Modal credentials exist for:
+3. exactly one protected manifest `asset_id` is explicitly selected; there is no implicit historical-book default;
+4. timeout inputs and required protected-storage configuration are valid;
+5. frozen Python dependencies install successfully;
+6. a production Supabase database/API/service-role configuration is available, including an explicit remote host when component-based DB settings are used;
+7. the production schema matches the current migration contract;
+8. the selected asset filename/SHA is not already present in the production library;
+9. persisted Modal credentials exist for:
    - `modal_xcore_litbank`;
    - `modal_comfyui`;
    - `modal_kokoro_tts`;
-7. persisted Ollama/gpt-oss reasoning configuration is available for the current default reasoning stages;
-8. Mistral is configured either through persistence or `MISTRAL_API_KEY` for current Mistral reasoning/vision/transcription stages;
-9. `SAGA_PROVIDER_COST_RATES_JSON` contains valid, versioned provider-wide fallback rates for `ollama`, `mistral`, and `modal`; more-specific model/account rates may override those fallbacks;
-10. the selected protected asset is reachable from private R2 storage and its SHA-256 matches `docs/operations/protected_assets.manifest.json`.
+10. the current Ollama/gpt-oss path has an actual usable API key in persisted account configuration or an explicitly supported `OLLAMA_API_KEY`; a provider-config row by itself is not enough on a GitHub-hosted runner;
+11. Mistral is configured either through persistence or `MISTRAL_API_KEY` for current Mistral reasoning/vision/transcription stages;
+12. `SAGA_PROVIDER_COST_RATES_JSON` contains valid, versioned provider-wide fallback rates for `ollama`, `mistral`, and `modal`; more-specific model/account rates may override those fallbacks;
+13. after readiness succeeds, the selected protected asset is reachable from private R2 storage and its SHA-256 matches `docs/operations/protected_assets.manifest.json`.
 
 The non-destructive readiness check is:
 
 ```text
-python -m scripts.check_production_qualification_readiness
+python -m scripts.check_production_qualification_readiness --asset-id <manifest-id>
 ```
 
-It reports only bounded configuration/provider readiness metadata. It does not print database credentials, provider secrets, provider payloads, or cost-rate values.
+It mirrors the production qualifier's source-freshness rule before R2 download/live-provider work and reports only bounded configuration/provider readiness metadata. It does not print database credentials, provider secrets, provider payloads, persisted book rows, or cost-rate values.
 
 ### Protected source handling
 
-The workflow acquires exactly one manifest-selected protected EPUB through `scripts/check_protected_asset_storage.py`, verifies it through `scripts/verify_protected_assets.py`, keeps it only in runner temporary storage, and removes it in an `always()` cleanup step.
+The workflow acquires exactly one explicitly selected protected EPUB through `scripts/check_protected_asset_storage.py`, verifies it through `scripts/verify_protected_assets.py`, keeps it only in runner temporary storage, and removes it in an `always()` cleanup step.
 
 Protected EPUB bytes must never be committed or uploaded as a GitHub Actions artifact. The temporary local JSON qualification report is also removed after the run; the qualification evaluator persists the authoritative report through S.A.G.A.'s persistence/artifact contract.
 
-Issue #142 tracks the current private-R2 availability prerequisite. A historical `HeadObject` 403 is not enough to distinguish wrong access/jurisdiction from a missing object; use the revised protected-asset diagnostic categories.
+Issue #142 tracks the current private-source prerequisite. A historical `HeadObject` 403 is not enough to distinguish wrong access/jurisdiction from a missing object; use the revised protected-asset diagnostic categories. The selected source must also pass the production freshness preflight. If every currently listed asset is already present in production persistence, add manifest metadata for another authorized unseen source and place its bytes only in private storage.
 
 ### Exact-source identity and bounded execution
 
@@ -124,12 +128,11 @@ A placeholder such as `SAGA_PROVIDER_COST_RATES_JSON=[]` therefore cannot qualif
 
 Preferred Phase-0 reproduction path:
 
-1. resolve issue #142 and make the selected protected asset reachable/hash-valid;
-2. configure the required Supabase/provider secrets and persisted provider rows;
-3. configure the non-secret `SAGA_PROVIDER_COST_RATES_JSON` GitHub Actions variable with versioned provider-wide fallbacks for `ollama`, `mistral`, and `modal` plus any desired more-specific overrides;
+1. configure the actual S.A.G.A. production Supabase path and qualification provider/pricing prerequisites;
+2. choose exactly one protected manifest asset that passes the production freshness preflight;
+3. resolve issue #142 for that fresh asset and make it reachable/hash-valid in private R2;
 4. manually dispatch **Clean-Source Production Qualification** on the exact `main` commit intended for qualification;
-5. choose one protected `asset_id` and the correct R2 jurisdiction;
-6. explicitly authorize live cost;
-7. preserve the resulting persisted qualification evidence and update `PROJECT.md` / Phase 0 from the exact result.
+5. choose the correct R2 jurisdiction and explicitly authorize live cost;
+6. preserve the resulting persisted qualification evidence and update `PROJECT.md` / Phase 0 from the exact result.
 
 For controlled local reproduction, run `python -m scripts.run_production_qualification` with the same production contracts, a verified unseen EPUB, an immutable release ID, and bounded global/stage deadlines. Use `--resume` only for checkpoints created by the same run and series.
