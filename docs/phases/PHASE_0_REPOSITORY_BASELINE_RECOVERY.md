@@ -185,7 +185,7 @@ Phase 0 should accumulate evidence for these gates:
 - Current Actions were classified into deterministic CI, bounded integration, and expensive/live-provider tiers.
 - Ollama is documented as local/remote endpoint dependent, not as an assumed GitHub-hosted runner dependency and not as requiring an invented `OLLAMA_API_KEY`.
 - Deterministic local validation on the clean recovery worktree passed: frozen `uv` sync, one Alembic head `202608090400`, source secret scan with 850 files and 0 findings, architecture-boundary tests 4/4, full backend tests 338 passed / 3 skipped, Dashboard Pro tests 13/13, Dashboard Pro production build, production dependency audit with 0 high vulnerabilities, and production Compose config validation.
-- Remote GitHub validation on PR #134 head `0605465c755d0f6886943694b00adbede09b4b31` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
+- Remote GitHub validation on PR #134 head `97b8200ad48dc835b8c7952de10dec998148da61` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
 
 ## Exit Criteria
 

@@ -121,7 +121,7 @@ Executed locally on clean recovery worktree `B:\Documents\PyCharm\saga-handoff` 
 - `cd apps/dashboard_pro && npm audit --omit=dev --audit-level=high` — passed, 0 production vulnerabilities.
 - `docker compose -f deploy/production/compose.yaml config --quiet` with `SAGA_ENV_FILE=.env.example` and `SAGA_RELEASE_ID=release-ci-validation` — passed.
 
-Executed remotely on GitHub for PR #134 head `0605465c755d0f6886943694b00adbede09b4b31`:
+Executed remotely on GitHub for PR #134 head `97b8200ad48dc835b8c7952de10dec998148da61`:
 
 - Backend Architecture CI / `test` — success.
 - Backend Architecture CI / `migrations` — success.
