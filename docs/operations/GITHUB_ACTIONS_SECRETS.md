@@ -9,20 +9,21 @@ This file documents required secret/variable names and destinations. It must nev
 | `SAGA_MODAL_TOKENS_JSON` | Modal | Modal worker inventory, provision, maintenance, Flux/Qwen/LTX deploy and live smoke workflows | No | JSON roster of Modal accounts; least privilege per Modal account | Present as repository secret on 2026-09-10. The clean-source qualification path prefers the active persisted provider rows instead of enabling env fallback. |
 | `HF_TOKEN` | Hugging Face | Modal worker provision/maintenance, model prefetch/deploy workflows | No | Read access to required gated/private model files only | Present as repository secret on 2026-09-10. |
 | `CIVITAI_API_TOKEN` | Civitai | Modal worker provision/maintenance and model prefetch workflows | No | Read/download access to selected model files only | Present as repository secret on 2026-09-10. |
-| `SAGA_SUPABASE_DB_URL` | Supabase Postgres | real Supabase validation, clean-source production qualification, release/backup checks | No | Application database user or pooler URL appropriate to the workflow | Required for integration/live gates unless component DB configuration is supplied. |
-| `SAGA_SUPABASE_DB_HOST` | Supabase Postgres | component-based DB configuration / qualification | No | Hostname only; not sensitive alone | Optional alternative to full DB URL. |
-| `SAGA_SUPABASE_DB_PORT` | Supabase Postgres | component-based DB configuration / qualification | No | Port only; not sensitive alone | Optional alternative to full DB URL. |
-| `SAGA_SUPABASE_DB_NAME` | Supabase Postgres | component-based DB configuration / qualification | No | Database name only | Optional alternative to full DB URL. |
-| `SAGA_SUPABASE_DB_USER` | Supabase Postgres | component-based DB configuration / qualification | No | Least-privilege application DB user | Optional alternative to full DB URL. |
-| `SAGA_SUPABASE_DB_PASSWORD` | Supabase Postgres | component-based DB configuration / qualification | No | Password for DB user | Optional alternative to full DB URL. |
-| `SAGA_SUPABASE_POOLER_TENANT_ID` | Supabase Postgres | component-based pooler DB configuration / qualification | No | Project/tenant identifier used to construct pooler username | Optional alternative component when full DB URL/user is not supplied. |
+| `SAGA_SUPABASE_DB_URL` | Supabase Postgres | real Supabase validation, clean-source production qualification, release/backup checks | No | Application database user or pooler URL appropriate to the workflow | Required for integration/live gates unless complete component DB configuration is supplied. |
+| `SAGA_SUPABASE_DB_HOST` | Supabase Postgres | component-based DB configuration / qualification | No | Explicit remote database/pooler hostname | Required when qualification uses component DB configuration; it must not be omitted and allowed to fall back to localhost. |
+| `SAGA_SUPABASE_DB_PORT` | Supabase Postgres | component-based DB configuration / qualification | No | Port only; not sensitive alone | Optional; runtime default applies when the remote host/user/password contract is otherwise complete. |
+| `SAGA_SUPABASE_DB_NAME` | Supabase Postgres | component-based DB configuration / qualification | No | Database name only | Optional; runtime default applies when appropriate. |
+| `SAGA_SUPABASE_DB_USER` | Supabase Postgres | component-based DB configuration / qualification | No | Least-privilege application DB user | Required with host/password unless a pooler tenant identifier constructs the username. |
+| `SAGA_SUPABASE_DB_PASSWORD` | Supabase Postgres | component-based DB configuration / qualification | No | Password for DB user | Required with component DB configuration. |
+| `SAGA_SUPABASE_POOLER_TENANT_ID` | Supabase Postgres | component-based pooler DB configuration / qualification | No | Project/tenant identifier used to construct pooler username | Optional alternative to an explicit component DB user. |
 | `SAGA_SUPABASE_API_URL` or `SUPABASE_URL` | Supabase Storage/API | object storage, runtime validation, clean-source qualification | No | Project API URL | `SUPABASE_URL` present as repository secret on 2026-09-10; S.A.G.A.-prefixed alias not observed. |
 | `SAGA_SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | Supabase | server-side runtime storage/database operations and clean-source qualification | No | Service-role key; server/Actions only; never expose to browser | `SUPABASE_SERVICE_ROLE_KEY` present as repository secret on 2026-09-10; S.A.G.A.-prefixed alias not observed. |
 | `MISTRAL_API_KEY` | Mistral | visual semantic QA, narrative/reasoning providers, Voxtral transcription, clean-source qualification when Mistral is not persisted | No | Provider key with model access needed for selected live gates | Not observed in repository secrets on 2026-09-10. Qualification accepts active persisted Mistral config as an alternative. |
+| `OLLAMA_API_KEY` | Ollama cloud | optional explicit qualification/runtime authentication path | No | API key for an authenticated Ollama cloud endpoint | Not required when active persisted Ollama accounts contain usable API keys. The current qualification workflow does not map this secret by default; persisted provider configuration is the intended GitHub-hosted path. |
 | `GEMINI_API_KEY` | Google Gemini | reasoning fallback/live provider checks where configured | No | Provider key with selected model access | Not observed in repository secrets on 2026-09-10. Optional unless a workflow enables Gemini. |
 | `OPENROUTER_API_KEY` | OpenRouter | general compute/reasoning fallback if configured | No | Provider key with selected model access | Not observed in repository secrets on 2026-09-10. Optional unless configured. |
 | `GROQ_API_KEY` | Groq | general compute/reasoning fallback if configured | No | Provider key with selected model access | Not observed in repository secrets on 2026-09-10. Optional unless configured. |
-| `OLLAMA_BASE_URL` | Ollama/self-hosted inference | live local/remote Ollama checks only | No | URL to authenticated remote or self-hosted runner endpoint if used | Optional; current clean-source qualification expects active persisted Ollama/gpt-oss configuration rather than a workstation-local endpoint. |
+| `OLLAMA_BASE_URL` | Ollama/self-hosted inference | live local/remote Ollama checks only | No | URL to authenticated remote or self-hosted runner endpoint if used | Optional for separately documented self-hosted/live checks. A GitHub-hosted clean qualification must not assume workstation-local Ollama. |
 | `R2_ACCOUNT_ID` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Account identifier only | Present as repository secret on 2026-09-10. |
 | `R2_BUCKET_NAME` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Bucket identifier only | Present as repository secret on 2026-09-10. |
 | `R2_ACCESS_KEY_ID` | Cloudflare R2 | protected-asset verification and clean-source production qualification | No | Object Read / List scope for the private protected-asset bucket/prefix | Present as repository secret on 2026-09-10. |
@@ -44,7 +45,7 @@ The checked-in production example intentionally leaves `SAGA_PROVIDER_COST_RATES
 
 ## Persisted provider configuration required by qualification
 
-Not every live credential belongs in GitHub Actions secrets. The current runtime contract stores provider accounts/configuration in S.A.G.A. persistence and the clean-source qualification preflight checks those rows before processing a protected book.
+Not every live credential belongs in GitHub Actions secrets. The current runtime contract stores provider accounts/configuration in S.A.G.A. persistence and the clean-source qualification preflight checks those rows before downloading a protected book or calling live providers.
 
 Required persisted Modal providers for the current nine-stage path:
 
@@ -52,9 +53,11 @@ Required persisted Modal providers for the current nine-stage path:
 - `modal_comfyui` — stage-7 image generation;
 - `modal_kokoro_tts` — stage-8 speech synthesis.
 
-The current default reasoning path also requires active persisted Ollama/gpt-oss configuration. Mistral may be persisted or supplied via `MISTRAL_API_KEY`.
+The current default reasoning path also requires at least one **usable Ollama API key**, normally through the persisted Ollama account configuration. Merely having an `ollama` provider row does not make a GitHub-hosted runner qualification-ready; without a key the runtime can fall back toward its local Ollama URL. Mistral may be persisted or supplied via `MISTRAL_API_KEY`.
 
-Do not copy provider payloads or tokens into documentation or workflow logs.
+The qualification readiness gate also checks the selected manifest asset against production persistence by filename/SHA before protected-storage download. This is not a secret requirement, but it prevents reusing a book already processed by the production library as if it were an unseen qualification source.
+
+Do not copy provider payloads, persisted book rows, tokens, or cost-rate values into documentation or workflow logs.
 
 ## Local secrets found during recovery
 
@@ -70,3 +73,4 @@ These local values were not copied into this document or committed. If any are s
 - Prefer short-lived or environment-scoped provider keys for expensive live-provider workflows.
 - Remove secrets from GitHub when the owning workflow is removed or moved to a different repository.
 - Do not enable `SAGA_MODAL_ALLOW_ENV_FALLBACK` merely to bypass missing persisted qualification provider configuration; repair the active provider state instead.
+- Do not make a GitHub-hosted qualification depend on developer-workstation localhost services unless a self-hosted runner contract is explicitly adopted and documented.
