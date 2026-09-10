@@ -39,6 +39,7 @@ Recovering the baseline prevents future AI sessions from repeatedly rewriting wo
 - Reproducibility manifest: `docs/validation/REPRODUCIBILITY.md`
 - Secrets manifest: `docs/operations/GITHUB_ACTIONS_SECRETS.md`
 - Protected asset manifest: `docs/operations/PROTECTED_TEST_ASSETS.md`
+- Protected asset verification workflow: `.github/workflows/protected-asset-verification.yml`
 - Model/provider manifest: `docs/operations/MODEL_PROVIDER_MANIFEST.md`
 
 ### Active architecture claims
@@ -190,6 +191,8 @@ Phase 0 should accumulate evidence for these gates:
 - Remote GitHub validation on PR #134 head `8685f97cec6cca81c2a19536cbe0ab6057d7323c` passed: Backend Architecture CI `test`, `migrations`, and `containers`; Required Check Compatibility `dashboard-pro`; Vercel status context.
 - The 43 local-side commits on `codex/transaction-pool-rc36` were classified commit-by-commit. The old branch must not be merged wholesale because it would remove substantial newer GitHub work; focused future PRs may port selected code/evidence.
 - The final durable handoff report records merged PRs, secret-name status, protected asset status, CI evidence, and remaining local dependencies.
+- A manual protected-asset verification workflow now exists to download selected private assets from Cloudflare R2 into runner temp storage, verify SHA-256 against the manifest, and delete temporary bytes.
+- Studio ownership is now classified: future generic image/video platform work belongs in `faresmohamed260/renderlab`; S.A.G.A. retains its Studio files only as transitional/historical repository state until a focused cleanup PR is authorized.
 
 ## Exit Criteria
 
@@ -203,7 +206,7 @@ Phase 0 is complete only when:
 6. `apps/studio/` status is explicitly decided or intentionally deferred with its coupling documented;
 7. `PROJECT.md` records the verified completion evidence and names the next phase from actual results.
 
-Current status: the initial handoff branch has been merged, repository continuity has improved, local-side commits are triaged, and Tier 1 deterministic gates passed locally and in GitHub Actions for PR #134. Phase 0 is not complete until selected local-side code/evidence ports are handled through focused PRs, Studio ownership is decided/deferred with coupling evidence, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
+Current status: the initial handoff branch has been merged, repository continuity has improved, local-side commits are triaged, Studio ownership is classified as RenderLab-owned going forward, and Tier 1 deterministic gates passed locally and in GitHub Actions for PR #134. Phase 0 is not complete until selected local-side code/evidence ports are handled through focused PRs, S.A.G.A. Studio cleanup is separately authorized/deferred, and live/protected-asset qualification either runs or has explicit accepted prerequisites recorded.
 
 ## Next Phase Rule
 

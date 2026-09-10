@@ -28,6 +28,7 @@ Runs only when repository or environment secrets are configured.
 | Real Supabase runtime | `uv run pytest -q tests/test_real_supabase_runtime.py` or `python -m scripts.validate_real_supabase_runtime` | Supabase database URL or component DB env, Supabase API URL, service-role key | temporary runtime objects only | GitHub-hosted or self-hosted with network access | Must create and clean test records/objects. |
 | Real runtime stack | `uv run pytest -q tests/test_real_runtime_stack.py` or `python -m scripts.validate_real_runtime_stack` | Supabase plus configured provider secrets | temporary runtime report objects | GitHub-hosted or self-hosted | Exercises reasoning/retrieval/web-search persistence path. |
 | Protected asset acquisition | workflow step to download from authorized object storage and verify SHA-256 | storage read credentials | commercial EPUBs listed in `PROTECTED_TEST_ASSETS.md` | GitHub-hosted or self-hosted | Must not expose files as artifacts or logs. |
+| Protected asset verification | `.github/workflows/protected-asset-verification.yml` | `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | selected object from `docs/operations/protected_assets.manifest.json` | GitHub-hosted Ubuntu | Manual-only; verifies SHA-256 and deletes temporary bytes. |
 
 ### Tier 3 — expensive/live-provider qualification
 
@@ -50,6 +51,7 @@ Protected book inputs are documented in `docs/operations/PROTECTED_TEST_ASSETS.m
 - Local Ollama account rotation is not available to GitHub-hosted runners unless explicitly replaced by an authenticated remote endpoint or self-hosted runner.
 - Modal and external model-provider checks must be manual or secret-gated.
 - Dirty-worktree qualification is evidence only; promotable qualification requires a committed SHA and a clean source check.
+- Protected asset verification is manual-only and checks object availability/hash, not production qualification by itself.
 
 ## Latest local deterministic evidence
 

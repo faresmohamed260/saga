@@ -2,6 +2,8 @@
 
 This document records private or copyrighted assets used for S.A.G.A. validation. It intentionally stores metadata, not the asset bytes.
 
+Machine-readable asset metadata lives in `docs/operations/protected_assets.manifest.json`.
+
 ## Rules
 
 - Do not commit commercial EPUB/PDF/book files to the public repository.
@@ -29,12 +31,17 @@ This document records private or copyrighted assets used for S.A.G.A. validation
 4. Workflow runs only the tests explicitly requiring that asset.
 5. Workflow deletes the temporary file in an always-run cleanup step.
 
-Recommended workflow variables:
+Current workflow:
 
-- `SAGA_PROTECTED_ASSET_STORAGE_ENDPOINT`
-- `SAGA_PROTECTED_ASSET_STORAGE_BUCKET`
-- `SAGA_PROTECTED_ASSET_STORAGE_ACCESS_KEY_ID`
-- `SAGA_PROTECTED_ASSET_STORAGE_SECRET_ACCESS_KEY`
-- `SAGA_PROTECTED_ASSET_STORAGE_PREFIX`
+- `.github/workflows/protected-asset-verification.yml`
 
-Use provider-specific names if the repository standardizes on a concrete object store later.
+It is manual-only through `workflow_dispatch`. It uses the existing Cloudflare R2 repository secret names, downloads selected objects into `$RUNNER_TEMP`, verifies hashes with `scripts/verify_protected_assets.py`, and removes the temporary directory in an `always()` cleanup step. It does not upload protected assets as artifacts.
+
+Supported workflow variables:
+
+- `R2_ACCOUNT_ID`
+- `R2_BUCKET_NAME`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+
+The earlier generic `SAGA_PROTECTED_ASSET_STORAGE_*` names remain acceptable aliases if the repository later abstracts away from Cloudflare R2, but the current workflow uses the observed R2 secrets.
