@@ -59,19 +59,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bool() { if [ -n "${!1:-}" ]; then printf 'yes'; else printf 'no'; fi; }
-          {
-            echo "### Phase 0 external readiness diagnostic"
-            echo "- S.A.G.A. main baseline when branch was created: \`67e852116af2efea9484daa6ddb343397c5322a9\`"
-            echo "- Supabase full DB URL present: $(bool SAGA_SUPABASE_DB_URL)"
-            echo "- Supabase component DB host present: $(bool SAGA_SUPABASE_DB_HOST)"
-            echo "- Supabase API URL present: $([ -n \"${SAGA_SUPABASE_API_URL:-}${SUPABASE_URL:-}\" ] && echo yes || echo no)"
-            echo "- Supabase service role present: $([ -n \"${SAGA_SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SERVICE_ROLE_KEY:-}\" ] && echo yes || echo no)"
-            echo "- Ollama env fallback present: $(bool OLLAMA_API_KEY)"
-            echo "- Mistral env fallback present: $(bool MISTRAL_API_KEY)"
-            echo "- Provider cost-rate variable present: $(bool SAGA_PROVIDER_COST_RATES_JSON)"
-            echo "- R2 account/bucket/access key/secret present: $( [ -n \"${R2_ACCOUNT_ID:-}\" ] && [ -n \"${R2_BUCKET_NAME:-}\" ] && [ -n \"${AWS_ACCESS_KEY_ID:-}\" ] && [ -n \"${AWS_SECRET_ACCESS_KEY:-}\" ] && echo yes || echo no )"
-          } >> "$GITHUB_STEP_SUMMARY"
+          present() { if [ -n "${!1:-}" ]; then printf 'yes'; else printf 'no'; fi; }
+          supabase_api=no
+          [ -n "${SAGA_SUPABASE_API_URL:-}${SUPABASE_URL:-}" ] && supabase_api=yes
+          supabase_role=no
+          [ -n "${SAGA_SUPABASE_SERVICE_ROLE_KEY:-}${SUPABASE_SERVICE_ROLE_KEY:-}" ] && supabase_role=yes
+          r2_ready=no
+          if [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET_NAME:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            r2_ready=yes
+          fi
+          echo "CONFIG_PRESENCE saga_db_url=$(present SAGA_SUPABASE_DB_URL) saga_db_host=$(present SAGA_SUPABASE_DB_HOST) supabase_api=$supabase_api supabase_service_role=$supabase_role ollama_api_key=$(present OLLAMA_API_KEY) mistral_api_key=$(present MISTRAL_API_KEY) cost_rates=$(present SAGA_PROVIDER_COST_RATES_JSON) r2_credentials=$r2_ready"
 
       - name: Inspect protected-source freshness against production persistence
         id: freshness
@@ -101,16 +98,13 @@ jobs:
           user = first("SAGA_SUPABASE_DB_USER", "SUPABASE_DB_USER")
           tenant = first("SAGA_SUPABASE_POOLER_TENANT_ID", "SUPABASE_POOLER_TENANT_ID", "POOLER_TENANT_ID")
           password = first("SAGA_SUPABASE_DB_PASSWORD", "SUPABASE_DB_PASSWORD", "POSTGRES_PASSWORD")
-
           output = Path(os.environ["GITHUB_OUTPUT"])
-          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
 
           if not explicit_db and not (host and (user or tenant) and password):
+              print("PRODUCTION_DB_RESULT status=not_configured")
               with output.open("a", encoding="utf-8") as handle:
                   handle.write("db_status=not_configured\n")
                   handle.write("fresh_asset=\n")
-              with summary.open("a", encoding="utf-8") as handle:
-                  handle.write("\n#### Production source freshness\n- Production DB configuration: **not configured for this workflow**\n")
               raise SystemExit(0)
 
           database_url = explicit_db or build_database_url_from_env()
@@ -134,34 +128,26 @@ jobs:
           try:
               client.initialize()
               books = client.library.list_books(limit=10000)
-              results = []
               fresh_ids = []
               for asset in assets:
                   asset_id = str(asset.get("id") or "")
-                  error = asset_freshness_error(existing_books=books, asset=asset)
-                  fresh = not bool(error)
-                  results.append((asset_id, fresh))
+                  fresh = not bool(asset_freshness_error(existing_books=books, asset=asset))
+                  print(f"SOURCE_FRESHNESS asset_id={asset_id} status={'fresh' if fresh else 'already_present'}")
                   if fresh:
                       fresh_ids.append(asset_id)
           except Exception as exc:  # noqa: BLE001
+              print(f"PRODUCTION_DB_RESULT status=error error_type={type(exc).__name__}")
               with output.open("a", encoding="utf-8") as handle:
                   handle.write("db_status=error\n")
                   handle.write("fresh_asset=\n")
-              with summary.open("a", encoding="utf-8") as handle:
-                  handle.write("\n#### Production source freshness\n")
-                  handle.write(f"- Production DB diagnostic: **error ({type(exc).__name__})**\n")
               raise SystemExit(0)
           finally:
               client.close()
 
+          print("PRODUCTION_DB_RESULT status=ok")
           with output.open("a", encoding="utf-8") as handle:
               handle.write("db_status=ok\n")
               handle.write(f"fresh_asset={fresh_ids[0] if fresh_ids else ''}\n")
-          with summary.open("a", encoding="utf-8") as handle:
-              handle.write("\n#### Production source freshness\n")
-              handle.write("- Production DB diagnostic: **connected / schema initialized**\n")
-              for asset_id, fresh in results:
-                  handle.write(f"- `{asset_id}`: **{'fresh' if fresh else 'already present'}**\n")
           PY
 
       - name: Check full qualification readiness for first fresh asset
@@ -174,17 +160,8 @@ jobs:
           output="$(uv run python -m scripts.check_production_qualification_readiness --asset-id "$FRESH_ASSET" 2>&1)"
           rc=$?
           set -e
-          status="not_ready"
-          if [ "$rc" -eq 0 ]; then status="ready"; fi
-          {
-            echo ""
-            echo "#### Qualification preflight"
-            echo "- Selected first fresh asset: \`$FRESH_ASSET\`"
-            echo "- Readiness command status: **$status** (exit $rc)"
-            echo '```json'
-            printf '%s\n' "$output"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "QUALIFICATION_PREFLIGHT asset_id=$FRESH_ASSET exit_code=$rc"
+          printf '%s\n' "$output"
 
       - name: Install AWS CLI for read-only protected-storage diagnostics
         if: env.R2_ACCOUNT_ID != '' && env.R2_BUCKET_NAME != '' && env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != ''
@@ -201,15 +178,10 @@ jobs:
 
           probe_asset="once-upon-a-broken-heart"
           usable=""
-          {
-            echo ""
-            echo "#### Protected R2 jurisdiction probe"
-          } >> "$GITHUB_STEP_SUMMARY"
-
           for jurisdiction in default eu us fedramp; do
             rm -rf "$tmp"/*
             set +e
-            probe="$(uv run python scripts/check_protected_asset_storage.py --asset-id "$probe_asset" --asset-dir "$tmp" --jurisdiction "$jurisdiction" 2>&1)"
+            uv run python scripts/check_protected_asset_storage.py --asset-id "$probe_asset" --asset-dir "$tmp" --jurisdiction "$jurisdiction" >/dev/null 2>&1
             rc=$?
             set -e
             case "$rc" in
@@ -220,27 +192,19 @@ jobs:
               23) category="list_parse_failed" ;;
               *) category="other_error_$rc" ;;
             esac
-            echo "- \`$jurisdiction\`: **$category**" >> "$GITHUB_STEP_SUMMARY"
+            echo "R2_JURISDICTION_RESULT jurisdiction=$jurisdiction category=$category"
             if [ -z "$usable" ] && { [ "$rc" -eq 0 ] || [ "$rc" -eq 21 ] || [ "$rc" -eq 22 ]; }; then
               usable="$jurisdiction"
             fi
           done
 
           if [ -z "$usable" ]; then
-            {
-              echo "- No jurisdiction demonstrated successful bucket listing."
-              echo ""
-              echo "#### Protected manifest assets"
-              echo "- Asset-level checks skipped because no accessible jurisdiction was identified."
-            } >> "$GITHUB_STEP_SUMMARY"
+            echo "R2_PROBE_RESULT status=no_accessible_jurisdiction"
             rm -rf "$tmp"
             exit 0
           fi
 
-          echo "- Selected accessible jurisdiction for asset checks: \`$usable\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "#### Protected manifest assets" >> "$GITHUB_STEP_SUMMARY"
-
+          echo "R2_PROBE_RESULT status=accessible jurisdiction=$usable"
           mapfile -t asset_ids < <(uv run python - <<'PY'
           import json
           from pathlib import Path
@@ -253,12 +217,12 @@ jobs:
           for asset_id in "${asset_ids[@]}"; do
             rm -rf "$tmp"/*
             set +e
-            diagnostic="$(uv run python scripts/check_protected_asset_storage.py --asset-id "$asset_id" --asset-dir "$tmp" --jurisdiction "$usable" 2>&1)"
+            uv run python scripts/check_protected_asset_storage.py --asset-id "$asset_id" --asset-dir "$tmp" --jurisdiction "$usable" >/dev/null 2>&1
             rc=$?
             set -e
             if [ "$rc" -eq 0 ]; then
               set +e
-              verify="$(uv run python scripts/verify_protected_assets.py --asset-dir "$tmp" --asset-id "$asset_id" 2>&1)"
+              uv run python scripts/verify_protected_assets.py --asset-dir "$tmp" --asset-id "$asset_id" >/dev/null 2>&1
               verify_rc=$?
               set -e
               if [ "$verify_rc" -eq 0 ]; then
@@ -277,20 +241,13 @@ jobs:
             else
               result="other_error_$rc"
             fi
-            echo "- \`$asset_id\`: **$result**" >> "$GITHUB_STEP_SUMMARY"
+            echo "R2_ASSET_RESULT asset_id=$asset_id result=$result"
           done
-
           rm -rf "$tmp"
 
       - name: Note diagnostic boundary
         if: always()
         shell: bash
         run: |
-          {
-            echo ""
-            echo "#### Safety boundary"
-            echo "- This workflow did not run the nine-stage production qualification and did not call paid reasoning/visual/audio providers."
-            echo "- Protected bytes, if downloaded, stayed in runner temporary storage and were deleted."
-            echo "- No workflow artifacts are uploaded."
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "DIAGNOSTIC_BOUNDARY paid_provider_calls=no protected_artifacts_uploaded=no"
           rm -rf "$RUNNER_TEMP/saga-phase0-protected"
