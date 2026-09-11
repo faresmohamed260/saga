@@ -10,9 +10,15 @@ This file is the short source-of-truth handoff for current work.
 
 **Phase 2 — Story Intake & Character Identity Foundation: ACTIVE.**
 
+**Phase 2A — Product/Data Foundation: COMPLETE.**
+
 Authoritative Phase-2 contract:
 
 - `docs/phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md`
+
+Authoritative Phase-2A deterministic validation:
+
+- `docs/validation/PHASE_V2_2A_PRODUCT_DATA_FOUNDATION_2026-09-12.md`
 
 Phase 2 is the first deliberate reconnection of S.A.G.A. intelligence behind the Phase-1 web/auth/data boundary. Its required end-to-end product loop is:
 
@@ -38,6 +44,7 @@ Phase 1 authoritative completion evidence remains:
 - deployment policy: `docs/operations/VERCEL_DEPLOYMENT_POLICY.md`
 
 Phase 1 tracking issue: **#151** (closed).
+Phase 2 tracking issue: **#176** (open).
 
 ## Phase 2 Direction
 
@@ -58,6 +65,35 @@ Phase 2 intentionally couples identity to the missing v2 product/runtime foundat
 Initial ingestion scope is UTF-8 `.txt` and `.epub`. PDF/DOCX/OCR, canon extraction, RAG/chat, generative agents, collaboration, and multimedia generation are explicitly out of Phase 2.
 
 The identity policy is precision-first: attachment/coreference evidence may connect a mention to an existing character, but weak evidence — especially pronouns, capitalization artifacts, malformed spans, or non-person entities — may not mint a new canonical character.
+
+## Phase 2A Completed Baseline
+
+Phase 2A was merged through PR **#177**.
+
+- exact implementation head: `51147ddf5855a43c3b50770502f2cf9f8fdf1f54`
+- merge commit: `7a053697e874d8fb6e0b03571b7cf0f2e885dd61`
+
+It establishes:
+
+- member-owned projects and source metadata with forced RLS;
+- durable analysis jobs with idempotent enqueue and atomic lease-based worker claiming;
+- immutable analysis-run provenance with job/project/source/owner scope integrity;
+- append-only character/alias/mention result foundations;
+- private server/domain reads through the ordinary authenticated Supabase boundary;
+- real `/projects`, `/projects/[projectId]`, and `/library` product data surfaces;
+- deterministic disposable-Postgres contracts for ownership, suspension, retry, lease, stale-token, and result-read behavior;
+- exact-head rendered responsive validation for the activated product surfaces.
+
+Exact-head qualification before merge:
+
+- Web CI `34654618229` — success
+- Required Check Compatibility `34654618239` — success
+- Backend Architecture CI `34654618234` — success
+- Visual Review `34654618236` — success
+
+Rendered evidence artifact: `10284398956` (`saga-v2-phase-2a-visual-review`).
+
+No Vercel deployment or hosted B2 mutation was performed for Phase 2A.
 
 ## What Phase 1 Proved
 
@@ -101,13 +137,7 @@ Dedicated S.A.G.A. project:
 
 The old `AI Studio` project was not reused.
 
-Active hosted migration lineage includes:
-
-1. `closed_demo_account_access`
-2. `admin_operations`
-3. `admin_operation_hardening`
-4. `first_admin_bootstrap`
-5. `first_admin_invitation_bootstrap`
+The hosted database is authoritative only for migrations that have actually been applied there. Phase 2A repository migrations are merged, but this handoff does not claim they have been applied to the hosted Supabase project until a hosted validation step proves that explicitly.
 
 Supabase Auth currently uses the public production origin `https://saga-pi-two.vercel.app`; the redirect allowlist contains that production origin plus the future `https://saga.faresuniform.uk/**` origin. Public signup remains disabled. Custom SMTP uses Resend through the verified `mail.saga.faresuniform.uk` domain.
 
@@ -133,7 +163,9 @@ Dedicated private bucket:
 - region: `us-east-005`
 - endpoint: `https://s3.us-east-005.backblazeb2.com`
 
-Bootstrap/master credentials remain operator-only. Phase 2 is the first active product flow that will need object upload/download, but a bucket-scoped runtime application key must be created only when implementation reaches real hosted B2 I/O. That is an explicit credential/infrastructure gate, not a reason to block schema/UI/CI work before it.
+Bootstrap/master credentials remain operator-only. Phase 2B is the first slice that needs a real source object lifecycle, but repository-side storage contracts, signed-URL boundaries, deterministic fixtures, normalizers, and persistence tests can proceed without hosted credentials.
+
+A bucket-scoped runtime application key is required only when implementation reaches **real hosted B2 I/O**. That is an explicit credential/infrastructure gate; it is not deployment permission and it must not block deterministic repository implementation before that point.
 
 ## Product / Architecture Boundary
 
@@ -166,12 +198,14 @@ The active application lives under `apps/web/` and includes:
 - closed-demo sign-in, invitation confirmation, password setup/change, sign-out;
 - private application boundary;
 - Narrative Desk shell;
-- Home, Library, Projects, Settings;
-- active-admin Admin workspace;
+- Home, Settings, and active-admin Admin workspace;
+- real private Projects create/list surface;
+- real project workspace with Overview, Sources, Analysis, and Characters sections;
+- real Library source-record listing;
 - deterministic account/invitation role/status operations;
 - responsive desktop/narrow behavior and rendered accessibility checks.
 
-Phase 2 activates the existing Library and Projects placeholders with S.A.G.A.-owned data rather than creating a parallel product shell.
+Source upload remains intentionally unavailable until the Phase 2B bounded object-storage lifecycle is implemented.
 
 Primary UI principle remains: **Narrative first, complexity on demand.**
 
@@ -184,14 +218,22 @@ Primary UI principle remains: **Narrative first, complexity on demand.**
 
 ## Next Work
 
-Execute `docs/phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` in order.
+Continue `docs/phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` from **Phase 2B — Source storage + deterministic ingestion**.
 
-Default sequence:
+Immediate Phase 2B repository goals:
 
-1. Phase 2A — project/source/job/run/identity schema, RLS, database contracts, basic Projects/Library surfaces;
-2. Phase 2B — bounded B2 source flow plus deterministic `.txt`/`.epub` ingestion;
-3. Phase 2C — provider-neutral evidence contract and precision-first character identity engine;
-4. Phase 2D — benchmark baseline, hardening, rendered validation, and hosted end-to-end proof after the required explicit infrastructure/deployment approvals.
+1. bounded source-object upload/read lifecycle through the existing `ObjectStorage` boundary;
+2. server-generated source object keys and explicit upload-completion verification;
+3. deterministic UTF-8 `.txt` normalization with golden fixtures;
+4. deterministic `.epub` normalization with minimal synthetic golden fixtures;
+5. normalized structure persistence with stable ordering/locators and source provenance;
+6. keep full-book parsing/normalization outside ordinary Next.js request execution;
+7. stop at the scoped B2 runtime-credential gate when real hosted object I/O becomes necessary.
+
+After 2B:
+
+- Phase 2C — provider-neutral evidence contract and precision-first character identity engine;
+- Phase 2D — benchmark baseline, hardening, rendered validation, and hosted end-to-end proof after the required explicit infrastructure/deployment approvals.
 
 Continue normal branch/PR/exact-head CI autonomously until a genuine owner decision, external credential/cost gate, or explicit deployment authorization is required.
 
