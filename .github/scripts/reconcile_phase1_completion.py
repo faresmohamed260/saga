@@ -1,0 +1,290 @@
+from pathlib import Path
+import re
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old not in text:
+        raise SystemExit(f"missing exact marker for {label}")
+    return text.replace(old, new, 1)
+
+
+def regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"expected one match for {label}; got {count}")
+    return updated
+
+
+project_path = Path("PROJECT.md")
+project = project_path.read_text(encoding="utf-8")
+project = replace_once(
+    project,
+    "Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC ADMIN COMPLETE; DEDICATED HOSTED SUPABASE + ACTIVE V2 SCHEMA COMPLETE; AUTH/EMAIL/LIVE INVITATION PROOF PENDING**",
+    "Status: **COMPLETE — deterministic repository slices, hosted Supabase/Auth/email, real invitation lifecycle, later sign-in, suspension/reactivation, and invitation revocation are validated.**",
+    "PROJECT active status",
+)
+project = replace_once(
+    project,
+    "- Phase 1E hosted Supabase foundation: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`",
+    "- Phase 1E hosted Supabase foundation: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`\n- Phase 1 hosted end-to-end completion: `docs/validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`",
+    "PROJECT validation index",
+)
+project = regex_once(
+    project,
+    r"### Phase 1E hosted Auth/email/end-to-end gate — pending\n.*?\n## Closed-Demo Product Constraint",
+    """### Phase 1E hosted Auth/email/end-to-end gate — complete
+
+Hosted Phase 1 behavior is now validated against the dedicated S.A.G.A. providers and public production origin:
+
+- Supabase Auth Site URL restored to `https://saga-pi-two.vercel.app`;
+- redirect allowlist restricted to the stable production alias plus future `https://saga.faresuniform.uk/**`;
+- public self-signup remains disabled;
+- verified Resend SMTP sender/domain is active;
+- the first trusted owner/admin is bootstrapped and active;
+- a clean disposable-user proof exercised the real admin invitation API, real Resend delivery, `/auth/confirm`, transactional S.A.G.A. claim, actual Set Password form, private `/home`, and later sign-in from a new browser session;
+- a separate hosted proof verified active `/home` access, suspended-account denial, and reactivation;
+- a separate hosted proof verified authenticated pending-invitation revocation and persisted `revoked_at`;
+- all disposable users/access rows/invitations were independently verified cleaned up;
+- temporary privileged proof workflows were removed from their ops branches and never merged to `main`.
+
+Live proof runs:
+
+- hosted password session + suspension/reactivation: `34647243289` on exact head `2b230f77e9ff6c0a582bc46f55d456c5a8690eb1`;
+- normal invitation delivery/acceptance/later sign-in: `34647592382` on exact head `ee7fa83320dfcc0e152f1334c84f957cf55f0e7e`;
+- hosted pending-invitation revocation: `34647880892` on exact head `62f184dcb763059382e9c6907bed6d398542cd3d`.
+
+Detailed evidence: `docs/validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`.
+
+A scoped non-master B2 runtime key remains intentionally deferred until a product object-upload flow actually activates; it is not a Phase 1 blocker.
+
+## Closed-Demo Product Constraint""",
+    "PROJECT hosted completion",
+)
+project = replace_once(
+    project,
+    "- Email is not end-to-end validated until the hosted Auth/email gate passes.",
+    "- Hosted invitation email delivery and acceptance are end-to-end validated; future provider/domain changes require revalidation.",
+    "PROJECT email status",
+)
+project = replace_once(
+    project,
+    "- **future agentic runtime** — deferred until the application foundation and Phase 1 hosted proof are complete",
+    "- **future agentic runtime** — next-phase candidate behind application-owned job/runtime contracts; not yet implemented",
+    "PROJECT future runtime",
+)
+project = regex_once(
+    project,
+    r"## External Setup Dependencies\n.*?\n## Immediate Work",
+    """## External Setup Dependencies
+
+Phase 1 has no remaining hosted blocker.
+
+Completed hosted dependencies include:
+
+- dedicated S.A.G.A. Supabase project and active v2 schema;
+- closed-signup Auth configuration and production redirect boundary;
+- verified Resend SMTP sender/domain;
+- privileged runtime secret wiring through server/GitHub/Vercel secret boundaries;
+- trusted initial admin bootstrap;
+- real hosted invitation delivery, confirmation, claim, credential setup and later sign-in;
+- hosted suspension/reactivation and pending-invitation revocation;
+- obsolete Vercel `studio` Git integration disconnected;
+- Git-triggered Vercel deployments disabled under the owner-authorized manual deployment policy.
+
+Deferred operational work that is **not** a Phase 1 blocker:
+
+- final custom public domain `saga.faresuniform.uk`, tracked separately;
+- scoped B2 runtime credentials when a product object-upload flow becomes active.
+
+Do not reuse the RenderLab/Studio Supabase project or shared R2 state for S.A.G.A.
+
+## Immediate Work""",
+    "PROJECT external dependencies",
+)
+project = regex_once(
+    project,
+    r"## Immediate Work\n.*?\n\*\*Agent/LLM pipeline implementation remains out of scope while Phase 1 hosted exit criteria are unmet\.\*\*",
+    """## Immediate Work
+
+1. merge the Phase 1 hosted completion evidence after exact-head repository validation;
+2. close Phase 1 tracking issue #151 from the merged evidence;
+3. on a fresh branch, author the immediate **Phase 2 contract** for the application job-control / agentic-runtime foundation using the contract-first rules in D-018;
+4. merge that Phase 2 contract/governance update before any Phase 2 production implementation;
+5. only then implement the bounded Phase 2 slice defined by that contract.
+
+**No Phase 2 agent/LLM/runtime implementation is authorized until its immediate phase contract is written, reviewed, validated, and merged.**""",
+    "PROJECT immediate work",
+)
+project_path.write_text(project, encoding="utf-8")
+
+index_path = Path("docs/README.md")
+index = index_path.read_text(encoding="utf-8")
+index = replace_once(
+    index,
+    "- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; deterministic repository slices and the dedicated hosted Supabase/schema foundation are complete, while hosted Auth/email/live invitation proof remains pending",
+    "- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — completed Phase 1 execution contract; deterministic and hosted closed-demo behavior is validated end-to-end",
+    "docs index phase entry",
+)
+index = replace_once(
+    index,
+    "- `validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`",
+    "- `validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`\n- `validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`",
+    "docs index validation",
+)
+index = regex_once(
+    index,
+    r"## Current Boundary\n.*?\n## RenderLab Reference Boundary",
+    """## Current Boundary
+
+**Phase 1 is complete.** The closed-demo web/account foundation now has both deterministic repository evidence and real hosted provider evidence.
+
+Validated hosted behavior includes:
+
+- dedicated S.A.G.A. Supabase schema and Auth project;
+- public signup disabled;
+- production Site URL / redirect boundary;
+- verified Resend SMTP delivery;
+- real admin-created invitation delivery and acceptance;
+- `/auth/confirm` -> product claim -> Set Password -> private `/home`;
+- later password sign-in from a new browser session;
+- active-account access, suspended-account denial, and reactivation;
+- authenticated pending-invitation revocation;
+- manual-only Vercel deployment policy with the obsolete `studio` Git integration disconnected.
+
+See `validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md` for the live run IDs and cleanup evidence.
+
+No Phase 2 implementation is active yet. The next repository step is to write and merge the immediate Phase 2 contract for the application job-control / agentic-runtime foundation before production implementation begins.
+
+The existing `AI Studio` Supabase project was not reused or modified.
+
+## RenderLab Reference Boundary""",
+    "docs index current boundary",
+)
+index_path.write_text(index, encoding="utf-8")
+
+phase_path = Path("docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md")
+phase = phase_path.read_text(encoding="utf-8")
+phase = regex_once(
+    phase,
+    r"\*\*Status:\*\* ACTIVE — .*?\n",
+    "**Status:** COMPLETE — deterministic implementation, hosted Supabase/Auth/email, real invitation acceptance/later sign-in, suspension/reactivation, and invitation revocation are validated.\n",
+    "phase status",
+)
+phase = regex_once(
+    phase,
+    r"## Remaining Phase 1E Hosted Auth / Email / Live-Proof Gate\n.*?\n## UI/UX Contract",
+    """## Phase 1E Hosted Auth / Email / Live-Proof Gate — Complete
+
+The hosted gate is validated against the dedicated S.A.G.A. providers and public production origin.
+
+Verified:
+
+- Auth Site URL is `https://saga-pi-two.vercel.app`;
+- redirect allowlist contains only the stable production alias plus future `https://saga.faresuniform.uk/**`;
+- public self-signup remains disabled;
+- custom Resend SMTP is active on the verified `mail.saga.faresuniform.uk` sending domain;
+- first trusted admin bootstrap exists;
+- real admin API invitation delivery reached mail infrastructure;
+- the delivered token-hash confirmation link passed through production `/auth/confirm`;
+- matching S.A.G.A. invitation claim established an active member;
+- the actual Set Password surface established credentials and entered `/home`;
+- a fresh later browser session signed in successfully using those credentials;
+- a valid Auth session lost private access immediately when product status changed to suspended and regained access after reactivation;
+- authenticated pending-invitation revocation returned and persisted `revoked` with `revoked_at`;
+- all disposable proof identities and product rows were cleaned up and independently verified absent.
+
+Live evidence:
+
+- access/suspension/reactivation run `34647243289` — exact head `2b230f77e9ff6c0a582bc46f55d456c5a8690eb1`;
+- invitation delivery/acceptance/later sign-in run `34647592382` — exact head `ee7fa83320dfcc0e152f1334c84f957cf55f0e7e`;
+- invitation revocation run `34647880892` — exact head `62f184dcb763059382e9c6907bed6d398542cd3d`.
+
+Detailed evidence: `docs/validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`.
+
+The scoped B2 runtime key remains deferred until an object-upload product flow activates. The final custom domain remains separately tracked and is not required for the working closed-demo production alias.
+
+## UI/UX Contract""",
+    "phase hosted completion",
+)
+phase = replace_once(
+    phase,
+    "- **1E hosted Auth/email/live proof — PENDING:** runtime secrets, Auth config, email, real invite acceptance/sign-in",
+    "- **1E hosted Auth/email/live proof — COMPLETE:** runtime secrets, closed Auth config, verified email, real invite acceptance/later sign-in, suspension/reactivation, and revocation",
+    "phase slice",
+)
+phase = replace_once(phase, "| Hosted invitation delivery | real inbox test | **pending** |", "| Hosted invitation delivery | real inbox/provider delivery test | **validated — run `34647592382`** |", "matrix delivery")
+phase = replace_once(phase, "| Hosted invite acceptance/sign-in | live end-to-end test | **pending** |", "| Hosted invite acceptance/sign-in | live end-to-end test | **validated — run `34647592382`** |", "matrix acceptance")
+phase = replace_once(phase, "| Hosted suspension/revocation | live hosted behavior | **pending** |", "| Hosted suspension/revocation | live hosted behavior | **validated — runs `34647243289` and `34647880892`** |", "matrix suspension")
+phase = regex_once(
+    phase,
+    r"## External Dependencies / Blockers\n.*?\n## Explicitly Out of Scope While Phase 1 Is Open",
+    """## External Dependencies / Blockers
+
+There is no remaining Phase 1 hosted blocker.
+
+Completed during Phase 1:
+
+- dedicated S.A.G.A.-owned Supabase project and active v2 schema;
+- Auth Site URL / redirect configuration and closed public signup;
+- verified custom Resend SMTP sender/domain;
+- privileged runtime secret wiring;
+- trusted initial admin bootstrap;
+- real invitation delivery, acceptance, password setup, private access, and later sign-in;
+- hosted suspension/reactivation and pending-invitation revocation;
+- obsolete Vercel `studio` Git integration disconnected;
+- owner-authorized manual-only Vercel deployment policy.
+
+Deferred beyond Phase 1:
+
+- final custom domain `saga.faresuniform.uk`;
+- scoped B2 runtime key when source/object upload becomes active;
+- application job-control and agentic AI runtime work, which requires a new phase contract.
+
+Do not reuse RenderLab/Studio Supabase or shared R2 state for S.A.G.A.
+
+## Explicitly Out of Scope for Phase 1""",
+    "phase blockers",
+)
+phase = regex_once(
+    phase,
+    r"## Exit Criteria\n.*?\n## Next-Phase Direction",
+    """## Exit Criteria — Satisfied
+
+Phase 1 closes with all contract exit criteria satisfied:
+
+1. Phase-1 contracts are authoritative — **satisfied**;
+2. S.A.G.A.-owned schema is applied to a dedicated hosted S.A.G.A. Supabase project — **satisfied**;
+3. public self-signup remains absent — **satisfied**;
+4. invite confirmation + credential setup + later sign-in work end-to-end — **satisfied**, run `34647592382`;
+5. private routes require a fresh verified identity + active S.A.G.A. account — **satisfied**;
+6. suspended/unknown identities fail closed — **satisfied**, including hosted suspension run `34647243289`;
+7. active admins can create/revoke invitations and manage bounded role/status — **satisfied**, including hosted revoke run `34647880892`;
+8. at least one real invitation email is delivered and accepted — **satisfied**, run `34647592382`;
+9. private application shell and initial narrative IA are responsive — **satisfied** by Phase 1D/1E rendered evidence;
+10. no privileged credentials/tokens leak to browser, repository, or logs — **satisfied** by structural boundaries and secret-bound hosted proof;
+11. exact-head CI and rendered/accessibility review pass — **satisfied** for implementation heads; completion reconciliation receives its own exact-head CI before merge;
+12. `PROJECT.md` records the hosted proof and next phase from verified reality — **satisfied by the Phase 1 completion reconciliation**.
+
+## Next-Phase Direction""",
+    "phase exit criteria",
+)
+phase = regex_once(
+    phase,
+    r"## Next-Phase Direction\n.*$",
+    """## Next-Phase Direction
+
+Phase 1 is complete. Do not begin broad Phase 2 implementation directly from this document.
+
+The next repository step is contract-first:
+
+1. create a fresh Phase 2 contract/governance branch from current `main`;
+2. define the immediate application job-control / agentic-runtime foundation only to the detail justified by Phase 1 evidence;
+3. specify ownership, persistence/job lifecycle, authorization, failure/retry semantics, observability/UI state, provider/runtime boundaries, validation, and deployment implications;
+4. validate and merge that Phase 2 contract;
+5. only then begin Phase 2 production implementation on a fresh implementation branch.
+
+The contract should preserve the web-first rule: future agents operate behind S.A.G.A.-owned application/job contracts rather than becoming the top-level product architecture.
+""",
+    "phase next direction",
+)
+phase_path.write_text(phase, encoding="utf-8")
