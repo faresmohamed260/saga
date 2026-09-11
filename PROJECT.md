@@ -74,6 +74,7 @@ Durable validation evidence:
 - Phase 1D: `docs/validation/PHASE_V2_1D_NARRATIVE_DESK_2026-09-11.md`
 - Phase 1E Admin: `docs/validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
 - Phase 1E hosted Supabase foundation: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
+- Phase 1 hosted end-to-end completion: `docs/validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`
 
 ## Active Phase
 
@@ -81,7 +82,7 @@ Durable validation evidence:
 
 Contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
 
-Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC ADMIN COMPLETE; DEDICATED HOSTED SUPABASE + ACTIVE V2 SCHEMA COMPLETE; AUTH/EMAIL/LIVE INVITATION PROOF PENDING**
+Status: **COMPLETE — deterministic repository slices, hosted Supabase/Auth/email, real invitation lifecycle, later sign-in, suspension/reactivation, and invitation revocation are validated.**
 
 ### Phase 1A — complete
 
@@ -215,24 +216,30 @@ No publishable or privileged API key value is stored in repository documentation
 
 Detailed evidence: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`.
 
-### Phase 1E hosted Auth/email/end-to-end gate — pending
+### Phase 1E hosted Auth/email/end-to-end gate — complete
 
-Repository CI and hosted schema application do **not** prove real hosted invitation delivery or acceptance.
+Hosted Phase 1 behavior is now validated against the dedicated S.A.G.A. providers and public production origin:
 
-Before Phase 1 can close, the remaining gate still requires:
+- Supabase Auth Site URL restored to `https://saga-pi-two.vercel.app`;
+- redirect allowlist restricted to the stable production alias plus future `https://saga.faresuniform.uk/**`;
+- public self-signup remains disabled;
+- verified Resend SMTP sender/domain is active;
+- the first trusted owner/admin is bootstrapped and active;
+- a clean disposable-user proof exercised the real admin invitation API, real Resend delivery, `/auth/confirm`, transactional S.A.G.A. claim, actual Set Password form, private `/home`, and later sign-in from a new browser session;
+- a separate hosted proof verified active `/home` access, suspended-account denial, and reactivation;
+- a separate hosted proof verified authenticated pending-invitation revocation and persisted `revoked_at`;
+- all disposable users/access rows/invitations were independently verified cleaned up;
+- temporary privileged proof workflows were removed from their ops branches and never merged to `main`.
 
-- S.A.G.A. Auth Site URL and redirect allowlist configuration;
-- supported invite/recovery templates;
-- production-capable custom SMTP or equivalent Auth email hook;
-- authenticated sender domain and acceptable rate limits;
-- deployed application configuration pointed at the dedicated S.A.G.A. Supabase project, including privileged server credentials through a secret boundary;
-- explicit bootstrap of the first trusted S.A.G.A. admin through operator tooling;
-- at least one real invitation delivered to an inbox and accepted through confirmation -> claim -> password setup -> private app;
-- later sign-in proof;
-- hosted suspension/revocation behavior verification;
-- scoped non-master B2 runtime credentials only when product object-storage flow actually needs them.
+Live proof runs:
 
-Do not claim Phase 1 complete until those hosted behaviors are proven.
+- hosted password session + suspension/reactivation: `34647243289` on exact head `2b230f77e9ff6c0a582bc46f55d456c5a8690eb1`;
+- normal invitation delivery/acceptance/later sign-in: `34647592382` on exact head `ee7fa83320dfcc0e152f1334c84f957cf55f0e7e`;
+- hosted pending-invitation revocation: `34647880892` on exact head `62f184dcb763059382e9c6907bed6d398542cd3d`.
+
+Detailed evidence: `docs/validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`.
+
+A scoped non-master B2 runtime key remains intentionally deferred until a product object-upload flow actually activates; it is not a Phase 1 blocker.
 
 ## Closed-Demo Product Constraint
 
@@ -245,7 +252,7 @@ S.A.G.A. v2 is a **closed demo**.
 - Private routes require a fresh verified identity plus active S.A.G.A. access.
 - Admin operations are server-only and fresh-active-admin authorized.
 - Service-role/Auth Admin credentials never enter browser code.
-- Email is not end-to-end validated until the hosted Auth/email gate passes.
+- Hosted invitation email delivery and acceptance are end-to-end validated; future provider/domain changes require revalidation.
 
 Detailed contract: `docs/v2/ACCESS_AND_INVITATIONS.md`.
 
@@ -258,7 +265,7 @@ Detailed contract: `docs/v2/ACCESS_AND_INVITATIONS.md`.
 - **Supabase** — Postgres, Auth, Realtime, structured application records
 - **Cloudflare** — DNS/CDN/security where useful, not S.A.G.A. object storage
 - **Backblaze B2** — dedicated private object storage
-- **future agentic runtime** — deferred until the application foundation and Phase 1 hosted proof are complete
+- **future agentic runtime** — next-phase candidate behind application-owned job/runtime contracts; not yet implemented
 
 The active v2 application lives under `apps/web/`.
 
@@ -332,31 +339,36 @@ Routes/schema are defined only where the active phase needs them.
 
 ## External Setup Dependencies
 
-The dedicated hosted S.A.G.A. Supabase project and active v2 schema are now complete. Remaining blockers to **Phase 1 end-to-end completion** are:
+Phase 1 has no remaining hosted blocker.
 
-1. hosted Auth Site URL/redirect/template configuration;
-2. production-capable SMTP/email hook and sender-domain setup;
-3. runtime/deployment secret wiring for the dedicated project;
-4. first trusted admin bootstrap;
-5. real invitation acceptance and later sign-in proof;
-6. hosted suspension/revocation proof;
-7. scoped B2 runtime credentials when source/object upload becomes active;
-8. deployment ownership decision for the stale historical Vercel project that still targets retired `apps/studio`.
+Completed hosted dependencies include:
+
+- dedicated S.A.G.A. Supabase project and active v2 schema;
+- closed-signup Auth configuration and production redirect boundary;
+- verified Resend SMTP sender/domain;
+- privileged runtime secret wiring through server/GitHub/Vercel secret boundaries;
+- trusted initial admin bootstrap;
+- real hosted invitation delivery, confirmation, claim, credential setup and later sign-in;
+- hosted suspension/reactivation and pending-invitation revocation;
+- obsolete Vercel `studio` Git integration disconnected;
+- Git-triggered Vercel deployments disabled under the owner-authorized manual deployment policy.
+
+Deferred operational work that is **not** a Phase 1 blocker:
+
+- final custom public domain `saga.faresuniform.uk`, tracked separately;
+- scoped B2 runtime credentials when a product object-upload flow becomes active.
 
 Do not reuse the RenderLab/Studio Supabase project or shared R2 state for S.A.G.A.
 
 ## Immediate Work
 
-1. verify exact current `main` and this handoff;
-2. configure the dedicated S.A.G.A. project Auth Site URL, redirect allowlist, invite/recovery templates, and production-capable email delivery through supported tooling;
-3. establish deployment/runtime secrets for the dedicated project without exposing service-role credentials;
-4. bootstrap the first owner/admin through an explicit trusted operator path;
-5. prove one real bounded invitation acceptance and later sign-in end-to-end;
-6. verify hosted suspension/revocation behavior;
-7. update Phase 1 validation/handoff and close Phase 1 only after those claims are real;
-8. only then plan the next agentic/application-intelligence phase.
+1. merge the Phase 1 hosted completion evidence after exact-head repository validation;
+2. close Phase 1 tracking issue #151 from the merged evidence;
+3. on a fresh branch, author the immediate **Phase 2 contract** for the application job-control / agentic-runtime foundation using the contract-first rules in D-018;
+4. merge that Phase 2 contract/governance update before any Phase 2 production implementation;
+5. only then implement the bounded Phase 2 slice defined by that contract.
 
-**Agent/LLM pipeline implementation remains out of scope while Phase 1 hosted exit criteria are unmet.**
+**No Phase 2 agent/LLM/runtime implementation is authorized until its immediate phase contract is written, reviewed, validated, and merged.**
 
 ## Validation
 

@@ -19,7 +19,7 @@ Do not use an older runtime/qualification document as current architecture merel
 - `../AGENTS.md` — mandatory working rules, phase discipline, v2/v1 boundary, RenderLab read-only boundary
 - `../PROJECT.md` — current product direction, merged baseline, blockers and immediate work
 - `DECISIONS.md` — durable cross-cutting v2 decisions
-- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; deterministic repository slices and the dedicated hosted Supabase/schema foundation are complete, while hosted Auth/email/live invitation proof remains pending
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — completed Phase 1 execution contract; deterministic and hosted closed-demo behavior is validated end-to-end
 
 Phase baselines:
 
@@ -64,27 +64,30 @@ Current Phase 1 validation evidence:
 - `validation/PHASE_V2_1D_NARRATIVE_DESK_2026-09-11.md`
 - `validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
 - `validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
+- `validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`
 
 ## Current Boundary
 
-The deterministic Phase 1E Admin repository slice is merged and validated. The dedicated hosted **S.A.G.A.** Supabase project also now exists in `eu-central-1`, and the active v2 migration lineage is applied and advisor-reviewed.
+**Phase 1 is complete.** The closed-demo web/account foundation now has both deterministic repository evidence and real hosted provider evidence.
 
-Phase 1 remains **active** because the remaining hosted claims are still unproven:
+Validated hosted behavior includes:
 
-- Auth Site URL / redirect allowlist;
-- invite/recovery template configuration;
-- production-capable SMTP or equivalent Auth email hook;
-- runtime privileged-secret wiring to the dedicated project;
-- first trusted admin bootstrap;
-- real inbox invitation delivery and acceptance;
-- later sign-in;
-- hosted suspension/revocation behavior.
+- dedicated S.A.G.A. Supabase schema and Auth project;
+- public signup disabled;
+- production Site URL / redirect boundary;
+- verified Resend SMTP delivery;
+- real admin-created invitation delivery and acceptance;
+- `/auth/confirm` -> product claim -> Set Password -> private `/home`;
+- later password sign-in from a new browser session;
+- active-account access, suspended-account denial, and reactivation;
+- authenticated pending-invitation revocation;
+- manual-only Vercel deployment policy with the obsolete `studio` Git integration disconnected.
+
+See `validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md` for the live run IDs and cleanup evidence.
+
+No Phase 2 implementation is active yet. The next repository step is to write and merge the immediate Phase 2 contract for the application job-control / agentic-runtime foundation before production implementation begins.
 
 The existing `AI Studio` Supabase project was not reused or modified.
-
-The connected Supabase integration used for the hosted database foundation does not expose service-role secret retrieval or hosted Auth Site URL/template/SMTP mutation controls, so those settings must not be guessed or claimed complete.
-
-Agent/job runtime surfaces are added only when a later active phase adopts them. Do not begin the agentic AI phase while Phase 1 hosted exit criteria remain unmet.
 
 ## RenderLab Reference Boundary
 

@@ -1,6 +1,6 @@
 # S.A.G.A. v2 Phase 1 — Closed-Demo Main Site, Accounts & Invitations
 
-**Status:** ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC ADMIN COMPLETE; DEDICATED HOSTED SUPABASE + ACTIVE V2 SCHEMA COMPLETE; AUTH/EMAIL/LIVE INVITATION PROOF PENDING
+**Status:** COMPLETE — deterministic implementation, hosted Supabase/Auth/email, real invitation acceptance/later sign-in, suspension/reactivation, and invitation revocation are validated.
 
 **Tracking:** #151
 
@@ -295,22 +295,35 @@ active admin
 
 If outbound email fails, the product surfaces bounded delivery failure while preserving deterministic retry/revoke state.
 
-## Remaining Phase 1E Hosted Auth / Email / Live-Proof Gate
+## Phase 1E Hosted Auth / Email / Live-Proof Gate — Complete
 
-The dedicated hosted project and database schema now exist. Phase 1 remains open because these hosted claims are still unproven:
+The hosted gate is validated against the dedicated S.A.G.A. providers and public production origin.
 
-- S.A.G.A. Site URL and redirect allowlist;
-- invite/recovery templates using supported variables;
-- production-capable custom SMTP or equivalent Auth email hook;
-- authenticated sender domain and acceptable rate limits;
-- deployed runtime wiring to the dedicated S.A.G.A. project, including privileged server credentials through a secret boundary;
-- first trusted S.A.G.A. admin bootstrap;
-- actual inbox delivery;
-- invite click -> confirmation -> claim -> password setup -> later sign-in;
-- hosted suspension/revocation behavior;
-- scoped non-master B2 runtime credentials when object-storage flow becomes active.
+Verified:
 
-The connected Supabase integration used for the hosted database foundation does not expose service-role secret retrieval or Auth Site URL/template/SMTP mutation controls. Do not invent those settings or claim they are configured.
+- Auth Site URL is `https://saga-pi-two.vercel.app`;
+- redirect allowlist contains only the stable production alias plus future `https://saga.faresuniform.uk/**`;
+- public self-signup remains disabled;
+- custom Resend SMTP is active on the verified `mail.saga.faresuniform.uk` sending domain;
+- first trusted admin bootstrap exists;
+- real admin API invitation delivery reached mail infrastructure;
+- the delivered token-hash confirmation link passed through production `/auth/confirm`;
+- matching S.A.G.A. invitation claim established an active member;
+- the actual Set Password surface established credentials and entered `/home`;
+- a fresh later browser session signed in successfully using those credentials;
+- a valid Auth session lost private access immediately when product status changed to suspended and regained access after reactivation;
+- authenticated pending-invitation revocation returned and persisted `revoked` with `revoked_at`;
+- all disposable proof identities and product rows were cleaned up and independently verified absent.
+
+Live evidence:
+
+- access/suspension/reactivation run `34647243289` — exact head `2b230f77e9ff6c0a582bc46f55d456c5a8690eb1`;
+- invitation delivery/acceptance/later sign-in run `34647592382` — exact head `ee7fa83320dfcc0e152f1334c84f957cf55f0e7e`;
+- invitation revocation run `34647880892` — exact head `62f184dcb763059382e9c6907bed6d398542cd3d`.
+
+Detailed evidence: `docs/validation/PHASE_V2_1_HOSTED_E2E_2026-09-11.md`.
+
+The scoped B2 runtime key remains deferred until an object-upload product flow activates. The final custom domain remains separately tracked and is not required for the working closed-demo production alias.
 
 ## UI/UX Contract
 
@@ -335,7 +348,7 @@ Phase 1E Admin extends the approved Narrative Desk system rather than inventing 
 - **1D — COMPLETE:** Narrative Desk shell / first product surfaces
 - **1E deterministic Admin — COMPLETE:** Admin APIs/UI/database safeguards/rendered evidence
 - **1E hosted Supabase foundation — COMPLETE:** dedicated project + active v2 schema + advisor review
-- **1E hosted Auth/email/live proof — PENDING:** runtime secrets, Auth config, email, real invite acceptance/sign-in
+- **1E hosted Auth/email/live proof — COMPLETE:** runtime secrets, closed Auth config, verified email, real invite acceptance/later sign-in, suspension/reactivation, and revocation
 
 ## Validation Matrix
 
@@ -356,31 +369,35 @@ Phase 1E Admin extends the approved Narrative Desk system rather than inventing 
 | Narrative Desk responsive | production desktop+narrow render | validated in 1D |
 | Admin responsive/accessibility | production desktop+narrow interaction/render | validated in 1E |
 | Reduced motion | computed-style render validation | validated |
-| Hosted invitation delivery | real inbox test | **pending** |
-| Hosted invite acceptance/sign-in | live end-to-end test | **pending** |
-| Hosted suspension/revocation | live hosted behavior | **pending** |
+| Hosted invitation delivery | real inbox/provider delivery test | **validated — run `34647592382`** |
+| Hosted invite acceptance/sign-in | live end-to-end test | **validated — run `34647592382`** |
+| Hosted suspension/revocation | live hosted behavior | **validated — runs `34647243289` and `34647880892`** |
 
 ## External Dependencies / Blockers
 
-Completed:
+There is no remaining Phase 1 hosted blocker.
 
-- dedicated S.A.G.A.-owned Supabase project;
-- active v2 schema application.
+Completed during Phase 1:
 
-Remaining blockers to **Phase 1 end-to-end completion**:
-
-- hosted Auth Site URL/redirect/template configuration;
-- custom SMTP/email hook and sender configuration;
-- runtime/deployment privileged secret wiring;
+- dedicated S.A.G.A.-owned Supabase project and active v2 schema;
+- Auth Site URL / redirect configuration and closed public signup;
+- verified custom Resend SMTP sender/domain;
+- privileged runtime secret wiring;
 - trusted initial admin bootstrap;
-- real hosted invite acceptance/sign-in proof;
-- hosted suspension/revocation proof;
-- scoped B2 runtime key when object upload becomes active;
-- deployment ownership decision for the stale Vercel project still pointing at retired `apps/studio`.
+- real invitation delivery, acceptance, password setup, private access, and later sign-in;
+- hosted suspension/reactivation and pending-invitation revocation;
+- obsolete Vercel `studio` Git integration disconnected;
+- owner-authorized manual-only Vercel deployment policy.
+
+Deferred beyond Phase 1:
+
+- final custom domain `saga.faresuniform.uk`;
+- scoped B2 runtime key when source/object upload becomes active;
+- application job-control and agentic AI runtime work, which requires a new phase contract.
 
 Do not reuse RenderLab/Studio Supabase or shared R2 state for S.A.G.A.
 
-## Explicitly Out of Scope While Phase 1 Is Open
+## Explicitly Out of Scope for Phase 1
 
 - agentic AI/LLM orchestration;
 - identity/coreference/canon extraction runtime;
@@ -393,25 +410,33 @@ Do not reuse RenderLab/Studio Supabase or shared R2 state for S.A.G.A.
 - copying/modifying RenderLab;
 - claiming production/email readiness before hosted proof.
 
-## Exit Criteria
+## Exit Criteria — Satisfied
 
-Phase 1 closes only when:
+Phase 1 closes with all contract exit criteria satisfied:
 
-1. Phase-1 contracts are authoritative;
-2. S.A.G.A.-owned schema is applied to a dedicated hosted S.A.G.A. Supabase project — **complete**;
-3. public self-signup remains absent;
-4. invite confirmation + credential setup + later sign-in work end-to-end;
-5. private routes require fresh verified identity + active S.A.G.A. account;
-6. suspended/unknown identities fail closed;
-7. active admins can create/revoke invitations and manage bounded role/status;
-8. at least one real invitation email is delivered and accepted;
-9. private application shell and initial narrative IA are responsive;
-10. no privileged credentials/tokens leak to browser, repository, or logs;
-11. exact-head CI and rendered/accessibility review pass;
-12. `PROJECT.md` records the hosted proof and next phase from verified reality.
+1. Phase-1 contracts are authoritative — **satisfied**;
+2. S.A.G.A.-owned schema is applied to a dedicated hosted S.A.G.A. Supabase project — **satisfied**;
+3. public self-signup remains absent — **satisfied**;
+4. invite confirmation + credential setup + later sign-in work end-to-end — **satisfied**, run `34647592382`;
+5. private routes require a fresh verified identity + active S.A.G.A. account — **satisfied**;
+6. suspended/unknown identities fail closed — **satisfied**, including hosted suspension run `34647243289`;
+7. active admins can create/revoke invitations and manage bounded role/status — **satisfied**, including hosted revoke run `34647880892`;
+8. at least one real invitation email is delivered and accepted — **satisfied**, run `34647592382`;
+9. private application shell and initial narrative IA are responsive — **satisfied** by Phase 1D/1E rendered evidence;
+10. no privileged credentials/tokens leak to browser, repository, or logs — **satisfied** by structural boundaries and secret-bound hosted proof;
+11. exact-head CI and rendered/accessibility review pass — **satisfied** for implementation heads; completion reconciliation receives its own exact-head CI before merge;
+12. `PROJECT.md` records the hosted proof and next phase from verified reality — **satisfied by the Phase 1 completion reconciliation**.
 
 ## Next-Phase Direction
 
-Do not design or implement the agentic AI phase yet.
+Phase 1 is complete. Do not begin broad Phase 2 implementation directly from this document.
 
-The immediate remaining work is the **hosted Auth/email/runtime-secret/live invitation acceptance proof** required to close Phase 1.
+The next repository step is contract-first:
+
+1. create a fresh Phase 2 contract/governance branch from current `main`;
+2. define the immediate application job-control / agentic-runtime foundation only to the detail justified by Phase 1 evidence;
+3. specify ownership, persistence/job lifecycle, authorization, failure/retry semantics, observability/UI state, provider/runtime boundaries, validation, and deployment implications;
+4. validate and merge that Phase 2 contract;
+5. only then begin Phase 2 production implementation on a fresh implementation branch.
+
+The contract should preserve the web-first rule: future agents operate behind S.A.G.A.-owned application/job contracts rather than becoming the top-level product architecture.
