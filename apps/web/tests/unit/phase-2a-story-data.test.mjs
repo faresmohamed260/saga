@@ -13,6 +13,7 @@ function read(relativePath) {
 
 test("Phase 2A schema separates private product data, durable jobs, and immutable results", () => {
   const migration = read("supabase/migrations/20260912003000_story_intelligence_foundation.sql");
+  const runScopeMigration = read("supabase/migrations/20260912004500_story_intelligence_run_job_scope.sql");
 
   for (const table of [
     "saga_projects",
@@ -37,6 +38,9 @@ test("Phase 2A schema separates private product data, durable jobs, and immutabl
   assert.doesNotMatch(migration, /grant select, insert[^;]*on table public\.saga_sources to authenticated/i);
   assert.match(migration, /grant select, insert on table public\.saga_analysis_runs to service_role/);
   assert.doesNotMatch(migration, /grant select, insert, update[^;]*saga_analysis_runs to service_role/i);
+  assert.match(runScopeMigration, /saga_analysis_jobs_identity_scope_unique/);
+  assert.match(runScopeMigration, /saga_analysis_runs_job_scope_fk/);
+  assert.match(runScopeMigration, /foreign key \(job_id, project_id, source_id, owner_user_id\)/);
 });
 
 test("member story operations use the active account boundary plus session-scoped RLS", () => {
