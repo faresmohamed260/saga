@@ -39,7 +39,7 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Create runner-only authenticated Admin fixture
+      - name: Create runner-only authenticated product fixtures
         shell: bash
         run: |
           cat > 'src/app/(app)/layout.tsx' <<'EOF'
@@ -60,6 +60,134 @@ jobs:
 
           export default function VisualReviewLayout({ children }: Readonly<{ children: ReactNode }>) {
             return <AppShell account={reviewAccount}>{children}</AppShell>;
+          }
+          EOF
+
+          cat > 'src/server/story/story-data.ts' <<'EOF'
+          export type SagaProjectStatus = "active" | "archived";
+          export type SagaSourceFormat = "txt" | "epub";
+          export type SagaSourceIngestionStatus =
+            | "pending_upload"
+            | "uploaded"
+            | "processing"
+            | "ready"
+            | "failed";
+          export type SagaAnalysisJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+          export type SagaAnalysisJobKind = "source_ingestion" | "character_identity";
+
+          export type SagaProject = {
+            id: string;
+            title: string;
+            description: string | null;
+            status: SagaProjectStatus;
+            createdAt: string;
+            updatedAt: string;
+          };
+
+          export type SagaSource = {
+            id: string;
+            projectId: string;
+            projectTitle: string | null;
+            displayName: string;
+            originalFilename: string;
+            format: SagaSourceFormat;
+            byteSize: number;
+            contentSha256: string;
+            ingestionStatus: SagaSourceIngestionStatus;
+            failureCode: string | null;
+            createdAt: string;
+          };
+
+          export type SagaAnalysisJob = {
+            id: string;
+            sourceId: string;
+            kind: SagaAnalysisJobKind;
+            status: SagaAnalysisJobStatus;
+            attemptCount: number;
+            maxAttempts: number;
+            errorCode: string | null;
+            errorSummary: string | null;
+            createdAt: string;
+            startedAt: string | null;
+            completedAt: string | null;
+          };
+
+          export type SagaProjectWorkspace = {
+            project: SagaProject;
+            sources: SagaSource[];
+            jobs: SagaAnalysisJob[];
+            characterCount: number;
+          };
+
+          export type SagaStoryOperationErrorCode = "invalid_request" | "not_found" | "unavailable";
+
+          export class SagaStoryOperationError extends Error {
+            readonly code: SagaStoryOperationErrorCode;
+            readonly httpStatus: number;
+
+            constructor(code: SagaStoryOperationErrorCode, httpStatus: number) {
+              super(code);
+              this.name = "SagaStoryOperationError";
+              this.code = code;
+              this.httpStatus = httpStatus;
+            }
+          }
+
+          const project: SagaProject = {
+            id: "33333333-3333-4333-8333-333333333333",
+            title: "The Glass Archive",
+            description: "A visual-review story workspace for the first S.A.G.A. intelligence foundation.",
+            status: "active",
+            createdAt: "2026-09-11T18:00:00.000Z",
+            updatedAt: "2026-09-11T21:00:00.000Z",
+          };
+
+          const source: SagaSource = {
+            id: "44444444-4444-4444-8444-444444444444",
+            projectId: project.id,
+            projectTitle: project.title,
+            displayName: "The Glass Archive — manuscript",
+            originalFilename: "glass-archive.epub",
+            format: "epub",
+            byteSize: 1843200,
+            contentSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ingestionStatus: "ready",
+            failureCode: null,
+            createdAt: "2026-09-11T19:00:00.000Z",
+          };
+
+          const job: SagaAnalysisJob = {
+            id: "55555555-5555-4555-8555-555555555555",
+            sourceId: source.id,
+            kind: "character_identity",
+            status: "succeeded",
+            attemptCount: 1,
+            maxAttempts: 3,
+            errorCode: null,
+            errorSummary: null,
+            createdAt: "2026-09-11T19:05:00.000Z",
+            startedAt: "2026-09-11T19:05:10.000Z",
+            completedAt: "2026-09-11T19:06:30.000Z",
+          };
+
+          export async function listSagaProjects(): Promise<SagaProject[]> {
+            return [project];
+          }
+
+          export async function createSagaProject(_input: {
+            title: unknown;
+            description?: unknown;
+          }): Promise<SagaProject> {
+            return project;
+          }
+
+          export async function listSagaSources(): Promise<SagaSource[]> {
+            return [source];
+          }
+
+          export async function getSagaProjectWorkspace(projectId: string): Promise<SagaProjectWorkspace | null> {
+            if (projectId !== project.id) return null;
+            return { project, sources: [source], jobs: [job], characterCount: 3 };
           }
           EOF
 
@@ -164,11 +292,20 @@ jobs:
 
             await page.goto(`${origin}/library`, { waitUntil: "networkidle" });
             assert(await visibleDesktopCurrent(page) === "Library", "Library must be the active desktop route");
+            assert(await page.getByText("The Glass Archive — manuscript").isVisible(), "Library must render fixture source data");
             await page.screenshot({ path: "visual-review/library-desktop-1440x960.png", fullPage: true });
 
             await page.goto(`${origin}/projects`, { waitUntil: "networkidle" });
             assert(await visibleDesktopCurrent(page) === "Projects", "Projects must be the active desktop route");
+            assert(await page.getByRole("heading", { name: "The Glass Archive", level: 3 }).isVisible(), "Projects must render fixture project data");
             await page.screenshot({ path: "visual-review/projects-desktop-1440x960.png", fullPage: true });
+
+            await page.goto(`${origin}/projects/33333333-3333-4333-8333-333333333333`, { waitUntil: "networkidle" });
+            assert(await visibleDesktopCurrent(page) === "Projects", "Project workspace must keep Projects active");
+            assert(await page.getByRole("heading", { name: "Sources", level: 2 }).isVisible(), "Project workspace must expose Sources");
+            assert(await page.getByRole("heading", { name: "Analysis", level: 2 }).isVisible(), "Project workspace must expose Analysis");
+            assert(await page.getByRole("heading", { name: "Characters", level: 2 }).isVisible(), "Project workspace must expose Characters");
+            await page.screenshot({ path: "visual-review/project-workspace-desktop-1440x960.png", fullPage: true });
 
             await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
             assert(await visibleDesktopCurrent(page) === "Admin", "Admin must be the active desktop route");
@@ -179,9 +316,20 @@ jobs:
             await page.screenshot({ path: "visual-review/admin-desktop-1440x960.png", fullPage: true });
 
             await page.setViewportSize({ width: 390, height: 844 });
-            await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
+            await page.goto(`${origin}/projects`, { waitUntil: "networkidle" });
             assert(!(await page.locator("aside").isVisible()), "Desktop rail must be hidden at narrow width");
             assert(await page.getByRole("button", { name: "Open navigation" }).isVisible(), "Narrow navigation trigger must be visible");
+            const projectsOverflow = await page.evaluate(
+              () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            );
+            assert(!projectsOverflow, "Narrow Projects has horizontal overflow");
+            const projectControlsAreTouchSized = await page.locator("main input:not([type=hidden]), main textarea, main button").evaluateAll(
+              (elements) => elements.every((element) => element.getBoundingClientRect().height >= 43.5),
+            );
+            assert(projectControlsAreTouchSized, "Project creation controls must preserve approximately 44px touch targets");
+            await page.screenshot({ path: "visual-review/projects-narrow-390x844.png", fullPage: true });
+
+            await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
             assert((await page.locator("header").first().textContent())?.includes("Admin"), "Narrow top bar must expose Admin route context");
 
             const horizontalOverflow = await page.evaluate(
@@ -232,7 +380,7 @@ jobs:
       - name: Upload rendered evidence
         uses: actions/upload-artifact@v4
         with:
-          name: saga-v2-phase-1e-visual-review
+          name: saga-v2-phase-2a-visual-review
           path: apps/web/visual-review/*.png
           if-no-files-found: error
           retention-days: 30

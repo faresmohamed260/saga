@@ -12,13 +12,13 @@ const workspaceLinks = [
   {
     href: "/library",
     title: "Library",
-    description: "Source material and editions will live here once source ingestion is enabled.",
+    description: "Private source records and ingestion state live here. New text and EPUB uploads arrive in Phase 2B.",
     icon: BookOpen,
   },
   {
     href: "/projects",
     title: "Projects",
-    description: "Story workspaces will gather canon, characters, timelines, and generated media as those capabilities arrive.",
+    description: "Create private story workspaces that own sources, analysis provenance, character evidence, and later canon.",
     icon: FolderKanban,
   },
 ] as const;
@@ -39,7 +39,7 @@ export default function HomePage() {
               Workspace
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
-              Library and Projects are the first workspace anchors. Source ingestion and project creation are not enabled yet.
+              Projects now provide the private ownership boundary. Library reads real source records; adding new source files begins in Phase 2B.
             </p>
           </div>
         </div>

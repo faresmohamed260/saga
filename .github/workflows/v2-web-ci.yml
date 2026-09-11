@@ -100,6 +100,14 @@ jobs:
             id uuid primary key,
             email text
           );
+          create or replace function auth.uid()
+          returns uuid
+          language sql
+          stable
+          as $$
+            select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+          $$;
+          grant execute on function auth.uid() to anon, authenticated, service_role;
           SQL
 
       - name: Apply S.A.G.A. v2 web migrations
@@ -117,10 +125,11 @@ jobs:
             psql -v ON_ERROR_STOP=1 -f "$migration"
           done
 
-      - name: Verify closed-demo database contract
+      - name: Verify S.A.G.A. v2 database contracts
         shell: bash
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/first_admin_bootstrap.sql
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/closed_demo_account_access.sql
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/admin_operation_hardening.sql
+          psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/story_intelligence_foundation.sql
