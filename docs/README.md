@@ -1,6 +1,6 @@
 # S.A.G.A. Documentation Index
 
-S.A.G.A. is in an owner-authorized fresh v2 rebuild. This index distinguishes the **active v2 contract** from retained **v1 historical/reference material**.
+S.A.G.A. is in an owner-authorized v2 rebuild. This index separates the **active v2 contract** from retained **v1 historical/reference material** and from **read-only external project references**.
 
 ## Read First
 
@@ -12,27 +12,61 @@ For substantial current work, read:
 4. the active v2 phase contract referenced by `PROJECT.md`
 5. the relevant document under `v2/`
 
-Do not use an older runtime/qualification document as the current architecture merely because it contains more detail.
+Do not use an older runtime/qualification document as current architecture merely because it contains more detail.
 
 ## Active v2 Governance
 
-- `../AGENTS.md` — mandatory working rules and v2/v1 boundary
-- `../PROJECT.md` — current product direction, stack, active phase, and next work
-- `DECISIONS.md` — durable v2 decisions plus explicitly historical v1 decisions
-- `phases/PHASE_V2_0_WEB_FOUNDATION.md` — active web-foundation/storage-bootstrap phase
-- `v2/ARCHITECTURE.md` — current web-first architecture and ownership boundaries
+- `../AGENTS.md` — mandatory working rules, phase discipline, v2/v1 boundary, RenderLab read-only boundary
+- `../PROJECT.md` — current product direction, baseline, active phase, blockers and immediate work
+- `DECISIONS.md` — durable cross-cutting v2 decisions
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract
 
-## Active v2 Code/Operations
+Phase 0 is complete and retained for evidence:
 
-- `../apps/web/` — new Next.js web product and initial backend/API layer
+- `phases/PHASE_V2_0_WEB_FOUNDATION.md`
+- merged through PR #149 at `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
+
+## Active v2 Architecture / Product Contracts
+
+- `v2/ARCHITECTURE.md` — top-level web-first ownership/deployment boundary
+- `v2/FRONTEND_ARCHITECTURE.md` — Next.js route/component/server ownership, state and API direction
+- `v2/UI_SYSTEM.md` — S.A.G.A.-specific UI/UX, component sourcing, responsive/accessibility and visual-review rules
+- `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity, account access, invitations, admin and email-delivery contract
+
+## Active v2 Code / Operations
+
+- `../apps/web/` — active Next.js web product
+- `../apps/web/src/server/storage/` — provider-neutral object-storage boundary + B2 implementation
+- `../config/v2-storage.json` — validated safe Backblaze B2 metadata
 - `../.github/workflows/v2-web-ci.yml` — v2 web deterministic CI
-- `../.github/workflows/v2-b2-bootstrap.yml` — bounded Backblaze B2 bootstrap/storage validation
+- `../.github/workflows/v2-b2-bootstrap.yml` — manual-only Backblaze bootstrap/storage smoke workflow
 
-Additional v2 Supabase/schema and agent-runtime documents will be added only when their phase adopts those surfaces.
+Additional v2 Supabase migrations/schema and job/agent runtime surfaces are added only when the active phase adopts them.
+
+## RenderLab Reference Boundary
+
+`faresmohamed260/renderlab` is a **separate product** and is read-only for S.A.G.A. work.
+
+Its current repository documentation may be inspected for proven setup/process/UI conventions. Particularly useful reference categories include:
+
+- repository-first continuity and progressive phase contracts;
+- frontend/server/infrastructure ownership boundaries;
+- maintained accessible UI primitives and semantic tokens;
+- responsive/accessibility/reduced-motion discipline;
+- closed-beta invitation/access concepts above Supabase Auth;
+- remote-first CI and rendered UI validation.
+
+Do not modify RenderLab while working on S.A.G.A. Do not copy its product code, page composition, visual identity, routes, table/schema names, data, credentials, R2/Supabase resources or deployment state. Any adopted convention must be restated and implemented as a S.A.G.A.-owned contract.
+
+The S.A.G.A. translation of those principles is authoritative here:
+
+- `v2/FRONTEND_ARCHITECTURE.md`
+- `v2/UI_SYSTEM.md`
+- `v2/ACCESS_AND_INVITATIONS.md`
 
 ## Historical v1 Material
 
-Everything below remains useful for requirements discovery, prior algorithms, evaluations, provider experiments, and lessons learned, but it does **not** define the active v2 architecture unless a v2 decision explicitly adopts part of it.
+Everything below remains useful for requirements discovery, prior algorithms, evaluations, provider experiments and lessons learned, but it does **not** define active v2 architecture unless a v2 decision explicitly adopts part of it.
 
 ### v1 system/runtime documents
 
@@ -76,20 +110,19 @@ Everything below remains useful for requirements discovery, prior algorithms, ev
 - production deployment/qualification machinery
 - `backup/reference/`
 
-The repository history at commit `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b` is the clean pre-v2 boundary after the final v1 recovery evidence PR.
-
-## RenderLab Boundary
-
-`faresmohamed260/renderlab` is a separate project. Its mature web engineering patterns and technology choices can inform S.A.G.A. v2, but RenderLab product state, routes, schemas, media ownership, R2 credentials, and deployment state are not S.A.G.A. state.
+The clean pre-v2 boundary is commit `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`.
 
 ## Documentation Maintenance
 
 When v2 changes:
 
 - current state/phase/next step -> `PROJECT.md`
-- durable cross-cutting architecture decision -> `DECISIONS.md`
+- durable cross-cutting architecture/product decision -> `DECISIONS.md`
 - current phase scope/evidence -> active `phases/PHASE_V2_*.md`
-- subsystem contract -> `v2/`
+- frontend/server ownership -> `v2/FRONTEND_ARCHITECTURE.md`
+- UI/UX/component/design rules -> `v2/UI_SYSTEM.md`
+- account/invitation/auth rules -> `v2/ACCESS_AND_INVITATIONS.md`
+- broader system/deployment boundary -> `v2/ARCHITECTURE.md`
 - dated validation evidence -> `validation/` when worth preserving
 
-If v1 behavior is reused, document the new v2 ownership instead of making the old document active again.
+If v1 behavior or an external-project convention is reused, document the new v2 ownership instead of making the old source active again.
