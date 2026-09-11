@@ -66,10 +66,13 @@ test("Narrative Desk exposes Admin navigation only from server-derived role stat
 
 test("Admin product surface stays bounded to invitations and admitted accounts", () => {
   const page = read("src/app/(app)/admin/page.tsx");
+  const workspace = read("src/features/admin/admin-workspace.tsx");
 
   assert.match(page, /requireCurrentSagaAdmin/);
   assert.match(page, /listSagaAdminInvitations/);
   assert.match(page, /listSagaAdminAccounts/);
-  assert.match(page, /Self-demotion and self-suspension are blocked/);
-  assert.doesNotMatch(page, /storage usage|model status|provider status|auth\.users/i);
+  assert.match(page, /<AdminWorkspace/);
+  assert.match(workspace, /Self-demotion and self-suspension are blocked/);
+  assert.match(workspace, /S\.A\.G\.A\.-owned invitations and admitted accounts/);
+  assert.doesNotMatch(`${page}\n${workspace}`, /storage usage|model status|provider status|auth\.users/i);
 });
