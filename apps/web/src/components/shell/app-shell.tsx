@@ -10,10 +10,12 @@ type AppShellProps = Readonly<{
 }>;
 
 export function AppShell({ account, children }: AppShellProps) {
+  const isAdmin = account.role === "admin";
+
   return (
     <div className="saga-app min-h-screen bg-[var(--app-canvas)] text-[var(--app-text)]">
-      <DesktopNavigation email={account.email} />
-      <MobileNavigation email={account.email} />
+      <DesktopNavigation email={account.email} isAdmin={isAdmin} />
+      <MobileNavigation email={account.email} isAdmin={isAdmin} />
       <div className="min-h-screen pt-14 md:pl-56 md:pt-0 lg:pl-[14.5rem]">
         <main className="mx-auto w-full max-w-[96rem] px-4 py-7 sm:px-5 sm:py-9 md:px-7 lg:px-9 xl:px-10">
           {children}

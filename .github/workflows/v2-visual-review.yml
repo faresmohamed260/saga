@@ -39,7 +39,7 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Create runner-only authenticated shell fixture
+      - name: Create runner-only authenticated Admin fixture
         shell: bash
         run: |
           cat > 'src/app/(app)/layout.tsx' <<'EOF'
@@ -49,10 +49,10 @@ jobs:
           import type { SagaAccount } from "@/server/account/types";
 
           const reviewAccount: SagaAccount = {
-            userId: "visual-review-user",
-            email: "reader@saga.local",
-            emailNormalized: "reader@saga.local",
-            role: "member",
+            userId: "11111111-1111-4111-8111-111111111111",
+            email: "owner@saga.local",
+            emailNormalized: "owner@saga.local",
+            role: "admin",
             status: "active",
             invitedBy: null,
             acceptedAt: "2026-09-11T00:00:00.000Z",
@@ -60,6 +60,61 @@ jobs:
 
           export default function VisualReviewLayout({ children }: Readonly<{ children: ReactNode }>) {
             return <AppShell account={reviewAccount}>{children}</AppShell>;
+          }
+          EOF
+
+          cat > 'src/app/(app)/admin/page.tsx' <<'EOF'
+          import { AdminWorkspace } from "@/features/admin/admin-workspace";
+          import type { SagaAdminAccount, SagaAdminInvitation } from "@/server/admin/admin-operations";
+
+          const invitations: SagaAdminInvitation[] = [
+            {
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              emailNormalized: "reader@example.com",
+              emailDisplay: "reader@example.com",
+              intendedRole: "member",
+              status: "pending",
+              invitedBy: "11111111-1111-4111-8111-111111111111",
+              invitedAt: "2026-09-11T12:00:00.000Z",
+              expiresAt: "2026-09-18T12:00:00.000Z",
+              acceptedBy: null,
+              acceptedAt: null,
+              revokedAt: null,
+            },
+          ];
+
+          const accounts: SagaAdminAccount[] = [
+            {
+              userId: "11111111-1111-4111-8111-111111111111",
+              email: "owner@saga.local",
+              role: "admin",
+              status: "active",
+              invitedBy: null,
+              acceptedAt: "2026-09-11T00:00:00.000Z",
+              updatedBy: null,
+              updatedAt: "2026-09-11T00:00:00.000Z",
+            },
+            {
+              userId: "22222222-2222-4222-8222-222222222222",
+              email: "reader@example.com",
+              role: "member",
+              status: "active",
+              invitedBy: "11111111-1111-4111-8111-111111111111",
+              acceptedAt: "2026-09-11T12:30:00.000Z",
+              updatedBy: "11111111-1111-4111-8111-111111111111",
+              updatedAt: "2026-09-11T12:30:00.000Z",
+            },
+          ];
+
+          export default function AdminVisualReviewPage() {
+            return (
+              <AdminWorkspace
+                currentUserId="11111111-1111-4111-8111-111111111111"
+                invitations={invitations}
+                accounts={accounts}
+                notice="delivery_failed"
+              />
+            );
           }
           EOF
 
@@ -104,6 +159,7 @@ jobs:
             await page.goto(`${origin}/home`, { waitUntil: "networkidle" });
             assert(await visibleDesktopCurrent(page) === "Home", "Home must be the active desktop route");
             assert(await page.locator("aside").isVisible(), "Desktop navigation rail must be visible");
+            assert(await page.locator('aside a[href="/admin"]').isVisible(), "Admin navigation must be visible for an active admin fixture");
             await page.screenshot({ path: "visual-review/home-desktop-1440x960.png", fullPage: true });
 
             await page.goto(`${origin}/library`, { waitUntil: "networkidle" });
@@ -114,17 +170,30 @@ jobs:
             assert(await visibleDesktopCurrent(page) === "Projects", "Projects must be the active desktop route");
             await page.screenshot({ path: "visual-review/projects-desktop-1440x960.png", fullPage: true });
 
+            await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
+            assert(await visibleDesktopCurrent(page) === "Admin", "Admin must be the active desktop route");
+            assert(await page.getByRole("heading", { name: "Admin", level: 1 }).isVisible(), "Admin page heading must be visible");
+            assert(await page.getByRole("heading", { name: "Invitations", level: 2 }).isVisible(), "Invitation management must be visible");
+            assert(await page.getByRole("heading", { name: "Admitted accounts", level: 2 }).isVisible(), "Account management must be visible");
+            assert(await page.getByText("Self-demotion and self-suspension are blocked.").isVisible(), "Current-admin lockout guidance must be visible");
+            await page.screenshot({ path: "visual-review/admin-desktop-1440x960.png", fullPage: true });
+
             await page.setViewportSize({ width: 390, height: 844 });
-            await page.goto(`${origin}/home`, { waitUntil: "networkidle" });
+            await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
             assert(!(await page.locator("aside").isVisible()), "Desktop rail must be hidden at narrow width");
             assert(await page.getByRole("button", { name: "Open navigation" }).isVisible(), "Narrow navigation trigger must be visible");
-            assert((await page.locator("header").first().textContent())?.includes("Home"), "Narrow top bar must expose current route context");
+            assert((await page.locator("header").first().textContent())?.includes("Admin"), "Narrow top bar must expose Admin route context");
 
             const horizontalOverflow = await page.evaluate(
               () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
             );
-            assert(!horizontalOverflow, "Narrow Home has horizontal overflow");
-            await page.screenshot({ path: "visual-review/home-narrow-390x844.png", fullPage: true });
+            assert(!horizontalOverflow, "Narrow Admin has horizontal overflow");
+
+            const controlsAreTouchSized = await page.locator("main input[type=email], main select, main button").evaluateAll(
+              (elements) => elements.every((element) => element.getBoundingClientRect().height >= 43.5),
+            );
+            assert(controlsAreTouchSized, "Admin interactive controls must preserve approximately 44px touch targets");
+            await page.screenshot({ path: "visual-review/admin-narrow-390x844.png", fullPage: true });
 
             const menuTrigger = page.getByRole("button", { name: "Open navigation" });
             await menuTrigger.click();
@@ -134,21 +203,21 @@ jobs:
               const element = document.querySelector('[role="dialog"]');
               return element && getComputedStyle(element).transform === "none";
             }, null, { timeout: 1500 });
-            assert((await dialog.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must remain current inside narrow navigation");
+            assert((await dialog.locator('[aria-current="page"]').textContent())?.trim() === "Admin", "Admin must remain current inside narrow navigation");
 
             const sheetBackground = await dialog.evaluate((element) => getComputedStyle(element).backgroundColor);
             assert(
               sheetBackground !== "transparent" && sheetBackground !== "rgba(0, 0, 0, 0)",
               `Portaled navigation sheet must be opaque; received ${sheetBackground}`,
             );
-            await page.screenshot({ path: "visual-review/navigation-narrow-390x844.png", fullPage: true });
+            await page.screenshot({ path: "visual-review/admin-navigation-narrow-390x844.png", fullPage: true });
 
             await page.keyboard.press("Escape");
             await dialog.waitFor({ state: "hidden", timeout: 1500 });
             assert(await menuTrigger.evaluate((element) => document.activeElement === element), "Closing navigation must restore focus to its trigger");
 
             await page.emulateMedia({ reducedMotion: "reduce" });
-            const transitionDuration = await page.locator('a[href="/library"]').first().evaluate(
+            const transitionDuration = await page.locator('a[href="/admin"]').first().evaluate(
               (element) => Number.parseFloat(getComputedStyle(element).transitionDuration) || 0,
             );
             assert(transitionDuration <= 0.001, "Reduced-motion mode must neutralize navigation transitions");
@@ -163,7 +232,7 @@ jobs:
       - name: Upload rendered evidence
         uses: actions/upload-artifact@v4
         with:
-          name: saga-v2-phase-1d-visual-review
+          name: saga-v2-phase-1e-visual-review
           path: apps/web/visual-review/*.png
           if-no-files-found: error
           retention-days: 30
