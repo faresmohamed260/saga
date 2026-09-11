@@ -19,7 +19,7 @@ Do not use an older runtime/qualification document as current architecture merel
 - `../AGENTS.md` — mandatory working rules, phase discipline, v2/v1 boundary, RenderLab read-only boundary
 - `../PROJECT.md` — current product direction, merged baseline, active phase, blockers and immediate work
 - `DECISIONS.md` — durable cross-cutting v2 decisions
-- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; Phase 1A, 1B, and 1C are complete, Phase 1D is next
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; Phase 1A through 1D are complete, Phase 1E is next
 
 Phase 0 is complete and retained for evidence:
 
@@ -32,16 +32,20 @@ Phase 1B closed-demo access foundation merged through PR #153 at `5d5b59d17d2bd2
 
 Phase 1C auth/access surfaces merged through PR #156 at `319b785e43a169b4ffd7b57cd5be32ad3ef5da67`.
 
+Phase 1D Narrative Desk shell / first product surfaces merged through PR #160 at `f558a282b4743a15d440eada1c6a7ccefe44215c`.
+
 ## Active v2 Architecture / Product Contracts
 
 - `v2/ARCHITECTURE.md` — top-level web-first ownership/deployment boundary
 - `v2/FRONTEND_ARCHITECTURE.md` — Next.js route/component/server ownership, state and API direction
-- `v2/UI_SYSTEM.md` — S.A.G.A.-specific UI/UX, component sourcing, responsive/accessibility and visual-review rules; this governs the required Phase 1D concept/review pass
+- `v2/UI_SYSTEM.md` — S.A.G.A.-specific UI/UX, component sourcing, responsive/accessibility and visual-review rules
+- `v2/PHASE_1D_UI_CONCEPT.md` — approved Narrative Desk shell/navigation/composition direction implemented in Phase 1D
 - `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity, account access, invitations, admin and email-delivery contract
 
 ## Active v2 Code / Operations
 
 - `../apps/web/` — active Next.js web product
+- `../apps/web/src/components/shell/` — Phase 1D Narrative Desk shell, responsive navigation, page header and empty-state compositions
 - `../apps/web/src/server/account/` — fresh Auth identity, account/access resolution, admin authorization and invitation-claim services
 - `../apps/web/src/features/auth/` — Phase 1C server actions and auth-surface composition
 - `../apps/web/src/server/supabase/` — ordinary SSR/server Supabase boundary, isolated privileged server client, and SSR session-refresh plumbing
@@ -50,12 +54,14 @@ Phase 1C auth/access surfaces merged through PR #156 at `319b785e43a169b4ffd7b57
 - `../apps/web/supabase/tests/` — disposable-Postgres database-contract tests for the active v2 schema
 - `../config/v2-storage.json` — validated safe Backblaze B2 metadata
 - `../.github/workflows/v2-web-ci.yml` — v2 web deterministic CI, including disposable-Postgres migration/contract validation
+- `../.github/workflows/v2-visual-review.yml` — production Next.js/Chromium rendered shell validation using an exact-head runner-only account fixture
 - `../.github/workflows/v2-b2-bootstrap.yml` — manual-only Backblaze bootstrap/storage smoke workflow
 
 Current Phase 1 validation evidence:
 
 - `validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`
 - `validation/PHASE_V2_1C_AUTH_ACCESS_2026-09-11.md`
+- `validation/PHASE_V2_1D_NARRATIVE_DESK_2026-09-11.md`
 
 Agent/job runtime surfaces are added only when a later active phase adopts them.
 
