@@ -1,0 +1,129 @@
+name: Configure hosted S.A.G.A. Supabase Auth
+
+on:
+  push:
+    branches:
+      - "ops/supabase-auth-config-2026-09-11"
+    paths:
+      - ".github/workflows/ops-supabase-auth-config.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  configure-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_PROJECT_REF: scmeqnpmhomzcwecjdtu
+      SITE_URL: https://saga-pi-two.vercel.app
+      URI_ALLOW_LIST: https://saga-pi-two.vercel.app/**,https://saga.faresuniform.uk/**
+
+    steps:
+      - name: Verify scoped Supabase token is available
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+            echo "::error title=Missing Supabase management token::Repository secret SAGA_SUPABASE_ACCESS_TOKEN is not available."
+            exit 1
+          fi
+
+      - name: Read current safe Auth configuration
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
+          status="$(curl --silent --show-error \
+            --output auth-before.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "${api}")"
+
+          if [[ "${status}" != "200" ]]; then
+            message="$(jq -r '.message // .error // "Supabase Management API request failed"' auth-before.json 2>/dev/null || true)"
+            echo "::error title=Unable to read Supabase Auth config::HTTP ${status}: ${message}"
+            exit 1
+          fi
+
+          jq '{site_url, uri_allow_list, disable_signup, mailer_subjects_invite}' auth-before.json
+
+      - name: Apply S.A.G.A. closed-demo Auth configuration
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
+
+          read -r -d '' invite_template <<'HTML' || true
+          <h2>You're invited to S.A.G.A.</h2>
+          <p>You have been invited to join the private S.A.G.A. demo.</p>
+          <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite">Accept invitation</a></p>
+          <p>If you did not expect this invitation, you can ignore this email.</p>
+          HTML
+
+          jq -n \
+            --arg site_url "${SITE_URL}" \
+            --arg uri_allow_list "${URI_ALLOW_LIST}" \
+            --arg invite_subject "You're invited to S.A.G.A." \
+            --arg invite_content "${invite_template}" \
+            '{
+              site_url: $site_url,
+              uri_allow_list: $uri_allow_list,
+              disable_signup: true,
+              mailer_subjects_invite: $invite_subject,
+              mailer_templates_invite_content: $invite_content
+            }' > auth-patch.json
+
+          status="$(curl --silent --show-error \
+            --request PATCH \
+            --output auth-patch-response.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data @auth-patch.json \
+            "${api}")"
+
+          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+            message="$(jq -r '.message // .error // "Supabase Management API request failed"' auth-patch-response.json 2>/dev/null || true)"
+            echo "::error title=Unable to update Supabase Auth config::HTTP ${status}: ${message}"
+            exit 1
+          fi
+
+      - name: Verify hosted Auth configuration
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
+          status="$(curl --silent --show-error \
+            --output auth-after.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "${api}")"
+
+          if [[ "${status}" != "200" ]]; then
+            message="$(jq -r '.message // .error // "Supabase Management API request failed"' auth-after.json 2>/dev/null || true)"
+            echo "::error title=Unable to verify Supabase Auth config::HTTP ${status}: ${message}"
+            exit 1
+          fi
+
+          jq -e \
+            --arg site_url "${SITE_URL}" \
+            --arg uri_allow_list "${URI_ALLOW_LIST}" \
+            '(.site_url == $site_url)
+             and (.uri_allow_list == $uri_allow_list)
+             and (.disable_signup == true)
+             and (.mailer_subjects_invite == "You\u0027re invited to S.A.G.A.")
+             and (.mailer_templates_invite_content | contains("token_hash={{ .TokenHash }}"))
+             and (.mailer_templates_invite_content | contains("type=invite"))' \
+            auth-after.json >/dev/null
+
+          jq '{site_url, uri_allow_list, disable_signup, mailer_subjects_invite}' auth-after.json
+          echo "Hosted S.A.G.A. Auth URL, redirect allowlist, closed-signup flag, and invite template verified."
