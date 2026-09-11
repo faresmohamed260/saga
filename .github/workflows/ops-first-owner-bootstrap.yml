@@ -1,0 +1,189 @@
+name: Bootstrap first S.A.G.A. owner
+
+on:
+  push:
+    branches:
+      - "ops/first-owner-bootstrap-2026-09-11"
+    paths:
+      - ".github/workflows/ops-first-owner-bootstrap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-first-owner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_PROJECT_REF: scmeqnpmhomzcwecjdtu
+      SUPABASE_URL: https://scmeqnpmhomzcwecjdtu.supabase.co
+      SITE_URL: https://saga-git-ops-first-owner-32be43-faresmohamed260-6733s-projects.vercel.app
+      URI_ALLOW_LIST: https://saga-git-ops-first-owner-32be43-faresmohamed260-6733s-projects.vercel.app/**,https://saga-pi-two.vercel.app/**,https://saga.faresuniform.uk/**
+      OWNER_EMAIL: faresmohamed260@gmail.com
+
+    steps:
+      - name: Verify privileged credentials are available
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]] || { echo "::error title=Missing Supabase management token::SAGA_SUPABASE_ACCESS_TOKEN is unavailable."; exit 1; }
+          [[ -n "${SUPABASE_SECRET_KEY:-}" ]] || { echo "::error title=Missing Supabase project secret::SUPABASE_SECRET_KEY is unavailable."; exit 1; }
+          echo "::add-mask::${SUPABASE_ACCESS_TOKEN}"
+          echo "::add-mask::${SUPABASE_SECRET_KEY}"
+
+      - name: Point hosted Auth at the current-code preview
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
+
+          jq -n \
+            --arg site_url "${SITE_URL}" \
+            --arg uri_allow_list "${URI_ALLOW_LIST}" \
+            '{site_url:$site_url, uri_allow_list:$uri_allow_list, disable_signup:true}' > auth-patch.json
+
+          status="$(curl --silent --show-error \
+            --request PATCH \
+            --output auth-patch-response.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data @auth-patch.json \
+            "${api}")"
+
+          if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
+            message="$(jq -r '.message // .error // "Supabase Management API request failed"' auth-patch-response.json 2>/dev/null || true)"
+            echo "::error title=Unable to switch Supabase Site URL::HTTP ${status}: ${message}"
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "${api}" > auth-after.json
+
+          jq -e \
+            --arg site_url "${SITE_URL}" \
+            --arg uri_allow_list "${URI_ALLOW_LIST}" \
+            '(.site_url == $site_url)
+             and (.uri_allow_list == $uri_allow_list)
+             and (.disable_signup == true)
+             and (.mailer_subjects_invite == "You\u0027re invited to S.A.G.A.")
+             and (.mailer_templates_invite_content | contains("token_hash={{ .TokenHash }}"))
+             and (.mailer_templates_invite_content | contains("type=invite"))
+             and (.smtp_host == "smtp.resend.com")' \
+            auth-after.json >/dev/null
+
+          jq '{site_url, uri_allow_list, disable_signup, mailer_subjects_invite, smtp_host, smtp_admin_email}' auth-after.json
+          echo "Hosted Auth is pointed at the current-code preview and the invite template/SMTP contract is intact."
+
+      - name: Checkout current ops branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package.json
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm install --no-audit --no-fund
+
+      - name: Send real invite and bootstrap the first S.A.G.A. admin
+        working-directory: apps/web
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createClient } from "@supabase/supabase-js";
+
+          const url = process.env.SUPABASE_URL;
+          const secret = process.env.SUPABASE_SECRET_KEY;
+          const email = process.env.OWNER_EMAIL?.trim().toLowerCase();
+
+          if (!url || !secret || !email) {
+            throw new Error("missing_operator_configuration");
+          }
+
+          const supabase = createClient(url, secret, {
+            auth: {
+              autoRefreshToken: false,
+              persistSession: false,
+              detectSessionInUrl: false,
+            },
+          });
+
+          const listed = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+          if (listed.error) throw listed.error;
+
+          let user = listed.data.users.find(
+            (candidate) => candidate.email?.trim().toLowerCase() === email,
+          );
+
+          if (!user) {
+            const invited = await supabase.auth.admin.inviteUserByEmail(email);
+            if (invited.error) throw invited.error;
+            user = invited.data.user;
+            if (!user?.id) throw new Error("invite_did_not_return_user");
+            console.log("Real first-owner invitation sent through Supabase Auth.");
+          } else {
+            console.log("Matching Auth identity already exists; continuing idempotent bootstrap verification.");
+          }
+
+          const accountBefore = await supabase
+            .from("saga_account_access")
+            .select("user_id,role,status")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (accountBefore.error) throw accountBefore.error;
+
+          if (!accountBefore.data) {
+            const bootstrapped = await supabase.rpc("saga_bootstrap_first_admin", {
+              p_user_id: user.id,
+            });
+            if (bootstrapped.error) throw bootstrapped.error;
+            if (!Array.isArray(bootstrapped.data) || bootstrapped.data.length !== 1) {
+              throw new Error("unexpected_bootstrap_result");
+            }
+            console.log("First S.A.G.A. admin access bootstrapped.");
+          }
+
+          const account = await supabase
+            .from("saga_account_access")
+            .select("user_id,role,status")
+            .eq("user_id", user.id)
+            .single();
+          if (account.error) throw account.error;
+          if (account.data.role !== "admin" || account.data.status !== "active") {
+            throw new Error("first_owner_account_invariant_failed");
+          }
+
+          const invitations = await supabase
+            .from("saga_invitations")
+            .select("id,email_normalized,intended_role,status,accepted_by")
+            .eq("email_normalized", email)
+            .order("invited_at", { ascending: false });
+          if (invitations.error) throw invitations.error;
+          if (!invitations.data.length) throw new Error("first_owner_invitation_missing");
+
+          const latest = invitations.data[0];
+          if (latest.intended_role !== "admin" || !["pending", "accepted"].includes(latest.status)) {
+            throw new Error("first_owner_invitation_invariant_failed");
+          }
+
+          const authUser = await supabase.auth.admin.getUserById(user.id);
+          if (authUser.error) throw authUser.error;
+          if (authUser.data.user.email?.trim().toLowerCase() !== email) {
+            throw new Error("first_owner_auth_email_mismatch");
+          }
+
+          console.log(`Hosted first-owner state verified: active admin + ${latest.status} invitation.`);
+          NODE
