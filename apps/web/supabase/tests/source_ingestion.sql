@@ -115,15 +115,18 @@ FROM public.saga_create_source_upload_intent(
   repeat('1', 64)
 ) \gset txt_
 
+SELECT set_config('saga.test.txt_source_id', :'txt_source_id', false);
+
 DO $$
 DECLARE
   v_status text;
   v_key text;
+  v_source_id uuid := current_setting('saga.test.txt_source_id')::uuid;
 BEGIN
   SELECT ingestion_status, object_key
     INTO v_status, v_key
   FROM public.saga_sources
-  WHERE id = :'txt_source_id';
+  WHERE id = v_source_id;
 
   IF v_status <> 'pending_upload' THEN
     RAISE EXCEPTION 'new source intent was not pending_upload';
@@ -133,7 +136,7 @@ BEGIN
     'sources/%s/%s/%s/%s/original',
     'd1111111-1111-4111-8111-111111111111',
     'd3333333-3333-4333-8333-333333333333',
-    :'txt_source_id',
+    v_source_id,
     repeat('1', 64)
   ) THEN
     RAISE EXCEPTION 'source object key is not owner/project/source/fingerprint scoped: %', v_key;
@@ -177,6 +180,8 @@ FROM public.saga_create_source_upload_intent(
   repeat('9', 64)
 ) \gset bad_
 
+SELECT set_config('saga.test.bad_source_id', :'bad_source_id', false);
+
 RESET ROLE;
 SET ROLE service_role;
 
@@ -190,18 +195,22 @@ FROM public.saga_service_finalize_source_upload(
   :'bad_source_id'
 ) \gset bad_final_
 
+SELECT set_config('saga.test.bad_final_source_status', :'bad_final_source_status', false);
+SELECT set_config('saga.test.bad_final_failure_code', :'bad_final_result_failure_code', false);
+
 DO $$
 DECLARE
   v_jobs integer;
+  v_source_id uuid := current_setting('saga.test.bad_source_id')::uuid;
 BEGIN
-  IF :'bad_final_source_status' <> 'failed'
-     OR :'bad_final_result_failure_code' <> 'upload_metadata_mismatch' THEN
+  IF current_setting('saga.test.bad_final_source_status') <> 'failed'
+     OR current_setting('saga.test.bad_final_failure_code') <> 'upload_metadata_mismatch' THEN
     RAISE EXCEPTION 'mismatched upload metadata did not fail closed';
   END IF;
 
   SELECT count(*) INTO v_jobs
   FROM public.saga_analysis_jobs
-  WHERE source_id = :'bad_source_id';
+  WHERE source_id = v_source_id;
 
   IF v_jobs <> 0 THEN
     RAISE EXCEPTION 'mismatched upload enqueued ingestion work';
@@ -219,18 +228,23 @@ FROM public.saga_service_finalize_source_upload(
   :'txt_source_id'
 ) \gset final_
 
+SELECT set_config('saga.test.final_source_status', :'final_source_status', false);
+SELECT set_config('saga.test.final_job_id', :'final_job_id', false);
+
 DO $$
 DECLARE
   v_completed_at timestamptz;
+  v_source_id uuid := current_setting('saga.test.txt_source_id')::uuid;
 BEGIN
-  IF :'final_source_status' <> 'uploaded' OR :'final_job_id' = '' THEN
+  IF current_setting('saga.test.final_source_status') <> 'uploaded'
+     OR nullif(current_setting('saga.test.final_job_id'), '') IS NULL THEN
     RAISE EXCEPTION 'verified upload did not enqueue ingestion';
   END IF;
 
   SELECT upload_completed_at
     INTO v_completed_at
   FROM public.saga_sources
-  WHERE id = :'txt_source_id';
+  WHERE id = v_source_id;
 
   IF v_completed_at IS NULL THEN
     RAISE EXCEPTION 'verified upload did not retain completion time';
@@ -241,13 +255,21 @@ $$;
 SELECT *
 FROM public.saga_claim_analysis_job('phase2b-worker', 300) \gset claim_
 
+SELECT set_config('saga.test.claim_job_id', :'claim_job_id', false);
+SELECT set_config('saga.test.claim_job_kind', :'claim_job_kind', false);
+SELECT set_config('saga.test.claim_lease_token', :'claim_lease_token', false);
+
 DO $$
+DECLARE
+  v_job_id uuid := current_setting('saga.test.claim_job_id')::uuid;
+  v_lease_token uuid := current_setting('saga.test.claim_lease_token')::uuid;
 BEGIN
-  IF :'claim_job_id' <> :'final_job_id' OR :'claim_job_kind' <> 'source_ingestion' THEN
+  IF current_setting('saga.test.claim_job_id') <> current_setting('saga.test.final_job_id')
+     OR current_setting('saga.test.claim_job_kind') <> 'source_ingestion' THEN
     RAISE EXCEPTION 'worker did not claim the verified source-ingestion job';
   END IF;
 
-  IF NOT public.saga_service_mark_source_processing(:'claim_job_id', :'claim_lease_token') THEN
+  IF NOT public.saga_service_mark_source_processing(v_job_id, v_lease_token) THEN
     RAISE EXCEPTION 'valid ingestion lease did not mark source processing';
   END IF;
 END;
@@ -284,28 +306,34 @@ SELECT public.saga_service_commit_ingestion_success(
   )
 ) AS run_id \gset run_
 
+SELECT set_config('saga.test.run_id', :'run_run_id', false);
+
 DO $$
 DECLARE
   v_source_status text;
   v_job_status text;
   v_structure_count integer;
   v_section_count integer;
+  v_source_id uuid := current_setting('saga.test.txt_source_id')::uuid;
+  v_job_id uuid := current_setting('saga.test.final_job_id')::uuid;
+  v_run_id uuid := current_setting('saga.test.run_id')::uuid;
+  v_lease_token uuid := current_setting('saga.test.claim_lease_token')::uuid;
 BEGIN
   SELECT ingestion_status INTO v_source_status
   FROM public.saga_sources
-  WHERE id = :'txt_source_id';
+  WHERE id = v_source_id;
 
   SELECT status INTO v_job_status
   FROM public.saga_analysis_jobs
-  WHERE id = :'final_job_id';
+  WHERE id = v_job_id;
 
   SELECT count(*) INTO v_structure_count
   FROM public.saga_normalized_sources
-  WHERE run_id = :'run_run_id';
+  WHERE run_id = v_run_id;
 
   SELECT count(*) INTO v_section_count
   FROM public.saga_normalized_sections
-  WHERE run_id = :'run_run_id';
+  WHERE run_id = v_run_id;
 
   IF v_source_status <> 'ready' OR v_job_status <> 'succeeded' THEN
     RAISE EXCEPTION 'successful ingestion did not settle source/job state';
@@ -315,7 +343,7 @@ BEGIN
     RAISE EXCEPTION 'normalized structure was not persisted atomically';
   END IF;
 
-  IF public.saga_service_mark_source_processing(:'claim_job_id', :'claim_lease_token') THEN
+  IF public.saga_service_mark_source_processing(v_job_id, v_lease_token) THEN
     RAISE EXCEPTION 'stale completed lease remained usable';
   END IF;
 END;
@@ -328,10 +356,11 @@ SELECT set_config('request.jwt.claim.sub', 'd1111111-1111-4111-8111-111111111111
 DO $$
 DECLARE
   v_count integer;
+  v_source_id uuid := current_setting('saga.test.txt_source_id')::uuid;
 BEGIN
   SELECT count(*) INTO v_count
   FROM public.saga_normalized_sources
-  WHERE source_id = :'txt_source_id';
+  WHERE source_id = v_source_id;
 
   IF v_count <> 1 THEN
     RAISE EXCEPTION 'owner cannot read normalized source result';
@@ -339,7 +368,7 @@ BEGIN
 
   SELECT count(*) INTO v_count
   FROM public.saga_normalized_sections
-  WHERE source_id = :'txt_source_id';
+  WHERE source_id = v_source_id;
 
   IF v_count <> 2 THEN
     RAISE EXCEPTION 'owner cannot read normalized sections';
