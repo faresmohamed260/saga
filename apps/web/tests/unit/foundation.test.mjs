@@ -41,9 +41,12 @@ test("storage SDK construction stays inside the storage infrastructure boundary"
   assert.match(sdkUsers[0], /\/src\/server\/storage\/b2\.ts$/);
 });
 
-test("health route reports v2 integration readiness without contacting providers", () => {
+test("health route reports v2 integration readiness and non-secret release identity without contacting providers", () => {
   const healthRoute = read("src/app/api/health/route.ts");
   assert.match(healthRoute, /architecture: "v2"/);
+  assert.match(healthRoute, /VERCEL_GIT_COMMIT_SHA/);
+  assert.match(healthRoute, /VERCEL_ENV/);
+  assert.doesNotMatch(healthRoute, /SUPABASE_SECRET_KEY/);
   assert.doesNotMatch(healthRoute, /createObjectStorage\(/);
   assert.doesNotMatch(healthRoute, /createSupabaseServerClient\(/);
 });
