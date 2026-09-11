@@ -52,6 +52,7 @@ Phase baselines:
 - `../apps/web/supabase/migrations/` — **active v2 Supabase migration lineage**
 - `../apps/web/supabase/tests/` — disposable-Postgres account/access/Admin database contracts
 - `../config/v2-storage.json` — validated safe Backblaze B2 metadata
+- `operations/VERCEL_DEPLOYMENT_POLICY.md` — owner-authorized manual-only Vercel deployment policy; Git-triggered Preview/Production deployments are disabled
 - `../.github/workflows/v2-web-ci.yml` — v2 web deterministic CI and database contracts
 - `../.github/workflows/v2-visual-review.yml` — production Next.js/Chromium rendered Narrative Desk/Admin validation
 - `../.github/workflows/v2-b2-bootstrap.yml` — manual-only Backblaze bootstrap/storage smoke workflow
