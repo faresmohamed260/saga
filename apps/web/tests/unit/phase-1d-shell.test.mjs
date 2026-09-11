@@ -22,7 +22,7 @@ test("Phase 1D private layout keeps access enforcement and renders the Narrative
   assert.match(layout, /case "unavailable"/);
 });
 
-test("Narrative Desk navigation exposes real Phase 1D destinations with accessible current state", () => {
+test("Narrative Desk navigation exposes real destinations with accessible current state", () => {
   const navigation = read("src/components/shell/app-navigation.tsx");
 
   assert.match(navigation, /href: "\/home"/);
@@ -32,6 +32,8 @@ test("Narrative Desk navigation exposes real Phase 1D destinations with accessib
   assert.match(navigation, /aria-current=\{current \? "page" : undefined\}/);
   assert.match(navigation, /<Dialog\.Title/);
   assert.match(navigation, /<Dialog\.Description/);
+  assert.match(navigation, /saga-portal-theme/);
+  assert.match(navigation, /saga-nav-sheet/);
   assert.match(navigation, /signOutAction/);
 });
 
@@ -40,24 +42,28 @@ test("Home, Library, and Projects remain honest about unavailable domain data", 
   const library = read("src/app/(app)/library/page.tsx");
   const projects = read("src/app/(app)/projects/page.tsx");
 
-  assert.match(home, /Phase 1D establishes the product frame without inventing story data/);
+  assert.match(home, /Source ingestion and project creation are not enabled yet/);
   assert.match(library, /No sources yet/);
-  assert.match(library, /Source ingestion is not part of Phase 1D/);
+  assert.match(library, /Source ingestion is not enabled yet/);
   assert.match(projects, /No projects yet/);
-  assert.match(projects, /Project persistence and creation have not shipped yet/);
+  assert.match(projects, /Project creation is not enabled yet/);
 
   const combined = `${home}\n${library}\n${projects}`;
   assert.doesNotMatch(combined, /\b\d+\s+(sources|projects|characters|jobs)\b/i);
   assert.doesNotMatch(combined, /model status|provider status|storage usage/i);
+  assert.doesNotMatch(combined, /Phase 1D|Phase 1E/);
 });
 
-test("private-workspace styling defines dedicated Narrative Desk tokens and reduced-motion behavior", () => {
+test("private-workspace styling themes portaled UI and defines reduced-motion behavior", () => {
   const css = read("src/app/globals.css");
 
-  assert.match(css, /\.saga-app\s*\{/);
+  assert.match(css, /\.saga-app,\s*\n\.saga-portal-theme\s*\{/);
   assert.match(css, /--app-canvas:\s*#0b0c0e/);
   assert.match(css, /--app-rail:\s*#101215/);
   assert.match(css, /--app-accent:/);
   assert.match(css, /--font-narrative:/);
+  assert.match(css, /\.saga-nav-sheet\[data-state="open"\]/);
+  assert.match(css, /\.saga-nav-overlay\[data-state="open"\]/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.saga-portal-theme \*/);
 });
