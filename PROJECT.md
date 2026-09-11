@@ -60,6 +60,11 @@ Phase 1E deterministic Admin operations:
 - merge commit `39dceaf1254ed7616ed1bd9eb640d9d622a73812`
 - exact-head `SAGA v2 Web CI`, `Required Check Compatibility`, `Backend Architecture CI`, and `SAGA v2 Visual Review` all succeeded before merge
 
+Phase 1E deterministic handoff:
+
+- PR **#163**
+- merge commit `c274f1d26914edf62e30cfd2ef23222df6a8503f`
+
 Phase 0 issue **#148** is closed. Phase 1 is tracked by **#151**.
 
 Durable validation evidence:
@@ -68,6 +73,7 @@ Durable validation evidence:
 - Phase 1C: `docs/validation/PHASE_V2_1C_AUTH_ACCESS_2026-09-11.md`
 - Phase 1D: `docs/validation/PHASE_V2_1D_NARRATIVE_DESK_2026-09-11.md`
 - Phase 1E Admin: `docs/validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
+- Phase 1E hosted Supabase foundation: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
 
 ## Active Phase
 
@@ -75,7 +81,7 @@ Durable validation evidence:
 
 Contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
 
-Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC REPOSITORY SLICE COMPLETE; HOSTED OPERATIONAL GATE PENDING**
+Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC ADMIN COMPLETE; DEDICATED HOSTED SUPABASE + ACTIVE V2 SCHEMA COMPLETE; AUTH/EMAIL/LIVE INVITATION PROOF PENDING**
 
 ### Phase 1A — complete
 
@@ -179,23 +185,54 @@ Exact PR #162 validation:
 
 Rendered evidence artifact **10268954015**, digest `faaa0bf2bcaef691e24a33df8488c79c00cdaa6bf6b1ff91b418deb4c3f9df50`.
 
-### Phase 1E hosted operational gate — pending
+### Phase 1E hosted Supabase foundation — complete
 
-Repository CI does **not** prove real hosted invitation delivery or acceptance.
+The owner explicitly authorized a new dedicated hosted Supabase project in the existing **Fares Home Lab** organization after Supabase reported the project cost as **$0/month**.
 
-Before Phase 1 can close, the hosted gate still requires:
+Created hosted project:
 
-- a dedicated S.A.G.A.-owned Supabase project;
-- applying the active v2 schema there;
-- S.A.G.A. Site URL and redirect allowlist configuration;
+- name: `S.A.G.A.`
+- project ref/id: `scmeqnpmhomzcwecjdtu`
+- organization id: `imbicfntoeaqubhdcnpe`
+- region: `eu-central-1` (Frankfurt)
+- API URL: `https://scmeqnpmhomzcwecjdtu.supabase.co`
+- project status after creation: `ACTIVE_HEALTHY`
+
+The existing `AI Studio` Supabase project was **not reused or modified**.
+
+Hosted database work completed:
+
+- project began with no application migrations;
+- exact active repository migration lineage was read from `apps/web/supabase/migrations/` and applied in order;
+- `closed_demo_account_access` — success;
+- `admin_operations` — success;
+- `admin_operation_hardening` — success;
+- hosted migration history was re-read and confirmed in that order;
+- Supabase security advisors reported only expected informational `rls_enabled_no_policy` notices on the two deliberately server-only privileged tables;
+- performance advisors reported only informational FK-index suggestions and an unused-index notice on the new empty project.
+
+No publishable or privileged API key value is stored in repository documentation. The connected Supabase integration exposes a modern publishable key, but does not expose a service-role secret or hosted Auth configuration mutation surface.
+
+Detailed evidence: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`.
+
+### Phase 1E hosted Auth/email/end-to-end gate — pending
+
+Repository CI and hosted schema application do **not** prove real hosted invitation delivery or acceptance.
+
+Before Phase 1 can close, the remaining gate still requires:
+
+- S.A.G.A. Auth Site URL and redirect allowlist configuration;
 - supported invite/recovery templates;
 - production-capable custom SMTP or equivalent Auth email hook;
 - authenticated sender domain and acceptable rate limits;
-- at least one real invitation delivered to an inbox and accepted through confirmation -> claim -> password setup -> later sign-in;
+- deployed application configuration pointed at the dedicated S.A.G.A. Supabase project, including privileged server credentials through a secret boundary;
+- explicit bootstrap of the first trusted S.A.G.A. admin through operator tooling;
+- at least one real invitation delivered to an inbox and accepted through confirmation -> claim -> password setup -> private app;
+- later sign-in proof;
 - hosted suspension/revocation behavior verification;
 - scoped non-master B2 runtime credentials only when product object-storage flow actually needs them.
 
-**External-resource rule:** creating/configuring the S.A.G.A. Supabase project requires explicit organization selection and cost confirmation. Generic “continue/keep going” instructions do not authorize that resource creation.
+Do not claim Phase 1 complete until those hosted behaviors are proven.
 
 ## Closed-Demo Product Constraint
 
@@ -208,7 +245,7 @@ S.A.G.A. v2 is a **closed demo**.
 - Private routes require a fresh verified identity plus active S.A.G.A. access.
 - Admin operations are server-only and fresh-active-admin authorized.
 - Service-role/Auth Admin credentials never enter browser code.
-- Email is not end-to-end validated until the hosted operational gate passes.
+- Email is not end-to-end validated until the hosted Auth/email gate passes.
 
 Detailed contract: `docs/v2/ACCESS_AND_INVITATIONS.md`.
 
@@ -266,7 +303,7 @@ Verified invited user
   -> Next.js application on Vercel
        -> server-verified Supabase Auth identity
        -> S.A.G.A. account/access resolver
-       -> Supabase Postgres / Realtime
+       -> dedicated S.A.G.A. Supabase Postgres / Realtime
        -> ObjectStorage -> Backblaze B2
        -> application API / durable job-control layer
             -> future agentic AI runtime
@@ -295,28 +332,29 @@ Routes/schema are defined only where the active phase needs them.
 
 ## External Setup Dependencies
 
-These are now the main remaining blockers to **Phase 1 end-to-end completion**, not to repository correctness:
+The dedicated hosted S.A.G.A. Supabase project and active v2 schema are now complete. Remaining blockers to **Phase 1 end-to-end completion** are:
 
-1. dedicated S.A.G.A.-owned Supabase project — explicit org selection and cost confirmation required;
-2. hosted Auth redirect/template configuration;
-3. production-capable SMTP/email hook and sender-domain setup;
-4. real invitation acceptance proof;
-5. scoped B2 runtime credentials when source/object upload becomes active;
-6. deployment ownership decision for the stale historical Vercel project that still targets retired `apps/studio`.
+1. hosted Auth Site URL/redirect/template configuration;
+2. production-capable SMTP/email hook and sender-domain setup;
+3. runtime/deployment secret wiring for the dedicated project;
+4. first trusted admin bootstrap;
+5. real invitation acceptance and later sign-in proof;
+6. hosted suspension/revocation proof;
+7. scoped B2 runtime credentials when source/object upload becomes active;
+8. deployment ownership decision for the stale historical Vercel project that still targets retired `apps/studio`.
 
 Do not reuse the RenderLab/Studio Supabase project or shared R2 state for S.A.G.A.
 
 ## Immediate Work
 
 1. verify exact current `main` and this handoff;
-2. obtain explicit authorization for the hosted S.A.G.A. Supabase organization/project/cost choice before creating or repurposing external resources;
-3. apply the active v2 schema to that dedicated project;
-4. configure Site URL, redirects, invite/recovery templates, and production-capable email delivery;
-5. bootstrap the first owner/admin through trusted operator tooling if the hosted project has no S.A.G.A. admin yet;
-6. prove one real bounded invitation acceptance and later sign-in end-to-end;
-7. verify hosted suspension/revocation behavior;
-8. update Phase 1 validation/handoff and close Phase 1 only after those claims are real;
-9. only then plan the next agentic/application-intelligence phase.
+2. configure the dedicated S.A.G.A. project Auth Site URL, redirect allowlist, invite/recovery templates, and production-capable email delivery through supported tooling;
+3. establish deployment/runtime secrets for the dedicated project without exposing service-role credentials;
+4. bootstrap the first owner/admin through an explicit trusted operator path;
+5. prove one real bounded invitation acceptance and later sign-in end-to-end;
+6. verify hosted suspension/revocation behavior;
+7. update Phase 1 validation/handoff and close Phase 1 only after those claims are real;
+8. only then plan the next agentic/application-intelligence phase.
 
 **Agent/LLM pipeline implementation remains out of scope while Phase 1 hosted exit criteria are unmet.**
 
@@ -333,6 +371,8 @@ npm run build
 ```
 
 The v2 Web CI also applies active `apps/web/supabase/migrations/*.sql` to disposable PostgreSQL and runs database contracts, including Phase 1E Admin hardening semantics. The visual workflow builds production Next.js and captures exact-head desktop/narrow evidence using runner-only fixtures.
+
+Hosted Supabase validation is recorded separately from CI because successful repository tests do not prove hosted provider configuration or email delivery.
 
 Green v1 Python CI or stale historical Vercel previews are not evidence that v2 works.
 
