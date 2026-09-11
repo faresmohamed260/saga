@@ -323,7 +323,7 @@ jobs:
               () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
             );
             assert(!projectsOverflow, "Narrow Projects has horizontal overflow");
-            const projectControlsAreTouchSized = await page.locator("main input, main textarea, main button").evaluateAll(
+            const projectControlsAreTouchSized = await page.locator("main input:not([type=hidden]), main textarea, main button").evaluateAll(
               (elements) => elements.every((element) => element.getBoundingClientRect().height >= 43.5),
             );
             assert(projectControlsAreTouchSized, "Project creation controls must preserve approximately 44px touch targets");
