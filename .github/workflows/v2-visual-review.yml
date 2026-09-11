@@ -19,8 +19,10 @@ jobs:
         working-directory: apps/web
 
     steps:
-      - name: Checkout
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -91,21 +93,25 @@ jobs:
             if (!condition) throw new Error(message);
           }
 
+          async function visibleDesktopCurrent(page) {
+            return (await page.locator('aside [aria-current="page"]').textContent())?.trim();
+          }
+
           (async () => {
             const browser = await chromium.launch({ headless: true });
             const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 
             await page.goto(`${origin}/home`, { waitUntil: "networkidle" });
-            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must be the active desktop route");
+            assert(await visibleDesktopCurrent(page) === "Home", "Home must be the active desktop route");
             assert(await page.locator("aside").isVisible(), "Desktop navigation rail must be visible");
             await page.screenshot({ path: "visual-review/home-desktop-1440x960.png", fullPage: true });
 
             await page.goto(`${origin}/library`, { waitUntil: "networkidle" });
-            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Library", "Library must be the active desktop route");
+            assert(await visibleDesktopCurrent(page) === "Library", "Library must be the active desktop route");
             await page.screenshot({ path: "visual-review/library-desktop-1440x960.png", fullPage: true });
 
             await page.goto(`${origin}/projects`, { waitUntil: "networkidle" });
-            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Projects", "Projects must be the active desktop route");
+            assert(await visibleDesktopCurrent(page) === "Projects", "Projects must be the active desktop route");
             await page.screenshot({ path: "visual-review/projects-desktop-1440x960.png", fullPage: true });
 
             await page.setViewportSize({ width: 390, height: 844 });
@@ -122,18 +128,21 @@ jobs:
 
             const menuTrigger = page.getByRole("button", { name: "Open navigation" });
             await menuTrigger.click();
-            assert(await page.getByRole("dialog").isVisible(), "Narrow navigation dialog must open");
-            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must remain current inside narrow navigation");
+            const dialog = page.getByRole("dialog");
+            assert(await dialog.isVisible(), "Narrow navigation dialog must open");
+            assert((await dialog.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must remain current inside narrow navigation");
             await page.screenshot({ path: "visual-review/navigation-narrow-390x844.png", fullPage: true });
 
             await page.keyboard.press("Escape");
-            assert(!(await page.getByRole("dialog").isVisible()), "Escape must close narrow navigation");
+            assert(!(await dialog.isVisible()), "Escape must close narrow navigation");
             assert(await menuTrigger.evaluate((element) => document.activeElement === element), "Closing navigation must restore focus to its trigger");
 
             await page.emulateMedia({ reducedMotion: "reduce" });
-            const transitionDuration = await page.getByRole("link", { name: "Library" }).first().evaluate(
+            const transitionDuration = await page.locator('header a[href="/library"]').first().evaluate(
               (element) => Number.parseFloat(getComputedStyle(element).transitionDuration) || 0,
-            );
+            ).catch(async () => page.locator('a[href="/library"]').first().evaluate(
+              (element) => Number.parseFloat(getComputedStyle(element).transitionDuration) || 0,
+            ));
             assert(transitionDuration <= 0.001, "Reduced-motion mode must neutralize navigation transitions");
 
             await browser.close();
