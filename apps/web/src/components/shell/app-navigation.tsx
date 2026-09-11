@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, FolderKanban, Home, LogOut, Menu, Settings, X } from "lucide-react";
+import { BookOpen, FolderKanban, Home, LogOut, Menu, Settings, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { signOutAction } from "@/features/auth/actions";
 
 type AppNavigationProps = Readonly<{
   email: string;
+  isAdmin: boolean;
 }>;
 
 type NavigationItem = Readonly<{
@@ -24,9 +25,12 @@ const primaryItems: readonly NavigationItem[] = [
   { href: "/projects", label: "Projects", icon: FolderKanban },
 ];
 
-const secondaryItems: readonly NavigationItem[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+const settingsItem: NavigationItem = { href: "/settings", label: "Settings", icon: Settings };
+const adminItem: NavigationItem = { href: "/admin", label: "Admin", icon: ShieldCheck };
+
+function accountItems(isAdmin: boolean): readonly NavigationItem[] {
+  return isAdmin ? [adminItem, settingsItem] : [settingsItem];
+}
 
 function isCurrentRoute(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -52,10 +56,7 @@ function NavigationLink({ item, pathname, onNavigate }: Readonly<{
       }`}
     >
       {current ? (
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-[var(--app-accent)]"
-        />
+        <span aria-hidden="true" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-[var(--app-accent)]" />
       ) : null}
       <Icon aria-hidden="true" className="size-[18px] shrink-0" strokeWidth={1.8} />
       <span>{item.label}</span>
@@ -78,35 +79,27 @@ function ProductMark() {
   );
 }
 
-export function DesktopNavigation({ email }: AppNavigationProps) {
+export function DesktopNavigation({ email, isAdmin }: AppNavigationProps) {
   const pathname = usePathname();
+  const secondaryItems = accountItems(isAdmin);
 
   return (
     <aside className="fixed inset-y-0 left-0 hidden w-56 border-r border-[var(--app-separator)] bg-[var(--app-rail)] px-3 py-5 md:flex md:flex-col lg:w-[14.5rem]">
-      <div className="px-2 pb-7">
-        <ProductMark />
-      </div>
+      <div className="px-2 pb-7"><ProductMark /></div>
 
       <nav aria-label="Primary" className="flex flex-col gap-1">
-        {primaryItems.map((item) => (
-          <NavigationLink key={item.href} item={item} pathname={pathname} />
-        ))}
+        {primaryItems.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} />)}
       </nav>
 
       <div className="mt-auto flex flex-col gap-4">
         <nav aria-label="Account" className="flex flex-col gap-1 border-t border-[var(--app-separator)] pt-4">
-          {secondaryItems.map((item) => (
-            <NavigationLink key={item.href} item={item} pathname={pathname} />
-          ))}
+          {secondaryItems.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} />)}
         </nav>
 
         <div className="border-t border-[var(--app-separator)] px-2 pt-4">
           <p className="truncate text-xs font-medium text-[var(--app-text)]" title={email}>{email}</p>
           <form action={signOutAction} className="mt-2">
-            <button
-              type="submit"
-              className="-ml-2 inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-xs font-medium text-[var(--app-muted)] transition-colors hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]"
-            >
+            <button type="submit" className="-ml-2 inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-xs font-medium text-[var(--app-muted)] transition-colors hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
               <LogOut aria-hidden="true" className="size-4" strokeWidth={1.8} />
               Sign out
             </button>
@@ -117,25 +110,20 @@ export function DesktopNavigation({ email }: AppNavigationProps) {
   );
 }
 
-export function MobileNavigation({ email }: AppNavigationProps) {
+export function MobileNavigation({ email, isAdmin }: AppNavigationProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const secondaryItems = accountItems(isAdmin);
   const currentItem = [...primaryItems, ...secondaryItems].find((item) => isCurrentRoute(pathname, item.href));
 
   return (
     <div className="md:hidden">
       <header className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--app-separator)] bg-[var(--app-rail)] px-4">
         <ProductMark />
-        <span className="max-w-[35vw] truncate text-xs font-medium text-[var(--app-muted)]">
-          {currentItem?.label ?? "Workspace"}
-        </span>
+        <span className="max-w-[35vw] truncate text-xs font-medium text-[var(--app-muted)]">{currentItem?.label ?? "Workspace"}</span>
         <Dialog.Root open={open} onOpenChange={setOpen}>
           <Dialog.Trigger asChild>
-            <button
-              type="button"
-              aria-label="Open navigation"
-              className="flex size-11 items-center justify-center rounded-lg text-[var(--app-text)] transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]"
-            >
+            <button type="button" aria-label="Open navigation" className="flex size-11 items-center justify-center rounded-lg text-[var(--app-text)] transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
               <Menu aria-hidden="true" className="size-5" strokeWidth={1.8} />
             </button>
           </Dialog.Trigger>
@@ -144,18 +132,10 @@ export function MobileNavigation({ email }: AppNavigationProps) {
             <Dialog.Overlay className="saga-nav-overlay fixed inset-0 z-40 bg-black/60" />
             <Dialog.Content className="saga-portal-theme saga-nav-sheet fixed inset-y-0 left-0 z-50 flex w-[min(86vw,22rem)] flex-col border-r border-[var(--app-separator)] bg-[var(--app-rail)] p-4 shadow-2xl focus:outline-none">
               <div className="flex min-h-11 items-center justify-between px-1">
-                <Dialog.Title className="text-sm font-semibold tracking-[0.16em] text-[var(--app-text)]">
-                  S.A.G.A.
-                </Dialog.Title>
-                <Dialog.Description className="sr-only">
-                  Navigate the S.A.G.A. workspace.
-                </Dialog.Description>
+                <Dialog.Title className="text-sm font-semibold tracking-[0.16em] text-[var(--app-text)]">S.A.G.A.</Dialog.Title>
+                <Dialog.Description className="sr-only">Navigate the S.A.G.A. workspace.</Dialog.Description>
                 <Dialog.Close asChild>
-                  <button
-                    type="button"
-                    aria-label="Close navigation"
-                    className="flex size-11 items-center justify-center rounded-lg text-[var(--app-muted)] hover:bg-white/[0.05] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]"
-                  >
+                  <button type="button" aria-label="Close navigation" className="flex size-11 items-center justify-center rounded-lg text-[var(--app-muted)] hover:bg-white/[0.05] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
                     <X aria-hidden="true" className="size-5" strokeWidth={1.8} />
                   </button>
                 </Dialog.Close>
@@ -163,33 +143,20 @@ export function MobileNavigation({ email }: AppNavigationProps) {
 
               <nav aria-label="Primary" className="mt-6 flex flex-col gap-1">
                 {primaryItems.map((item) => (
-                  <NavigationLink
-                    key={item.href}
-                    item={item}
-                    pathname={pathname}
-                    onNavigate={() => setOpen(false)}
-                  />
+                  <NavigationLink key={item.href} item={item} pathname={pathname} onNavigate={() => setOpen(false)} />
                 ))}
               </nav>
 
               <div className="mt-auto flex flex-col gap-4">
                 <nav aria-label="Account" className="flex flex-col gap-1 border-t border-[var(--app-separator)] pt-4">
                   {secondaryItems.map((item) => (
-                    <NavigationLink
-                      key={item.href}
-                      item={item}
-                      pathname={pathname}
-                      onNavigate={() => setOpen(false)}
-                    />
+                    <NavigationLink key={item.href} item={item} pathname={pathname} onNavigate={() => setOpen(false)} />
                   ))}
                 </nav>
                 <div className="border-t border-[var(--app-separator)] px-2 pt-4">
                   <p className="truncate text-xs font-medium text-[var(--app-text)]" title={email}>{email}</p>
                   <form action={signOutAction} className="mt-2">
-                    <button
-                      type="submit"
-                      className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-medium text-[var(--app-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]"
-                    >
+                    <button type="submit" className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-medium text-[var(--app-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
                       <LogOut aria-hidden="true" className="size-4" strokeWidth={1.8} />
                       Sign out
                     </button>
