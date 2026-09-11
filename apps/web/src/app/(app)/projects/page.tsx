@@ -21,7 +21,7 @@ export default function ProjectsPage() {
         <EmptyState
           icon={FolderKanban}
           title="No projects yet"
-          description="Project persistence and creation have not shipped yet. This list will stay empty rather than presenting fabricated stories or progress state."
+          description="Project creation is not enabled yet. This workspace stays empty until S.A.G.A. has real projects to display."
         />
       </div>
     </div>
