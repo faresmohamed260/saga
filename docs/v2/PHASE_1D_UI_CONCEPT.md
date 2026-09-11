@@ -1,6 +1,6 @@
 # S.A.G.A. v2 Phase 1D UI Concept — Narrative Desk
 
-**Status:** PROPOSED — owner approval required before production shell implementation
+**Status:** APPROVED — owner approved on 2026-09-11 for Phase 1D production implementation
 
 **Phase:** V2.1D
 
@@ -303,6 +303,6 @@ Before the implementation PR can be considered visually ready:
 
 ## Approval Gate
 
-This document is the proposed Phase-1D design specification.
+This document is the approved Phase-1D design specification.
 
-Production shell/Home/Library/Projects implementation must not begin until the owner explicitly approves this concept (or requests revisions). After approval, update this status to **APPROVED** and treat the concept as the implementation/fidelity target.
+Owner approval was given on 2026-09-11. Production shell/Home/Library/Projects implementation may proceed from this specification. Any material change to the shell/navigation/composition direction should be recorded here before implementation diverges from the approved fidelity target.
