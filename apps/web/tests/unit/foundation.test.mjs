@@ -48,6 +48,11 @@ test("health route reports v2 integration readiness without contacting providers
   assert.doesNotMatch(healthRoute, /createSupabaseServerClient\(/);
 });
 
+test("Vercel Git-triggered deployments stay disabled", () => {
+  const vercelConfig = JSON.parse(read("vercel.json"));
+  assert.equal(vercelConfig.git?.deploymentEnabled, false);
+});
+
 test("web package exposes the deterministic v2 quality gate", () => {
   const pkg = JSON.parse(read("package.json"));
   for (const script of ["lint", "typecheck", "test:unit", "build"]) {
