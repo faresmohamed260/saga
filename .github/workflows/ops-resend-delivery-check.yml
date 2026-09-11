@@ -1,0 +1,76 @@
+name: Check S.A.G.A. invite delivery in Resend
+
+on:
+  push:
+    branches:
+      - "ops/first-owner-bootstrap-2026-09-11"
+    paths:
+      - ".github/workflows/ops-resend-delivery-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      OWNER_EMAIL: faresmohamed260@gmail.com
+      EXPECTED_SUBJECT: You're invited to S.A.G.A.
+
+    steps:
+      - name: Verify Resend management token is available
+        env:
+          RESEND_API_KEY: ${{ secrets.SAGA_RESEND_MANAGEMENT_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${RESEND_API_KEY:-}" ]] || { echo "::error title=Missing Resend token::SAGA_RESEND_MANAGEMENT_TOKEN is unavailable."; exit 1; }
+          echo "::add-mask::${RESEND_API_KEY}"
+
+      - name: Inspect recent Resend delivery state
+        env:
+          RESEND_API_KEY: ${{ secrets.SAGA_RESEND_MANAGEMENT_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${RESEND_API_KEY}" \
+            "https://api.resend.com/emails?limit=100" > emails.json
+
+          match="$(jq -c --arg email "${OWNER_EMAIL}" --arg subject "${EXPECTED_SUBJECT}" '
+            [.data[]? | select((.to // []) | index($email)) | select(.subject == $subject)] | sort_by(.created_at) | last // empty
+          ' emails.json)"
+
+          if [[ -z "${match}" ]]; then
+            echo "::error title=Invite not found in Resend::No recent matching S.A.G.A. invite was found for the owner email."
+            exit 1
+          fi
+
+          event="$(jq -r '.last_event // "unknown"' <<<"${match}")"
+          created_at="$(jq -r '.created_at // "unknown"' <<<"${match}")"
+          email_id="$(jq -r '.id // "unknown"' <<<"${match}")"
+          message_id="$(jq -r '.message_id // "unknown"' <<<"${match}")"
+
+          jq -n \
+            --arg created_at "${created_at}" \
+            --arg event "${event}" \
+            --arg email_id "${email_id}" \
+            --arg message_id "${message_id}" \
+            '{created_at:$created_at,last_event:$event,email_id:$email_id,message_id:$message_id}'
+
+          case "${event}" in
+            delivered|opened|clicked)
+              echo "Resend confirms the first-owner invitation reached the recipient mail server."
+              ;;
+            sent|queued)
+              echo "Resend accepted the invitation and delivery is still in progress."
+              ;;
+            bounced|complained|suppressed|failed)
+              echo "::error title=Resend delivery failed::Resend reports ${event} for the first-owner invitation."
+              exit 1
+              ;;
+            *)
+              echo "Resend currently reports delivery event: ${event}."
+              ;;
+          esac
