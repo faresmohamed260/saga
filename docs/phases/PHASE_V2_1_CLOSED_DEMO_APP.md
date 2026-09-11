@@ -21,121 +21,115 @@ An invited demo user should be able to:
 5. reach the private S.A.G.A. workspace;
 6. browse the first application information architecture without seeing internal provider/pipeline complexity.
 
-An active S.A.G.A. admin should be able to:
+An active S.A.G.A. admin should be able to invite users, revoke pending invitations, inspect S.A.G.A.-owned account state, suspend/reactivate accounts, and manage roles without relying on browser metadata.
 
-- invite a person by email;
-- revoke a still-pending invitation;
-- inspect S.A.G.A.-owned account state;
-- suspend/reactivate an account;
-- promote/demote roles without relying on browser metadata.
+## Merged Evidence
 
-## Verified Current State
+Phase 0 web foundation:
 
-Merged Phase-0 baseline:
+- PR #149
+- merge commit `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
 
-- repository: `faresmohamed260/saga`
-- merge: `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
-- PR: #149
-- Phase-0 issue: #148 closed complete
+Phase 1 contract/governance:
 
-Merged Phase-1 contract baseline:
+- PR #152
+- merge commit `55beaccab011a4c5337db86dd88b52f6d48734c4`
 
-- merge: `55beaccab011a4c5337db86dd88b52f6d48734c4`
-- PR: #152
+Phase 1B account/access foundation:
 
-Merged Phase-1B account/access foundation:
-
-- current `main`: `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`
-- tree: `6a2814f97114e6d731235b933f3a75c8fa9fdc76`
-- PR: #153
-- exact PR head: `e81915942ba9e859c79898ec60fdda38a56235d3`
+- PR #153
+- code merge commit `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`
+- exact PR head `e81915942ba9e859c79898ec60fdda38a56235d3`
 - exact-head `SAGA v2 Web CI`, `Required Check Compatibility`, and `Backend Architecture CI` all succeeded before merge
 
-Durable Phase-1B evidence: `docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`.
+Durable validation record:
 
-Verified foundation now includes:
+`docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`
 
-- Next.js/React/TypeScript app under `apps/web/`;
-- Supabase SSR configuration boundary;
-- provider-neutral object storage + B2 S3 adapter;
-- dedicated private B2 bucket validated through GitHub Actions;
-- v2 web CI for install/lint/typecheck/tests/build;
-- active v2 Supabase migration lineage under `apps/web/supabase/migrations/`;
-- closed-demo account/invitation persistence and transactional claim logic;
-- fresh server Auth identity verification and S.A.G.A. account resolver;
-- active-admin authorization boundary;
-- disposable-Postgres database-contract CI;
-- v1 runtime classified historical/reference.
-
-External state still not complete:
-
-- there is no S.A.G.A.-owned hosted Supabase project configured yet;
-- creating one through the connected tool requires explicit organization selection/cost confirmation;
-- B2 master/bootstrap credentials exist, but no scoped runtime B2 application key is configured yet;
-- hosted invitation-email SMTP/template configuration is not yet verified.
+The documentation handoff refresh followed through PR #154.
 
 ## Owner Constraint — Closed Demo
 
 S.A.G.A. v2 is not open signup.
 
 - Public self-signup is disabled.
-- Account creation/admission begins with an admin invitation email.
-- Supabase Auth remains identity/session authority.
-- S.A.G.A. owns product access/role/status/invitation state.
-- A public brand/landing page may remain available.
+- Account admission begins with an admin invitation email.
+- Supabase Auth is identity/session authority.
+- S.A.G.A. owns product access, role, status, and invitation state.
+- Public landing/brand routes may exist.
 - Private product routes require a fresh verified identity plus active S.A.G.A. account access.
+- Invitation/account administration is server-only and admin-authorized.
+- Service-role/Auth Admin credentials never enter browser code.
 
 ## RenderLab Reference Boundary
 
 RenderLab is read-only reference material for process/setup/UI patterns only.
 
-Useful reference principles inspected for this phase include:
+Permitted reference categories include:
 
 - repository-first continuity;
-- execution-ready phase contracts merged before implementation;
-- Server Components by default and small client interaction islands;
-- maintained accessible primitive layer;
-- responsive/accessibility/reduced-motion requirements;
-- explicit account identity vs product access separation;
-- normalized-email invitation records above Supabase Auth;
-- fresh server-side Auth checks for privileged/private authorization;
-- admin-only account/invitation services;
-- clear distinction between application code and hosted email/SMTP operational readiness;
-- rendered UI validation separate from build success.
+- contract-first progressive phases;
+- Server Components by default with small client islands;
+- maintained accessible primitives and semantic tokens;
+- responsive/accessibility/reduced-motion discipline;
+- identity vs product-access separation;
+- closed-beta invitation/access patterns;
+- remote CI and rendered UI validation.
 
-Do not copy RenderLab code, table names, routes, branding, visual composition, data, credentials or resources. Do not modify its repository during S.A.G.A. work.
+Do not modify RenderLab. Do not copy its product code, routes, schema/table names, branding, visual composition, credentials, data, storage, deployments, or resources.
 
-S.A.G.A.'s own contracts are:
+S.A.G.A.-owned translations are authoritative:
 
 - `docs/v2/FRONTEND_ARCHITECTURE.md`
 - `docs/v2/UI_SYSTEM.md`
 - `docs/v2/ACCESS_AND_INVITATIONS.md`
 
-## Implemented Phase 1B Foundation
+## Phase 1B — Complete Foundation
 
-### Account / invitation persistence
+### Active v2 database lineage
 
-Phase 1B merged:
+The active v2 Supabase migration lineage is:
+
+`apps/web/supabase/migrations/`
+
+The historical root `supabase/migrations/` tree is not the v2 bootstrap source.
+
+### Account access
+
+Merged account state:
 
 - `saga_account_access` keyed by verified Supabase Auth user ID;
-- S.A.G.A.-owned account role (`member|admin` initially);
-- S.A.G.A.-owned account status (`active|suspended` initially);
-- `saga_invitations` with normalized email and `pending|accepted|revoked|expired` lifecycle;
-- inviter/claim/audit timestamps required for deterministic authorization/operations;
-- no reusable raw Auth invitation tokens/secrets in application tables;
-- forced RLS and revoked browser-role table access;
-- service-role-only privileged access.
+- role: `member | admin`;
+- status: `active | suspended`;
+- inviter/acceptance/audit metadata required by the closed-demo contract.
 
-The active v2 migration lineage is `apps/web/supabase/migrations/`. The historical root `supabase/migrations/` tree is not the v2 database bootstrap source.
+### Invitations
 
-### Invitation claim
+Merged invitation state:
 
-The merged transactional claim routine:
+- `saga_invitations` keyed by normalized email intent;
+- intended role;
+- `pending | accepted | revoked | expired` lifecycle;
+- inviter/acceptance/revocation/expiry metadata;
+- no reusable raw Auth invite token, OTP, password, or equivalent credential material.
 
-- derives identity server-side;
-- reloads verified `auth.users.email` rather than trusting browser input;
-- locks the eligible invitation row;
-- settles stale invitations to expired;
+### Database security
+
+Merged protections:
+
+- forced RLS on privileged account/invitation tables;
+- browser-role table privileges revoked;
+- service-role-only privileged persistence access.
+
+### Transactional invitation claim
+
+The merged server-owned claim routine:
+
+- derives effective identity server-side;
+- reloads verified email from `auth.users`;
+- never trusts browser-supplied effective user ID/email/role;
+- serializes the eligible invitation row;
+- expires stale pending invitations;
 - rejects missing, mismatched, revoked, expired, or consumed state;
 - prevents double claim;
 - atomically establishes S.A.G.A. account access.
@@ -144,35 +138,33 @@ The merged transactional claim routine:
 
 Merged server boundaries include:
 
-- fresh `auth.getUser()` identity verification;
+- fresh `auth.getUser()` verification;
 - server-only privileged Supabase client using `SUPABASE_SERVICE_ROLE_KEY`;
 - account resolution for unauthenticated, not admitted, suspended, active, and unavailable states;
-- active-admin authorization helper;
-- invitation claim service that never accepts browser-supplied effective user ID/email/role.
+- active-admin authorization helper.
 
-### Phase 1B deterministic validation
+### Deterministic validation
 
-PR #153 exact-head checks:
+Exact PR #153 head checks:
 
 - `SAGA v2 Web CI` run `34593615395` — success;
 - `Required Check Compatibility` run `34593615380` — success;
 - `Backend Architecture CI` run `34593615394` — success.
 
-The v2 web CI database-contract job applies `apps/web/supabase/migrations/*.sql` to disposable PostgreSQL with a minimal Supabase-compatible Auth/API-role bootstrap and proves:
+The v2 database-contract CI:
 
-- migration application;
-- RLS/browser-role privilege denial;
-- successful verified-email invitation claim;
-- double-claim denial;
-- verified-email mismatch denial;
-- expiry settlement;
-- duplicate pending invitation rejection.
+1. starts PostgreSQL 16;
+2. creates a minimal Supabase-compatible Auth/API-role bootstrap;
+3. applies only `apps/web/supabase/migrations/*.sql`;
+4. runs `apps/web/supabase/tests/closed_demo_account_access.sql`.
 
-The external legacy Studio/Vercel failure is deferred and is not an active v2 validation signal.
+Proven behavior includes migration application, RLS/browser-role denial, successful verified-email invitation claim, double-claim denial, verified-email mismatch denial, expiry settlement, and duplicate pending invitation rejection.
+
+The old external Studio/Vercel failure remains deferred and is not an active v2 validation signal.
 
 ## Phase 1C — Immediate Scope
 
-Phase 1C is the next implementation slice. Start from current `main` on a fresh branch.
+Start from the repository's actual current `main` after verifying its exact SHA, then create a fresh Phase 1C branch.
 
 Implement:
 
@@ -181,66 +173,14 @@ Implement:
 - password setup/change flow for confirmed invited users;
 - sign-out;
 - SSR cookie refresh/session plumbing;
-- fresh current-user verification for private product/account/admin authorization;
-- protected layout/route boundary using the merged S.A.G.A. account resolver;
+- protected route/layout boundary using fresh identity + merged S.A.G.A. account resolver;
 - safe same-origin redirect validation;
 - deterministic auth/access tests;
-- clear bounded states for unauthenticated, not admitted, suspended, active, and unavailable access.
+- bounded states for unauthenticated, not admitted, suspended, active, and unavailable access.
 
 Do **not** add public create-account/signup behavior.
 
 Hosted email delivery is not required for deterministic Phase 1C CI. Keep hosted SMTP/template claims separate until a dedicated S.A.G.A. Supabase project is configured and tested.
-
-## Later Phase 1 Scope
-
-### Phase 1D — Main application shell / information architecture
-
-Implement the first real shell around S.A.G.A. user concepts after a S.A.G.A.-specific visual concept/review pass.
-
-Target product areas:
-
-- Home
-- Library
-- Projects
-- Characters
-- World
-- Timeline
-- Canon
-- Story
-- Media
-- Activity
-- Settings
-- Admin (authorized only)
-
-Phase 1D need not fully implement every domain surface. It must establish the shell, routing model, responsive navigation, page composition rules and initial Home/Library/Projects footholds without presenting fake analysis results.
-
-### Phase 1E — Admin invitation/account operations + hosted integration
-
-Implement private admin UI/API for:
-
-- pending invitations;
-- S.A.G.A.-known accounts only;
-- role/status mutation;
-- self-lockout/last-admin protection when applicable;
-- sanitized operational feedback.
-
-Then configure/verify the new S.A.G.A. Supabase project/email path and prove a real bounded invite acceptance flow. Scoped B2 runtime credentials may also be established when source upload becomes part of the first product workflow.
-
-Do not expose the whole shared `auth.users` directory as product data.
-
-## Explicitly Out of Scope
-
-- agentic AI/LLM orchestration;
-- identity/coreference/canon extraction runtime;
-- generation planning/narrative generation;
-- live visual/audio model execution;
-- a public signup/request-access product;
-- social login unless separately approved;
-- billing/subscriptions;
-- organization/team multi-tenancy;
-- copying/modifying RenderLab;
-- production deployment without separate owner authorization;
-- claiming email deliverability before hosted configuration is verified.
 
 ## Target Route Boundary
 
@@ -267,7 +207,7 @@ Initial direction; route groups may separate public/auth/app layouts without lea
 /admin                    active-admin only
 ```
 
-Routes beyond the active implementation slice are information-architecture direction, not a promise that every route ships in the same PR.
+Routes beyond the active implementation slice are information-architecture direction, not a promise that every route ships in one PR.
 
 ## Authorization Model
 
@@ -284,7 +224,7 @@ Rules:
 
 - anonymous -> sign-in boundary;
 - verified identity with no S.A.G.A. account -> access denied / invitation-completion state, not auto-admitted;
-- suspended account -> private product denied but bounded security/account recovery/sign-out may remain available;
+- suspended account -> private product denied, while bounded security/recovery/sign-out may remain available;
 - active member -> private product;
 - active admin -> private product + admin operations;
 - role is never read from browser/user metadata for authorization.
@@ -293,11 +233,11 @@ Rules:
 
 ```text
 active admin
-  -> POST invitation(email, role)
+  -> create invitation(email, role)
   -> normalize + validate email
   -> persist pending S.A.G.A. invitation
   -> request Supabase Auth invite email server-side
-  -> recipient opens supported token-hash/confirmation link
+  -> recipient opens supported confirmation link
   -> server verifies Auth invitation
   -> fresh verified identity/email
   -> transactional claim of matching eligible S.A.G.A. invitation
@@ -305,40 +245,75 @@ active admin
   -> credential setup / private app
 ```
 
-If outbound email fails, the product must surface a bounded invitation-delivery failure and preserve enough product state to retry/revoke safely without leaking token material.
+If outbound email fails, the product must surface a bounded delivery failure and preserve enough product state to retry/revoke safely without leaking token material.
+
+## Later Phase 1 Slices
+
+### 1D — Application shell / first product surfaces
+
+After a S.A.G.A.-specific concept/review pass, implement the responsive shell and initial Home/Library/Projects footholds.
+
+Target information architecture:
+
+- Home
+- Library
+- Projects
+- Characters
+- World
+- Timeline
+- Canon
+- Story
+- Media
+- Activity
+- Settings
+- Admin
+
+Do not present fake analysis results merely to fill UI.
+
+### 1E — Admin operations + hosted integration
+
+Implement narrow private admin APIs/UI for:
+
+- pending invitations;
+- S.A.G.A.-known accounts only;
+- role/status mutation;
+- self-lockout/last-admin protection where applicable;
+- sanitized operational feedback.
+
+Then configure/verify the dedicated S.A.G.A. Supabase project, email path, and at least one real bounded invite acceptance flow. Establish scoped B2 runtime credentials when source upload becomes part of the product flow.
+
+Do not expose the whole shared `auth.users` directory as product data.
 
 ## Email Operational Gate
 
-Before the invite flow can be called end-to-end validated in a hosted demo, verify:
+Before invitation delivery is called end-to-end validated, verify:
 
-- S.A.G.A. Supabase project Site URL;
-- allowlisted same-origin callback/redirect URLs;
-- invite and recovery email templates using supported confirmation/token-hash variables;
+- S.A.G.A. Supabase Site URL;
+- allowlisted same-origin redirects;
+- invite/recovery templates using supported confirmation variables;
 - custom SMTP or equivalent Auth email hook;
-- sender domain authentication;
+- sender-domain authentication;
 - acceptable rate limits;
 - actual inbox delivery for at least one bounded test invitation.
 
-Application CI is not required to send real external email.
+Application CI does not need to send real external email.
 
 ## UI/UX Contract
 
-Primary product principle: **Narrative first, complexity on demand.**
-
-The application should feel like a focused narrative intelligence workspace rather than a generic admin dashboard or an AI-provider console.
+Primary principle: **Narrative first, complexity on demand.**
 
 Core rules:
 
 - maintained accessible controls before custom mechanics;
 - story/source/evidence/entity/timeline content dominates chrome;
 - progressive disclosure for advanced controls;
-- no default card-grid solution for every page;
-- prefer rails, lists, split workspaces, canvases, editors, relationship/timeline views and focused detail panels where they fit the user task;
+- no generic card-grid solution for every page;
+- prefer rails, lists, split workspaces, canvases, editors, relationship/timeline views, and focused detail panels where they fit the task;
 - desktop productivity is primary, but mobile/narrow access remains coherent and touch-friendly;
-- WCAG-oriented keyboard/focus semantics;
+- keyboard/focus semantics are required;
 - no hover-only essential behavior;
 - meaningful motion only, with reduced-motion/static equivalents;
-- concept and rendered fidelity review are separate from functional CI.
+- concept/rendered fidelity review is separate from functional CI.
 
 See `docs/v2/UI_SYSTEM.md`.
 
@@ -350,51 +325,65 @@ Merged through PR #152.
 
 ### 1B — Account/invitation persistence + server authorization — COMPLETE
 
-Merged through PR #153 at `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`.
+Merged through PR #153.
 
 ### 1C — Auth/invite/password surfaces — NEXT
 
-Implement sign-in, confirmation, password setup, session/account boundaries and protected layout behavior.
+Implement sign-in, confirmation, password setup, session/account boundaries, and protected layout behavior.
 
 ### 1D — Application shell / first product surfaces — PENDING
 
-Implement approved responsive shell and first Home/Library/Projects composition using S.A.G.A.-owned visual concepts.
+Implement the approved responsive shell and first Home/Library/Projects composition using S.A.G.A.-owned visual concepts.
 
 ### 1E — Admin invitation/account operations + hosted integration — PENDING
 
-Implement admin UI/APIs, configure/verify the new S.A.G.A. Supabase project/email path and prove a real bounded invite acceptance flow. Scoped B2 runtime credentials may also be established when source upload becomes part of the first product workflow.
+Implement admin APIs/UI and complete the hosted Supabase/email proof.
 
-Later slices do not silently change earlier contracts without updating the authoritative docs.
+Later slices do not silently change earlier contracts without updating authoritative docs.
 
 ## Validation Matrix
 
 | Claim | Required evidence | Current state |
 |---|---|---|
-| Phase contract current | docs/PROJECT/DECISIONS exact-head review | current through Phase 1B |
+| Phase contract current | docs/PROJECT/DECISIONS review | current through Phase 1B |
 | No public signup | structural/API/UI tests + rendered auth review | structural contract validated; rendered auth pending 1C |
 | Private route denial | deterministic auth/access tests | pending 1C |
-| Suspended/unknown denial | deterministic server account resolver tests | server resolver implemented; route proof pending 1C |
-| Admin-only invitation mutation | fresh-auth + active-admin tests | server boundary implemented; UI/API pending 1E |
+| Suspended/unknown denial | deterministic account/route tests | server resolver exists; route proof pending 1C |
+| Admin-only invitation mutation | fresh-auth + active-admin tests | server boundary exists; UI/API pending 1E |
 | Invite claim matches verified email | transactional integration test | validated in disposable Postgres |
 | No raw invite token persistence | schema/structural test | validated |
-| No privileged secret in browser | bundle/source structural checks | structural boundary validated; continue every slice |
+| No privileged secret in browser | source/bundle structural checks | structural boundary validated; continue every slice |
 | UI shell responsive | desktop + narrow rendered evidence | pending 1D |
 | Auth/admin accessible | keyboard/focus/touch review | pending 1C/1E |
-| Reduced motion | implemented motion paths audited | pending visual slices |
-| Hosted invitation delivery | explicit live inbox test after SMTP/templates configured | pending 1E |
-| Merge safety | exact-head `SAGA v2 Web CI` + required repo checks | Phase 1B passed |
+| Reduced motion | motion-path audit | pending visual slices |
+| Hosted invitation delivery | explicit live inbox test | pending 1E |
+| Merge safety | exact-head v2 CI + relevant repo checks | Phase 1B passed |
 
 ## External Dependencies / Blockers
 
-Not blockers for Phase 1C deterministic implementation:
+Not blockers for deterministic Phase 1C repository work:
 
-- new S.A.G.A. Supabase project;
+- new S.A.G.A.-owned Supabase project;
 - custom SMTP/email hook;
 - scoped B2 runtime application key.
 
-They become blockers only for hosted end-to-end slices that require them.
+They become blockers only for hosted end-to-end slices that need them.
 
-Supabase project creation through the connected tool requires the owner to explicitly choose an organization and confirm the reported cost before mutation. Do not assume this authorization from generic “keep going.”
+Supabase project creation through the connected tool requires explicit organization selection and cost confirmation. Do not infer that authorization from a generic “keep going.”
+
+## Explicitly Out of Scope
+
+- agentic AI/LLM orchestration;
+- identity/coreference/canon extraction runtime;
+- generation planning/narrative generation;
+- live visual/audio model execution;
+- public signup/request-access product;
+- social login unless separately approved;
+- billing/subscriptions;
+- organization/team multi-tenancy;
+- copying/modifying RenderLab;
+- production deployment without separate owner authorization;
+- claiming email deliverability before hosted configuration is verified.
 
 ## Exit Criteria
 
@@ -402,16 +391,16 @@ Phase 1 closes only when:
 
 1. Phase-1 contracts are merged and authoritative;
 2. S.A.G.A.-owned account/invitation schema is applied to the new S.A.G.A. Supabase project;
-3. public self-signup is absent;
+3. public self-signup remains absent;
 4. invite confirmation + credential setup + later sign-in work end-to-end;
 5. private routes require fresh verified identity + active S.A.G.A. account;
 6. suspended/unknown identities fail closed;
 7. active admins can create/revoke invitations and manage bounded account role/status;
-8. at least one real invitation email is delivered and accepted through the hosted configuration;
+8. at least one real invitation email is delivered and accepted through hosted configuration;
 9. the private application shell and initial narrative information architecture are implemented and responsive;
-10. no privileged credentials/tokens leak to browser, repository or logs;
+10. no privileged credentials/tokens leak to browser, repository, or logs;
 11. exact-head v2 CI and relevant rendered/accessibility review pass;
-12. `PROJECT.md` records the merged baseline and the next application/agent phase from verified reality.
+12. `PROJECT.md` records the merged baseline and next phase from verified reality.
 
 ## Next-Phase Direction
 
