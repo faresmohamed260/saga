@@ -141,8 +141,8 @@ export function MobileNavigation({ email }: AppNavigationProps) {
           </Dialog.Trigger>
 
           <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 data-[state=closed]:animate-none" />
-            <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[min(86vw,22rem)] flex-col border-r border-[var(--app-separator)] bg-[var(--app-rail)] p-4 shadow-2xl focus:outline-none data-[state=open]:animate-none">
+            <Dialog.Overlay className="saga-nav-overlay fixed inset-0 z-40 bg-black/60" />
+            <Dialog.Content className="saga-portal-theme saga-nav-sheet fixed inset-y-0 left-0 z-50 flex w-[min(86vw,22rem)] flex-col border-r border-[var(--app-separator)] bg-[var(--app-rail)] p-4 shadow-2xl focus:outline-none">
               <div className="flex min-h-11 items-center justify-between px-1">
                 <Dialog.Title className="text-sm font-semibold tracking-[0.16em] text-[var(--app-text)]">
                   S.A.G.A.
