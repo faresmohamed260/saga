@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 
 import { safeNextPath } from "@/lib/auth/redirect";
-import { getFreshSagaIdentity } from "@/server/account/identity";
 import { resolveCurrentSagaAccount } from "@/server/account/account-access";
+import { getFreshSagaIdentity } from "@/server/account/identity";
+import type { SagaIdentity } from "@/server/account/types";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 
 function field(formData: FormData, name: string): string {
@@ -39,14 +40,17 @@ export async function signInAction(formData: FormData): Promise<never> {
     redirect(`/sign-in?error=invalid&next=${encodeURIComponent(next)}`);
   }
 
+  let signInFailed = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      redirect(`/sign-in?error=invalid&next=${encodeURIComponent(next)}`);
-    }
+    signInFailed = Boolean(error);
   } catch {
     redirect(`/sign-in?error=unavailable&next=${encodeURIComponent(next)}`);
+  }
+
+  if (signInFailed) {
+    redirect(`/sign-in?error=invalid&next=${encodeURIComponent(next)}`);
   }
 
   const resolution = await resolveCurrentSagaAccount();
@@ -62,7 +66,7 @@ export async function setPasswordAction(formData: FormData): Promise<never> {
     redirect(`/set-password?error=invalid&next=${encodeURIComponent(next)}`);
   }
 
-  let identity;
+  let identity: SagaIdentity | null = null;
   try {
     identity = await getFreshSagaIdentity();
   } catch {
@@ -73,14 +77,17 @@ export async function setPasswordAction(formData: FormData): Promise<never> {
     redirect(`/sign-in?error=session&next=${encodeURIComponent("/set-password")}`);
   }
 
+  let updateFailed = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.updateUser({ password });
-    if (error) {
-      redirect(`/set-password?error=update&next=${encodeURIComponent(next)}`);
-    }
+    updateFailed = Boolean(error);
   } catch {
     redirect(`/set-password?error=unavailable&next=${encodeURIComponent(next)}`);
+  }
+
+  if (updateFailed) {
+    redirect(`/set-password?error=update&next=${encodeURIComponent(next)}`);
   }
 
   const resolution = await resolveCurrentSagaAccount();
