@@ -10,44 +10,98 @@ The owner authorized a fresh rebuild on 2026-09-11.
 
 **Same goals and feature set; different architecture.**
 
-The old contract-driven Python/nine-stage production architecture is now **S.A.G.A. v1 historical/reference material**. Its code, tests, qualification machinery, recovery documents, and provider integrations may be consulted for requirements, proven behavior, schemas, algorithms, evaluation ideas, and lessons learned, but v2 must not depend on them by default.
+The old contract-driven Python/nine-stage production architecture is **S.A.G.A. v1 historical/reference material**. v2 selectively reuses requirements, algorithms, evaluations, schemas, prompts, and lessons; it does not preserve the old runtime architecture for compatibility.
 
 The rebuild order is deliberate:
 
-1. build the main web product frontend and backend;
-2. establish application data, auth, storage, jobs, and deployment contracts;
-3. only then design and implement the new agentic AI subsystem against those stable product contracts;
-4. progressively restore the original S.A.G.A. intelligence/generation capabilities through the new architecture.
+1. main web product frontend/backend;
+2. account/auth/data/storage/job/deployment contracts;
+3. new agentic AI subsystem behind those product contracts;
+4. progressive restoration of S.A.G.A. intelligence/generation capabilities.
+
+## Current Baseline
+
+Phase 0 merged through PR **#149**:
+
+- `main`: `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
+- tree: `50f34409fb52540ce48c506f9446a3b75e608b08`
+- merge: `Establish S.A.G.A. v2 web foundation (#149)`
+
+Post-merge `Required Check Compatibility`, `SAGA v2 Web CI`, and `Backend Architecture CI` all completed successfully.
+
+Phase 0 tracking issue **#148** is closed complete.
+
+## Active Phase
+
+**S.A.G.A. v2 Phase 1 — Closed-Demo Main Site, Accounts & Invitations**
+
+Tracking issue: **#151**
+
+Contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
+
+Working branch for the contract/planning pass:
+
+- `v2/phase-1-closed-demo-app`
+
+Status: **ACTIVE — CONTRACT/ARCHITECTURE FIRST**
+
+The Phase 1 contract and subsystem rules are merged before feature implementation begins. This follows the repository-first progressive-phase discipline proven useful in RenderLab while keeping S.A.G.A. ownership separate.
+
+## Closed-Demo Product Constraint
+
+S.A.G.A. v2 is a **closed demo**.
+
+- There is no public self-signup path.
+- Supabase Auth owns identity/session mechanics.
+- S.A.G.A. owns product admission/authorization state.
+- Access is granted through admin-created email invitations.
+- A public landing/brand route may exist, but private application routes require an active S.A.G.A. account.
+- Invitation/account administration is server-only and admin-authorized.
+- Service-role/Auth Admin credentials never enter browser code.
+- Email delivery is not considered complete until the hosted Supabase email/SMTP configuration and invite templates are verified.
+
+Detailed contract: `docs/v2/ACCESS_AND_INVITATIONS.md`.
 
 ## Adopted v2 Stack
 
-The web stack follows the successful Studio/RenderLab family of technologies without importing RenderLab product state or ownership:
+- **GitHub** — source of truth, review, CI, durable continuity;
+- **Vercel** — primary web deployment target;
+- **Next.js 16 + React 19 + TypeScript** — frontend and request-bounded backend/API;
+- **Tailwind CSS + maintained accessible primitives + Motion** — UI system and intentional interaction;
+- **Supabase** — Postgres, Auth, Realtime, structured application records;
+- **Cloudflare** — DNS/CDN/security boundary where useful, not S.A.G.A. object storage;
+- **Backblaze B2** — dedicated private S.A.G.A. object storage;
+- **future agentic runtime** — deferred until the application foundation is stable.
 
-- **GitHub** — repository source of truth, CI, review, durable project continuity;
-- **Vercel** — primary web deployment;
-- **Next.js 16 + React 19 + TypeScript** — frontend and initial backend/API layer;
-- **Tailwind CSS + reusable maintained component primitives + Motion** — design system and interaction layer;
-- **Supabase** — Postgres, Auth, Realtime, and authoritative application records;
-- **Cloudflare** — DNS/CDN/security boundary where useful, but not S.A.G.A. object storage;
-- **Backblaze B2** — dedicated S.A.G.A. object storage;
-- **Agentic AI runtime** — deferred until the web application/backend foundation is stable.
+The active v2 application lives under `apps/web/`.
 
-The current v2 web application lives under `apps/web/`.
+## RenderLab Reference Boundary
+
+`faresmohamed260/renderlab` is a **separate product and read-only reference** for S.A.G.A. work.
+
+S.A.G.A. may study its current repository documentation for proven process/architecture/UI conventions such as:
+
+- repository-first continuity and progressive phase contracts;
+- Server Components by default with small client islands;
+- maintained UI primitives and semantic tokens;
+- responsive/accessibility/reduced-motion discipline;
+- explicit feature/server/infrastructure ownership;
+- closed-beta invitation/access patterns above Supabase Auth;
+- remote-first CI and rendered UI validation.
+
+Do **not** modify RenderLab during S.A.G.A. work. Do not copy its product code, visual identity, routes, schema/table names, credentials, storage, deployments, product data, or assumptions. S.A.G.A. must express every adopted principle through S.A.G.A.-owned contracts and implementation.
+
+Current S.A.G.A. translations of those reference principles live in:
+
+- `docs/v2/FRONTEND_ARCHITECTURE.md`
+- `docs/v2/UI_SYSTEM.md`
+- `docs/v2/ACCESS_AND_INVITATIONS.md`
 
 ## Storage Foundation — VALIDATED
 
-S.A.G.A. v2 does **not** use the existing Cloudflare R2 allocation. Backblaze B2 is the selected v2 object store.
+Backblaze B2 is the v2 object store. GitHub Actions run `34537566675` authorized B2, created/reused the dedicated private bucket, passed upload/download byte comparison, and deleted the smoke object.
 
-GitHub Actions run `34537566675` successfully:
-
-- authorized the B2 account using the configured bootstrap secrets;
-- created/reused a dedicated private S.A.G.A. bucket;
-- uploaded a small `_system/bootstrap/` object;
-- downloaded it and passed byte-for-byte comparison;
-- deleted the smoke object;
-- exposed only safe bucket/endpoint metadata.
-
-Validated non-secret storage configuration is committed in `config/v2-storage.json`:
+Validated safe metadata in `config/v2-storage.json`:
 
 - provider: `backblaze-b2`
 - bucket: `saga-v2-faresmohamed260-1207062480`
@@ -55,103 +109,79 @@ Validated non-secret storage configuration is committed in `config/v2-storage.js
 - S3 endpoint: `https://s3.us-east-005.backblazeb2.com`
 - visibility: private
 
-Bootstrap repository secrets:
+Bootstrap secrets:
 
 - `SAGA_B2_KEY_ID`
 - `SAGA_B2_MASTER_APPLICATION_KEY`
 
-Never print or commit their values.
-
-The master application key is **bootstrap/admin only**. Normal S.A.G.A. web runtime storage must use a later bucket-scoped application key through the B2 S3-compatible endpoint and the provider-neutral storage interface under `apps/web/src/server/storage/`.
-
-Planned object namespaces:
-
-- `sources/`
-- `artifacts/analysis/`
-- `generated/images/`
-- `generated/audio/`
-- `exports/`
-- `temporary/`
-- `_system/`
+The master key remains bootstrap/admin-only. Normal web storage will use a later bucket-scoped application key through the provider-neutral storage boundary.
 
 Supabase owns structured application/domain state; B2 owns large binary/object payloads.
 
 ## v2 Architectural Boundary
 
 ```text
-Browser
-  -> Next.js web application on Vercel
-       -> Supabase Auth / Postgres / Realtime
+Public browser
+  -> landing / sign-in / invite-confirm surfaces
+
+Verified invited user
+  -> Next.js application on Vercel
+       -> server-verified Supabase Auth identity
+       -> S.A.G.A. account/access resolver
+       -> Supabase Postgres / Realtime
        -> ObjectStorage -> Backblaze B2
-       -> application API / job-control layer
+       -> application API / durable job-control layer
             -> future agentic AI runtime
 ```
 
-The AI runtime becomes a consumer/producer of stable application contracts rather than the top-level architecture of the product.
+The future AI runtime is a consumer/producer of application-owned contracts rather than the top-level architecture.
 
-## Implemented v2 Foundation
+## Phase 1 Product Areas
 
-Current active implementation includes:
+The information architecture is user-concept-first, not pipeline-stage-first. Current target areas:
 
-- `apps/web/` Next.js/React/TypeScript application;
-- initial S.A.G.A. landing/product shell;
-- `/api/health` configuration-status endpoint;
-- Supabase SSR server/configuration boundary;
-- provider-neutral `ObjectStorage` contract;
-- Backblaze B2 S3 runtime adapter using **scoped runtime credential names only**;
-- structural tests preventing master B2 credentials from entering the web runtime;
-- `.github/workflows/v2-web-ci.yml` deterministic web gate;
-- `.github/workflows/v2-b2-bootstrap.yml` manual-only B2 administration/smoke workflow;
-- `config/v2-storage.json` validated safe storage metadata.
+- Home
+- Library / Sources
+- Projects / Stories
+- Characters / Relationships
+- World / Locations
+- Timeline / Events
+- Canon / Evidence
+- Story / Planning
+- Media
+- Activity
+- Settings
+- Admin
 
-The first v2 Web CI run `34537327565` passed install, lint, typecheck, tests, and production build before the final workflow-boundary tests were added. Final-head CI must be rerun before merge.
+Routes/schema are defined only where the active phase needs them.
 
-## Legacy v1 Boundary
+## External Setup Dependencies
 
-The pre-v2 `packages/`, `integrations/`, `apps/dashboard_api/`, `apps/dashboard_pro/`, `deploy/production/`, Python migrations/runtime scripts, qualification workflows, and related tests/docs remain temporarily as **historical/reference surfaces**.
+Phase 1 can proceed substantially in the repository before cloud setup, but these items are required before full end-to-end completion:
 
-Rules:
+1. a new **S.A.G.A.-owned Supabase project**; the connected account currently exposes the `Fares Home Lab` organization, but project creation requires explicit organization selection and cost confirmation before mutation;
+2. hosted Supabase Auth Site URL/redirect allowlist and invite-confirm template configuration;
+3. production-capable custom SMTP or equivalent email hook/sender setup for invitation and recovery mail;
+4. a bucket-scoped non-master B2 application key for normal runtime S3-compatible access.
 
-- do not add new v2 behavior to those surfaces;
-- do not import them from `apps/web`;
-- do not preserve their architecture merely for compatibility;
-- reuse ideas or algorithms only through an explicit v2 implementation decision;
-- remove/archive obsolete v1 surfaces progressively after useful knowledge has been preserved.
-
-The separate `faresmohamed260/renderlab` project remains separate. S.A.G.A. may reuse engineering conventions/technology choices but not RenderLab product state, routes, schema ownership, storage credentials, or deployment assumptions.
-
-## Active Phase
-
-**S.A.G.A. v2 Phase 0 — Web Foundation & Storage Bootstrap**
-
-Tracking issue: **#148**
-
-Contract: `docs/phases/PHASE_V2_0_WEB_FOUNDATION.md`
-
-Status: **ACTIVE — FOUNDATION IMPLEMENTED; FINAL CI/PR MERGE REMAINS**
-
-The old v1 Phase-0 recovery/qualification issues #142 and #147 are closed `not_planned` because the owner replaced that architecture with the v2 rebuild.
-
-## Current Branch
-
-- branch: `v2/phase-0-web-foundation`
-- pre-v2 boundary: `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
+Do not reuse the connected RenderLab/Studio Supabase project or shared R2 state for S.A.G.A.
 
 ## Immediate Work
 
-1. run final-head v2 web CI including the storage/workflow boundary tests;
-2. inspect the complete branch diff for v1/v2 boundary mistakes or secret leakage;
-3. open and merge the focused Phase-0 v2 PR only after exact-head checks pass;
-4. update the merged baseline/evidence;
-5. start **Phase 1 — Main Site Frontend & Backend**;
-6. provision a new S.A.G.A.-owned Supabase project/schema as Phase 1 needs it;
-7. create a bucket-scoped B2 runtime application key and add its runtime secrets before implementing real source upload/read paths.
+1. merge the Phase 1 contract/governance/reference translation;
+2. create the S.A.G.A. Supabase schema/migration for account access and invitations;
+3. implement server-side identity/account/admin boundaries plus invite confirmation/password setup/sign-in;
+4. implement the private application shell and first Home/Library/Projects surfaces using the S.A.G.A. UI system;
+5. implement narrow Admin invitation/account management APIs/UI;
+6. add deterministic auth/access/UI tests and exact-head v2 CI;
+7. configure the new Supabase project/email delivery and scoped B2 runtime key when those external dependencies become blocking;
+8. only after the application/data/job contracts stabilize, plan the agentic AI phase.
 
-**Agent/LLM pipeline implementation remains out of scope until the web/backend product foundation is stable.**
+**Agent/LLM pipeline implementation remains out of scope in Phase 1.**
 
-## v2 Validation
+## Validation
 
-From `apps/web`:
+For `apps/web`:
 
 ```text
 npm install --no-audit --no-fund
@@ -161,10 +191,10 @@ npm run test:unit
 npm run build
 ```
 
-A green v1 Python workflow is not proof that v2 works. v2 changes require v2-specific exact-head CI evidence.
+Phase 1 will expand this with access/security and rendered/responsive UI gates. Green v1 Python CI is not evidence that v2 works.
 
 ## Working Convention
 
-A new session begins from this file and `AGENTS.md`, then reads `docs/README.md`, `docs/DECISIONS.md`, and the active v2 phase contract.
+A new session begins from `AGENTS.md`, this file, `docs/README.md`, `docs/DECISIONS.md`, and the active phase contract, then reads the relevant v2 subsystem docs.
 
 Durable decisions and verified results go back into the repository. Do not reconstruct current project state from chat history when GitHub can establish it.
