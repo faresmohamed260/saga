@@ -103,7 +103,7 @@ export function AdminWorkspace({
                 <p className="text-xs text-[var(--app-muted)]">Expires {formatWhen(invitation.expiresAt)}</p>
                 <form action={revokeInvitationAction}>
                   <input type="hidden" name="invitationId" value={invitation.id} />
-                  <button type="submit" className="min-h-10 rounded-lg border border-[var(--app-separator)] px-3 text-sm font-medium text-[var(--app-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
+                  <button type="submit" className="min-h-11 rounded-lg border border-[var(--app-separator)] px-3 text-sm font-medium text-[var(--app-muted)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
                     Revoke
                   </button>
                 </form>
@@ -145,19 +145,19 @@ export function AdminWorkspace({
                     <input type="hidden" name="userId" value={account.userId} />
                     <label className="grid gap-1 text-xs font-medium text-[var(--app-muted)]">
                       Role
-                      <select name="role" defaultValue={account.role} className="min-h-10 rounded-lg border border-[var(--app-separator)] bg-[var(--app-surface)] px-2 text-sm capitalize text-[var(--app-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
+                      <select name="role" defaultValue={account.role} className="min-h-11 rounded-lg border border-[var(--app-separator)] bg-[var(--app-surface)] px-2 text-sm capitalize text-[var(--app-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
                         <option value="member">Member</option>
                         <option value="admin">Admin</option>
                       </select>
                     </label>
                     <label className="grid gap-1 text-xs font-medium text-[var(--app-muted)]">
                       Status
-                      <select name="status" defaultValue={account.status} className="min-h-10 rounded-lg border border-[var(--app-separator)] bg-[var(--app-surface)] px-2 text-sm capitalize text-[var(--app-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
+                      <select name="status" defaultValue={account.status} className="min-h-11 rounded-lg border border-[var(--app-separator)] bg-[var(--app-surface)] px-2 text-sm capitalize text-[var(--app-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
                         <option value="active">Active</option>
                         <option value="suspended">Suspended</option>
                       </select>
                     </label>
-                    <button type="submit" className="min-h-10 self-end rounded-lg border border-[var(--app-separator)] px-3 text-sm font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
+                    <button type="submit" className="min-h-11 self-end rounded-lg border border-[var(--app-separator)] px-3 text-sm font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
                       Save
                     </button>
                   </form>
