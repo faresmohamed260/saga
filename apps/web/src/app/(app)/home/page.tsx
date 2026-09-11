@@ -1,27 +1,74 @@
+import { ArrowRight, BookOpen, FolderKanban } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import { signOutAction } from "@/features/auth/actions";
+import { PageHeader } from "@/components/shell/page-header";
 
 export const metadata: Metadata = {
-  title: "Private access",
+  title: "Home",
 };
 
-export default function HomeAccessCheckpointPage() {
+const workspaceLinks = [
+  {
+    href: "/library",
+    title: "Library",
+    description: "Source material and editions will live here as the ingestion contracts arrive.",
+    icon: BookOpen,
+  },
+  {
+    href: "/projects",
+    title: "Projects",
+    description: "Story workspaces will gather canon, characters, timelines, and generated media.",
+    icon: FolderKanban,
+  },
+] as const;
+
+export default function HomePage() {
   return (
-    <main className="flex min-h-screen items-center justify-center px-5 py-12">
-      <section className="saga-panel w-full max-w-2xl rounded-3xl p-6 sm:p-9" aria-labelledby="private-title">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--cyan)]">Phase 1C access checkpoint</p>
-        <h1 id="private-title" className="mt-3 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-          Private S.A.G.A. access verified
-        </h1>
-        <p className="mt-4 max-w-xl text-sm leading-6 text-[var(--muted)]">
-          This route exists only to prove the closed-demo private boundary. The narrative application shell and real Home, Library, and Projects composition belong to Phase 1D.
-        </p>
-        <form action={signOutAction} className="mt-7">
-          <Button type="submit">Sign out</Button>
-        </form>
+    <div className="flex flex-col gap-10">
+      <PageHeader
+        eyebrow="Narrative Desk"
+        title="Home"
+        description="S.A.G.A. is your private workspace for turning narrative sources into structured, inspectable story systems."
+      />
+
+      <section aria-labelledby="workspace-heading" className="max-w-5xl">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 id="workspace-heading" className="text-base font-semibold text-[var(--app-text)]">
+              Workspace
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
+              Phase 1D establishes the product frame without inventing story data that does not exist yet.
+            </p>
+          </div>
+        </div>
+
+        <div className="border-y border-[var(--app-separator)]">
+          {workspaceLinks.map(({ href, title, description, icon: Icon }, index) => (
+            <Link
+              key={href}
+              href={href}
+              className={`group flex min-h-24 items-center gap-4 px-1 py-5 transition-colors hover:bg-white/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-focus)] ${
+                index > 0 ? "border-t border-[var(--app-separator)]" : ""
+              }`}
+            >
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--app-separator)] bg-[var(--app-surface)] text-[var(--app-muted)] transition-colors group-hover:text-[var(--app-text)]">
+                <Icon aria-hidden="true" className="size-[18px]" strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold text-[var(--app-text)]">{title}</h3>
+                <p className="mt-1 max-w-2xl text-sm leading-5 text-[var(--app-muted)]">{description}</p>
+              </div>
+              <ArrowRight
+                aria-hidden="true"
+                className="mr-2 size-[18px] shrink-0 text-[var(--app-muted)] transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-[var(--app-text)]"
+                strokeWidth={1.8}
+              />
+            </Link>
+          ))}
+        </div>
       </section>
-    </main>
+    </div>
   );
 }
