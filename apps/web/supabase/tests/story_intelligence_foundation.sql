@@ -77,41 +77,24 @@ INSERT INTO public.saga_account_access (
   accepted_at,
   updated_by
 ) VALUES
-  (
-    'a1111111-1111-4111-8111-111111111111',
-    'member',
-    'active',
-    null,
-    now(),
-    null
-  ),
-  (
-    'a2222222-2222-4222-8222-222222222222',
-    'member',
-    'active',
-    null,
-    now(),
-    null
-  ),
-  (
-    'a3333333-3333-4333-8333-333333333333',
-    'member',
-    'suspended',
-    null,
-    now(),
-    null
-  );
+  ('a1111111-1111-4111-8111-111111111111', 'member', 'active', null, now(), null),
+  ('a2222222-2222-4222-8222-222222222222', 'member', 'active', null, now(), null),
+  ('a3333333-3333-4333-8333-333333333333', 'member', 'suspended', null, now(), null);
 
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111', false);
 
-INSERT INTO public.saga_projects (owner_user_id, title, description)
-VALUES (
+INSERT INTO public.saga_projects (
+  id,
+  owner_user_id,
+  title,
+  description
+) VALUES (
+  'c1111111-1111-4111-8111-111111111111',
   'a1111111-1111-4111-8111-111111111111',
   'Phase 2 Fixture Project',
   'Owner-visible story intelligence fixture.'
-)
-RETURNING id AS owner_project_id \gset
+);
 
 DO $$
 DECLARE
@@ -172,6 +155,7 @@ RESET ROLE;
 SET ROLE service_role;
 
 INSERT INTO public.saga_sources (
+  id,
   project_id,
   owner_user_id,
   original_filename,
@@ -183,7 +167,8 @@ INSERT INTO public.saga_sources (
   object_key,
   ingestion_status
 ) VALUES (
-  :'owner_project_id',
+  'c2222222-2222-4222-8222-222222222222',
+  'c1111111-1111-4111-8111-111111111111',
   'a1111111-1111-4111-8111-111111111111',
   'fixture.txt',
   'Fixture Story',
@@ -191,10 +176,9 @@ INSERT INTO public.saga_sources (
   'text/plain; charset=utf-8',
   128,
   repeat('a', 64),
-  'sources/a1111111-1111-4111-8111-111111111111/' || :'owner_project_id' || '/fixture/original',
+  'sources/a1111111-1111-4111-8111-111111111111/c1111111-1111-4111-8111-111111111111/c2222222-2222-4222-8222-222222222222/original',
   'uploaded'
-)
-RETURNING id AS source_id \gset
+);
 
 RESET ROLE;
 SET ROLE authenticated;
@@ -203,38 +187,36 @@ SELECT set_config('request.jwt.claim.sub', 'a1111111-1111-4111-8111-111111111111
 DO $$
 DECLARE
   v_count integer;
+  v_first record;
+  v_duplicate record;
 BEGIN
   SELECT count(*) INTO v_count
   FROM public.saga_sources
-  WHERE id = :'source_id';
+  WHERE id = 'c2222222-2222-4222-8222-222222222222';
 
   IF v_count <> 1 THEN
     RAISE EXCEPTION 'source owner cannot read own source';
   END IF;
-END;
-$$;
 
-SELECT *
-FROM public.saga_enqueue_analysis_job(:'source_id', 'character_identity', repeat('b', 64))
-\gset first_job_
+  SELECT * INTO v_first
+  FROM public.saga_enqueue_analysis_job(
+    'c2222222-2222-4222-8222-222222222222',
+    'character_identity',
+    repeat('b', 64)
+  );
 
-DO $$
-BEGIN
-  IF :'first_job_was_created'::boolean IS DISTINCT FROM true
-     OR :'first_job_job_status' <> 'queued' THEN
+  IF v_first.was_created IS DISTINCT FROM true OR v_first.job_status <> 'queued' THEN
     RAISE EXCEPTION 'first enqueue did not create a queued job';
   END IF;
-END;
-$$;
 
-SELECT *
-FROM public.saga_enqueue_analysis_job(:'source_id', 'character_identity', repeat('b', 64))
-\gset duplicate_job_
+  SELECT * INTO v_duplicate
+  FROM public.saga_enqueue_analysis_job(
+    'c2222222-2222-4222-8222-222222222222',
+    'character_identity',
+    repeat('b', 64)
+  );
 
-DO $$
-BEGIN
-  IF :'duplicate_job_job_id'::uuid <> :'first_job_job_id'::uuid
-     OR :'duplicate_job_was_created'::boolean IS DISTINCT FROM false THEN
+  IF v_duplicate.job_id <> v_first.job_id OR v_duplicate.was_created IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'duplicate active enqueue was not idempotent';
   END IF;
 END;
@@ -261,19 +243,24 @@ $$;
 RESET ROLE;
 SET ROLE service_role;
 
-SELECT * FROM public.saga_claim_analysis_job('phase2-test-worker', 300) \gset claimed_one_
-
 DO $$
 DECLARE
+  v_claim_one record;
+  v_claim_two record;
   v_count integer;
   v_attempt integer;
+  v_job_id uuid;
 BEGIN
-  IF :'claimed_one_job_id'::uuid <> :'first_job_job_id'::uuid THEN
-    RAISE EXCEPTION 'worker claimed unexpected job';
-  END IF;
+  SELECT id INTO v_job_id
+  FROM public.saga_analysis_jobs
+  WHERE source_id = 'c2222222-2222-4222-8222-222222222222'
+    AND kind = 'character_identity';
 
-  IF :'claimed_one_attempt_count'::integer <> 1 THEN
-    RAISE EXCEPTION 'first claim attempt should be 1';
+  SELECT * INTO v_claim_one
+  FROM public.saga_claim_analysis_job('phase2-test-worker', 300);
+
+  IF v_claim_one.job_id <> v_job_id OR v_claim_one.attempt_count <> 1 THEN
+    RAISE EXCEPTION 'first worker claim returned unexpected job/attempt';
   END IF;
 
   SELECT count(*) INTO v_count
@@ -283,25 +270,21 @@ BEGIN
     RAISE EXCEPTION 'active lease allowed a second worker claim';
   END IF;
 
-  IF NOT public.saga_renew_analysis_job_lease(
-    :'claimed_one_job_id'::uuid,
-    :'claimed_one_lease_token'::uuid,
-    300
-  ) THEN
+  IF NOT public.saga_renew_analysis_job_lease(v_job_id, v_claim_one.lease_token, 300) THEN
     RAISE EXCEPTION 'valid worker lease could not be renewed';
   END IF;
 
   IF public.saga_renew_analysis_job_lease(
-    :'claimed_one_job_id'::uuid,
-    'ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid,
+    v_job_id,
+    'ffffffff-ffff-4fff-8fff-ffffffffffff',
     300
   ) THEN
     RAISE EXCEPTION 'invalid worker lease token was accepted';
   END IF;
 
   IF public.saga_finish_analysis_job(
-    :'claimed_one_job_id'::uuid,
-    :'claimed_one_lease_token'::uuid,
+    v_job_id,
+    v_claim_one.lease_token,
     false,
     true,
     'retryable_fixture',
@@ -313,26 +296,22 @@ BEGIN
 
   SELECT attempt_count INTO v_attempt
   FROM public.saga_analysis_jobs
-  WHERE id = :'claimed_one_job_id'::uuid;
+  WHERE id = v_job_id;
 
   IF v_attempt <> 1 THEN
     RAISE EXCEPTION 'requeue changed attempt_count unexpectedly';
   END IF;
-END;
-$$;
 
-SELECT * FROM public.saga_claim_analysis_job('phase2-test-worker', 300) \gset claimed_two_
+  SELECT * INTO v_claim_two
+  FROM public.saga_claim_analysis_job('phase2-test-worker', 300);
 
-DO $$
-BEGIN
-  IF :'claimed_two_job_id'::uuid <> :'first_job_job_id'::uuid
-     OR :'claimed_two_attempt_count'::integer <> 2 THEN
+  IF v_claim_two.job_id <> v_job_id OR v_claim_two.attempt_count <> 2 THEN
     RAISE EXCEPTION 'second claim did not preserve job identity/increment attempt';
   END IF;
 
   IF public.saga_finish_analysis_job(
-    :'claimed_two_job_id'::uuid,
-    :'claimed_one_lease_token'::uuid,
+    v_job_id,
+    v_claim_one.lease_token,
     true,
     false,
     null,
@@ -343,8 +322,8 @@ BEGIN
   END IF;
 
   IF public.saga_finish_analysis_job(
-    :'claimed_two_job_id'::uuid,
-    :'claimed_two_lease_token'::uuid,
+    v_job_id,
+    v_claim_two.lease_token,
     true,
     false,
     null,
@@ -375,9 +354,14 @@ INSERT INTO public.saga_analysis_runs (
   completed_at
 ) VALUES (
   'b1111111-1111-4111-8111-111111111111',
-  :'first_job_job_id',
-  :'owner_project_id',
-  :'source_id',
+  (
+    select id
+    from public.saga_analysis_jobs
+    where source_id = 'c2222222-2222-4222-8222-222222222222'
+      and kind = 'character_identity'
+  ),
+  'c1111111-1111-4111-8111-111111111111',
+  'c2222222-2222-4222-8222-222222222222',
   'a1111111-1111-4111-8111-111111111111',
   'succeeded',
   repeat('b', 64),
@@ -404,8 +388,8 @@ INSERT INTO public.saga_characters (
 ) VALUES (
   'b2222222-2222-4222-8222-222222222222',
   'b1111111-1111-4111-8111-111111111111',
-  :'owner_project_id',
-  :'source_id',
+  'c1111111-1111-4111-8111-111111111111',
+  'c2222222-2222-4222-8222-222222222222',
   'a1111111-1111-4111-8111-111111111111',
   'Ada Vale',
   'canonical_seed',
@@ -424,8 +408,8 @@ INSERT INTO public.saga_character_aliases (
 ) VALUES (
   'b2222222-2222-4222-8222-222222222222',
   'b1111111-1111-4111-8111-111111111111',
-  :'owner_project_id',
-  :'source_id',
+  'c1111111-1111-4111-8111-111111111111',
+  'c2222222-2222-4222-8222-222222222222',
   'a1111111-1111-4111-8111-111111111111',
   'Ada',
   'ada',
@@ -449,8 +433,8 @@ INSERT INTO public.saga_character_mentions (
 ) VALUES
   (
     'b1111111-1111-4111-8111-111111111111',
-    :'owner_project_id',
-    :'source_id',
+    'c1111111-1111-4111-8111-111111111111',
+    'c2222222-2222-4222-8222-222222222222',
     'a1111111-1111-4111-8111-111111111111',
     'b2222222-2222-4222-8222-222222222222',
     'Ada',
@@ -464,8 +448,8 @@ INSERT INTO public.saga_character_mentions (
   ),
   (
     'b1111111-1111-4111-8111-111111111111',
-    :'owner_project_id',
-    :'source_id',
+    'c1111111-1111-4111-8111-111111111111',
+    'c2222222-2222-4222-8222-222222222222',
     'a1111111-1111-4111-8111-111111111111',
     null,
     'she',
