@@ -27,25 +27,61 @@ Phase 0 merged through PR **#149**:
 - tree: `50f34409fb52540ce48c506f9446a3b75e608b08`
 - merge: `Establish S.A.G.A. v2 web foundation (#149)`
 
-Post-merge `Required Check Compatibility`, `SAGA v2 Web CI`, and `Backend Architecture CI` all completed successfully.
+Phase 1 contract/governance merged through PR **#152**:
 
-Phase 0 tracking issue **#148** is closed complete.
+- `main`: `55beaccab011a4c5337db86dd88b52f6d48734c4`
+- tree: `aa6dab89a84926517002a906fd01565e51672d20`
+- merge: `Establish S.A.G.A. v2 Phase 1 closed-demo contract (#152)`
+
+PR #152 merged only after exact-head `Required Check Compatibility` and `Backend Architecture CI` passed. The external legacy Studio/Vercel status remains explicitly deferred and is not evidence for the active v2 application.
+
+Phase 0 tracking issue **#148** is closed complete. Phase 1 is tracked by **#151**.
 
 ## Active Phase
 
 **S.A.G.A. v2 Phase 1 — Closed-Demo Main Site, Accounts & Invitations**
 
-Tracking issue: **#151**
-
 Contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
 
-Working branch for the contract/planning pass:
+Current implementation branch:
 
-- `v2/phase-1-closed-demo-app`
+- `v2/phase-1b-account-access`
 
-Status: **ACTIVE — CONTRACT/ARCHITECTURE FIRST**
+Status: **ACTIVE — 1A COMPLETE; 1B IMPLEMENTED AND VALIDATED ON BRANCH**
 
-The Phase 1 contract and subsystem rules are merged before feature implementation begins. This follows the repository-first progressive-phase discipline proven useful in RenderLab while keeping S.A.G.A. ownership separate.
+### Phase 1A — complete
+
+The closed-demo/account/frontend/UI contract is merged to `main` through PR #152. RenderLab remains read-only reference material and no RenderLab files/resources were modified.
+
+### Phase 1B — current implementation
+
+Branch implementation head before the handoff-only documentation update:
+
+- `6512999bcb5dcad08f8fac788208c1f6935c65bd`
+- `feat: add Phase 1B closed-demo access foundation`
+
+Implemented:
+
+- isolated active v2 database lineage under `apps/web/supabase/migrations/`;
+- explicit guardrail preventing the legacy root `supabase/migrations/` lineage from being applied to a fresh v2 project;
+- `saga_account_access` role/status persistence keyed by verified Supabase Auth UUID;
+- `saga_invitations` normalized-email lifecycle state with no raw reusable token/secret fields;
+- RLS forced on privileged access/invitation tables with browser-role grants revoked;
+- service-role-only transactional invitation claim routine that reloads the Auth user's email from `auth.users`, serializes the invitation row, rejects missing/mismatched/expired state, and prevents double claim;
+- fresh server `auth.getUser()` identity boundary;
+- server-only privileged Supabase client boundary;
+- S.A.G.A. account resolver for unauthenticated/not-admitted/suspended/active/unavailable states;
+- active-admin authorization helper;
+- structural tests for no public signup, no metadata role trust, client/service-role separation, RLS and token-store prohibition;
+- disposable-Postgres CI job that executes the v2 migration and verifies the closed-demo database contract.
+
+Validated on branch by `SAGA v2 Web CI` run **34593420479**:
+
+- quality job: install, lint, typecheck, unit/structural tests and production build — **success**;
+- database-contract job: PostgreSQL startup, Supabase-compatible role/Auth bootstrap, migration apply and SQL contract tests — **success**;
+- SQL proof covered successful invitation claim, double-claim denial, verified-email mismatch denial, expiry settlement, RLS/privilege checks and duplicate-pending invitation rejection.
+
+This is branch evidence only until the focused Phase 1B PR merges on an exact green head.
 
 ## Closed-Demo Product Constraint
 
@@ -79,19 +115,11 @@ The active v2 application lives under `apps/web/`.
 
 `faresmohamed260/renderlab` is a **separate product and read-only reference** for S.A.G.A. work.
 
-S.A.G.A. may study its current repository documentation for proven process/architecture/UI conventions such as:
+S.A.G.A. may study its current repository documentation for proven process/architecture/UI conventions such as repository-first continuity, progressive phase contracts, Server Components by default, maintained UI primitives, semantic tokens, responsive/accessibility/reduced-motion discipline, explicit server boundaries, closed-beta invitation/access patterns and rendered validation.
 
-- repository-first continuity and progressive phase contracts;
-- Server Components by default with small client islands;
-- maintained UI primitives and semantic tokens;
-- responsive/accessibility/reduced-motion discipline;
-- explicit feature/server/infrastructure ownership;
-- closed-beta invitation/access patterns above Supabase Auth;
-- remote-first CI and rendered UI validation.
+Do **not** modify RenderLab during S.A.G.A. work. Do not copy its product code, visual identity, routes, schema/table names, credentials, storage, deployments, product data or assumptions. S.A.G.A. expresses adopted principles through S.A.G.A.-owned contracts and implementation.
 
-Do **not** modify RenderLab during S.A.G.A. work. Do not copy its product code, visual identity, routes, schema/table names, credentials, storage, deployments, product data, or assumptions. S.A.G.A. must express every adopted principle through S.A.G.A.-owned contracts and implementation.
-
-Current S.A.G.A. translations of those reference principles live in:
+Authoritative translations:
 
 - `docs/v2/FRONTEND_ARCHITECTURE.md`
 - `docs/v2/UI_SYSTEM.md`
@@ -138,7 +166,7 @@ The future AI runtime is a consumer/producer of application-owned contracts rath
 
 ## Phase 1 Product Areas
 
-The information architecture is user-concept-first, not pipeline-stage-first. Current target areas:
+The information architecture is user-concept-first, not pipeline-stage-first:
 
 - Home
 - Library / Sources
@@ -168,13 +196,13 @@ Do not reuse the connected RenderLab/Studio Supabase project or shared R2 state 
 
 ## Immediate Work
 
-1. merge the Phase 1 contract/governance/reference translation;
-2. create the S.A.G.A. Supabase schema/migration for account access and invitations;
-3. implement server-side identity/account/admin boundaries plus invite confirmation/password setup/sign-in;
-4. implement the private application shell and first Home/Library/Projects surfaces using the S.A.G.A. UI system;
+1. open and merge the focused Phase 1B account/access foundation PR only after exact-head v2/repository checks pass;
+2. start **Phase 1C** on a fresh branch: sign-in, server invite confirmation, password setup, SSR session refresh and private route boundary;
+3. use a S.A.G.A.-specific concept/review pass before the major Phase 1D application-shell implementation; RenderLab remains reference only;
+4. implement the private application shell and first Home/Library/Projects surfaces after visual direction is approved;
 5. implement narrow Admin invitation/account management APIs/UI;
-6. add deterministic auth/access/UI tests and exact-head v2 CI;
-7. configure the new Supabase project/email delivery and scoped B2 runtime key when those external dependencies become blocking;
+6. configure the new Supabase project/email delivery and scoped B2 runtime key when those external dependencies become blocking;
+7. prove at least one real bounded email invitation acceptance before closing Phase 1;
 8. only after the application/data/job contracts stabilize, plan the agentic AI phase.
 
 **Agent/LLM pipeline implementation remains out of scope in Phase 1.**
@@ -191,7 +219,7 @@ npm run test:unit
 npm run build
 ```
 
-Phase 1 will expand this with access/security and rendered/responsive UI gates. Green v1 Python CI is not evidence that v2 works.
+The v2 web workflow also executes active `apps/web/supabase/migrations/*.sql` against disposable PostgreSQL with a minimal Supabase-compatible Auth/role bootstrap and runs database contract tests. Phase 1 later adds rendered/responsive/auth-surface evidence. Green v1 Python CI is not evidence that v2 works.
 
 ## Working Convention
 
