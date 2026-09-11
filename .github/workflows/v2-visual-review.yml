@@ -1,0 +1,136 @@
+name: SAGA v2 Visual Review
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/v2-visual-review.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  narrative-desk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package.json
+
+      - name: Install application dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install visual-review browser
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Create runner-only visual fixture
+        shell: bash
+        run: |
+          mkdir -p src/app/visual-review
+          cat > src/app/visual-review/page.tsx <<'EOF'
+          import HomePage from "@/app/(app)/home/page";
+          import { AppShell } from "@/components/shell/app-shell";
+          import type { SagaAccount } from "@/server/account/types";
+
+          const reviewAccount: SagaAccount = {
+            userId: "visual-review-user",
+            email: "reader@saga.local",
+            emailNormalized: "reader@saga.local",
+            role: "member",
+            status: "active",
+            invitedBy: null,
+            acceptedAt: "2026-09-11T00:00:00.000Z",
+          };
+
+          export default function VisualReviewPage() {
+            return (
+              <AppShell account={reviewAccount}>
+                <HomePage />
+              </AppShell>
+            );
+          }
+          EOF
+
+      - name: Start Next.js visual fixture
+        shell: bash
+        run: |
+          npm run dev -- --hostname 127.0.0.1 > /tmp/saga-v2-visual-review.log 2>&1 &
+          echo $! > /tmp/saga-v2-visual-review.pid
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3000/visual-review >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-v2-visual-review.log
+          exit 1
+
+      - name: Capture desktop and narrow evidence
+        shell: bash
+        run: |
+          mkdir -p visual-review
+          node <<'EOF'
+          const { chromium } = require("playwright");
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+
+            await page.goto("http://127.0.0.1:3000/visual-review", { waitUntil: "networkidle" });
+            await page.screenshot({ path: "visual-review/home-desktop-1440x960.png", fullPage: true });
+
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.goto("http://127.0.0.1:3000/visual-review", { waitUntil: "networkidle" });
+            await page.screenshot({ path: "visual-review/home-narrow-390x844.png", fullPage: true });
+
+            await page.getByRole("button", { name: "Open navigation" }).click();
+            await page.screenshot({ path: "visual-review/navigation-narrow-390x844.png", fullPage: true });
+
+            const horizontalOverflow = await page.evaluate(
+              () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            );
+            if (horizontalOverflow) {
+              throw new Error("Narrow visual fixture has horizontal overflow");
+            }
+
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          EOF
+
+      - name: Upload rendered evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v2-phase-1d-visual-review
+          path: apps/web/visual-review/*.png
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Show server log on failure
+        if: failure()
+        shell: bash
+        run: cat /tmp/saga-v2-visual-review.log || true
+
+      - name: Stop visual fixture
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/saga-v2-visual-review.pid ]; then
+            kill "$(cat /tmp/saga-v2-visual-review.pid)" || true
+          fi
