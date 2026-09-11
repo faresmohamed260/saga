@@ -130,6 +130,10 @@ jobs:
             await menuTrigger.click();
             const dialog = page.getByRole("dialog");
             await dialog.waitFor({ state: "visible" });
+            await page.waitForFunction(() => {
+              const element = document.querySelector('[role="dialog"]');
+              return element && getComputedStyle(element).transform === "none";
+            }, null, { timeout: 1500 });
             assert((await dialog.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must remain current inside narrow navigation");
 
             const sheetBackground = await dialog.evaluate((element) => getComputedStyle(element).backgroundColor);
