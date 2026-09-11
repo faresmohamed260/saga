@@ -37,21 +37,24 @@ test("Narrative Desk navigation exposes real destinations with accessible curren
   assert.match(navigation, /signOutAction/);
 });
 
-test("Home, Library, and Projects remain honest about unavailable domain data", () => {
+test("Home, Library, and Projects stay honest as Phase 2A activates real project data", () => {
   const home = read("src/app/(app)/home/page.tsx");
   const library = read("src/app/(app)/library/page.tsx");
   const projects = read("src/app/(app)/projects/page.tsx");
 
-  assert.match(home, /Source ingestion and project creation are not enabled yet/);
+  assert.match(home, /Projects now provide the private ownership boundary/);
+  assert.match(home, /adding new source files begins in Phase 2B/);
+  assert.match(library, /listSagaSources/);
   assert.match(library, /No sources yet/);
-  assert.match(library, /Source ingestion is not enabled yet/);
+  assert.match(library, /Uploading new UTF-8 text or EPUB files begins in Phase 2B/);
+  assert.match(projects, /listSagaProjects/);
+  assert.match(projects, /action=\{createProjectAction\}/);
   assert.match(projects, /No projects yet/);
-  assert.match(projects, /Project creation is not enabled yet/);
 
   const combined = `${home}\n${library}\n${projects}`;
-  assert.doesNotMatch(combined, /\b\d+\s+(sources|projects|characters|jobs)\b/i);
   assert.doesNotMatch(combined, /model status|provider status|storage usage/i);
   assert.doesNotMatch(combined, /Phase 1D|Phase 1E/);
+  assert.doesNotMatch(combined, /type="file"/);
 });
 
 test("private-workspace styling themes portaled UI and defines reduced-motion behavior", () => {
