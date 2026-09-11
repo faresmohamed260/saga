@@ -17,6 +17,7 @@ jobs:
     env:
       PROJECT_REF: scmeqnpmhomzcwecjdtu
       SITE_URL: https://saga-pi-two.vercel.app
+      URI_ALLOW_LIST: https://saga-pi-two.vercel.app/**,https://saga.faresuniform.uk/**
     steps:
       - name: Verify scoped management token is available
         shell: bash
@@ -34,12 +35,8 @@ jobs:
           set -euo pipefail
           api="https://api.supabase.com/v1/projects/${PROJECT_REF}/config/auth"
 
-          curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            "$api" > before.json
-
-          jq -n --arg site "$SITE_URL" \
-            '{site_url: $site, disable_signup: true}' > patch.json
+          jq -n --arg site "$SITE_URL" --arg allow "$URI_ALLOW_LIST" \
+            '{site_url: $site, disable_signup: true, uri_allow_list: $allow}' > patch.json
 
           curl --fail-with-body --silent --show-error \
             -X PATCH \
@@ -48,8 +45,8 @@ jobs:
             --data-binary @patch.json \
             "$api" > after.json
 
-          jq -e --arg site "$SITE_URL" \
-            '.site_url == $site and .disable_signup == true' after.json >/dev/null
+          jq -e --arg site "$SITE_URL" --arg allow "$URI_ALLOW_LIST" \
+            '.site_url == $site and .disable_signup == true and .uri_allow_list == $allow' after.json >/dev/null
 
           echo "Verified hosted Auth configuration (sanitized):"
           jq '{site_url, disable_signup, uri_allow_list, smtp_admin_email, smtp_host, smtp_port, smtp_sender_name, mailer_subjects_invite}' after.json
