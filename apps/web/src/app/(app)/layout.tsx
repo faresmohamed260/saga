@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { AppShell } from "@/components/shell/app-shell";
 import { resolveCurrentSagaAccount } from "@/server/account/account-access";
 
 export default async function PrivateAppLayout({ children }: Readonly<{ children: ReactNode }>) {
@@ -8,7 +9,7 @@ export default async function PrivateAppLayout({ children }: Readonly<{ children
 
   switch (access.state) {
     case "active":
-      return children;
+      return <AppShell account={access.account}>{children}</AppShell>;
     case "unauthenticated":
       redirect("/sign-in?next=/home");
     case "not_admitted":
