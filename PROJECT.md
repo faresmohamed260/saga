@@ -39,11 +39,22 @@ Phase 1B closed-demo account/access foundation:
 - exact PR head `e81915942ba9e859c79898ec60fdda38a56235d3`
 - exact-head `SAGA v2 Web CI`, `Required Check Compatibility`, and `Backend Architecture CI` all succeeded before merge
 
-The documentation handoff/validation refresh followed through PR **#154**.
+The Phase 1B documentation handoff/validation refresh followed through PR **#154**.
+
+Phase 1C closed-demo auth/access surfaces:
+
+- PR **#156**
+- exact PR head `7bc81877a55af9b47b6bbc96abd7a17e9100fda3`
+- merged tree `3bb5388d2004fc09124fddbc59b7978414be6d4f`
+- merge commit `319b785e43a169b4ffd7b57cd5be32ad3ef5da67`
+- exact-head `SAGA v2 Web CI`, `Required Check Compatibility`, and `Backend Architecture CI` all succeeded before merge
 
 Phase 0 issue **#148** is closed. Phase 1 is tracked by **#151**.
 
-Durable Phase 1B evidence: `docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`.
+Durable validation evidence:
+
+- Phase 1B: `docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`
+- Phase 1C: `docs/validation/PHASE_V2_1C_AUTH_ACCESS_2026-09-11.md`
 
 ## Active Phase
 
@@ -51,7 +62,7 @@ Durable Phase 1B evidence: `docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-1
 
 Contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
 
-Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C NEXT**
+Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D NEXT**
 
 ### Phase 1A — complete
 
@@ -82,25 +93,47 @@ PR #153 validation:
 - `Required Check Compatibility` run **34593615380** — success;
 - `Backend Architecture CI` run **34593615394** — success.
 
-Earlier branch run **34593420479** also passed both the web-quality and database-contract jobs.
+### Phase 1C — complete
 
-### Phase 1C — next
+Merged through PR #156.
 
-Start from the repository's actual current `main` after verifying its exact SHA. Use a fresh branch.
+Implemented and validated:
 
-Implement the user-facing auth/access slice without weakening the merged Phase 1B guarantees:
-
-- sign-in;
-- server invitation confirmation;
-- password setup/change for confirmed invited users;
+- invitation-only public sign-in with no public signup path;
+- server invitation confirmation using supported Supabase invite token-hash verification;
+- reuse of the Phase 1B transactional invitation claim after fresh Auth verification;
+- session-bound password setup/change;
 - sign-out;
-- SSR session refresh/cookie plumbing;
-- protected route/layout boundary using fresh verified identity + S.A.G.A. access status;
-- bounded unauthenticated/not-admitted/suspended/active/unavailable states;
-- safe same-origin redirect handling;
-- deterministic auth/access tests.
+- Next.js 16 SSR Supabase cookie/session refresh through `proxy.ts`;
+- protected private route-group layout backed by fresh S.A.G.A. account resolution;
+- bounded unauthenticated, not-admitted, suspended, active, and unavailable routing;
+- safe same-origin post-auth redirect normalization;
+- provider/config failures bounded to the `unavailable` account state rather than untrusted partial access;
+- deterministic auth/access structural tests;
+- a minimal `/home` private-access checkpoint only, deliberately leaving the real application shell to Phase 1D.
 
-Do **not** add public self-signup.
+PR #156 exact-head validation:
+
+- `SAGA v2 Web CI` run **34601422907** — success;
+- `Required Check Compatibility` run **34601422970** — success;
+- `Backend Architecture CI` run **34601422837** — success.
+
+Hosted invitation email delivery remains unproven and is still owned by the later Phase 1E operational gate.
+
+### Phase 1D — next
+
+Before implementation, perform the required **S.A.G.A.-specific UI concept/review pass** using `docs/v2/UI_SYSTEM.md`.
+
+Then implement:
+
+- authenticated application shell;
+- Home;
+- Library;
+- Projects;
+- responsive navigation/composition system;
+- rendered responsive/accessibility evidence.
+
+Primary product principle: **Narrative first, complexity on demand.** Avoid a generic admin-dashboard/card-grid composition for the storytelling workspace, and do not visually copy RenderLab.
 
 ## Closed-Demo Product Constraint
 
@@ -204,28 +237,26 @@ Routes/schema are defined only where the active phase needs them.
 
 ## External Setup Dependencies
 
-These are required before Phase 1 can be called end-to-end complete, but they are **not blockers for deterministic Phase 1C repository work**:
+These are required before Phase 1 can be called end-to-end complete, but they are **not blockers for the deterministic Phase 1D application-shell work**:
 
 1. a new **S.A.G.A.-owned Supabase project**; project creation through the connected tool requires explicit organization selection and cost confirmation;
 2. hosted Supabase Auth Site URL/redirect allowlist and invite-confirm template configuration;
 3. production-capable custom SMTP or equivalent email hook/sender setup;
-4. a bucket-scoped non-master B2 application key for runtime S3-compatible access.
+4. a bucket-scoped non-master B2 application key for runtime S3-compatible access when product object-storage flow needs it.
 
 Do not reuse the connected RenderLab/Studio Supabase project or shared R2 state for S.A.G.A.
 
 ## Immediate Work
 
 1. verify the exact current remote `main` and repository checks;
-2. create a fresh Phase 1C branch;
-3. implement sign-in, invite confirmation, password setup, SSR session refresh, sign-out, and private route boundaries using the merged Phase 1B access services;
-4. keep hosted email delivery separate from deterministic CI until a dedicated S.A.G.A. Supabase project/email path is explicitly configured;
-5. run exact-head `SAGA v2 Web CI` plus relevant repository checks before merge;
-6. use a S.A.G.A.-specific concept/review pass before Phase 1D application-shell implementation; RenderLab remains read-only reference only;
-7. implement the private application shell and first Home/Library/Projects surfaces after visual direction is approved;
-8. implement narrow Admin invitation/account management APIs/UI;
-9. configure hosted Supabase/email and scoped B2 runtime credentials when they become blocking;
-10. prove at least one real bounded email invitation acceptance before closing Phase 1;
-11. only after application/data/job contracts stabilize, plan the agentic AI phase.
+2. perform the S.A.G.A.-specific Phase 1D UI concept/review pass defined by `docs/v2/UI_SYSTEM.md`;
+3. record the selected S.A.G.A.-owned shell/navigation/composition direction durably before implementation;
+4. implement the responsive authenticated application shell and first Home/Library/Projects surfaces;
+5. collect rendered desktop/narrow/accessibility evidence for the Phase 1D shell;
+6. implement Phase 1E narrow Admin invitation/account management APIs/UI;
+7. configure hosted S.A.G.A. Supabase/email and scoped B2 runtime credentials only when their owning slice makes them blocking;
+8. prove at least one real bounded email invitation acceptance before closing Phase 1;
+9. only after application/data/job contracts stabilize, plan the agentic AI phase.
 
 **Agent/LLM pipeline implementation remains out of scope in Phase 1.**
 
@@ -241,7 +272,7 @@ npm run test:unit
 npm run build
 ```
 
-The v2 web workflow also executes active `apps/web/supabase/migrations/*.sql` against disposable PostgreSQL with a minimal Supabase-compatible Auth/role bootstrap and runs database contract tests. Phase 1C should add deterministic auth/route-boundary coverage. Phase 1D later adds rendered/responsive application-shell evidence. Green v1 Python CI is not evidence that v2 works.
+The v2 web workflow also executes active `apps/web/supabase/migrations/*.sql` against disposable PostgreSQL with a minimal Supabase-compatible Auth/role bootstrap and runs database contract tests. Phase 1C added deterministic auth/route-boundary coverage and passed exact-head CI. Phase 1D next adds rendered/responsive application-shell evidence. Green v1 Python CI is not evidence that v2 works.
 
 ## Working Convention
 
