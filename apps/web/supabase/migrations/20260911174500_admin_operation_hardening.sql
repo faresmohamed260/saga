@@ -25,12 +25,8 @@ begin
     where i.id = p_invitation_id
     for update;
 
-  if not found then
+  if not found or v_invitation.status <> 'pending' then
     return;
-  end if;
-
-  if v_invitation.status <> 'pending' then
-    raise exception using message = 'saga_invitation_not_pending', errcode = '55000';
   end if;
 
   if v_invitation.expires_at <= now() then
