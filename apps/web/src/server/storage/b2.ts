@@ -76,6 +76,7 @@ class BackblazeB2Storage implements ObjectStorage {
         Bucket: this.#config.bucket,
         Key: input.key,
         ContentType: input.contentType,
+        Metadata: input.metadata,
       }),
       { expiresIn: expiresInSeconds },
     );
@@ -110,6 +111,7 @@ class BackblazeB2Storage implements ObjectStorage {
         sizeBytes: Number(response.ContentLength ?? 0),
         contentType: response.ContentType ?? null,
         etag: response.ETag?.replace(/^"|"$/g, "") ?? null,
+        metadata: response.Metadata ?? {},
       };
     } catch (error) {
       const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
