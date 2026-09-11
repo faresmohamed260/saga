@@ -1,0 +1,55 @@
+name: Restore production Supabase Auth origin
+
+on:
+  push:
+    branches:
+      - ops/restore-production-auth-origin
+    paths:
+      - .github/workflows/ops-restore-production-auth-origin.yml
+
+permissions:
+  contents: read
+
+jobs:
+  restore-auth-origin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROJECT_REF: scmeqnpmhomzcwecjdtu
+      SITE_URL: https://saga-pi-two.vercel.app
+    steps:
+      - name: Verify scoped management token is available
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+
+      - name: Restore and verify hosted Auth origin
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/${PROJECT_REF}/config/auth"
+
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "$api" > before.json
+
+          jq -n --arg site "$SITE_URL" \
+            '{site_url: $site, disable_signup: true}' > patch.json
+
+          curl --fail-with-body --silent --show-error \
+            -X PATCH \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @patch.json \
+            "$api" > after.json
+
+          jq -e --arg site "$SITE_URL" \
+            '.site_url == $site and .disable_signup == true' after.json >/dev/null
+
+          echo "Verified hosted Auth configuration (sanitized):"
+          jq '{site_url, disable_signup, uri_allow_list, smtp_admin_email, smtp_host, smtp_port, smtp_sender_name, mailer_subjects_invite}' after.json
