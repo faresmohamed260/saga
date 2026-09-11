@@ -129,20 +129,24 @@ jobs:
             const menuTrigger = page.getByRole("button", { name: "Open navigation" });
             await menuTrigger.click();
             const dialog = page.getByRole("dialog");
-            assert(await dialog.isVisible(), "Narrow navigation dialog must open");
+            await dialog.waitFor({ state: "visible" });
             assert((await dialog.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must remain current inside narrow navigation");
+
+            const sheetBackground = await dialog.evaluate((element) => getComputedStyle(element).backgroundColor);
+            assert(
+              sheetBackground !== "transparent" && sheetBackground !== "rgba(0, 0, 0, 0)",
+              `Portaled navigation sheet must be opaque; received ${sheetBackground}`,
+            );
             await page.screenshot({ path: "visual-review/navigation-narrow-390x844.png", fullPage: true });
 
             await page.keyboard.press("Escape");
-            assert(!(await dialog.isVisible()), "Escape must close narrow navigation");
+            await dialog.waitFor({ state: "hidden", timeout: 1500 });
             assert(await menuTrigger.evaluate((element) => document.activeElement === element), "Closing navigation must restore focus to its trigger");
 
             await page.emulateMedia({ reducedMotion: "reduce" });
-            const transitionDuration = await page.locator('header a[href="/library"]').first().evaluate(
+            const transitionDuration = await page.locator('a[href="/library"]').first().evaluate(
               (element) => Number.parseFloat(getComputedStyle(element).transitionDuration) || 0,
-            ).catch(async () => page.locator('a[href="/library"]').first().evaluate(
-              (element) => Number.parseFloat(getComputedStyle(element).transitionDuration) || 0,
-            ));
+            );
             assert(transitionDuration <= 0.001, "Reduced-motion mode must neutralize navigation transitions");
 
             await browser.close();
