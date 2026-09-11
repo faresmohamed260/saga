@@ -3,6 +3,14 @@ export type IntegrationStatus = {
   provider: string;
 };
 
+function readRequired(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} is not configured.`);
+  }
+  return value;
+}
+
 export function supabaseConfigurationStatus(): IntegrationStatus {
   const url = process.env.SUPABASE_URL?.trim();
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -14,12 +22,15 @@ export function supabaseConfigurationStatus(): IntegrationStatus {
 }
 
 export function requireSupabaseServerConfig() {
-  const url = process.env.SUPABASE_URL?.trim();
-  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
+  return {
+    url: readRequired("SUPABASE_URL"),
+    publishableKey: readRequired("SUPABASE_PUBLISHABLE_KEY"),
+  };
+}
 
-  if (!url || !publishableKey) {
-    throw new Error("Supabase server configuration is incomplete.");
-  }
-
-  return { url, publishableKey };
+export function requireSupabasePrivilegedConfig() {
+  return {
+    url: readRequired("SUPABASE_URL"),
+    serviceRoleKey: readRequired("SUPABASE_SERVICE_ROLE_KEY"),
+  };
 }
