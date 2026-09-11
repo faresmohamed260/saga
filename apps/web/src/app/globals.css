@@ -60,9 +60,86 @@ body {
   box-shadow: 0 0 80px rgba(127, 92, 255, 0.2);
 }
 
+.saga-app,
+.saga-portal-theme {
+  --app-canvas: #0b0c0e;
+  --app-rail: #101215;
+  --app-surface: #15181c;
+  --app-surface-elevated: #1b1f24;
+  --app-separator: #2a2f35;
+  --app-text: #f0ede6;
+  --app-muted: #a6a7a3;
+  --app-accent: #968cff;
+  --app-focus: #b8b1ff;
+  --app-paper: #e9e4d9;
+  --app-paper-ink: #23211d;
+  --font-narrative: "Source Serif 4", ui-serif, Georgia, Cambria, "Times New Roman", serif;
+
+  color-scheme: dark;
+  font-family:
+    Geist, "Geist Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.saga-app {
+  background: var(--app-canvas);
+  color: var(--app-text);
+}
+
+.saga-portal-theme {
+  color: var(--app-text);
+}
+
+.saga-app ::selection,
+.saga-portal-theme ::selection {
+  background: rgba(150, 140, 255, 0.28);
+}
+
+.saga-app a,
+.saga-app button,
+.saga-portal-theme a,
+.saga-portal-theme button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .saga-app *,
+  .saga-app *::before,
+  .saga-app *::after,
+  .saga-portal-theme,
+  .saga-portal-theme *,
+  .saga-portal-theme *::before,
+  .saga-portal-theme *::after,
+  .saga-nav-overlay {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .saga-float {
     animation: saga-float 7s ease-in-out infinite;
+  }
+
+  .saga-nav-overlay[data-state="open"] {
+    animation: saga-overlay-in 180ms ease-out;
+  }
+
+  .saga-nav-overlay[data-state="closed"] {
+    animation: saga-overlay-out 160ms ease-in;
+  }
+
+  .saga-nav-sheet[data-state="open"] {
+    animation: saga-sheet-in 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .saga-nav-sheet[data-state="closed"] {
+    animation: saga-sheet-out 160ms ease-in;
   }
 
   @keyframes saga-float {
@@ -72,6 +149,42 @@ body {
     }
     50% {
       transform: translate3d(0, -8px, 0);
+    }
+  }
+
+  @keyframes saga-overlay-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes saga-overlay-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes saga-sheet-in {
+    from {
+      transform: translate3d(-100%, 0, 0);
+    }
+    to {
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes saga-sheet-out {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-100%, 0, 0);
     }
   }
 }
