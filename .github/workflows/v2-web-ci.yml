@@ -54,3 +54,68 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  database-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: saga_v2_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d saga_v2_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: saga_v2_ci
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify PostgreSQL client
+        run: psql --version
+
+      - name: Bootstrap Supabase-compatible Auth and API roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create extension if not exists pgcrypto;
+          create role anon nologin;
+          create role authenticated nologin;
+          create role service_role nologin bypassrls;
+          create schema auth;
+          create table auth.users (
+            id uuid primary key,
+            email text
+          );
+          SQL
+
+      - name: Apply S.A.G.A. v2 web migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          migrations=(apps/web/supabase/migrations/*.sql)
+          test "${#migrations[@]}" -gt 0 || {
+            echo "::error title=Missing v2 migrations::No apps/web Supabase migrations were found."
+            exit 20
+          }
+          for migration in "${migrations[@]}"; do
+            echo "Applying ${migration}"
+            psql -v ON_ERROR_STOP=1 -f "$migration"
+          done
+
+      - name: Verify closed-demo database contract
+        run: psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/closed_demo_account_access.sql
