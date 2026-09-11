@@ -50,9 +50,9 @@ jobs:
             exit 1
           fi
 
-          jq '{site_url, uri_allow_list, disable_signup, mailer_subjects_invite}' auth-before.json
+          jq '{site_url, uri_allow_list, disable_signup}' auth-before.json
 
-      - name: Apply S.A.G.A. closed-demo Auth configuration
+      - name: Apply S.A.G.A. hosted URL and closed-demo configuration
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SAGA_SUPABASE_ACCESS_TOKEN }}
         shell: bash
@@ -60,24 +60,13 @@ jobs:
           set -euo pipefail
           api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth"
 
-          read -r -d '' invite_template <<'HTML' || true
-          <h2>You're invited to S.A.G.A.</h2>
-          <p>You have been invited to join the private S.A.G.A. demo.</p>
-          <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite">Accept invitation</a></p>
-          <p>If you did not expect this invitation, you can ignore this email.</p>
-          HTML
-
           jq -n \
             --arg site_url "${SITE_URL}" \
             --arg uri_allow_list "${URI_ALLOW_LIST}" \
-            --arg invite_subject "You're invited to S.A.G.A." \
-            --arg invite_content "${invite_template}" \
             '{
               site_url: $site_url,
               uri_allow_list: $uri_allow_list,
-              disable_signup: true,
-              mailer_subjects_invite: $invite_subject,
-              mailer_templates_invite_content: $invite_content
+              disable_signup: true
             }' > auth-patch.json
 
           status="$(curl --silent --show-error \
@@ -119,11 +108,8 @@ jobs:
             --arg uri_allow_list "${URI_ALLOW_LIST}" \
             '(.site_url == $site_url)
              and (.uri_allow_list == $uri_allow_list)
-             and (.disable_signup == true)
-             and (.mailer_subjects_invite == "You\u0027re invited to S.A.G.A.")
-             and (.mailer_templates_invite_content | contains("token_hash={{ .TokenHash }}"))
-             and (.mailer_templates_invite_content | contains("type=invite"))' \
+             and (.disable_signup == true)' \
             auth-after.json >/dev/null
 
-          jq '{site_url, uri_allow_list, disable_signup, mailer_subjects_invite}' auth-after.json
-          echo "Hosted S.A.G.A. Auth URL, redirect allowlist, closed-signup flag, and invite template verified."
+          jq '{site_url, uri_allow_list, disable_signup}' auth-after.json
+          echo "Hosted S.A.G.A. Site URL, redirect allowlist, and closed-signup flag verified."
