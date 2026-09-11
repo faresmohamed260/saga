@@ -1,4 +1,4 @@
-name: Probe deployed S.A.G.A. invite confirmation
+name: Probe local S.A.G.A. invite confirmation
 
 on:
   push:
@@ -11,12 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  probe-deployed-confirm:
+  probe-local-confirm:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       SUPABASE_URL: https://scmeqnpmhomzcwecjdtu.supabase.co
-      DEPLOYMENT_ORIGIN: https://saga-nbh6aaqy6-faresmohamed260-6733s-projects.vercel.app
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_znDKjfEiIhk296hIL1ussA_a7lCpxIo
+      LOCAL_ORIGIN: http://127.0.0.1:3000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,7 +28,7 @@ jobs:
       - name: Install web dependencies
         working-directory: apps/web
         run: npm install --no-audit --no-fund
-      - name: Probe deployed confirm route
+      - name: Start local S.A.G.A. server
         working-directory: apps/web
         env:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -36,13 +37,31 @@ jobs:
           set -euo pipefail
           [[ -n "${SUPABASE_SECRET_KEY:-}" ]] || { echo "::error title=Missing Supabase secret::SUPABASE_SECRET_KEY is unavailable."; exit 1; }
           echo "::add-mask::${SUPABASE_SECRET_KEY}"
+          npm run dev -- --hostname 127.0.0.1 --port 3000 >/tmp/saga-dev.log 2>&1 &
+          echo $! >/tmp/saga-dev.pid
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail "${LOCAL_ORIGIN}/sign-in" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/saga-dev.log
+          exit 1
+      - name: Probe local confirm route
+        working-directory: apps/web
+        env:
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::add-mask::${SUPABASE_SECRET_KEY}"
           node --input-type=module <<'NODE'
           import { createClient } from '@supabase/supabase-js';
 
           const url = process.env.SUPABASE_URL;
           const secret = process.env.SUPABASE_SECRET_KEY;
-          const origin = process.env.DEPLOYMENT_ORIGIN;
-          const email = `saga-route-probe-${Date.now()}@example.com`;
+          const origin = process.env.LOCAL_ORIGIN;
+          const email = `saga-local-route-probe-${Date.now()}@example.com`;
           const admin = createClient(url, secret, {
             auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
           });
@@ -58,11 +77,7 @@ jobs:
             const endpoint = `${origin}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=invite`;
             const response = await fetch(endpoint, { redirect: 'manual' });
             const location = response.headers.get('location');
-            let safeLocation = null;
-            if (location) {
-              const parsed = new URL(location, origin);
-              safeLocation = parsed.pathname + parsed.search.replace(/token_hash=[^&]+/g, 'token_hash=[redacted]');
-            }
+            const safeLocation = location ? new URL(location, origin).pathname + new URL(location, origin).search : null;
 
             const refreshed = await admin.auth.admin.getUserById(probeUserId);
             if (refreshed.error) throw refreshed.error;
@@ -74,18 +89,23 @@ jobs:
               email_confirmed_after_route: confirmed,
             }));
 
-            if (!confirmed) {
-              throw new Error('deployed_route_did_not_verify_invite_token');
-            }
+            if (!confirmed) throw new Error('local_route_did_not_verify_invite_token');
           } finally {
             if (probeUserId) {
               const deleted = await admin.auth.admin.deleteUser(probeUserId);
               if (deleted.error) {
-                console.error('Disposable route probe cleanup failed:', deleted.error.message);
+                console.error('Disposable local-route probe cleanup failed:', deleted.error.message);
                 process.exitCode = 1;
               } else {
-                console.log('Disposable deployed-route Auth probe user deleted.');
+                console.log('Disposable local-route Auth probe user deleted.');
               }
             }
           }
           NODE
+      - name: Stop local server
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/saga-dev.pid ]]; then
+            kill "$(cat /tmp/saga-dev.pid)" 2>/dev/null || true
+          fi
