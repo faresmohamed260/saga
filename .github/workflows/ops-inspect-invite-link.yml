@@ -42,7 +42,7 @@ jobs:
             "https://api.resend.com/emails/${email_id}" > email.json
 
           python - <<'PY'
-          import json, re
+          import hashlib, json, re
           from urllib.parse import urlparse, parse_qs
 
           data = json.load(open('email.json', encoding='utf-8'))
@@ -54,16 +54,18 @@ jobs:
           u = urlparse(raw)
           qs = parse_qs(u.query, keep_blank_values=True)
           token_values = qs.get('token_hash', [])
+          token = token_values[0] if token_values else ''
           print(json.dumps({
               'scheme': u.scheme,
               'host': u.netloc,
               'path': u.path,
               'query_keys': sorted(qs.keys()),
               'type': (qs.get('type') or [None])[0],
-              'token_hash_present': bool(token_values and token_values[0]),
-              'token_hash_length': len(token_values[0]) if token_values else 0,
+              'token_hash_present': bool(token),
+              'token_hash_length': len(token),
+              'token_hash_fingerprint': hashlib.md5(token.encode()).hexdigest() if token else None,
           }))
           expected = {'token_hash', 'type'}
-          if u.path != '/auth/confirm' or set(qs) != expected or (qs.get('type') or [None])[0] != 'invite' or not token_values or not token_values[0]:
+          if u.path != '/auth/confirm' or set(qs) != expected or (qs.get('type') or [None])[0] != 'invite' or not token:
               raise SystemExit('Rendered invite link does not match the S.A.G.A. confirm contract')
           PY
