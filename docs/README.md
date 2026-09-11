@@ -19,7 +19,7 @@ Do not use an older runtime/qualification document as current architecture merel
 - `../AGENTS.md` — mandatory working rules, phase discipline, v2/v1 boundary, RenderLab read-only boundary
 - `../PROJECT.md` — current product direction, merged baseline, blockers and immediate work
 - `DECISIONS.md` — durable cross-cutting v2 decisions
-- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; deterministic repository slices 1A through 1E are complete, while the Phase 1E hosted operational gate remains pending
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; deterministic repository slices and the dedicated hosted Supabase/schema foundation are complete, while hosted Auth/email/live invitation proof remains pending
 
 Phase baselines:
 
@@ -29,6 +29,7 @@ Phase baselines:
 - Phase 1C auth/access surfaces — PR #156, merge `319b785e43a169b4ffd7b57cd5be32ad3ef5da67`
 - Phase 1D Narrative Desk — PR #160, merge `f558a282b4743a15d440eada1c6a7ccefe44215c`
 - Phase 1E deterministic Admin operations — PR #162, merge `39dceaf1254ed7616ed1bd9eb640d9d622a73812`
+- Phase 1E deterministic handoff — PR #163, merge `c274f1d26914edf62e30cfd2ef23222df6a8503f`
 
 ## Active v2 Architecture / Product Contracts
 
@@ -61,14 +62,26 @@ Current Phase 1 validation evidence:
 - `validation/PHASE_V2_1C_AUTH_ACCESS_2026-09-11.md`
 - `validation/PHASE_V2_1D_NARRATIVE_DESK_2026-09-11.md`
 - `validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
+- `validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
 
 ## Current Boundary
 
-The deterministic Phase 1E Admin repository slice is merged and validated. Phase 1 remains **active** because the hosted operational claims are still unproven.
+The deterministic Phase 1E Admin repository slice is merged and validated. The dedicated hosted **S.A.G.A.** Supabase project also now exists in `eu-central-1`, and the active v2 migration lineage is applied and advisor-reviewed.
 
-Before Phase 1 closes, the repository-defined gate still requires a dedicated S.A.G.A.-owned Supabase project, hosted Auth redirect/template/email configuration, and at least one real bounded invitation acceptance flow.
+Phase 1 remains **active** because the remaining hosted claims are still unproven:
 
-Creating/configuring that hosted Supabase resource requires explicit organization selection and cost confirmation. Do not infer that authorization from a generic request to continue repository work.
+- Auth Site URL / redirect allowlist;
+- invite/recovery template configuration;
+- production-capable SMTP or equivalent Auth email hook;
+- runtime privileged-secret wiring to the dedicated project;
+- first trusted admin bootstrap;
+- real inbox invitation delivery and acceptance;
+- later sign-in;
+- hosted suspension/revocation behavior.
+
+The existing `AI Studio` Supabase project was not reused or modified.
+
+The connected Supabase integration used for the hosted database foundation does not expose service-role secret retrieval or hosted Auth Site URL/template/SMTP mutation controls, so those settings must not be guessed or claimed complete.
 
 Agent/job runtime surfaces are added only when a later active phase adopts them. Do not begin the agentic AI phase while Phase 1 hosted exit criteria remain unmet.
 
