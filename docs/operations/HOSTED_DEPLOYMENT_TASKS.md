@@ -17,7 +17,8 @@ This file tracks hosted tasks that are real project state but may not be complet
 - wire Vercel runtime to the dedicated S.A.G.A. Supabase project using:
   - `SUPABASE_URL`
   - `SUPABASE_PUBLISHABLE_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY` (server secret only)
+  - `SUPABASE_SECRET_KEY` (preferred modern `sb_secret_...` backend credential; server secret only)
+  - `SUPABASE_SERVICE_ROLE_KEY` only as a temporary legacy fallback if needed
 - configure Supabase Auth Site URL and redirect allowlist
 - verify invite/recovery email templates
 - configure production-capable SMTP or equivalent Auth email delivery

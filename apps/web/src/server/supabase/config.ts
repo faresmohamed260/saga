@@ -11,6 +11,17 @@ function readRequired(name: string): string {
   return value;
 }
 
+function readFirstRequired(names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  throw new Error(`${names.join(" or ")} is not configured.`);
+}
+
 export function supabaseConfigurationStatus(): IntegrationStatus {
   const url = process.env.SUPABASE_URL?.trim();
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -31,6 +42,9 @@ export function requireSupabaseServerConfig() {
 export function requireSupabasePrivilegedConfig() {
   return {
     url: readRequired("SUPABASE_URL"),
-    serviceRoleKey: readRequired("SUPABASE_SERVICE_ROLE_KEY"),
+    privilegedKey: readFirstRequired([
+      "SUPABASE_SECRET_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ]),
   };
 }
