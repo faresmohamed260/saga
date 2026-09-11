@@ -1,6 +1,6 @@
 # S.A.G.A. v2 Phase 1 — Closed-Demo Main Site, Accounts & Invitations
 
-**Status:** ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC ADMIN COMPLETE; HOSTED OPERATIONAL GATE PENDING
+**Status:** ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C COMPLETE; 1D COMPLETE; 1E DETERMINISTIC ADMIN COMPLETE; DEDICATED HOSTED SUPABASE + ACTIVE V2 SCHEMA COMPLETE; AUTH/EMAIL/LIVE INVITATION PROOF PENDING
 
 **Tracking:** #151
 
@@ -63,6 +63,11 @@ Phase 1E deterministic Admin operations:
 - exact head `79929e2c90750c8832025bc57768917edae16f54`
 - merge `39dceaf1254ed7616ed1bd9eb640d9d622a73812`
 - validation: `docs/validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
+
+Phase 1E hosted Supabase foundation:
+
+- dedicated hosted project created with explicit owner/cost approval
+- validation: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
 
 ## Owner Constraint — Closed Demo
 
@@ -206,6 +211,33 @@ Visual artifact:
 - ID `10268954015`
 - digest `faaa0bf2bcaef691e24a33df8488c79c00cdaa6bf6b1ff91b418deb4c3f9df50`
 
+## Phase 1E — Hosted Supabase Foundation Complete
+
+The owner explicitly selected the **Fares Home Lab** organization, approved a **new** S.A.G.A. project rather than reusing `AI Studio`, selected `eu-central-1` (Frankfurt), and approved the Supabase-reported **$0/month** project cost.
+
+Created project:
+
+- name: `S.A.G.A.`
+- project ref/id: `scmeqnpmhomzcwecjdtu`
+- organization id: `imbicfntoeaqubhdcnpe`
+- region: `eu-central-1`
+- API URL: `https://scmeqnpmhomzcwecjdtu.supabase.co`
+- status after creation: `ACTIVE_HEALTHY`
+
+The exact active repository migration lineage was applied to the new project in order and all three applications succeeded:
+
+1. `closed_demo_account_access`
+2. `admin_operations`
+3. `admin_operation_hardening`
+
+Hosted migration history was then re-read and matched that order.
+
+Security advisors reported only two informational `rls_enabled_no_policy` findings on the deliberately server-only privileged tables. Those tables enable/force RLS and revoke browser-role access by design. Performance advisors reported only informational FK-index suggestions and one unused-index notice on the new empty project.
+
+No API key or privileged secret is committed to repository documentation.
+
+Detailed evidence: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`.
+
 ## Target Route Boundary
 
 ```text
@@ -263,22 +295,22 @@ active admin
 
 If outbound email fails, the product surfaces bounded delivery failure while preserving deterministic retry/revoke state.
 
-## Remaining Phase 1E Hosted Operational Gate
+## Remaining Phase 1E Hosted Auth / Email / Live-Proof Gate
 
-The deterministic repository implementation is complete. Phase 1 remains open because these hosted claims are unproven:
+The dedicated hosted project and database schema now exist. Phase 1 remains open because these hosted claims are still unproven:
 
-- dedicated S.A.G.A.-owned Supabase project;
-- applying active v2 schema to that project;
-- Site URL and redirect allowlist;
+- S.A.G.A. Site URL and redirect allowlist;
 - invite/recovery templates using supported variables;
 - production-capable custom SMTP or equivalent Auth email hook;
-- sender-domain authentication and acceptable rate limits;
+- authenticated sender domain and acceptable rate limits;
+- deployed runtime wiring to the dedicated S.A.G.A. project, including privileged server credentials through a secret boundary;
+- first trusted S.A.G.A. admin bootstrap;
 - actual inbox delivery;
 - invite click -> confirmation -> claim -> password setup -> later sign-in;
 - hosted suspension/revocation behavior;
 - scoped non-master B2 runtime credentials when object-storage flow becomes active.
 
-**External-resource gate:** Supabase project creation/configuration requires explicit organization selection and cost confirmation. Generic “continue/keep going” instructions do not authorize creation or repurposing of that hosted resource.
+The connected Supabase integration used for the hosted database foundation does not expose service-role secret retrieval or Auth Site URL/template/SMTP mutation controls. Do not invent those settings or claim they are configured.
 
 ## UI/UX Contract
 
@@ -302,7 +334,8 @@ Phase 1E Admin extends the approved Narrative Desk system rather than inventing 
 - **1C — COMPLETE:** auth/invite/password surfaces
 - **1D — COMPLETE:** Narrative Desk shell / first product surfaces
 - **1E deterministic Admin — COMPLETE:** Admin APIs/UI/database safeguards/rendered evidence
-- **1E hosted operational integration — PENDING:** dedicated hosted Supabase/email/live invite proof
+- **1E hosted Supabase foundation — COMPLETE:** dedicated project + active v2 schema + advisor review
+- **1E hosted Auth/email/live proof — PENDING:** runtime secrets, Auth config, email, real invite acceptance/sign-in
 
 ## Validation Matrix
 
@@ -315,6 +348,9 @@ Phase 1E Admin extends the approved Narrative Desk system rather than inventing 
 | Retry-safe invitation intent | disposable-Postgres contract | validated in 1E |
 | Settled invitation revoke is non-mutating | disposable-Postgres hardening contract | validated in 1E |
 | Self/last-admin protections | database/structural tests | validated in 1E |
+| Dedicated hosted S.A.G.A. Supabase | explicit creation result | validated |
+| Active v2 schema on hosted project | hosted migration history | validated |
+| Hosted schema advisor review | Supabase security/performance advisors | validated; informational findings only |
 | No raw invite token persistence | schema/structural tests | validated |
 | No privileged secret in browser | architecture/source checks | validated structural boundary |
 | Narrative Desk responsive | production desktop+narrow render | validated in 1D |
@@ -322,15 +358,23 @@ Phase 1E Admin extends the approved Narrative Desk system rather than inventing 
 | Reduced motion | computed-style render validation | validated |
 | Hosted invitation delivery | real inbox test | **pending** |
 | Hosted invite acceptance/sign-in | live end-to-end test | **pending** |
-| Phase 1 merge safety | exact-head CI + rendered evidence | deterministic slices passed |
+| Hosted suspension/revocation | live hosted behavior | **pending** |
 
 ## External Dependencies / Blockers
 
-The following are no longer blockers to deterministic repository correctness, but are blockers to **Phase 1 end-to-end completion**:
+Completed:
 
-- new S.A.G.A.-owned Supabase project;
+- dedicated S.A.G.A.-owned Supabase project;
+- active v2 schema application.
+
+Remaining blockers to **Phase 1 end-to-end completion**:
+
+- hosted Auth Site URL/redirect/template configuration;
 - custom SMTP/email hook and sender configuration;
-- real hosted invite acceptance proof;
+- runtime/deployment privileged secret wiring;
+- trusted initial admin bootstrap;
+- real hosted invite acceptance/sign-in proof;
+- hosted suspension/revocation proof;
 - scoped B2 runtime key when object upload becomes active;
 - deployment ownership decision for the stale Vercel project still pointing at retired `apps/studio`.
 
@@ -354,7 +398,7 @@ Do not reuse RenderLab/Studio Supabase or shared R2 state for S.A.G.A.
 Phase 1 closes only when:
 
 1. Phase-1 contracts are authoritative;
-2. S.A.G.A.-owned schema is applied to a dedicated hosted S.A.G.A. Supabase project;
+2. S.A.G.A.-owned schema is applied to a dedicated hosted S.A.G.A. Supabase project — **complete**;
 3. public self-signup remains absent;
 4. invite confirmation + credential setup + later sign-in work end-to-end;
 5. private routes require fresh verified identity + active S.A.G.A. account;
@@ -370,4 +414,4 @@ Phase 1 closes only when:
 
 Do not design or implement the agentic AI phase yet.
 
-The immediate remaining work is the **explicitly authorized hosted Supabase/email acceptance proof** required to close Phase 1.
+The immediate remaining work is the **hosted Auth/email/runtime-secret/live invitation acceptance proof** required to close Phase 1.
