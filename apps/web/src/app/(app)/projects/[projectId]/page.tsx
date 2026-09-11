@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/shell/page-header";
+import { SourceUploadForm } from "@/features/library/source-upload-form";
 import {
   getSagaProjectWorkspace,
   SagaStoryOperationError,
@@ -77,7 +78,7 @@ export default async function ProjectWorkspacePage({
           role="status"
           className="max-w-4xl border-y border-[var(--app-separator)] py-3 text-sm leading-6 text-[var(--app-muted)]"
         >
-          Project created. The ownership boundary is ready; source upload is activated in Phase 2B.
+          Project created. Add a UTF-8 text or EPUB source when you are ready.
         </p>
       ) : null}
 
@@ -127,7 +128,7 @@ export default async function ProjectWorkspacePage({
               Sources
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
-              Phase 2B will add the bounded B2 upload path for UTF-8 text and EPUB sources.
+              Originals stay private in object storage. Upload completion is verified before deterministic ingestion is queued.
             </p>
           </div>
           <Link
@@ -138,18 +139,24 @@ export default async function ProjectWorkspacePage({
           </Link>
         </div>
 
+        <SourceUploadForm projectId={workspace.project.id} />
+
         {workspace.sources.length === 0 ? (
           <p className="border-b border-[var(--app-separator)] py-8 text-sm leading-6 text-[var(--app-muted)]">
-            No source records yet. This is expected until the Phase 2B upload/ingestion slice is merged.
+            No source records yet. Add a UTF-8 plain-text or EPUB source above.
           </p>
         ) : (
           <ul className="divide-y divide-[var(--app-separator)] border-b border-[var(--app-separator)]">
             {workspace.sources.map((source) => {
               const latestJob = latestJobs.get(source.id);
+              const canReadOriginal =
+                source.ingestionStatus === "uploaded" ||
+                source.ingestionStatus === "processing" ||
+                source.ingestionStatus === "ready";
               return (
                 <li
                   key={source.id}
-                  className="grid gap-3 py-5 lg:grid-cols-[minmax(0,1fr)_7rem_9rem_10rem] lg:items-center"
+                  className="grid gap-3 py-5 lg:grid-cols-[minmax(0,1fr)_7rem_9rem_10rem_auto] lg:items-center"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[var(--app-text)]">
@@ -166,6 +173,16 @@ export default async function ProjectWorkspacePage({
                   <p className="text-xs capitalize text-[var(--app-muted)]">
                     {latestJob ? `${statusLabel(latestJob.kind)}: ${latestJob.status}` : "No analysis job"}
                   </p>
+                  {canReadOriginal ? (
+                    <a
+                      href={`/api/sources/${source.id}/original`}
+                      className="text-sm font-semibold text-[var(--app-text)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]"
+                    >
+                      Original
+                    </a>
+                  ) : (
+                    <span className="text-xs text-[var(--app-muted)]">Unavailable</span>
+                  )}
                 </li>
               );
             })}
