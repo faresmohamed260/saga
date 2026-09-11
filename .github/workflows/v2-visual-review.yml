@@ -37,12 +37,12 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Create runner-only visual fixture
+      - name: Create runner-only authenticated shell fixture
         shell: bash
         run: |
-          mkdir -p src/app/visual-review
-          cat > src/app/visual-review/page.tsx <<'EOF'
-          import HomePage from "@/app/(app)/home/page";
+          cat > 'src/app/(app)/layout.tsx' <<'EOF'
+          import type { ReactNode } from "react";
+
           import { AppShell } from "@/components/shell/app-shell";
           import type { SagaAccount } from "@/server/account/types";
 
@@ -56,22 +56,21 @@ jobs:
             acceptedAt: "2026-09-11T00:00:00.000Z",
           };
 
-          export default function VisualReviewPage() {
-            return (
-              <AppShell account={reviewAccount}>
-                <HomePage />
-              </AppShell>
-            );
+          export default function VisualReviewLayout({ children }: Readonly<{ children: ReactNode }>) {
+            return <AppShell account={reviewAccount}>{children}</AppShell>;
           }
           EOF
 
-      - name: Start Next.js visual fixture
+      - name: Build production visual fixture
+        run: npm run build
+
+      - name: Start production visual fixture
         shell: bash
         run: |
-          npm run dev -- --hostname 127.0.0.1 > /tmp/saga-v2-visual-review.log 2>&1 &
+          npm start -- --hostname 127.0.0.1 > /tmp/saga-v2-visual-review.log 2>&1 &
           echo $! > /tmp/saga-v2-visual-review.pid
           for attempt in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:3000/visual-review >/dev/null; then
+            if curl --fail --silent http://127.0.0.1:3000/home >/dev/null; then
               exit 0
             fi
             sleep 1
@@ -79,33 +78,63 @@ jobs:
           cat /tmp/saga-v2-visual-review.log
           exit 1
 
-      - name: Capture desktop and narrow evidence
+      - name: Capture and validate desktop and narrow evidence
         shell: bash
         run: |
           mkdir -p visual-review
           node <<'EOF'
           const { chromium } = require("playwright");
 
+          const origin = "http://127.0.0.1:3000";
+
+          function assert(condition, message) {
+            if (!condition) throw new Error(message);
+          }
+
           (async () => {
             const browser = await chromium.launch({ headless: true });
             const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 
-            await page.goto("http://127.0.0.1:3000/visual-review", { waitUntil: "networkidle" });
+            await page.goto(`${origin}/home`, { waitUntil: "networkidle" });
+            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must be the active desktop route");
+            assert(await page.locator("aside").isVisible(), "Desktop navigation rail must be visible");
             await page.screenshot({ path: "visual-review/home-desktop-1440x960.png", fullPage: true });
 
-            await page.setViewportSize({ width: 390, height: 844 });
-            await page.goto("http://127.0.0.1:3000/visual-review", { waitUntil: "networkidle" });
-            await page.screenshot({ path: "visual-review/home-narrow-390x844.png", fullPage: true });
+            await page.goto(`${origin}/library`, { waitUntil: "networkidle" });
+            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Library", "Library must be the active desktop route");
+            await page.screenshot({ path: "visual-review/library-desktop-1440x960.png", fullPage: true });
 
-            await page.getByRole("button", { name: "Open navigation" }).click();
-            await page.screenshot({ path: "visual-review/navigation-narrow-390x844.png", fullPage: true });
+            await page.goto(`${origin}/projects`, { waitUntil: "networkidle" });
+            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Projects", "Projects must be the active desktop route");
+            await page.screenshot({ path: "visual-review/projects-desktop-1440x960.png", fullPage: true });
+
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.goto(`${origin}/home`, { waitUntil: "networkidle" });
+            assert(!(await page.locator("aside").isVisible()), "Desktop rail must be hidden at narrow width");
+            assert(await page.getByRole("button", { name: "Open navigation" }).isVisible(), "Narrow navigation trigger must be visible");
+            assert((await page.locator("header").first().textContent())?.includes("Home"), "Narrow top bar must expose current route context");
 
             const horizontalOverflow = await page.evaluate(
               () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
             );
-            if (horizontalOverflow) {
-              throw new Error("Narrow visual fixture has horizontal overflow");
-            }
+            assert(!horizontalOverflow, "Narrow Home has horizontal overflow");
+            await page.screenshot({ path: "visual-review/home-narrow-390x844.png", fullPage: true });
+
+            const menuTrigger = page.getByRole("button", { name: "Open navigation" });
+            await menuTrigger.click();
+            assert(await page.getByRole("dialog").isVisible(), "Narrow navigation dialog must open");
+            assert((await page.locator('[aria-current="page"]').textContent())?.trim() === "Home", "Home must remain current inside narrow navigation");
+            await page.screenshot({ path: "visual-review/navigation-narrow-390x844.png", fullPage: true });
+
+            await page.keyboard.press("Escape");
+            assert(!(await page.getByRole("dialog").isVisible()), "Escape must close narrow navigation");
+            assert(await menuTrigger.evaluate((element) => document.activeElement === element), "Closing navigation must restore focus to its trigger");
+
+            await page.emulateMedia({ reducedMotion: "reduce" });
+            const transitionDuration = await page.getByRole("link", { name: "Library" }).first().evaluate(
+              (element) => Number.parseFloat(getComputedStyle(element).transitionDuration) || 0,
+            );
+            assert(transitionDuration <= 0.001, "Reduced-motion mode must neutralize navigation transitions");
 
             await browser.close();
           })().catch((error) => {
