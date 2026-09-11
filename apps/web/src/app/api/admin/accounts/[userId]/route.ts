@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { updateSagaAdminAccount } from "@/server/admin/admin-operations";
 import { sagaAdminErrorResponse } from "@/server/admin/http";
+import { isCanonicalUuid } from "@/server/admin/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,10 @@ export async function PATCH(
 ) {
   try {
     const { userId } = await params;
+    if (!isCanonicalUuid(userId)) {
+      return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+    }
+
     const body = (await request.json()) as { role?: unknown; status?: unknown };
     const account = await updateSagaAdminAccount(userId, {
       role: body.role,
