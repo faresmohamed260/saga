@@ -9,7 +9,7 @@ For substantial current work, read in this order:
 1. `../AGENTS.md`
 2. `../PROJECT.md`
 3. `DECISIONS.md`
-4. the current/most-recent v2 phase contract referenced by `PROJECT.md`
+4. the current v2 phase contract referenced by `PROJECT.md`
 5. the relevant document under `v2/`
 
 GitHub is authoritative. Do not reconstruct project state from chat history when the repository can establish it.
@@ -23,26 +23,34 @@ Authoritative completion records:
 - `phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
 - `validation/PHASE_V2_1_HOSTED_AUTH_LIVE_PROOF_2026-09-11.md`
 
-Phase 1 established and proved:
+**S.A.G.A. v2 Phase 2 — Story Intake & Character Identity Foundation: ACTIVE.**
 
-- invite-only Supabase Auth + S.A.G.A.-owned admission/role/status state;
-- private route and active-admin boundaries;
-- real hosted invitation delivery through verified Resend SMTP;
-- `/auth/confirm` invitation verification + transactional product claim;
-- Set Password + later fresh password sign-in;
-- hosted suspension/reactivation behavior;
-- Narrative Desk responsive shell and Admin workspace;
-- dedicated Supabase/Vercel/B2 foundations;
-- manual-only Vercel deployment governance.
+Authoritative Phase-2 contract:
 
-There is **no authoritative Phase 2 contract yet**. The next work is to define the next v2 phase before implementing a new agent/LLM runtime.
+- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md`
+
+Phase 2 restores the first real storytelling intelligence loop behind the proven private application boundary:
+
+```text
+member-owned project
+  -> .txt/.epub source
+  -> B2 object + Supabase metadata
+  -> durable Postgres analysis job
+  -> separate analysis worker
+  -> deterministic normalized source
+  -> precision-first character identity resolution
+  -> character / alias / mention evidence in the private app
+```
+
+The phase explicitly avoids recreating the old v1 monolithic runtime or jumping directly to a general agent/LLM framework.
 
 ## Active v2 Governance
 
 - `../AGENTS.md` — mandatory working rules, source-of-truth order, phase discipline, v2/v1 boundary, RenderLab boundary
-- `../PROJECT.md` — current hosted reality, completed Phase 1 state, deferred items and immediate next work
+- `../PROJECT.md` — current hosted reality, active Phase-2 direction, deferred items and immediate next work
 - `DECISIONS.md` — durable cross-cutting v2 decisions
-- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — completed Phase 1 contract and exit evidence
+- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` — active Phase-2 product/data/job/provider/testing/hosted-validation contract
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — completed Phase-1 contract and exit evidence
 - `operations/VERCEL_DEPLOYMENT_POLICY.md` — manual-only Vercel deployment rule
 
 ## Phase Baselines
@@ -55,6 +63,9 @@ There is **no authoritative Phase 2 contract yet**. The next work is to define t
 - Phase 1E deterministic Admin — PR #162, merge `39dceaf1254ed7616ed1bd9eb640d9d622a73812`
 - Phase 1 deterministic handoff — PR #163, merge `c274f1d26914edf62e30cfd2ef23222df6a8503f`
 - manual-only Vercel deployment policy — PR #173, merge `4c592a5590fdd46ac075a20def4b9d03c169f880`
+- Phase 1 hosted closure — PR #174, merge `3802222714c300b9777b65b34f94668be50f9582`
+
+Add the Phase-2 contract PR/merge here once merged.
 
 ## Active v2 Architecture / Product Contracts
 
@@ -63,6 +74,7 @@ There is **no authoritative Phase 2 contract yet**. The next work is to define t
 - `v2/UI_SYSTEM.md` — S.A.G.A.-specific UI/UX, component sourcing, responsive/accessibility and visual-review rules
 - `v2/PHASE_1D_UI_CONCEPT.md` — approved Narrative Desk shell/navigation/composition direction
 - `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity, account access, invitations, admin and email-delivery contract
+- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` — Phase-2 project/source ownership, analysis runtime, storage, identity-provider, deterministic testing and qualification boundary
 
 ## Active v2 Code / Operations
 
@@ -75,11 +87,13 @@ There is **no authoritative Phase 2 contract yet**. The next work is to define t
 - `../apps/web/src/server/supabase/` — ordinary SSR/server and isolated privileged Supabase boundaries
 - `../apps/web/src/server/storage/` — provider-neutral object-storage boundary + B2 implementation
 - `../apps/web/supabase/migrations/` — active v2 Supabase migration lineage
-- `../apps/web/supabase/tests/` — disposable-Postgres account/access/Admin contracts
+- `../apps/web/supabase/tests/` — disposable-Postgres database contracts
 - `../config/v2-storage.json` — safe Backblaze B2 metadata
 - `../.github/workflows/v2-web-ci.yml` — deterministic web/database CI
 - `../.github/workflows/v2-visual-review.yml` — production-build Chromium rendered validation
 - `../.github/workflows/v2-b2-bootstrap.yml` — manual-only Backblaze bootstrap/storage smoke workflow
+
+Phase-2 worker code does not yet exist at contract activation. Its implementation must follow the runtime boundary in the active phase contract rather than reviving a v1 package as the active runtime.
 
 ## Phase 1 Validation Evidence
 
@@ -119,28 +133,27 @@ The historical `studio` project was disconnected from S.A.G.A. Git pushes. Git-t
 
 ### Backblaze B2
 
-The dedicated private S.A.G.A. bucket is validated. A scoped runtime key remains deferred until an active product feature needs object storage.
+The dedicated private S.A.G.A. bucket is validated. Phase 2 will require a bucket-scoped runtime application key when the real hosted source flow begins. Bootstrap/master credentials remain operator-only.
 
 ## Open / Deferred Work
 
-These are not Phase 1 blockers:
+- custom domain `saga.faresuniform.uk` — tracked by issue #165; not part of Phase 2 unless explicitly resumed;
+- scoped B2 runtime credentials — external gate for real hosted Phase-2 source object I/O;
+- worker host/provider — deliberately deferred until the separate worker contract is implemented/proven far enough to require a host/cost choice;
+- PR #172 (`Expose hosted release identity in health checks`) — closed without merge after Phase 1 completed without it; reintroduce only as a fresh current-main change if a future hosted gate needs release fingerprinting.
 
-- custom domain `saga.faresuniform.uk` — tracked by issue #165;
-- scoped B2 runtime credentials when source/object upload becomes active;
-- PR #172 (`Expose hosted release identity in health checks`) — parked; Phase 1 proof completed without it. Re-evaluate against current `main` before refresh/closure/merge.
+## Phase-2 Execution Boundary
 
-## Next-Phase Boundary
+Implement the active phase contract in this order:
 
-Phase 1 completion allows planning of the next S.A.G.A. intelligence phase, but old v1 runtime documents do not automatically become active architecture.
+1. **2A Product/data foundation** — project/source/job/run/character schema, owner RLS, atomic job contract, database tests, initial Projects/Library product data;
+2. **2B Source storage + ingestion** — scoped B2 source path, `.txt`/`.epub` deterministic normalizer and golden fixtures;
+3. **2C Character identity engine** — normalized evidence-provider interface, conservative canonical admission, attachment/quarantine, aliases/mentions, adversarial fixtures and user-visible result surface;
+4. **2D Qualification** — retries/idempotency, literary benchmark baseline, rendered validation, then hosted B2+worker+app proof after the required explicit approvals.
 
-Before implementation:
+Do not skip the schema/job/runtime boundary by embedding full-book NLP in Next.js requests.
 
-1. select the next user-visible intelligence capability;
-2. inspect relevant v1 requirements/algorithms as historical input;
-3. translate reused concepts into v2-owned data/job/provider contracts;
-4. write an authoritative new phase contract under `phases/`;
-5. define deterministic and hosted validation gates;
-6. only then implement through normal branch/PR/exact-head CI.
+Do not use generative LLMs as a shortcut around the deterministic Phase-2 identity contract.
 
 ## RenderLab Reference Boundary
 
@@ -153,6 +166,7 @@ S.A.G.A.-owned translations are authoritative:
 - `v2/FRONTEND_ARCHITECTURE.md`
 - `v2/UI_SYSTEM.md`
 - `v2/ACCESS_AND_INVITATIONS.md`
+- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md`
 
 ## Historical v1 Material
 
