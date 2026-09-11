@@ -160,6 +160,18 @@ Account authorization, durable library/project truth, invitations/admin state an
 
 **Consequence:** Browser code never receives service-role/Auth Admin/object-storage master credentials. Privileged decisions are made in server-owned services/routes after fresh identity verification.
 
+### D-025 — Vercel Deployments Are Manual and Owner-Authorized
+
+**Status:** Accepted — owner decision 2026-09-11
+
+S.A.G.A. does not automatically deploy Git pushes, branches, pull requests, or merges to Vercel. The active web project keeps Git-triggered deployments disabled through `apps/web/vercel.json`.
+
+A Vercel Preview or Production deployment requires explicit owner approval for that specific deployment after the proposed environment, exact Git ref/SHA, and reason for deployment are stated. Repository implementation/merge authorization does not imply deployment authorization.
+
+The historical Vercel `studio` project was disconnected from `faresmohamed260/saga` on 2026-09-11 and must remain disconnected unless the owner explicitly reverses that decision.
+
+**Consequence:** Normal validation uses GitHub Actions and repository-owned deterministic checks. Agents may propose a manual Vercel deployment for major cohesive updates, hosted-integration testing, or owner review, but must wait for explicit approval before triggering it. Approval is one-time and does not authorize later deployments. See `docs/operations/VERCEL_DEPLOYMENT_POLICY.md`.
+
 ## Still-Applicable General Principles From v1
 
 These principles remain useful across the rebuild even though their old implementation context is historical:
