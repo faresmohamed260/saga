@@ -1,6 +1,6 @@
 # S.A.G.A. v2 Phase 1 — Closed-Demo Main Site, Accounts & Invitations
 
-**Status:** ACTIVE — CONTRACT/ARCHITECTURE PASS
+**Status:** ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C NEXT
 
 **Tracking:** #151
 
@@ -29,30 +29,48 @@ An active S.A.G.A. admin should be able to:
 - suspend/reactivate an account;
 - promote/demote roles without relying on browser metadata.
 
-## Verified Starting State
+## Verified Current State
 
 Merged Phase-0 baseline:
 
 - repository: `faresmohamed260/saga`
-- `main`: `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
-- tree: `50f34409fb52540ce48c506f9446a3b75e608b08`
+- merge: `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
 - PR: #149
 - Phase-0 issue: #148 closed complete
 
-Verified foundation:
+Merged Phase-1 contract baseline:
+
+- merge: `55beaccab011a4c5337db86dd88b52f6d48734c4`
+- PR: #152
+
+Merged Phase-1B account/access foundation:
+
+- current `main`: `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`
+- tree: `6a2814f97114e6d731235b933f3a75c8fa9fdc76`
+- PR: #153
+- exact PR head: `e81915942ba9e859c79898ec60fdda38a56235d3`
+- exact-head `SAGA v2 Web CI`, `Required Check Compatibility`, and `Backend Architecture CI` all succeeded before merge
+
+Durable Phase-1B evidence: `docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`.
+
+Verified foundation now includes:
 
 - Next.js/React/TypeScript app under `apps/web/`;
 - Supabase SSR configuration boundary;
 - provider-neutral object storage + B2 S3 adapter;
 - dedicated private B2 bucket validated through GitHub Actions;
 - v2 web CI for install/lint/typecheck/tests/build;
+- active v2 Supabase migration lineage under `apps/web/supabase/migrations/`;
+- closed-demo account/invitation persistence and transactional claim logic;
+- fresh server Auth identity verification and S.A.G.A. account resolver;
+- active-admin authorization boundary;
+- disposable-Postgres database-contract CI;
 - v1 runtime classified historical/reference.
 
-External state:
+External state still not complete:
 
-- connected Supabase account exposes organization `Fares Home Lab`;
-- there is no S.A.G.A.-owned Supabase project configured yet;
-- creating one requires explicit organization selection/cost confirmation;
+- there is no S.A.G.A.-owned hosted Supabase project configured yet;
+- creating one through the connected tool requires explicit organization selection/cost confirmation;
 - B2 master/bootstrap credentials exist, but no scoped runtime B2 application key is configured yet;
 - hosted invitation-email SMTP/template configuration is not yet verified.
 
@@ -93,61 +111,91 @@ S.A.G.A.'s own contracts are:
 - `docs/v2/UI_SYSTEM.md`
 - `docs/v2/ACCESS_AND_INVITATIONS.md`
 
-## In Scope
+## Implemented Phase 1B Foundation
 
-### 1. Account / invitation persistence
+### Account / invitation persistence
 
-Add S.A.G.A.-owned relational records for:
+Phase 1B merged:
 
-- account access keyed by verified Supabase Auth user ID;
-- account role (`member|admin` initially);
-- account status (`active|suspended` initially);
-- pending/accepted/revoked/expired invitation lifecycle keyed by normalized email;
-- inviter/claim/audit timestamps needed for deterministic authorization and operations.
+- `saga_account_access` keyed by verified Supabase Auth user ID;
+- S.A.G.A.-owned account role (`member|admin` initially);
+- S.A.G.A.-owned account status (`active|suspended` initially);
+- `saga_invitations` with normalized email and `pending|accepted|revoked|expired` lifecycle;
+- inviter/claim/audit timestamps required for deterministic authorization/operations;
+- no reusable raw Auth invitation tokens/secrets in application tables;
+- forced RLS and revoked browser-role table access;
+- service-role-only privileged access.
 
-RLS must be enabled; browser access to privileged access/invitation state is not the default. Server-only service paths own privileged mutation/read access.
+The active v2 migration lineage is `apps/web/supabase/migrations/`. The historical root `supabase/migrations/` tree is not the v2 database bootstrap source.
 
-### 2. Auth/session boundary
+### Invitation claim
+
+The merged transactional claim routine:
+
+- derives identity server-side;
+- reloads verified `auth.users.email` rather than trusting browser input;
+- locks the eligible invitation row;
+- settles stale invitations to expired;
+- rejects missing, mismatched, revoked, expired, or consumed state;
+- prevents double claim;
+- atomically establishes S.A.G.A. account access.
+
+### Server authorization
+
+Merged server boundaries include:
+
+- fresh `auth.getUser()` identity verification;
+- server-only privileged Supabase client using `SUPABASE_SERVICE_ROLE_KEY`;
+- account resolution for unauthenticated, not admitted, suspended, active, and unavailable states;
+- active-admin authorization helper;
+- invitation claim service that never accepts browser-supplied effective user ID/email/role.
+
+### Phase 1B deterministic validation
+
+PR #153 exact-head checks:
+
+- `SAGA v2 Web CI` run `34593615395` — success;
+- `Required Check Compatibility` run `34593615380` — success;
+- `Backend Architecture CI` run `34593615394` — success.
+
+The v2 web CI database-contract job applies `apps/web/supabase/migrations/*.sql` to disposable PostgreSQL with a minimal Supabase-compatible Auth/API-role bootstrap and proves:
+
+- migration application;
+- RLS/browser-role privilege denial;
+- successful verified-email invitation claim;
+- double-claim denial;
+- verified-email mismatch denial;
+- expiry settlement;
+- duplicate pending invitation rejection.
+
+The external legacy Studio/Vercel failure is deferred and is not an active v2 validation signal.
+
+## Phase 1C — Immediate Scope
+
+Phase 1C is the next implementation slice. Start from current `main` on a fresh branch.
 
 Implement:
 
 - public sign-in surface;
-- server invite confirmation route;
+- server invitation confirmation route;
 - password setup/change flow for confirmed invited users;
 - sign-out;
 - SSR cookie refresh/session plumbing;
 - fresh current-user verification for private product/account/admin authorization;
-- server S.A.G.A. account resolver that fails closed for unknown/suspended identities;
-- safe same-origin redirect validation.
+- protected layout/route boundary using the merged S.A.G.A. account resolver;
+- safe same-origin redirect validation;
+- deterministic auth/access tests;
+- clear bounded states for unauthenticated, not admitted, suspended, active, and unavailable access.
 
-No public create-account action.
+Do **not** add public create-account/signup behavior.
 
-### 3. Invitation workflow
+Hosted email delivery is not required for deterministic Phase 1C CI. Keep hosted SMTP/template claims separate until a dedicated S.A.G.A. Supabase project is configured and tested.
 
-Implement narrow server/admin operations for:
+## Later Phase 1 Scope
 
-- create invitation by normalized email + intended role;
-- trigger supported Supabase invitation email server-side;
-- revoke pending invitation;
-- claim an eligible pending invitation only after verified Auth identity/email is established;
-- reject mismatched, expired, revoked, consumed or ineligible invitation state;
-- avoid storing reusable raw Auth invitation tokens.
+### Phase 1D — Main application shell / information architecture
 
-### 4. Admin account management
-
-Implement private admin UI/API for:
-
-- pending invitations;
-- S.A.G.A.-known accounts only;
-- role/status mutation;
-- self-lockout/last-admin protection when applicable;
-- sanitized operational feedback.
-
-Do not expose the whole shared `auth.users` directory as product data.
-
-### 5. Main application shell / information architecture
-
-Implement the first real shell around S.A.G.A. user concepts.
+Implement the first real shell around S.A.G.A. user concepts after a S.A.G.A.-specific visual concept/review pass.
 
 Target product areas:
 
@@ -164,32 +212,21 @@ Target product areas:
 - Settings
 - Admin (authorized only)
 
-Phase 1 need not fully implement every domain surface. It must establish the shell, routing model, responsive navigation, page composition rules and initial Home/Library/Projects footholds without presenting fake analysis results.
+Phase 1D need not fully implement every domain surface. It must establish the shell, routing model, responsive navigation, page composition rules and initial Home/Library/Projects footholds without presenting fake analysis results.
 
-### 6. UI foundation
+### Phase 1E — Admin invitation/account operations + hosted integration
 
-Create S.A.G.A.-owned:
+Implement private admin UI/API for:
 
-- semantic visual tokens;
-- maintained primitive layer as real controls are needed;
-- application shell primitives;
-- auth/admin/account primitives;
-- responsive rules;
-- keyboard/focus/touch/reduced-motion behavior;
-- UI structural/purity tests where practical.
+- pending invitations;
+- S.A.G.A.-known accounts only;
+- role/status mutation;
+- self-lockout/last-admin protection when applicable;
+- sanitized operational feedback.
 
-Major new product surfaces require complete visual concepts and rendered review before being called approved.
+Then configure/verify the new S.A.G.A. Supabase project/email path and prove a real bounded invite acceptance flow. Scoped B2 runtime credentials may also be established when source upload becomes part of the first product workflow.
 
-### 7. CI / validation
-
-Expand v2 CI so Phase 1 can prove:
-
-- lint/typecheck/unit/build;
-- no service-role/Auth Admin/master object-store secret enters client paths;
-- no public signup affordance/path is introduced;
-- private/admin authorization contracts are structurally covered;
-- migration/schema safety checks when the v2 Supabase migration path is added;
-- responsive/rendered UI checks for implemented shell/auth/admin surfaces.
+Do not expose the whole shared `auth.users` directory as product data.
 
 ## Explicitly Out of Scope
 
@@ -230,41 +267,7 @@ Initial direction; route groups may separate public/auth/app layouts without lea
 /admin                    active-admin only
 ```
 
-Routes beyond the first implementation slices are information-architecture direction, not a promise that every route ships in the first PR.
-
-## Target Account / Invitation State
-
-### Account access
-
-```text
-user_id        uuid, verified Supabase Auth identity, primary key
-role           member | admin
-status         active | suspended
-invited_by     nullable admin auth user id
-accepted_at    timestamptz
-created_at     timestamptz
-updated_at     timestamptz
-```
-
-### Invitation
-
-```text
-id               uuid primary key
-email_normalized text/citext, normalized server-side
-email_display    text
-intended_role    member | admin
-status           pending | accepted | revoked | expired
-invited_by       admin auth user id
-invited_at       timestamptz
-expires_at       timestamptz aligned with hosted Auth policy
-accepted_by      nullable auth user id
-accepted_at      nullable timestamptz
-revoked_at       nullable timestamptz
-```
-
-Raw reusable Auth tokens/secrets are not application columns.
-
-The concrete SQL may refine field names/constraints as implementation evidence requires, while preserving the security semantics above.
+Routes beyond the active implementation slice are information-architecture direction, not a promise that every route ships in the same PR.
 
 ## Authorization Model
 
@@ -341,55 +344,55 @@ See `docs/v2/UI_SYSTEM.md`.
 
 ## Phase Slices
 
-### 1A — Contract / architecture / UI governance
+### 1A — Contract / architecture / UI governance — COMPLETE
 
-Merge this execution contract and the three Phase-1 subsystem documents first.
+Merged through PR #152.
 
-### 1B — Account/invitation persistence + server authorization
+### 1B — Account/invitation persistence + server authorization — COMPLETE
 
-Add v2 Supabase migrations/contracts, account/invitation services and deterministic tests without requiring outbound email delivery.
+Merged through PR #153 at `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`.
 
-### 1C — Auth/invite/password surfaces
+### 1C — Auth/invite/password surfaces — NEXT
 
 Implement sign-in, confirmation, password setup, session/account boundaries and protected layout behavior.
 
-### 1D — Application shell / first product surfaces
+### 1D — Application shell / first product surfaces — PENDING
 
 Implement approved responsive shell and first Home/Library/Projects composition using S.A.G.A.-owned visual concepts.
 
-### 1E — Admin invitation/account operations + hosted integration
+### 1E — Admin invitation/account operations + hosted integration — PENDING
 
 Implement admin UI/APIs, configure/verify the new S.A.G.A. Supabase project/email path and prove a real bounded invite acceptance flow. Scoped B2 runtime credentials may also be established when source upload becomes part of the first product workflow.
 
-Slices may be split into separate PRs; later slices do not silently change earlier contracts without updating the authoritative docs.
+Later slices do not silently change earlier contracts without updating the authoritative docs.
 
 ## Validation Matrix
 
-| Claim | Required evidence |
-|---|---|
-| Phase contract current | docs/PROJECT/DECISIONS exact-head review |
-| No public signup | structural/API/UI tests + rendered auth review |
-| Private route denial | deterministic auth/access tests |
-| Suspended/unknown denial | deterministic server account resolver tests |
-| Admin-only invitation mutation | fresh-auth + active-admin tests |
-| Invite claim matches verified email | transactional integration test |
-| No raw invite token persistence | schema/structural test |
-| No privileged secret in browser | bundle/source structural checks |
-| UI shell responsive | desktop + narrow rendered evidence |
-| Auth/admin accessible | keyboard/focus/touch review |
-| Reduced motion | implemented motion paths audited |
-| Hosted invitation delivery | explicit live inbox test after SMTP/templates configured |
-| Merge safety | exact-head `SAGA v2 Web CI` + required repo checks |
+| Claim | Required evidence | Current state |
+|---|---|---|
+| Phase contract current | docs/PROJECT/DECISIONS exact-head review | current through Phase 1B |
+| No public signup | structural/API/UI tests + rendered auth review | structural contract validated; rendered auth pending 1C |
+| Private route denial | deterministic auth/access tests | pending 1C |
+| Suspended/unknown denial | deterministic server account resolver tests | server resolver implemented; route proof pending 1C |
+| Admin-only invitation mutation | fresh-auth + active-admin tests | server boundary implemented; UI/API pending 1E |
+| Invite claim matches verified email | transactional integration test | validated in disposable Postgres |
+| No raw invite token persistence | schema/structural test | validated |
+| No privileged secret in browser | bundle/source structural checks | structural boundary validated; continue every slice |
+| UI shell responsive | desktop + narrow rendered evidence | pending 1D |
+| Auth/admin accessible | keyboard/focus/touch review | pending 1C/1E |
+| Reduced motion | implemented motion paths audited | pending visual slices |
+| Hosted invitation delivery | explicit live inbox test after SMTP/templates configured | pending 1E |
+| Merge safety | exact-head `SAGA v2 Web CI` + required repo checks | Phase 1B passed |
 
 ## External Dependencies / Blockers
 
-Not blockers for contract or most deterministic implementation:
+Not blockers for Phase 1C deterministic implementation:
 
 - new S.A.G.A. Supabase project;
 - custom SMTP/email hook;
 - scoped B2 runtime application key.
 
-They become blockers only for the hosted end-to-end slices that require them.
+They become blockers only for hosted end-to-end slices that require them.
 
 Supabase project creation through the connected tool requires the owner to explicitly choose an organization and confirm the reported cost before mutation. Do not assume this authorization from generic “keep going.”
 
