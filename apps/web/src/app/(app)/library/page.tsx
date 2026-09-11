@@ -21,7 +21,7 @@ export default function LibraryPage() {
         <EmptyState
           icon={BookOpen}
           title="No sources yet"
-          description="Source ingestion is not part of Phase 1D, so this workspace stays deliberately empty until the repository has a real source contract to display."
+          description="Source ingestion is not enabled yet, so this workspace stays empty until S.A.G.A. has real source records to display."
         />
       </div>
     </div>
