@@ -65,36 +65,47 @@ function mapAccountRow(
 }
 
 export async function resolveCurrentSagaAccount(): Promise<SagaAccountResolution> {
-  const identity = await getFreshSagaIdentity();
+  let identity: SagaIdentity | null;
+
+  try {
+    identity = await getFreshSagaIdentity();
+  } catch {
+    return { state: "unavailable" };
+  }
+
   if (!identity) {
     return { state: "unauthenticated" };
   }
 
-  const privileged = createSupabasePrivilegedClient();
-  const { data, error } = await privileged
-    .from("saga_account_access")
-    .select("user_id,role,status,invited_by,accepted_at")
-    .eq("user_id", identity.userId)
-    .maybeSingle();
+  try {
+    const privileged = createSupabasePrivilegedClient();
+    const { data, error } = await privileged
+      .from("saga_account_access")
+      .select("user_id,role,status,invited_by,accepted_at")
+      .eq("user_id", identity.userId)
+      .maybeSingle();
 
-  if (error) {
+    if (error) {
+      return { state: "unavailable" };
+    }
+
+    if (!data) {
+      return { state: "not_admitted", identity };
+    }
+
+    const account = mapAccountRow(identity, data as SagaAccountAccessRow);
+    if (!account) {
+      return { state: "unavailable" };
+    }
+
+    if (account.status === "suspended") {
+      return { state: "suspended", account };
+    }
+
+    return { state: "active", account };
+  } catch {
     return { state: "unavailable" };
   }
-
-  if (!data) {
-    return { state: "not_admitted", identity };
-  }
-
-  const account = mapAccountRow(identity, data as SagaAccountAccessRow);
-  if (!account) {
-    return { state: "unavailable" };
-  }
-
-  if (account.status === "suspended") {
-    return { state: "suspended", account };
-  }
-
-  return { state: "active", account };
 }
 
 export async function requireCurrentSagaAccount(): Promise<SagaAccount> {
