@@ -13,7 +13,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Account"
         title="Settings"
-        description="Account controls stay intentionally narrow until the later administration and preference contracts exist."
+        description="Account controls are intentionally limited while the closed demo is being established."
       />
 
       <section className="max-w-3xl border-y border-[var(--app-separator)]" aria-labelledby="session-heading">
@@ -22,7 +22,7 @@ export default function SettingsPage() {
             Session
           </h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--app-muted)]">
-            Sign out of this browser session. Public self-signup remains disabled for the closed demo, and account administration remains owned by the later Phase 1E slice.
+            Sign out of this browser session. Public self-signup remains disabled for this closed demo; broader account administration is not enabled yet.
           </p>
           <form action={signOutAction} className="mt-4">
             <button
