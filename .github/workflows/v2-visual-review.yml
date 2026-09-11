@@ -174,7 +174,10 @@ jobs:
             return [project];
           }
 
-          export async function createSagaProject(): Promise<SagaProject> {
+          export async function createSagaProject(_input: {
+            title: unknown;
+            description?: unknown;
+          }): Promise<SagaProject> {
             return project;
           }
 
