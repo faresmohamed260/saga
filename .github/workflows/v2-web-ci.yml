@@ -121,5 +121,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/first_admin_bootstrap.sql
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/closed_demo_account_access.sql
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/admin_operation_hardening.sql
