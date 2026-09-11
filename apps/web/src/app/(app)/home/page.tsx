@@ -12,13 +12,13 @@ const workspaceLinks = [
   {
     href: "/library",
     title: "Library",
-    description: "Source material and editions will live here as the ingestion contracts arrive.",
+    description: "Source material and editions will live here once source ingestion is enabled.",
     icon: BookOpen,
   },
   {
     href: "/projects",
     title: "Projects",
-    description: "Story workspaces will gather canon, characters, timelines, and generated media.",
+    description: "Story workspaces will gather canon, characters, timelines, and generated media as those capabilities arrive.",
     icon: FolderKanban,
   },
 ] as const;
@@ -39,7 +39,7 @@ export default function HomePage() {
               Workspace
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
-              Phase 1D establishes the product frame without inventing story data that does not exist yet.
+              Library and Projects are the first workspace anchors. Source ingestion and project creation are not enabled yet.
             </p>
           </div>
         </div>
