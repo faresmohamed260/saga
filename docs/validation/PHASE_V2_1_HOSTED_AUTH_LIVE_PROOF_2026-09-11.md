@@ -1,52 +1,184 @@
-# S.A.G.A. v2 Phase 1 Hosted Auth Live-Proof Checkpoint — 2026-09-11
+# S.A.G.A. v2 Phase 1 Hosted Auth Live Proof — 2026-09-11
 
-## Scope
+## Result
 
-This checkpoint records the first hosted owner-invitation attempt and the reason it must be repeated on a public current-code production deployment before Phase 1 can close.
+**PASS — hosted Phase 1 Auth/email/invitation/access behavior is proven end-to-end.**
 
-## Hosted foundation proven
+This document supersedes the earlier checkpoint conclusion that the hosted live proof was still pending. The first attempt failed because a Vercel Preview deployment was protected by Vercel Authentication; the final proof was rerun against the public production alias and passed.
 
-- Dedicated Supabase project: `scmeqnpmhomzcwecjdtu` (`eu-central-1`).
-- Public signup is disabled.
-- Custom SMTP is configured through the verified Resend sending domain `mail.saga.faresuniform.uk`.
-- The invitation template routes to S.A.G.A. `/auth/confirm` with a Supabase invite token hash.
-- The trusted first-owner bootstrap created exactly one active S.A.G.A. admin and one matching pending product invitation.
-- The first-owner email was accepted by Supabase Auth and Resend reported the message as delivered to the recipient mail server.
+## Hosted Foundation
 
-## First live attempt
+Dedicated Supabase project:
 
-The first owner followed the delivered invitation while Supabase Site URL temporarily targeted a current-code Vercel preview deployment.
+- project ref/id: `scmeqnpmhomzcwecjdtu`
+- region: `eu-central-1`
+- API URL: `https://scmeqnpmhomzcwecjdtu.supabase.co`
 
-Observed hosted state after the attempt:
+Auth/email configuration proven during the hosted work:
 
-- Auth user exists.
-- S.A.G.A. account is `admin` / `active`.
-- Product invitation remains `pending`.
-- `email_confirmed_at` remains unset.
-- `last_sign_in_at` remains unset.
-- No password has been established for the Auth user.
+- public signup disabled;
+- Site URL restored to `https://saga-pi-two.vercel.app`;
+- redirect allowlist reduced to the public production alias plus future `https://saga.faresuniform.uk/**`;
+- custom SMTP configured through Resend;
+- verified sending domain: `mail.saga.faresuniform.uk`;
+- sender: `S.A.G.A. <noreply@mail.saga.faresuniform.uk>`;
+- invite subject: `You're invited to S.A.G.A.`;
+- invite template routes to `/auth/confirm?token_hash={{ .TokenHash }}&type=invite`.
 
-Therefore the subsequent sign-in-page reload was not a successful authentication.
+Dedicated Vercel project:
 
-## Isolation evidence
+- project: `saga`
+- root: `apps/web`
+- public temporary production alias: `https://saga-pi-two.vercel.app`
 
-The failure is not attributed to the invite token, email template, Supabase project, or S.A.G.A. confirmation implementation:
+Automatic Git-triggered Preview and Production deployments are disabled by owner policy. No deployment is implied by merge/implementation/testing requests.
 
-1. The rendered Resend invitation URL was verified to use the intended host, `/auth/confirm`, `type=invite`, and a non-empty token hash.
-2. A non-secret fingerprint comparison proved the token in the delivered message exactly matched the invite token still stored by Supabase Auth.
-3. A disposable direct `@supabase/supabase-js` `verifyOtp({ type: "invite", token_hash })` probe succeeded against the same hosted project and publishable key.
-4. A disposable probe through the actual S.A.G.A. `/auth/confirm` route running locally confirmed the Auth user successfully. Its later `invalid_invitation` redirect was expected because the disposable probe intentionally had no S.A.G.A. product invitation.
-5. An unauthenticated request to the hosted Vercel preview was intercepted by Vercel deployment protection and redirected through `/sso-api` before S.A.G.A. could consume the token.
+## First Owner Bootstrap
 
-The protected preview is therefore not an acceptable origin for the real closed-demo invitation acceptance proof.
+The one-time hosted bootstrap path was added through reviewed migrations and applied to the hosted project:
 
-## Required continuation
+- `first_admin_bootstrap`
+- `first_admin_invitation_bootstrap`
 
-- Deploy current `main` publicly to the dedicated `saga` Vercel production project.
-- Verify the production deployment source SHA is current and that `/`, `/api/health`, `/sign-in`, and `/auth/confirm` are public without Vercel preview authentication.
-- Restore Supabase Site URL to the public production origin while preserving the future `https://saga.faresuniform.uk/**` redirect allowance.
-- Reissue the first-owner invitation through a supported Supabase Auth operator path so the new message targets public production.
-- Complete invitation confirmation, password setup, authenticated private-app access, later sign-in, and product-invitation settlement.
-- Record hosted suspension/revocation behavior before closing Phase 1.
+The trusted owner identity was established as an active S.A.G.A. admin. The original invitation attempt was not treated as successful until hosted state was independently checked.
 
-No agent/LLM runtime work is authorized by this checkpoint.
+The owner account was later confirmed on the backend with established credentials, active admin access, and settled product invitation state. The normal invitation path was then separately proven with disposable identities so Phase 1 did not rely on the exceptional first-owner bootstrap path as its only evidence.
+
+## Initial Failure and Isolation
+
+The initial owner invitation was delivered successfully, but clicking it while Supabase targeted a Vercel Preview deployment did not consume the invite.
+
+Observed after the failed attempt:
+
+- Auth identity existed;
+- product account was `admin` / `active`;
+- product invitation remained `pending`;
+- invite token remained unconsumed;
+- no successful sign-in was recorded.
+
+The following isolation evidence ruled out S.A.G.A./Supabase/Resend defects:
+
+1. the rendered invitation URL had the expected host/path/query shape;
+2. a non-secret fingerprint comparison proved the delivered token matched the token Supabase expected;
+3. direct `@supabase/supabase-js` `verifyOtp({ type: "invite", token_hash })` succeeded against the hosted project;
+4. the actual S.A.G.A. `/auth/confirm` route also verified a disposable invite correctly outside the hosted Preview layer;
+5. the protected Vercel Preview intercepted unauthenticated traffic through its own protection flow before S.A.G.A. could consume the invitation.
+
+Conclusion: **Vercel Preview protection caused the failed live attempt.** The application confirmation implementation and invitation template were not the cause.
+
+## Hosted Access / Suspension Proof
+
+GitHub Actions run:
+
+- `34647243289` — success
+
+The proof created a disposable confirmed Auth user and matching active S.A.G.A. member account, generated a real Supabase SSR session, and exercised the public production app.
+
+Verified sequence:
+
+```text
+password sign-in
+  -> session cookies established
+  -> GET /home = 200
+  -> account status changed to suspended
+  -> same session GET /home redirects to /access/suspended
+  -> account reactivated
+  -> same session GET /home = 200
+  -> Supabase last_sign_in_at present
+```
+
+This demonstrates that product authorization is resolved from current S.A.G.A. account state and that an already-authenticated session does not bypass suspension.
+
+Cleanup verification after the run:
+
+- disposable Auth users: `0`
+- disposable S.A.G.A. access rows: `0`
+
+## Full Hosted Invitation Lifecycle Proof
+
+GitHub Actions run:
+
+- `34647592382` — success
+
+This proof used the actual public hosted application, actual Supabase Auth, actual S.A.G.A. Admin API, actual Resend delivery, and a real browser session.
+
+Verified sequence:
+
+```text
+ephemeral active admin signs in through S.A.G.A.
+  -> POST /api/admin/invitations
+  -> pending S.A.G.A. invitation intent
+  -> Supabase Auth invite accepted for delivery
+  -> Resend reports real message delivered to Gmail infrastructure
+  -> rendered message contains production /auth/confirm link
+  -> browser opens confirmation link
+  -> Supabase invite verification succeeds
+  -> S.A.G.A. product invitation claim succeeds
+  -> browser reaches /set-password
+  -> password saved through actual Set Password form
+  -> browser reaches /home
+  -> invitation row is accepted
+  -> member account is active
+  -> first browser context closed
+  -> brand-new browser context opens /sign-in
+  -> later email/password sign-in succeeds
+  -> browser reaches /home
+```
+
+Postconditions checked during the proof:
+
+- invitation started as `pending`;
+- delivery result was `sent`;
+- rendered confirmation origin was `https://saga-pi-two.vercel.app`;
+- confirmation path was `/auth/confirm`;
+- `type=invite` and a non-empty token hash were present;
+- invitation became `accepted`;
+- `accepted_by` matched the verified invitee Auth user;
+- `accepted_at` was populated;
+- claimed product account was `member` / `active`;
+- `email_confirmed_at` was populated;
+- later fresh password sign-in populated/retained `last_sign_in_at`;
+- later sign-in reached the private application.
+
+The run emitted the final success marker:
+
+> Hosted invitation lifecycle proof passed: admin API invite -> real Resend delivery -> /auth/confirm -> product claim -> Set password -> /home -> fresh later sign-in.
+
+## Cleanup
+
+All disposable identities/state used by the hosted proofs were deleted after validation.
+
+Independent hosted SQL verification returned:
+
+- invitation-E2E admin Auth users: `0`
+- invitation-E2E invitee Auth users: `0`
+- access-smoke Auth users: `0`
+- invitation-E2E invitation rows: `0`
+- invitation-E2E access rows: `0`
+
+Temporary privileged GitHub workflows used for hosted setup/proof were removed after their runs. No plaintext reusable password or privileged provider credential was committed to the repository.
+
+## Deployment Policy Established During Phase 1
+
+The historical `studio` Vercel project was disconnected from S.A.G.A. Git pushes.
+
+The real `saga` project remains linked to the repository, but `apps/web/vercel.json` disables Git-triggered deployments. Repository governance records the rule that every Vercel Preview or Production deployment requires fresh explicit owner permission after the assistant states the reason, deployment type, and exact commit/SHA.
+
+## Phase 1 Conclusion
+
+The hosted evidence now proves the Phase 1 claims that repository-only tests could not establish:
+
+- production Auth configuration;
+- authenticated sender/domain and SMTP delivery;
+- real invitation delivery;
+- invite confirmation;
+- product invitation settlement;
+- password establishment;
+- later password sign-in;
+- private-route access;
+- hosted suspension/reactivation behavior;
+- cleanup/isolation of disposable proof data.
+
+**Phase 1 hosted Auth/email/live-proof gate is complete.**
+
+The earlier hosted Supabase/Vercel foundation validation documents remain useful historical snapshots of setup state, but their then-current statements that Auth/email proof was pending are superseded by this record.
