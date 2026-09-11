@@ -17,14 +17,18 @@ Do not use an older runtime/qualification document as current architecture merel
 ## Active v2 Governance
 
 - `../AGENTS.md` — mandatory working rules, phase discipline, v2/v1 boundary, RenderLab read-only boundary
-- `../PROJECT.md` — current product direction, baseline, active phase, blockers and immediate work
+- `../PROJECT.md` — current product direction, merged baseline, active phase, blockers and immediate work
 - `DECISIONS.md` — durable cross-cutting v2 decisions
-- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — active Phase 1 execution contract; Phase 1A and 1B are complete, Phase 1C is next
 
 Phase 0 is complete and retained for evidence:
 
 - `phases/PHASE_V2_0_WEB_FOUNDATION.md`
 - merged through PR #149 at `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
+
+Phase 1 contract/governance merged through PR #152 at `55beaccab011a4c5337db86dd88b52f6d48734c4`.
+
+Phase 1B closed-demo access foundation merged through PR #153 at `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`.
 
 ## Active v2 Architecture / Product Contracts
 
@@ -36,12 +40,20 @@ Phase 0 is complete and retained for evidence:
 ## Active v2 Code / Operations
 
 - `../apps/web/` — active Next.js web product
+- `../apps/web/src/server/auth/` — fresh Auth identity, account/access resolution, admin authorization and invitation-claim services
+- `../apps/web/src/server/supabase/` — ordinary SSR/server Supabase boundary plus isolated privileged server client
 - `../apps/web/src/server/storage/` — provider-neutral object-storage boundary + B2 implementation
+- `../apps/web/supabase/migrations/` — **active v2 Supabase migration lineage**; do not bootstrap v2 from the historical root migration tree
+- `../apps/web/supabase/tests/` — disposable-Postgres database-contract tests for the active v2 schema
 - `../config/v2-storage.json` — validated safe Backblaze B2 metadata
-- `../.github/workflows/v2-web-ci.yml` — v2 web deterministic CI
+- `../.github/workflows/v2-web-ci.yml` — v2 web deterministic CI, including disposable-Postgres migration/contract validation
 - `../.github/workflows/v2-b2-bootstrap.yml` — manual-only Backblaze bootstrap/storage smoke workflow
 
-Additional v2 Supabase migrations/schema and job/agent runtime surfaces are added only when the active phase adopts them.
+Current Phase 1B validation evidence:
+
+- `validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`
+
+Agent/job runtime surfaces are added only when a later active phase adopts them.
 
 ## RenderLab Reference Boundary
 
@@ -123,6 +135,6 @@ When v2 changes:
 - UI/UX/component/design rules -> `v2/UI_SYSTEM.md`
 - account/invitation/auth rules -> `v2/ACCESS_AND_INVITATIONS.md`
 - broader system/deployment boundary -> `v2/ARCHITECTURE.md`
-- dated validation evidence -> `validation/` when worth preserving
+- dated validation evidence -> `validation/`
 
 If v1 behavior or an external-project convention is reused, document the new v2 ownership instead of making the old source active again.
