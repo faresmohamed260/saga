@@ -23,19 +23,26 @@ The rebuild order is deliberate:
 
 Phase 0 merged through PR **#149**:
 
-- `main`: `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
-- tree: `50f34409fb52540ce48c506f9446a3b75e608b08`
+- merge commit: `261b75ff2a60dfcada681af6b6c918c1ff5e3366`
 - merge: `Establish S.A.G.A. v2 web foundation (#149)`
 
 Phase 1 contract/governance merged through PR **#152**:
 
-- `main`: `55beaccab011a4c5337db86dd88b52f6d48734c4`
-- tree: `aa6dab89a84926517002a906fd01565e51672d20`
+- merge commit: `55beaccab011a4c5337db86dd88b52f6d48734c4`
 - merge: `Establish S.A.G.A. v2 Phase 1 closed-demo contract (#152)`
 
-PR #152 merged only after exact-head `Required Check Compatibility` and `Backend Architecture CI` passed. The external legacy Studio/Vercel status remains explicitly deferred and is not evidence for the active v2 application.
+Phase 1B closed-demo access foundation merged through PR **#153**:
+
+- current `main`: `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`
+- tree: `6a2814f97114e6d731235b933f3a75c8fa9fdc76`
+- merge: `Add S.A.G.A. v2 closed-demo access foundation (#153)`
+- exact PR head before merge: `e81915942ba9e859c79898ec60fdda38a56235d3`
+- exact-head `SAGA v2 Web CI`, `Required Check Compatibility`, and `Backend Architecture CI` all completed successfully before merge
+- external legacy Studio/Vercel status remains explicitly deferred and is not evidence for the active v2 application
 
 Phase 0 tracking issue **#148** is closed complete. Phase 1 is tracked by **#151**.
+
+Durable Phase 1B validation evidence: `docs/validation/PHASE_V2_1B_ACCOUNT_ACCESS_2026-09-11.md`.
 
 ## Active Phase
 
@@ -43,30 +50,23 @@ Phase 0 tracking issue **#148** is closed complete. Phase 1 is tracked by **#151
 
 Contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
 
-Current implementation branch:
-
-- `v2/phase-1b-account-access`
-
-Status: **ACTIVE — 1A COMPLETE; 1B IMPLEMENTED AND VALIDATED ON BRANCH**
+Status: **ACTIVE — 1A COMPLETE; 1B COMPLETE; 1C NEXT**
 
 ### Phase 1A — complete
 
 The closed-demo/account/frontend/UI contract is merged to `main` through PR #152. RenderLab remains read-only reference material and no RenderLab files/resources were modified.
 
-### Phase 1B — current implementation
+### Phase 1B — complete
 
-Branch implementation head before the handoff-only documentation update:
+Merged through PR #153.
 
-- `6512999bcb5dcad08f8fac788208c1f6935c65bd`
-- `feat: add Phase 1B closed-demo access foundation`
-
-Implemented:
+Implemented and validated:
 
 - isolated active v2 database lineage under `apps/web/supabase/migrations/`;
 - explicit guardrail preventing the legacy root `supabase/migrations/` lineage from being applied to a fresh v2 project;
 - `saga_account_access` role/status persistence keyed by verified Supabase Auth UUID;
 - `saga_invitations` normalized-email lifecycle state with no raw reusable token/secret fields;
-- RLS forced on privileged access/invitation tables with browser-role grants revoked;
+- forced RLS on privileged access/invitation tables with browser-role grants revoked;
 - service-role-only transactional invitation claim routine that reloads the Auth user's email from `auth.users`, serializes the invitation row, rejects missing/mismatched/expired state, and prevents double claim;
 - fresh server `auth.getUser()` identity boundary;
 - server-only privileged Supabase client boundary;
@@ -75,13 +75,29 @@ Implemented:
 - structural tests for no public signup, no metadata role trust, client/service-role separation, RLS and token-store prohibition;
 - disposable-Postgres CI job that executes the v2 migration and verifies the closed-demo database contract.
 
-Validated on branch by `SAGA v2 Web CI` run **34593420479**:
+PR-head validation before merge:
 
-- quality job: install, lint, typecheck, unit/structural tests and production build — **success**;
-- database-contract job: PostgreSQL startup, Supabase-compatible role/Auth bootstrap, migration apply and SQL contract tests — **success**;
-- SQL proof covered successful invitation claim, double-claim denial, verified-email mismatch denial, expiry settlement, RLS/privilege checks and duplicate-pending invitation rejection.
+- `SAGA v2 Web CI` run **34593615395** — success;
+- `Required Check Compatibility` run **34593615380** — success;
+- `Backend Architecture CI` run **34593615394** — success.
 
-This is branch evidence only until the focused Phase 1B PR merges on an exact green head.
+Earlier branch validation run **34593420479** also passed both web-quality and disposable-Postgres database-contract jobs.
+
+### Phase 1C — next
+
+Start from current `main` on a fresh branch. Implement the auth/user-facing access surfaces without weakening the Phase 1B server/database guarantees:
+
+- sign-in;
+- server invitation confirmation;
+- password setup/change flow for confirmed invited users;
+- sign-out;
+- SSR session refresh/cookie plumbing;
+- protected route/layout boundary using fresh verified identity + S.A.G.A. access status;
+- bounded states for unauthenticated, not admitted, suspended, active, and unavailable access;
+- safe same-origin redirect handling;
+- deterministic auth/access tests.
+
+Do **not** add public self-signup.
 
 ## Closed-Demo Product Constraint
 
@@ -196,14 +212,16 @@ Do not reuse the connected RenderLab/Studio Supabase project or shared R2 state 
 
 ## Immediate Work
 
-1. open and merge the focused Phase 1B account/access foundation PR only after exact-head v2/repository checks pass;
-2. start **Phase 1C** on a fresh branch: sign-in, server invite confirmation, password setup, SSR session refresh and private route boundary;
-3. use a S.A.G.A.-specific concept/review pass before the major Phase 1D application-shell implementation; RenderLab remains reference only;
-4. implement the private application shell and first Home/Library/Projects surfaces after visual direction is approved;
-5. implement narrow Admin invitation/account management APIs/UI;
-6. configure the new Supabase project/email delivery and scoped B2 runtime key when those external dependencies become blocking;
-7. prove at least one real bounded email invitation acceptance before closing Phase 1;
-8. only after the application/data/job contracts stabilize, plan the agentic AI phase.
+1. create a fresh Phase 1C branch from `main` at or after `5d5b59d17d2bd2f9a5769d2e5c4f9a2b43d1bad9`;
+2. implement sign-in, server invite confirmation, password setup, SSR session refresh and private route boundaries using the merged Phase 1B access services;
+3. keep email delivery mocked/deterministic in CI until a dedicated S.A.G.A. Supabase project and hosted email path are explicitly configured;
+4. run exact-head `SAGA v2 Web CI` plus relevant repository checks before merge;
+5. use a S.A.G.A.-specific concept/review pass before the major Phase 1D application-shell implementation; RenderLab remains reference only;
+6. implement the private application shell and first Home/Library/Projects surfaces after visual direction is approved;
+7. implement narrow Admin invitation/account management APIs/UI;
+8. configure the new Supabase project/email delivery and scoped B2 runtime key when those external dependencies become blocking;
+9. prove at least one real bounded email invitation acceptance before closing Phase 1;
+10. only after the application/data/job contracts stabilize, plan the agentic AI phase.
 
 **Agent/LLM pipeline implementation remains out of scope in Phase 1.**
 
@@ -219,7 +237,7 @@ npm run test:unit
 npm run build
 ```
 
-The v2 web workflow also executes active `apps/web/supabase/migrations/*.sql` against disposable PostgreSQL with a minimal Supabase-compatible Auth/role bootstrap and runs database contract tests. Phase 1 later adds rendered/responsive/auth-surface evidence. Green v1 Python CI is not evidence that v2 works.
+The v2 web workflow also executes active `apps/web/supabase/migrations/*.sql` against disposable PostgreSQL with a minimal Supabase-compatible Auth/role bootstrap and runs database contract tests. Phase 1C should add deterministic auth/route-boundary coverage. Phase 1D later adds rendered/responsive application-shell evidence. Green v1 Python CI is not evidence that v2 works.
 
 ## Working Convention
 
