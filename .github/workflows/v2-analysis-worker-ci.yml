@@ -1,0 +1,50 @@
+name: SAGA v2 Analysis Worker CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "v2/**"
+    paths:
+      - "services/analysis-worker/**"
+      - ".github/workflows/v2-analysis-worker-ci.yml"
+  pull_request:
+    paths:
+      - "services/analysis-worker/**"
+      - ".github/workflows/v2-analysis-worker-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v2-analysis-worker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-ingestion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck worker
+        run: npm run typecheck
+
+      - name: Run deterministic ingestion fixtures
+        run: npm test
