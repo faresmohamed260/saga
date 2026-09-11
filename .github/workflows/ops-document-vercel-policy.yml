@@ -21,8 +21,10 @@ jobs:
           fetch-depth: 0
 
       - name: Update authoritative governance
-        shell: python
+        shell: bash
         run: |
+          set -euo pipefail
+          python - <<'PY'
           from pathlib import Path
 
           agents = Path("AGENTS.md")
@@ -77,6 +79,7 @@ The historical Vercel `studio` project was disconnected from `faresmohamed260/sa
                   raise SystemExit("docs index insertion anchor missing")
               index_text = index_text.replace(anchor, anchor + index_line, 1)
               docs_index.write_text(index_text, encoding="utf-8")
+          PY
 
       - name: Commit governance and remove temporary workflow
         shell: bash
