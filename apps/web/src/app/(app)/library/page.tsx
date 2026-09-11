@@ -45,7 +45,7 @@ export default async function LibraryPage() {
       <PageHeader
         eyebrow="Sources"
         title="Library"
-        description="The Library is the private source record for novels and story material that S.A.G.A. will normalize into evidence-backed narrative structure."
+        description="The Library is the private record of story originals and deterministic ingestion state that S.A.G.A. can turn into evidence-backed narrative structure."
       />
 
       <section className="max-w-6xl" aria-labelledby="source-list-heading">
@@ -55,7 +55,7 @@ export default async function LibraryPage() {
               Story sources
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
-              Phase 2A exposes source ownership and state. Uploading new UTF-8 text or EPUB files begins in Phase 2B.
+              Add UTF-8 text or EPUB files from a project workspace. Upload completion is verified before ingestion work is queued.
             </p>
           </div>
           <Link
@@ -71,7 +71,7 @@ export default async function LibraryPage() {
             <EmptyState
               icon={BookOpen}
               title="No sources yet"
-              description="Create a project first. The next Phase 2 slice will add the bounded B2 upload and deterministic text/EPUB ingestion flow."
+              description="Create or open a project, then add a UTF-8 plain-text or EPUB source from its workspace."
             />
           </div>
         ) : (
