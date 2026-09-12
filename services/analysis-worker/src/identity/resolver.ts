@@ -80,9 +80,19 @@ export function normalizeIdentityName(surface: string) {
   return comparisonTokens(surface).join(" ");
 }
 
-function isBlockedSurface(surface: string) {
+function singleNormalizedWord(surface: string) {
   const words = normalizedWords(surface);
-  return words.length === 1 && (blockedSurfaceSet.has(words[0]!) || genericRoleSet.has(words[0]!));
+  return words.length === 1 ? words[0]! : null;
+}
+
+function isBlockedDiscourseSurface(surface: string) {
+  const word = singleNormalizedWord(surface);
+  return word !== null && blockedSurfaceSet.has(word);
+}
+
+function isGenericRoleSurface(surface: string) {
+  const word = singleNormalizedWord(surface);
+  return word !== null && genericRoleSet.has(word);
 }
 
 function hasMalformedLexicalBoundary(surface: string) {
@@ -96,7 +106,8 @@ function isCanonicalSeedCandidate(mention: IdentityEvidenceMention) {
     mention.entityType === "person" &&
     mention.personEvidence === "strong" &&
     mention.boundaryQuality === "clean" &&
-    !isBlockedSurface(mention.surfaceText) &&
+    !isBlockedDiscourseSurface(mention.surfaceText) &&
+    !isGenericRoleSurface(mention.surfaceText) &&
     !hasMalformedLexicalBoundary(mention.surfaceText) &&
     comparisonTokens(mention.surfaceText).length > 0
   );
@@ -168,9 +179,10 @@ function seedRejectionReason(mention: IdentityEvidenceMention, spanValid: boolea
   if (!spanValid) return "span_text_mismatch";
   if (mention.boundaryQuality === "malformed" || hasMalformedLexicalBoundary(mention.surfaceText)) return "malformed_span";
   if (mention.entityType === "non_person") return "non_person_evidence";
-  if (isBlockedSurface(mention.surfaceText)) return "blocked_surface";
   if (mention.mentionKind === "pronoun") return "pronoun_cannot_seed";
-  if (mention.mentionKind !== "proper_name") return "non_name_cannot_seed";
+  if (mention.mentionKind === "nominal") return "non_name_cannot_seed";
+  if (isBlockedDiscourseSurface(mention.surfaceText)) return "blocked_surface";
+  if (isGenericRoleSurface(mention.surfaceText)) return "generic_role_cannot_seed";
   return "insufficient_seed_evidence";
 }
 
@@ -294,7 +306,7 @@ export function resolveCharacterIdentity(input: {
     }
 
     const rejection = seedRejectionReason(mention, spanValidity.get(mention.evidenceId) === true);
-    if (["span_text_mismatch", "malformed_span", "non_person_evidence", "blocked_surface"].includes(rejection)) {
+    if (["span_text_mismatch", "malformed_span", "non_person_evidence", "blocked_surface", "generic_role_cannot_seed"].includes(rejection)) {
       decisions.push({ ...baseDecision(mention), characterKey: null, resolutionState: "quarantined", evidenceTier: "quarantined", decisionReason: rejection, compareKey });
       continue;
     }
