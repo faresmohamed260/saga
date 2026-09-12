@@ -29,6 +29,7 @@ image = (
         f"modal=={MODAL_VERSION}",
         "fastapi[standard]==0.121.0",
         "huggingface-hub==0.17.3",
+        "numpy==1.26.4",
         "spacy==3.7.5",
         f"git+https://github.com/SapienzaNLP/xcore.git@{XCORE_SOURCE_REVISION}",
         "torch==2.6.0",
