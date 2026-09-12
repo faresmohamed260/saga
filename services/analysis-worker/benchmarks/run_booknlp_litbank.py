@@ -23,6 +23,9 @@ from typing import Any
 
 from booknlp.booknlp import BookNLP
 
+BOOKNLP_BASE_COMMIT = "3d900fc2224e55960c3363826ae28539b77b4204"
+BOOKNLP_COMPAT_COMMIT = "8875a1b616d764b7d13d1e30e9949cc21ca303c1"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -145,6 +148,12 @@ def main() -> int:
     metadata = {
         "schemaVersion": "saga-booknlp-run-metadata-v1",
         "runner": "services/analysis-worker/benchmarks/run_booknlp_litbank.py",
+        "candidateCode": {
+            "upstream": "booknlp/booknlp",
+            "upstreamCommit": BOOKNLP_BASE_COMMIT,
+            "compatibilityPatch": "booknlp/booknlp#25",
+            "compatibilityCommit": BOOKNLP_COMPAT_COMMIT,
+        },
         "python": sys.version,
         "platform": platform.platform(),
         "cpuCount": os.cpu_count(),

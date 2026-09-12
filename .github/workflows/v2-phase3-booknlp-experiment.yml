@@ -45,12 +45,14 @@ jobs:
           python-version: "3.10"
           cache: pip
 
-      - name: Install pinned BookNLP candidate
+      - name: Install pinned BookNLP compatibility candidate
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install "git+https://github.com/booknlp/booknlp.git@3d900fc2224e55960c3363826ae28539b77b4204"
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install "spacy==3.7.5" "transformers==4.43.4"
+          python -m pip install --no-deps "git+https://github.com/Plazmius/booknlp.git@8875a1b616d764b7d13d1e30e9949cc21ca303c1"
           python -m spacy download en_core_web_sm
           python - <<'PY'
           import importlib.metadata
@@ -98,7 +100,7 @@ jobs:
           const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-litbank-smoke.json", "utf8"));
           const runtime = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-run-metadata.json", "utf8"));
           const m = report.aggregate.metrics;
-          console.log("## Phase 3 BookNLP-small smoke experiment");
+          console.log("## Phase 3 BookNLP-small compatibility smoke experiment");
           console.log("");
           console.log(`- LitBank commit: \`${report.dataset.commit}\``);
           console.log(`- BookNLP revision: \`${report.provider.revision}\``);
@@ -112,6 +114,7 @@ jobs:
           console.log(`- Runtime: ${runtime.wallClockSeconds.toFixed(2)} s`);
           console.log(`- Peak RSS: ${runtime.peakResidentMemoryMb.toFixed(1)} MiB`);
           console.log(`- Model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log(`- TensorFlow installed: ${runtime.packages.tensorflow !== null}`);
           console.log(`- Code license: ${report.providerCodeLicense}`);
           console.log(`- Model-weight license: ${report.providerModelWeightsLicense}`);
           EOF
