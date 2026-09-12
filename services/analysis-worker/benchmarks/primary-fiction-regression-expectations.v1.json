@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "saga-primary-fiction-regressions-v1",
+  "sourcePolicy": "Expectations are non-reconstructive historical regression metadata recovered from S.A.G.A.'s May 2026 real-book experiments. Copyrighted source text remains outside Git. Full-book expectations apply only to full-book runs; bounded opening-chapter expectations apply only to the explicitly recorded historical window configuration.",
+  "cases": [
+    {
+      "caseId": "harry-potter-opening-regression",
+      "bookId": "harry-potter-philosophers-stone",
+      "title": "Harry Potter and the Philosopher's Stone",
+      "scope": {
+        "kind": "bounded_epub",
+        "maxChapters": 1,
+        "maxWindows": 6,
+        "paragraphsPerWindow": 3,
+        "overlapParagraphs": 1
+      },
+      "mustCanonicalSurfaces": ["Mr. Dursley", "Mrs. Dursley", "Mrs. Potter"],
+      "mustMergeSurfaceGroups": [],
+      "forbiddenCanonicalSurfaces": ["Harry Potter", "Harry", "Grunnings", "Privet Drive", "Professor"],
+      "forbiddenLinkedSurfaces": ["Grunnings", "Privet Drive"],
+      "notes": [
+        "Historical opening regression: title/front-matter evidence must not mint Harry before in-story evidence.",
+        "Grunnings is an organization/group and Privet Drive is a location.",
+        "Standalone shared title Professor must not become a canonical character."
+      ]
+    },
+    {
+      "caseId": "harry-potter-full-book",
+      "bookId": "harry-potter-philosophers-stone",
+      "title": "Harry Potter and the Philosopher's Stone",
+      "scope": { "kind": "full_book" },
+      "mustCanonicalSurfaces": ["Harry Potter", "Hagrid", "Snape", "Neville"],
+      "mustMergeSurfaceGroups": [
+        ["Harry", "Harry Potter"],
+        ["Dumbledore", "Professor Dumbledore"]
+      ],
+      "forbiddenCanonicalSurfaces": ["Grunnings", "Privet Drive", "Professor"],
+      "forbiddenLinkedSurfaces": ["Grunnings", "Privet Drive"],
+      "notes": [
+        "Recovered full-book failure: Harry/Harry Potter and Dumbledore/Professor Dumbledore fragmented into separate identities.",
+        "Recovered full-book failure: Hagrid, Snape, and Neville leaked into the old supporting bucket."
+      ]
+    },
+    {
+      "caseId": "acofas-opening-regression",
+      "bookId": "acotar-4-acofas",
+      "title": "A Court of Frost and Starlight",
+      "scope": {
+        "kind": "bounded_epub",
+        "maxChapters": 1,
+        "maxWindows": 4,
+        "paragraphsPerWindow": 3,
+        "overlapParagraphs": 1
+      },
+      "mustCanonicalSurfaces": ["Feyre"],
+      "mustMergeSurfaceGroups": [],
+      "forbiddenCanonicalSurfaces": ["High Lady", "Night Court"],
+      "forbiddenLinkedSurfaces": ["Night Court"],
+      "notes": [
+        "Historical smoke: Feyre must canonicalize.",
+        "High Lady may attach as a title but must not stand alone as canonical.",
+        "Night Court is not a character."
+      ]
+    },
+    {
+      "caseId": "acofas-full-book",
+      "bookId": "acotar-4-acofas",
+      "title": "A Court of Frost and Starlight",
+      "scope": { "kind": "full_book" },
+      "mustCanonicalSurfaces": ["Feyre", "Cassian", "Nesta", "Rhys", "Azriel", "Tamlin"],
+      "mustMergeSurfaceGroups": [
+        ["Azriel", "Az"]
+      ],
+      "forbiddenCanonicalSurfaces": ["Illyrian Mountains", "High Fae", "Not Cassian", "Night Court"],
+      "forbiddenLinkedSurfaces": ["Illyrian Mountains", "High Fae", "Not Cassian", "Night Court"],
+      "notes": [
+        "Recovered full-book failure: Azriel/Az fragmented.",
+        "Recovered full-book failure: real characters Cassian, Nesta, Rhys, Azriel, and Tamlin leaked into supporting entities.",
+        "Recovered false character admissions included Illyrian Mountains, High Fae, and Not Cassian."
+      ]
+    },
+    {
+      "caseId": "caraval-full-book",
+      "bookId": "caraval",
+      "title": "Caraval",
+      "scope": { "kind": "full_book" },
+      "mustCanonicalSurfaces": ["Scarlett", "Tella", "Dante", "Legend", "Julian"],
+      "mustMergeSurfaceGroups": [],
+      "forbiddenCanonicalSurfaces": ["Castillo Maldito"],
+      "forbiddenLinkedSurfaces": ["Castillo Maldito"],
+      "notes": [
+        "Recovered full-book failure: Julian remained supporting rather than canonical.",
+        "Recovered false character admission: Castillo Maldito.",
+        "Caraval Master Legend was historically flagged for title/name confusion but is not encoded as a hard merge until fresh evidence establishes the intended relation unambiguously."
+      ]
+    },
+    {
+      "caseId": "cruel-prince-full-book",
+      "bookId": "the-cruel-prince",
+      "title": "The Cruel Prince",
+      "scope": { "kind": "full_book" },
+      "mustCanonicalSurfaces": ["Jude", "Cardan", "Taryn", "Vivi", "Valerian", "Nicasia"],
+      "mustMergeSurfaceGroups": [
+        ["Cardan", "Prince Cardan"]
+      ],
+      "forbiddenCanonicalSurfaces": [],
+      "forbiddenLinkedSurfaces": [],
+      "notes": [
+        "Recovered full-book failure: Cardan/Prince Cardan fragmented.",
+        "Recovered full-book failure: Taryn, Vivi, Valerian, and Nicasia leaked into supporting entities.",
+        "The old run produced 218 temporary candidates, indicating severe hesitation/noise; count-based thresholds are recorded historically but are not promoted to a hard v2 gate until the new result schema has an equivalent concept."
+      ]
+    }
+  ]
+}
