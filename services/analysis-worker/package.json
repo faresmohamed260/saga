@@ -16,6 +16,8 @@
     "benchmark:scene-structural": "tsx src/evaluation/scene-structural-cli.ts",
     "benchmark:scene-lexical": "tsx src/evaluation/scene-lexical-cli.ts",
     "benchmark:scene-score": "tsx src/evaluation/scene-boundary-cli.ts",
+    "benchmark:dialogue-deterministic": "tsx src/evaluation/dialogue-deterministic-cli.ts",
+    "benchmark:dialogue-score": "tsx src/evaluation/dialogue-score-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
