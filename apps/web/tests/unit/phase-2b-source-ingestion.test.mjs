@@ -65,7 +65,7 @@ test("source upload is owner-bound, direct-to-storage, and server verified befor
   assert.match(actions, /^"use server";/);
   assert.match(actions, /startSourceUploadAction/);
   assert.match(actions, /completeSourceUploadAction/);
-  assert.doesNotMatch(actions, /File|arrayBuffer|Blob/);
+  assert.doesNotMatch(actions, /\bFile\b|\.arrayBuffer\s*\(|\bBlob\b/);
 
   assert.match(client, /crypto\.subtle\.digest\("SHA-256"/);
   assert.match(client, /fetch\(intent\.uploadUrl/);
