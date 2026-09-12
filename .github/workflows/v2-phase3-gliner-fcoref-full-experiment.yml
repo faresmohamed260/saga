@@ -1,0 +1,184 @@
+name: Phase 3 GLiNER + F-Coref full LitBank experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-gliner-fcoref-benchmark
+    paths:
+      - ".github/workflows/v2-phase3-gliner-fcoref-full-experiment.yml"
+      - "services/analysis-worker/benchmarks/run_gliner_fcoref_litbank.py"
+      - "services/analysis-worker/benchmarks/litbank-novel-diversity.v1.json"
+      - "services/analysis-worker/src/evaluation/gliner-fcoref-litbank-cli.ts"
+      - "services/analysis-worker/src/evaluation/stratified-identity-benchmark.ts"
+      - "services/analysis-worker/src/evaluation/stratified-identity-cli.ts"
+      - "services/analysis-worker/src/evaluation/stratified-span-benchmark.ts"
+      - "services/analysis-worker/src/evaluation/stratified-span-cli.ts"
+      - "services/analysis-worker/tests/stratified-span-benchmark.test.ts"
+      - "services/analysis-worker/package.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-phase3-gliner-fcoref-full-litbank
+  cancel-in-progress: true
+
+jobs:
+  full-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install pinned CPU candidate environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install \
+            "click==8.1.7" \
+            "protobuf==5.29.6" \
+            "transformers==4.51.3" \
+            "huggingface_hub==0.36.2" \
+            "numpy==1.26.4" \
+            "spacy==3.7.5" \
+            "datasets==2.21.0" \
+            "scipy==1.14.1" \
+            "sentencepiece==0.2.0" \
+            "safetensors==0.5.3" \
+            "tqdm==4.70.1"
+          python -m pip install --no-deps "git+https://github.com/urchade/GLiNER.git@cf9e5f7d9fb99158b592132a9ec7cbfabb43a9a0"
+          python -m pip install --no-deps "git+https://github.com/Digital-Insight-Technologies-Ltd/fastcoref.git@8888e51d97d4818a25dd5f5d8b541d397fad9362"
+          python - <<'PY'
+          import importlib.metadata
+          for package in ["gliner", "fastcoref", "click", "protobuf", "torch", "transformers", "huggingface_hub", "spacy", "datasets"]:
+              print(f"{package}={importlib.metadata.version(package)}")
+          PY
+
+      - name: Run real GLiNER and F-Coref on all pinned LitBank documents
+        run: >-
+          python benchmarks/run_gliner_fcoref_litbank.py
+          --litbank-root ../../external/litbank
+          --output-root evaluation-artifacts/gliner-fcoref-full-raw
+          --metadata-out evaluation-artifacts/gliner-fcoref-full-run-metadata.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck evaluator
+        run: npm run typecheck
+
+      - name: Run deterministic worker tests
+        run: npm test
+
+      - name: Evaluate component and combined identity quality
+        run: >-
+          npm run benchmark:gliner-fcoref-litbank --
+          --litbank-root ../../external/litbank
+          --raw-root evaluation-artifacts/gliner-fcoref-full-raw
+          --out-dir evaluation-artifacts/gliner-fcoref-full-reports
+
+      - name: Slice GLiNER typed-span quality by novel diversity strata
+        run: >-
+          npm run benchmark:span-strata --
+          --report evaluation-artifacts/gliner-fcoref-full-reports/gliner-span.json
+          --manifest benchmarks/litbank-novel-diversity.v1.json
+          --out evaluation-artifacts/gliner-fcoref-full-reports/gliner-span-strata.json
+
+      - name: Slice F-Coref oracle-mention identity by novel diversity strata
+        run: >-
+          npm run benchmark:identity-strata --
+          --report evaluation-artifacts/gliner-fcoref-full-reports/fcoref-oracle-mentions.json
+          --manifest benchmarks/litbank-novel-diversity.v1.json
+          --out evaluation-artifacts/gliner-fcoref-full-reports/fcoref-oracle-mentions-strata.json
+
+      - name: Slice combined identity by novel diversity strata
+        run: >-
+          npm run benchmark:identity-strata --
+          --report evaluation-artifacts/gliner-fcoref-full-reports/gliner-fcoref-combined.json
+          --manifest benchmarks/litbank-novel-diversity.v1.json
+          --out evaluation-artifacts/gliner-fcoref-full-reports/gliner-fcoref-combined-strata.json
+
+      - name: Publish full-corpus experiment summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const read = (name) => JSON.parse(fs.readFileSync(name, "utf8"));
+          const runtime = read("evaluation-artifacts/gliner-fcoref-full-run-metadata.json");
+          const gliner = read("evaluation-artifacts/gliner-fcoref-full-reports/gliner-span.json");
+          const coref = read("evaluation-artifacts/gliner-fcoref-full-reports/fcoref-oracle-mentions.json");
+          const combined = read("evaluation-artifacts/gliner-fcoref-full-reports/gliner-fcoref-combined.json");
+          const glinerStrata = read("evaluation-artifacts/gliner-fcoref-full-reports/gliner-span-strata.json");
+          const combinedStrata = read("evaluation-artifacts/gliner-fcoref-full-reports/gliner-fcoref-combined-strata.json");
+          const gm = gliner.aggregate.metrics;
+          const fm = coref.aggregate.metrics;
+          const cm = combined.aggregate.metrics;
+          const minBy = (rows, key) => rows.reduce((best, row) => row.aggregate.metrics[key] < best.aggregate.metrics[key] ? row : best);
+          const maxBy = (rows, key) => rows.reduce((best, row) => row.aggregate.metrics[key] > best.aggregate.metrics[key] ? row : best);
+          const lowGlinerPrecision = minBy(glinerStrata.strata, "properPersonSpanPrecision");
+          const lowGlinerRecall = minBy(glinerStrata.strata, "properPersonSpanRecall");
+          const lowCanonicalPrecision = minBy(combinedStrata.strata, "canonicalPrecision");
+          const lowCanonicalRecall = minBy(combinedStrata.strata, "canonicalRecall");
+          const highMerge = maxBy(combinedStrata.strata, "incorrectMergeRate");
+
+          console.log("## Phase 3 GLiNER-small-v2.1 + F-Coref full LitBank experiment");
+          console.log("");
+          console.log(`- attempted/completed/failed: ${combined.dataset.attemptedDocumentCount}/${combined.dataset.completedDocumentCount}/${combined.dataset.failedDocumentCount}`);
+          console.log(`- GLiNER person span precision/recall: ${gm.personSpanPrecision.toFixed(4)} / ${gm.personSpanRecall.toFixed(4)}`);
+          console.log(`- GLiNER proper-person precision/recall: ${gm.properPersonSpanPrecision.toFixed(4)} / ${gm.properPersonSpanRecall.toFixed(4)}`);
+          console.log(`- F-Coref oracle-mention canonical precision/recall: ${fm.canonicalPrecision.toFixed(4)} / ${fm.canonicalRecall.toFixed(4)}`);
+          console.log(`- F-Coref oracle-mention merge/fragmentation: ${fm.incorrectMergeRate.toFixed(4)} / ${fm.fragmentationRate.toFixed(4)}`);
+          console.log(`- Combined canonical precision/recall: ${cm.canonicalPrecision.toFixed(4)} / ${cm.canonicalRecall.toFixed(4)}`);
+          console.log(`- Combined merge/contamination/fragmentation: ${cm.incorrectMergeRate.toFixed(4)} / ${cm.contaminatedCanonicalRate.toFixed(4)} / ${cm.fragmentationRate.toFixed(4)}`);
+          console.log(`- Combined linked mention precision/recall: ${cm.linkedMentionPrecision.toFixed(4)} / ${cm.linkedMentionRecall.toFixed(4)}`);
+          console.log(`- F-Coref fingerprint: \`${coref.aggregateOutputFingerprint}\``);
+          console.log(`- Combined fingerprint: \`${combined.aggregateOutputFingerprint}\``);
+          console.log(`- Diversity strata: ${combinedStrata.coverage.stratumCount} across ${combinedStrata.coverage.dimensionCount} dimensions`);
+          console.log(`- Lowest GLiNER proper-name precision: ${lowGlinerPrecision.id} (${lowGlinerPrecision.aggregate.metrics.properPersonSpanPrecision.toFixed(4)})`);
+          console.log(`- Lowest GLiNER proper-name recall: ${lowGlinerRecall.id} (${lowGlinerRecall.aggregate.metrics.properPersonSpanRecall.toFixed(4)})`);
+          console.log(`- Lowest combined canonical precision: ${lowCanonicalPrecision.id} (${lowCanonicalPrecision.aggregate.metrics.canonicalPrecision.toFixed(4)})`);
+          console.log(`- Lowest combined canonical recall: ${lowCanonicalRecall.id} (${lowCanonicalRecall.aggregate.metrics.canonicalRecall.toFixed(4)})`);
+          console.log(`- Highest combined incorrect-merge rate: ${highMerge.id} (${highMerge.aggregate.metrics.incorrectMergeRate.toFixed(4)})`);
+          console.log(`- Runtime: ${runtime.wallClockSeconds.toFixed(2)} s; init: ${runtime.initializationSeconds.toFixed(2)} s; download: ${runtime.downloadSeconds.toFixed(2)} s`);
+          console.log(`- Peak RSS: ${runtime.peakResidentMemoryMb.toFixed(1)} MiB; GPU: ${runtime.gpu ?? "none"}`);
+          console.log(`- Model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          EOF
+
+      - name: Upload full-corpus experiment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-gliner-fcoref-full-litbank
+          path: |
+            services/analysis-worker/evaluation-artifacts/gliner-fcoref-full-run-metadata.json
+            services/analysis-worker/evaluation-artifacts/gliner-fcoref-full-reports/*.json
+          if-no-files-found: error
+          retention-days: 90
