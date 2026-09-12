@@ -1,6 +1,6 @@
 # S.A.G.A. Project
 
-S.A.G.A. is being rebuilt as a web-first storytelling intelligence platform. The product goals remain: ingest books/stories, reconstruct evidence-backed canon, model characters/worlds/timelines, support narrative generation, and eventually produce grounded visual/audio/story outputs. The active architecture is the S.A.G.A. v2 rebuild; pre-v2 runtime material is historical/reference only unless a v2 decision explicitly adopts it.
+S.A.G.A. is being rebuilt as a web-first storytelling intelligence platform. The active architecture is the S.A.G.A. v2 rebuild; pre-v2 runtime material is historical/reference only unless a v2 decision explicitly adopts it.
 
 This file is the short source-of-truth handoff for current work.
 
@@ -10,150 +10,133 @@ This file is the short source-of-truth handoff for current work.
 
 **Phase 2 — Story Intake & Character Identity Foundation: ACTIVE.**
 
-**Phase 2A — Product/Data Foundation: COMPLETE.**
+- **Phase 2A — Product/Data Foundation: COMPLETE (repository/CI slice).**
+- **Phase 2B — Source Storage & Deterministic Ingestion: COMPLETE (repository/CI slice).**
+- **Phase 2C — Character Identity Engine: NEXT.**
+- **Phase 2D — Qualification / Hosted Proof: PENDING.**
 
 Authoritative Phase-2 contract:
 
 - `docs/phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md`
 
-Authoritative Phase-2A deterministic validation:
+Authoritative deterministic validation:
 
 - `docs/validation/PHASE_V2_2A_PRODUCT_DATA_FOUNDATION_2026-09-12.md`
+- `docs/validation/PHASE_V2_2B_SOURCE_INGESTION_2026-09-12.md`
 
-Phase 2 is the first deliberate reconnection of S.A.G.A. intelligence behind the Phase-1 web/auth/data boundary. Its required end-to-end product loop is:
+Phase 2 tracking issue: **#176**.
+
+The required Phase-2 loop remains:
 
 ```text
 admitted member
   -> project
-  -> supported story source
+  -> .txt/.epub source
   -> durable analysis job
   -> separate analysis worker
-  -> conservative character identity resolution
+  -> deterministic normalized source
+  -> precision-first character identity resolution
   -> character / alias / mention evidence in the private app
 ```
 
-Do not substitute a general agent framework, chat/RAG layer, canon extractor, or old v1 monolithic runtime for this contract.
-
-Phase 1 authoritative completion evidence remains:
-
-- phase contract: `docs/phases/PHASE_V2_1_CLOSED_DEMO_APP.md`
-- hosted Auth live proof: `docs/validation/PHASE_V2_1_HOSTED_AUTH_LIVE_PROOF_2026-09-11.md`
-- hosted Supabase foundation: `docs/validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
-- hosted Vercel foundation: `docs/validation/PHASE_V2_1E_HOSTED_VERCEL_2026-09-11.md`
-- deterministic Admin proof: `docs/validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
-- deployment policy: `docs/operations/VERCEL_DEPLOYMENT_POLICY.md`
-
-Phase 1 tracking issue: **#151** (closed).
-Phase 2 tracking issue: **#176** (open).
+Do not substitute a general agent framework, chat/RAG layer, canon extractor, or the historical v1 runtime for this contract.
 
 ## Phase 2 Direction
 
-The first restored storytelling intelligence capability is **evidence-backed character identity** because stable identity is upstream of canon extraction, character/world modeling, retrieval, narrative generation, and grounded media generation.
+Character identity is the first restored storytelling-intelligence capability because stable identity is upstream of canon extraction, character/world modeling, retrieval, narrative generation, and grounded media generation.
 
-Phase 2 intentionally couples identity to the missing v2 product/runtime foundations instead of running it as a free-floating NLP experiment:
+The product invariant is precision-first identity admission:
 
-- member-owned projects;
-- immutable story sources;
-- provider-neutral B2 object storage;
-- durable Postgres job/control-plane records;
-- separate analysis-worker execution outside normal Next.js requests;
-- immutable analysis-run provenance;
-- conservative character identities, aliases, mentions, and unresolved/quarantined evidence;
-- deterministic rerun fingerprints and adversarial identity fixtures;
-- private `/projects`, `/library`, and character evidence surfaces.
+> Attachment/coreference evidence may connect a mention to an existing character, but weak evidence may not mint a new canonical character.
 
-Initial ingestion scope is UTF-8 `.txt` and `.epub`. PDF/DOCX/OCR, canon extraction, RAG/chat, generative agents, collaboration, and multimedia generation are explicitly out of Phase 2.
-
-The identity policy is precision-first: attachment/coreference evidence may connect a mention to an existing character, but weak evidence — especially pronouns, capitalization artifacts, malformed spans, or non-person entities — may not mint a new canonical character.
+Pronouns, sentence-initial capitalization, malformed spans, ambiguous discourse tokens, and non-person evidence are not canonical seeds. Unresolved/quarantined evidence is valid output and must not be silently promoted.
 
 ## Phase 2A Completed Baseline
 
-Phase 2A was merged through PR **#177**.
+Phase 2A implementation PR **#177**:
 
 - exact implementation head: `51147ddf5855a43c3b50770502f2cf9f8fdf1f54`
-- merge commit: `7a053697e874d8fb6e0b03571b7cf0f2e885dd61`
+- merge: `7a053697e874d8fb6e0b03571b7cf0f2e885dd61`
+- closure merge: `4b405ecacdb10e2a15b702210c2cdfef4daa2a9b`
 
-It establishes:
+It established:
 
-- member-owned projects and source metadata with forced RLS;
-- durable analysis jobs with idempotent enqueue and atomic lease-based worker claiming;
-- immutable analysis-run provenance with job/project/source/owner scope integrity;
-- append-only character/alias/mention result foundations;
-- private server/domain reads through the ordinary authenticated Supabase boundary;
-- real `/projects`, `/projects/[projectId]`, and `/library` product data surfaces;
-- deterministic disposable-Postgres contracts for ownership, suspension, retry, lease, stale-token, and result-read behavior;
-- exact-head rendered responsive validation for the activated product surfaces.
+- member-owned projects/source metadata with forced RLS;
+- durable analysis jobs with idempotent enqueue and atomic lease-based claiming;
+- immutable analysis-run provenance;
+- character/alias/mention result foundations;
+- real `/projects`, `/projects/[projectId]`, and `/library` data surfaces;
+- disposable-Postgres owner/isolation/lease/retry contracts.
 
-Exact-head qualification before merge:
+## Phase 2B Completed Baseline
 
-- Web CI `34654618229` — success
-- Required Check Compatibility `34654618239` — success
-- Backend Architecture CI `34654618234` — success
-- Visual Review `34654618236` — success
+Phase 2B implementation PR **#179**:
 
-Rendered evidence artifact: `10284398956` (`saga-v2-phase-2a-visual-review`).
+- exact implementation head: `20a0e222aac42208b45a4faac3814208afd50762`
+- merge: `fad0b8e5a3cc5c0e819d86fb41f50fe587574aab`
 
-No Vercel deployment or hosted B2 mutation was performed for Phase 2A.
+It establishes the deterministic repository/CI ingestion boundary:
 
-## What Phase 1 Proved
+- owner-scoped source upload intents;
+- server-generated B2 object keys using owner/project/source/content IDs rather than filenames;
+- short-lived direct-to-B2 signed PUT uploads behind `ObjectStorage`;
+- browser SHA-256 declaration plus signed object metadata;
+- independent server-side B2 HEAD verification before enqueue;
+- no ingestion enqueue when observed upload metadata mismatches;
+- private signed original-source read path;
+- immutable normalized-source and normalized-section persistence with forced owner RLS;
+- kind-scoped durable worker leases;
+- a new v2-owned `services/analysis-worker/` runtime, separate from historical Python/runtime surfaces;
+- worker-side re-hashing of the actual downloaded source bytes;
+- deterministic strict-UTF-8 TXT normalization;
+- deterministic EPUB package/spine normalization with archive/path safety limits;
+- Unicode code-point offsets, stable structural locators and deterministic semantic fingerprints;
+- bounded transient retry versus terminal normalization failure behavior;
+- project-workspace source upload UI and current Library/Home ingestion state;
+- golden TXT/EPUB fixtures and a dedicated Analysis Worker CI workflow.
 
-Repository and hosted evidence proves:
+Exact-head qualification on `20a0e222aac42208b45a4faac3814208afd50762`:
 
-- invitation-only product; public signup disabled;
-- Supabase Auth owns identity/session mechanics;
-- S.A.G.A. product records own admission, role, status, and invitation lifecycle;
-- fresh server-side identity verification before private/admin access;
-- active-admin-only invitation/account operations;
-- deterministic retry/revoke semantics and last-admin/self-lockout safeguards;
-- real Resend SMTP delivery from the verified `mail.saga.faresuniform.uk` sender domain;
-- real hosted invitation confirmation through `/auth/confirm`;
-- transactional S.A.G.A. invitation claim;
-- real Set Password flow;
-- private `/home` access after invitation acceptance;
-- later password sign-in from a fresh browser session;
-- hosted account suspension immediately denies the same session and routes to `/access/suspended`;
-- reactivation restores private access;
-- temporary hosted test identities and product records were removed after proof;
-- no reusable privileged credential is committed to repository/browser code.
+- Web CI `34661457524` — success
+- Analysis Worker CI `34661457497` — success
+- Visual Review `34661457496` — success
+- Backend Architecture CI `34661457500` — success
+- Required Check Compatibility `34661457516` — success
 
-Hosted proof runs:
+Rendered artifact: `10287611789`, digest `ccadb4a2bd382ea7d69e34b9d72aa8f1ac0b6bbe5d5c8b2f0de8ad43daa61fb6`.
 
-- access/suspension smoke: GitHub Actions run `34647243289` — success;
-- full invitation lifecycle: GitHub Actions run `34647592382` — success.
+No hosted database/storage/worker/Vercel mutation is implied by this repository completion.
 
-The earlier failed owner invitation attempt was isolated to Vercel Preview deployment protection, not S.A.G.A. Auth logic, the invite token, Resend, or Supabase. The final proof used the public production alias and passed end-to-end.
-
-## Hosted Resources
+## Hosted Resources / Reality
 
 ### Supabase
 
 Dedicated S.A.G.A. project:
 
-- project ref/id: `scmeqnpmhomzcwecjdtu`
+- ref/id: `scmeqnpmhomzcwecjdtu`
 - organization: `Fares Home Lab`
-- organization id: `imbicfntoeaqubhdcnpe`
 - region: `eu-central-1`
 - API URL: `https://scmeqnpmhomzcwecjdtu.supabase.co`
+- public signup disabled
+- custom Resend SMTP active
 
-The old `AI Studio` project was not reused.
+The existing `AI Studio` project was not reused.
 
-The hosted database is authoritative only for migrations that have actually been applied there. Phase 2A repository migrations are merged, but this handoff does not claim they have been applied to the hosted Supabase project until a hosted validation step proves that explicitly.
-
-Supabase Auth currently uses the public production origin `https://saga-pi-two.vercel.app`; the redirect allowlist contains that production origin plus the future `https://saga.faresuniform.uk/**` origin. Public signup remains disabled. Custom SMTP uses Resend through the verified `mail.saga.faresuniform.uk` domain.
+Phase-2A/2B migrations are merged and disposable-Postgres qualified. This handoff does **not** claim those Phase-2 migrations have been applied to hosted Supabase. Hosted migration state must be proven explicitly when Phase 2D qualification begins.
 
 ### Vercel
 
 Dedicated project:
 
 - project: `saga`
-- project id: `prj_AKQ8XTGUwpgOZRB9GHMd2lqIfRrc`
 - root: `apps/web`
-- framework: Next.js
 - stable temporary production alias: `https://saga-pi-two.vercel.app`
 
-The historical `studio` project has been disconnected from the S.A.G.A. Git repository.
+Automatic Git-triggered Preview and Production deployments are disabled.
 
-**Deployment policy:** automatic Git-triggered Preview and Production deployments are disabled. A request to implement, review, merge, test, or continue work is not deployment permission. Before any Vercel deployment, explain why it is needed, whether it is Preview or Production, and the exact commit/SHA; then obtain explicit owner approval for that specific deployment.
+**Deployment rule:** implementation, review, merge, testing, or a generic instruction to continue is not Vercel deployment permission. Before any deployment, state why it is needed, Preview vs Production, and the exact commit/SHA; then obtain fresh explicit owner approval for that deployment.
+
+No Vercel deployment was performed for Phase 2A or 2B.
 
 ### Backblaze B2
 
@@ -163,81 +146,82 @@ Dedicated private bucket:
 - region: `us-east-005`
 - endpoint: `https://s3.us-east-005.backblazeb2.com`
 
-Bootstrap/master credentials remain operator-only. Phase 2B is the first slice that needs a real source object lifecycle, but repository-side storage contracts, signed-URL boundaries, deterministic fixtures, normalizers, and persistence tests can proceed without hosted credentials.
+Bootstrap/master credentials remain operator-only.
 
-A bucket-scoped runtime application key is required only when implementation reaches **real hosted B2 I/O**. That is an explicit credential/infrastructure gate; it is not deployment permission and it must not block deterministic repository implementation before that point.
+The Phase-2B repository upload/read flow is implemented, but real hosted object I/O is not yet enabled. A bucket-scoped non-master runtime application key and any required browser-upload CORS configuration are explicit external gates for Phase 2D hosted proof. They do **not** block Phase 2C repository/CI work.
+
+### Worker hosting
+
+`services/analysis-worker/` is now an active v2 runtime boundary. Its code/contract is CI-proven, but no permanent worker host/provider has been selected or deployed. Host/account/cost selection remains deliberately deferred until hosted qualification requires it.
 
 ## Product / Architecture Boundary
 
 ```text
-Public browser
-  -> landing / sign-in / invite-confirm
-
-Verified admitted user
-  -> Next.js application on Vercel
-       -> fresh Supabase Auth identity verification
-       -> S.A.G.A. account/access resolution
-       -> dedicated S.A.G.A. Supabase Postgres/Auth
-       -> provider-neutral object storage boundary -> Backblaze B2
-       -> durable analysis job/control plane
-            -> separate analysis worker
-                 -> normalized source
-                 -> evidence providers
-                 -> deterministic S.A.G.A. identity policy
-                 -> immutable analysis run + character evidence
+Browser
+  -> Next.js web application
+       -> fresh Supabase Auth/account-access checks
+       -> owner-scoped project/source/result reads
+       -> provider-neutral ObjectStorage -> Backblaze B2
+       -> durable Postgres job/control plane
+            -> services/analysis-worker
+                 -> deterministic normalization
+                 -> Phase 2C evidence provider boundary
+                 -> deterministic identity policy
+                 -> immutable run + character evidence
 ```
 
-Full-book parsing/NLP does not run inside a normal Next.js request. Supabase Postgres is the Phase-2 durable control plane; worker hosting/provider remains deliberately open until the runtime contract is proven and a real host/cost decision is required.
+Full-book parsing/NLP does not execute inside a normal Next.js request.
 
-RenderLab remains a separate product and read-only reference for process/UI/architecture conventions. Do not modify it or copy its product code, schema, branding, data, secrets, deployments, or storage assumptions into S.A.G.A.
+RenderLab remains a separate product and read-only reference for process/UI/architecture conventions only. Do not copy its product code, schema, branding, data, secrets, deployments, or storage assumptions into S.A.G.A.
 
 ## Current Web Product
 
-The active application lives under `apps/web/` and includes:
+The active application under `apps/web/` includes:
 
-- closed-demo sign-in, invitation confirmation, password setup/change, sign-out;
-- private application boundary;
-- Narrative Desk shell;
-- Home, Settings, and active-admin Admin workspace;
-- real private Projects create/list surface;
-- real project workspace with Overview, Sources, Analysis, and Characters sections;
-- real Library source-record listing;
-- deterministic account/invitation role/status operations;
-- responsive desktop/narrow behavior and rendered accessibility checks.
+- closed-demo sign-in/invitation/password flows;
+- private Narrative Desk shell;
+- Home, Library, Projects, Settings and active-admin Admin;
+- project create/list/open;
+- project Overview, Sources, Analysis and Characters sections;
+- bounded `.txt`/`.epub` source upload with browser hashing, direct signed object upload, server verification and durable ingestion queue state;
+- Library source records/status;
+- private signed original-source read path;
+- responsive/accessibility rendered validation.
 
-Source upload remains intentionally unavailable until the Phase 2B bounded object-storage lifecycle is implemented.
+The Characters section still lacks the Phase-2C evidence-backed identity result UI. That is the next active product slice.
 
-Primary UI principle remains: **Narrative first, complexity on demand.**
+Primary UI principle: **Narrative first, complexity on demand.**
+
+## Next Work — Phase 2C
+
+Continue `docs/phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` with **Phase 2C — Character Identity Engine**.
+
+Immediate repository goals:
+
+1. define a provider-neutral normalized mention/span/coreference evidence contract in `services/analysis-worker`;
+2. add deterministic recorded/synthetic provider fixtures so policy CI needs no heavyweight model download;
+3. implement precision-first mention admission and deterministic canonical seeding/name clustering;
+4. implement attachment/quarantine/unresolved rules, including late strong-name stabilization without raw-text rewriting;
+5. ensure pronouns, malformed spans, discourse/function tokens and non-person typed spans cannot mint canonicals;
+6. produce deterministic semantic identity fingerprints excluding UUID/timestamp noise;
+7. add a transactional worker persistence boundary for Character/Alias/Mention results tied to an immutable `character_identity` analysis run;
+8. enqueue/claim `character_identity` work durably without coupling it to the ingestion worker claim path;
+9. add adversarial fixtures for historical failure classes;
+10. expose canonical characters, aliases, representative mentions, evidence/admission tier, unresolved evidence and run provenance in the private project UI;
+11. keep provider selection benchmarkable and do not introduce a generative LLM dependency.
+
+Continue branch/PR/exact-head CI autonomously. Do not stop for the deferred B2 runtime key or worker-host choice while Phase 2C can still be implemented deterministically in repository/CI.
+
+Stop only at a genuine owner decision, external credential/cost gate, or explicit deployment authorization gate.
 
 ## Open / Deferred Items
 
-- custom production domain cutover to `saga.faresuniform.uk` — tracked by issue #165; do not resume without explicit infrastructure/deployment work;
-- bucket-scoped B2 runtime credentials — required only when Phase-2 hosted source object I/O begins;
-- worker host/provider — intentionally deferred until the Phase-2 runtime boundary and deterministic worker are proven;
-- PR #172 (`Expose hosted release identity in health checks`) was closed without merge after Phase 1 proved hosted behavior without it. Reintroduce release fingerprinting only as a fresh current-main change if a later hosted validation gate needs it.
-
-## Next Work
-
-Continue `docs/phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` from **Phase 2B — Source storage + deterministic ingestion**.
-
-Immediate Phase 2B repository goals:
-
-1. bounded source-object upload/read lifecycle through the existing `ObjectStorage` boundary;
-2. server-generated source object keys and explicit upload-completion verification;
-3. deterministic UTF-8 `.txt` normalization with golden fixtures;
-4. deterministic `.epub` normalization with minimal synthetic golden fixtures;
-5. normalized structure persistence with stable ordering/locators and source provenance;
-6. keep full-book parsing/normalization outside ordinary Next.js request execution;
-7. stop at the scoped B2 runtime-credential gate when real hosted object I/O becomes necessary.
-
-After 2B:
-
-- Phase 2C — provider-neutral evidence contract and precision-first character identity engine;
-- Phase 2D — benchmark baseline, hardening, rendered validation, and hosted end-to-end proof after the required explicit infrastructure/deployment approvals.
-
-Continue normal branch/PR/exact-head CI autonomously until a genuine owner decision, external credential/cost gate, or explicit deployment authorization is required.
-
-Do not deploy to Vercel merely because implementation is merged or ready.
+- custom production domain `saga.faresuniform.uk` — issue #165; not part of current Phase-2 work unless explicitly resumed;
+- bucket-scoped B2 runtime credential + upload CORS — Phase-2D hosted-proof gate;
+- worker host/provider/cost — Phase-2D hosted-proof gate;
+- application of Phase-2 migrations to hosted Supabase — Phase-2D hosted-proof step;
+- Vercel deployment — separately approval-gated;
+- PR #172 release identity concept — closed without merge; reintroduce only if a future hosted proof specifically needs it.
 
 ## Validation Convention
 
@@ -251,9 +235,9 @@ npm run test:unit
 npm run build
 ```
 
-The web CI also applies active `apps/web/supabase/migrations/*.sql` to disposable PostgreSQL and runs database contracts. Rendered UI validation is handled separately through the production-build Chromium workflow.
+For `services/analysis-worker` use its dedicated TypeScript typecheck and deterministic fixture suite through `.github/workflows/v2-analysis-worker-ci.yml`.
 
-Phase 2 additionally requires deterministic ingestion/identity fixtures, worker/job contract tests, and a separate literary benchmark harness as defined by the phase contract.
+Web CI applies active v2 Supabase migrations to disposable PostgreSQL and runs database contracts. Rendered product validation is handled by `.github/workflows/v2-visual-review.yml`.
 
 ## Working Convention
 
