@@ -8,6 +8,7 @@
     "test": "tsx --test tests/*.test.ts",
     "quality": "npm run typecheck && npm test",
     "benchmark:litbank": "tsx src/evaluation/litbank-oracle-cli.ts",
+    "benchmark:booknlp-litbank": "tsx src/evaluation/booknlp-litbank-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
