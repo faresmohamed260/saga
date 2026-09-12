@@ -12,7 +12,6 @@ permissions:
 
 env:
   EXPECTED_SUPABASE_URL: https://scmeqnpmhomzcwecjdtu.supabase.co
-  EXPECTED_SUPABASE_REF: scmeqnpmhomzcwecjdtu
   EXPECTED_B2_BUCKET: saga-v2-faresmohamed260-1207062480
   EXPECTED_VERCEL_TEAM: team_r09C6RLmb2acHapENECQIn9T
   EXPECTED_VERCEL_PROJECT: prj_AKQ8XTGUwpgOZRB9GHMd2lqIfRrc
@@ -25,9 +24,7 @@ jobs:
       SAGA_B2_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
       SAGA_B2_APP_KEY: ${{ secrets.SAGA_B2_APP_KEY }}
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
-      SAGA_SUPABASE_API_URL: ${{ secrets.SAGA_SUPABASE_API_URL }}
       SAGA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SAGA_SUPABASE_SERVICE_ROLE_KEY }}
-      SAGA_DATABASE_URL: ${{ secrets.SAGA_DATABASE_URL }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - name: Confirm required secret channels are populated
@@ -39,9 +36,7 @@ jobs:
             SAGA_B2_KEY_ID \
             SAGA_B2_APP_KEY \
             SAGA_MODAL_TOKENS_JSON \
-            SAGA_SUPABASE_API_URL \
             SAGA_SUPABASE_SERVICE_ROLE_KEY \
-            SAGA_DATABASE_URL \
             VERCEL_TOKEN
           do
             if [ -z "${!name:-}" ]; then
@@ -51,32 +46,16 @@ jobs:
           done
           test "$missing" -eq 0
 
-      - name: Validate dedicated Supabase secret targets without exposing values
+      - name: Validate dedicated Supabase service role without exposing it
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import os
-          from urllib.parse import urlparse
-
-          api = os.environ['SAGA_SUPABASE_API_URL'].rstrip('/')
-          expected = os.environ['EXPECTED_SUPABASE_URL']
-          if api != expected:
-              raise SystemExit('SAGA_SUPABASE_API_URL does not target the dedicated S.A.G.A. project')
-
-          database = os.environ['SAGA_DATABASE_URL']
-          parsed = urlparse(database)
-          marker = os.environ['EXPECTED_SUPABASE_REF']
-          if marker not in database and marker not in (parsed.hostname or '') and marker not in (parsed.username or ''):
-              raise SystemExit('SAGA_DATABASE_URL cannot be verified as the dedicated S.A.G.A. project')
-          PY
-
           code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
             -H "apikey: ${SAGA_SUPABASE_SERVICE_ROLE_KEY}" \
             -H "Authorization: Bearer ${SAGA_SUPABASE_SERVICE_ROLE_KEY}" \
-            "${SAGA_SUPABASE_API_URL}/rest/v1/saga_projects?select=id&limit=1")
+            "${EXPECTED_SUPABASE_URL}/rest/v1/saga_projects?select=id&limit=1")
           test "$code" = "200" || {
-            echo "::error title=Supabase service-role validation failed::Hosted REST probe returned HTTP ${code}."
+            echo "::error title=Supabase service-role validation failed::Dedicated hosted REST probe returned HTTP ${code}."
             exit 1
           }
 
@@ -109,6 +88,9 @@ jobs:
               buckets = json.load(response)['buckets']
           if len(buckets) != 1 or buckets[0]['bucketName'] != os.environ['EXPECTED_B2_BUCKET']:
               raise SystemExit('Dedicated S.A.G.A. B2 bucket was not found with the configured operator key')
+          allowed = set(auth.get('allowed', {}).get('capabilities', []))
+          if 'writeKeys' not in allowed:
+              raise SystemExit('Configured B2 operator key lacks writeKeys required to mint the scoped runtime key')
           PY
 
       - name: Validate Modal token bundle structure without exposing tokens
