@@ -53,7 +53,7 @@ Runtime/resource measurements are kept separate from semantic fingerprints so a 
 
 The repository does **not** store the novels and the runner does **not** download them.
 
-`services/analysis-worker/benchmarks/whole-book-primary-fiction-suite.v1.json` contains only the private suite metadata and expected filenames. The operator provisions lawful, user-owned source files outside the repository. At execution time the runner hashes the exact bytes actually used.
+`services/analysis-worker/benchmarks/whole-book-primary-fiction-suite.v1.json` contains only the private suite metadata and expected EPUB filenames. The operator provisions lawful, user-owned EPUB files under the supplied `--sources-root`. At execution time the runner hashes the exact bytes actually used. Provider-specific runners may normalize EPUBs through the existing S.A.G.A. ingestion layer before inference.
 
 For copyrighted books:
 
