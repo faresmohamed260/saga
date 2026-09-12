@@ -28,6 +28,28 @@ function normalization(): NormalizationResult {
   };
 }
 
+function multiSectionNormalization(): NormalizationResult {
+  const first = normalization();
+  const secondText = "Fourth paragraph.\n\nFifth paragraph.";
+  return {
+    ...first,
+    normalizedText: `${first.normalizedText}\n\n${secondText}`,
+    sections: [
+      ...first.sections,
+      {
+        stable_key: "chapter-2",
+        ordinal: 1,
+        section_kind: "chapter",
+        title: "Chapter Two",
+        source_locator: "epub:chapter-2.xhtml",
+        start_offset: [...first.normalizedText].length + 2,
+        end_offset: [...first.normalizedText].length + 2 + [...secondText].length,
+        normalized_text: secondText,
+      },
+    ],
+  };
+}
+
 test("annotation workspace contains private prose but final reference strips it", () => {
   const workspace = createSceneAnnotationWorkspace({
     bookId: "private-book",
@@ -55,6 +77,20 @@ test("annotation finalization refuses unreviewed workspaces", () => {
     annotationProtocolVersion: "scene-annotation-v1",
   });
   assert.throws(() => finalizeSceneAnnotationWorkspace(workspace), /no_completed_scene_annotations/u);
+});
+
+test("annotation finalization refuses partially reviewed workspaces", () => {
+  const workspace = createSceneAnnotationWorkspace({
+    bookId: "private-book",
+    sourceSha256: "d".repeat(64),
+    normalization: multiSectionNormalization(),
+    annotationProtocolVersion: "scene-annotation-v1",
+  });
+  workspace.sections[0]!.status = "complete";
+  assert.throws(
+    () => finalizeSceneAnnotationWorkspace(workspace),
+    /incomplete_scene_annotations:chapter-2/u,
+  );
 });
 
 test("annotation finalization fails if paragraph identity was edited", () => {

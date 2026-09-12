@@ -85,6 +85,10 @@ export function finalizeSceneAnnotationWorkspace(workspace: SceneAnnotationWorks
   if (workspace.privacy !== "PRIVATE_SOURCE_TEXT_DO_NOT_COMMIT") throw new Error("invalid_scene_workspace_privacy_marker");
   const complete = workspace.sections.filter((section) => section.status === "complete");
   if (complete.length === 0) throw new Error("no_completed_scene_annotations");
+  const incomplete = workspace.sections.filter((section) => section.status !== "complete");
+  if (incomplete.length > 0) {
+    throw new Error(`incomplete_scene_annotations:${incomplete.map((section) => section.sectionKey).sort()[0]}`);
+  }
   for (const section of complete) {
     if (section.paragraphs.length === 0) throw new Error(`empty_scene_workspace_section:${section.sectionKey}`);
     for (let index = 0; index < section.paragraphs.length; index += 1) {

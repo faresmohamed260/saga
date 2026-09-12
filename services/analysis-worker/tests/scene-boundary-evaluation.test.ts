@@ -96,6 +96,19 @@ test("tolerant matching is one-to-one and exposes extra and missed boundaries", 
   assert.equal(report.missedGoldCount, 0);
 });
 
+test("tolerant matching maximizes one-to-one match count before minimizing distance", () => {
+  const report = evaluateSceneBoundaries({
+    reference: reference([0, 1, 2]),
+    prediction: prediction([0, 2, 3]),
+    toleranceParagraphs: 1,
+  });
+  assert.equal(report.tolerant.truePositive, 2);
+  assert.equal(report.tolerant.falsePositive, 0);
+  assert.equal(report.tolerant.falseNegative, 0);
+  assert.equal(report.tolerant.f1, 1);
+  assert.equal(report.tolerantMeanAbsoluteParagraphError, 1);
+});
+
 test("ambiguous annotation zones do not become required gold or false-positive traps", () => {
   const report = evaluateSceneBoundaries({
     reference: reference([0, 2, 6], [4]),

@@ -199,28 +199,44 @@ function exactScore(gold: number[], predicted: number[]) {
   return score(tp, predictedSet.size - tp, goldSet.size - tp);
 }
 
+type TolerantMatchState = {
+  matches: number;
+  totalDistance: number;
+};
+
+function betterTolerantMatch(left: TolerantMatchState, right: TolerantMatchState) {
+  if (left.matches !== right.matches) return left.matches > right.matches ? left : right;
+  if (left.totalDistance !== right.totalDistance) return left.totalDistance < right.totalDistance ? left : right;
+  return left;
+}
+
 function tolerantScore(gold: number[], predicted: number[], tolerance: number) {
-  const candidates: Array<{ distance: number; gold: number; predicted: number }> = [];
-  for (const predictedBoundary of predicted) {
-    for (const goldBoundary of gold) {
-      const distance = Math.abs(predictedBoundary - goldBoundary);
-      if (distance <= tolerance) candidates.push({ distance, gold: goldBoundary, predicted: predictedBoundary });
+  const rows = gold.length + 1;
+  const columns = predicted.length + 1;
+  const dp: TolerantMatchState[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: columns }, () => ({ matches: 0, totalDistance: 0 })),
+  );
+
+  for (let goldIndex = 1; goldIndex < rows; goldIndex += 1) {
+    for (let predictedIndex = 1; predictedIndex < columns; predictedIndex += 1) {
+      let best = betterTolerantMatch(dp[goldIndex - 1]![predictedIndex]!, dp[goldIndex]![predictedIndex - 1]!);
+      const distance = Math.abs(gold[goldIndex - 1]! - predicted[predictedIndex - 1]!);
+      if (distance <= tolerance) {
+        const previous = dp[goldIndex - 1]![predictedIndex - 1]!;
+        best = betterTolerantMatch(best, {
+          matches: previous.matches + 1,
+          totalDistance: previous.totalDistance + distance,
+        });
+      }
+      dp[goldIndex]![predictedIndex] = best;
     }
   }
-  candidates.sort((a, b) => a.distance - b.distance || a.gold - b.gold || a.predicted - b.predicted);
-  const matchedGold = new Set<number>();
-  const matchedPredicted = new Set<number>();
-  const distances: number[] = [];
-  for (const candidate of candidates) {
-    if (matchedGold.has(candidate.gold) || matchedPredicted.has(candidate.predicted)) continue;
-    matchedGold.add(candidate.gold);
-    matchedPredicted.add(candidate.predicted);
-    distances.push(candidate.distance);
-  }
-  const result = score(matchedPredicted.size, predicted.length - matchedPredicted.size, gold.length - matchedGold.size);
+
+  const optimal = dp[gold.length]![predicted.length]!;
+  const result = score(optimal.matches, predicted.length - optimal.matches, gold.length - optimal.matches);
   return {
     score: result,
-    meanAbsoluteParagraphError: distances.length === 0 ? null : distances.reduce((sum, value) => sum + value, 0) / distances.length,
+    meanAbsoluteParagraphError: optimal.matches === 0 ? null : optimal.totalDistance / optimal.matches,
   };
 }
 
