@@ -15,7 +15,7 @@ image = (
     .apt_install("ca-certificates")
     .add_local_dir("services/analysis-worker", remote_path=WORKER_DIR, copy=True)
     .workdir(WORKER_DIR)
-    .run_commands("npm ci", "npm run build")
+    .run_commands("npm ci")
     .env(
         {
             "SAGA_WORKER_ONCE": "1",
@@ -32,7 +32,7 @@ app = modal.App(APP_NAME, image=image)
 
 def _run_once() -> dict[str, object]:
     result = subprocess.run(
-        ["node", "dist/worker.js"],
+        ["npm", "run", "worker"],
         cwd=WORKER_DIR,
         text=True,
         capture_output=True,
