@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { availableParallelism, cpus, platform, release } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { finished } from "node:stream/promises";
@@ -190,6 +190,7 @@ async function runBook(input: {
   output: string;
   commandTemplate: string[];
 }): Promise<WholeBookExecutionRecord> {
+  await rm(input.output, { recursive: true, force: true });
   await mkdir(input.output, { recursive: true });
   const source = await sha256File(input.source);
   const command = renderCommand(input.commandTemplate, {
@@ -214,7 +215,10 @@ async function runBook(input: {
   let peakRssMb: number | null = null;
   let peakVramMb: number | null = null;
   const exitPromise = new Promise<void>((resolveExit, rejectExit) => {
-    child.once("error", rejectExit);
+    child.once("error", (error) => {
+      settled = true;
+      rejectExit(error);
+    });
     child.once("exit", (code, exitSignal) => {
       exitCode = code;
       signal = exitSignal;
