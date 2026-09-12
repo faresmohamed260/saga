@@ -1,0 +1,48 @@
+name: Phase 2 Modal capacity probe
+
+on:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - .github/workflows/phase2-modal-capacity-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 696393fa6badb7e6f21850dbe0af0a4fee67a51e
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Inventory existing Modal accounts
+        run: python scripts/modal_worker_fleet.py inventory --workers 8 --out modal-capacity.json
+      - name: Emit bounded availability summary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=json.loads(Path('modal-capacity.json').read_text(encoding='utf-8'))
+          safe=[]
+          for row in payload.get('accounts', []):
+              safe.append({
+                  'account': row.get('account'),
+                  'state': row.get('state'),
+                  'apps': row.get('apps'),
+                  'volumes': row.get('volumes'),
+                  'dicts': row.get('dicts'),
+                  'computeProbe': row.get('computeProbe'),
+              })
+          print(json.dumps({'accounts': safe}, sort_keys=True))
+          PY
