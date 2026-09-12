@@ -1,13 +1,82 @@
 name: Phase 2 analysis worker provision
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - .github/workflows/phase2-analysis-worker-provision.yml
+      - ops/phase2/provision_worker_runtime.py
+      - ops/phase2/deploy_worker_runtime.py
+      - ops/phase2/analysis_worker_modal.py
+      - ops/phase2/xcore_provider.py
 
 permissions:
   contents: read
 
+concurrency:
+  group: phase2-analysis-worker-provision
+  cancel-in-progress: false
+
+env:
+  APPROVED_APP_SHA: 696393fa6badb7e6f21850dbe0af0a4fee67a51e
+  MODAL_ACCOUNT: modal-43
+  SAGA_COMPROMISED_MODAL_ACCOUNT: modal-44
+  SAGA_SUPABASE_URL: https://scmeqnpmhomzcwecjdtu.supabase.co
+  SAGA_B2_BUCKET: saga-v2-faresmohamed260-1207062480
+  SAGA_B2_BUCKET_ID: b2af6d676af585d3aa0e0912
+  SAGA_B2_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+  SAGA_B2_REGION: us-east-005
+  SAGA_XCORE_MODEL_REVISION: a77857e473848d85acc01debdaa8353c59440d84
+  SAGA_IDENTITY_PROVIDER_NAME: modal_xcore_litbank
+  SAGA_IDENTITY_PROVIDER_MODEL: sapienzanlp/xcore-litbank
+  SAGA_IDENTITY_PROVIDER_REVISION: model:a77857e473848d85acc01debdaa8353c59440d84|adapter:saga-xcore-spacy-adapter-v1@7f19acb506029d05fdea53bcbc1ae19c4fce6c09
+
 jobs:
-  paused:
+  provision:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SAGA_B2_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
+      SAGA_B2_MASTER_APPLICATION_KEY: ${{ secrets.SAGA_B2_MASTER_APPLICATION_KEY }}
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
-      - run: echo "Phase 2 worker provisioning is temporarily manual while credential handling is hardened."
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify approved worker tree remains unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$APPROVED_APP_SHA" -- services/analysis-worker
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Provision least-privilege runtime credentials and verify provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          python ops/phase2/provision_worker_runtime.py
+
+      - name: Deploy exact approved worker and run one live queue iteration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python ops/phase2/deploy_worker_runtime.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase2-analysis-worker-provision
+          path: |
+            phase2-worker-provision.json
+            phase2-worker-live-smoke.txt
+          if-no-files-found: error
+          retention-days: 30
