@@ -138,6 +138,121 @@ FROM public.saga_claim_analysis_job_kind('phase2c-identity-worker', 'character_i
 
 SELECT set_config('test.identity_job_id', :'identity_claim_job_id', false);
 
+-- Keep the persistence validator strict. This preflight mirrors its mention
+-- predicates so a future fixture drift reports the exact evidence row/reason
+-- rather than weakening the transactional function.
+DO $$
+DECLARE
+  v_characters jsonb := jsonb_build_array(
+    jsonb_build_object(
+      'character_key', 'character:ada-vale',
+      'canonical_name', 'Ada Vale',
+      'admission_tier', 'stabilized',
+      'evidence_count', 2,
+      'aliases', jsonb_build_array(
+        jsonb_build_object(
+          'surface_form', 'Ada Vale',
+          'normalized_form', 'ada vale',
+          'evidence_count', 1
+        )
+      )
+    )
+  );
+  v_mentions jsonb := jsonb_build_array(
+    jsonb_build_object(
+      'evidence_id', 'mention-pronoun',
+      'character_key', 'character:ada-vale',
+      'surface_text', 'She',
+      'start_offset', 0,
+      'end_offset', 3,
+      'structural_locator', 'txt:document#identity-fixture',
+      'mention_kind', 'pronoun',
+      'resolution_state', 'linked',
+      'evidence_tier', 'attachment',
+      'decision_reason', 'unique_provider_cluster_attachment'
+    ),
+    jsonb_build_object(
+      'evidence_id', 'mention-name',
+      'character_key', 'character:ada-vale',
+      'surface_text', 'Ada Vale',
+      'start_offset', 9,
+      'end_offset', 17,
+      'structural_locator', 'txt:document#identity-fixture',
+      'mention_kind', 'proper_name',
+      'resolution_state', 'linked',
+      'evidence_tier', 'canonical_seed',
+      'decision_reason', 'accepted_canonical_seed'
+    ),
+    jsonb_build_object(
+      'evidence_id', 'mention-what',
+      'character_key', null,
+      'surface_text', 'What',
+      'start_offset', 27,
+      'end_offset', 31,
+      'structural_locator', 'txt:document#identity-fixture',
+      'mention_kind', 'proper_name',
+      'resolution_state', 'quarantined',
+      'evidence_tier', 'quarantined',
+      'decision_reason', 'blocked_surface'
+    )
+  );
+  v_total_characters bigint;
+  v_invalid record;
+BEGIN
+  SELECT normalized.total_characters
+    INTO v_total_characters
+  FROM public.saga_normalized_sources AS normalized
+  JOIN public.saga_analysis_runs AS ingestion_run ON ingestion_run.id = normalized.run_id
+  WHERE normalized.source_id = 'e4444444-4444-4444-8444-444444444444'
+    AND ingestion_run.output_fingerprint = repeat('4', 64)
+  LIMIT 1;
+
+  SELECT mention.*
+    INTO v_invalid
+  FROM jsonb_to_recordset(v_mentions) AS mention(
+    evidence_id text,
+    character_key text,
+    surface_text text,
+    start_offset bigint,
+    end_offset bigint,
+    structural_locator text,
+    mention_kind text,
+    resolution_state text,
+    evidence_tier text,
+    decision_reason text
+  )
+  WHERE mention.evidence_id is null
+     OR char_length(btrim(mention.evidence_id)) not between 1 and 256
+     OR mention.surface_text is null
+     OR char_length(mention.surface_text) not between 1 and 2000
+     OR mention.start_offset is null
+     OR mention.start_offset < 0
+     OR mention.end_offset is null
+     OR mention.end_offset <= mention.start_offset
+     OR mention.end_offset > v_total_characters
+     OR mention.mention_kind not in ('proper_name', 'nominal', 'pronoun')
+     OR mention.resolution_state not in ('linked', 'unresolved', 'quarantined')
+     OR mention.evidence_tier not in ('canonical_seed', 'attachment', 'quarantined')
+     OR mention.decision_reason is null
+     OR char_length(btrim(mention.decision_reason)) not between 1 and 1000
+     OR (mention.resolution_state = 'linked' and mention.character_key is null)
+     OR (mention.resolution_state in ('unresolved', 'quarantined') and mention.character_key is not null)
+     OR (
+       mention.character_key is not null
+       AND NOT EXISTS (
+         SELECT 1
+         FROM jsonb_to_recordset(v_characters) AS character(character_key text)
+         WHERE character.character_key = mention.character_key
+       )
+     )
+  LIMIT 1;
+
+  IF FOUND THEN
+    RAISE EXCEPTION 'identity fixture preflight rejected evidence %, total_characters=%', row_to_json(v_invalid), v_total_characters;
+  END IF;
+END;
+$$;
+
 SELECT public.saga_service_commit_identity_success(
   :'identity_claim_job_id',
   :'identity_claim_lease_token',
