@@ -49,17 +49,20 @@ Merged work includes:
 - BookNLP-small primary-identity evaluation and rejection for that role;
 - GLiNER/F-Coref component smoke evidence;
 - provider-neutral whole-book benchmark infrastructure;
-- the owner-directed private primary fiction suite;
+- the private modern-fiction qualification suite;
 - restored real-book identity regressions for Harry Potter, The Cruel Prince, Caraval and ACOFAS;
-- the first provider-neutral scene-segmentation benchmark foundation.
+- provider-neutral scene-segmentation benchmark infrastructure with structural/lexical candidate floors;
+- provider-neutral dialogue/speaker benchmark infrastructure with a conservative deterministic candidate floor.
 
 Important merged checkpoints:
 
 - PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` — whole-book benchmark foundation + primary private fiction corpus;
 - PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` — primary-fiction identity regression evaluator;
-- PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` — historical narrative breadth reference + scene annotation/evaluation + structural/lexical scene baselines.
+- PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` — historical narrative breadth reference + scene annotation/evaluation + structural/lexical scene baselines;
+- PR #195 / merge `bb44b169ef00a4f76b84410e655eed7244ac2a3a` — scene-foundation source-of-truth synchronization;
+- PR #201 / merge `d029e465bc37d738debd1ebc8d5d831ab9249661` — dialogue/speaker evaluation contract + deterministic Tier-0 baseline.
 
-### Scene benchmark foundation now on `main`
+### Scene benchmark foundation
 
 The merged scene slice contains:
 
@@ -71,14 +74,29 @@ The merged scene slice contains:
 - lexical scene-change baseline/CLI;
 - deterministic tests for the scene benchmark stack.
 
-Pre-merge review hardened benchmark integrity in two places:
+Pre-merge review hardened tolerant one-to-one matching and annotation finalization. PR #193 exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility before merge.
 
-- tolerant one-to-one boundary matching now deterministically maximizes the number of valid matches before minimizing paragraph error rather than using a greedy distance-first assignment;
-- selected annotation workspaces cannot be finalized while any selected section remains pending.
+**No scene method has been adopted yet.** Primary-suite manual annotations and direct candidate measurements remain required.
 
-PR #193 exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility before merge.
+### Dialogue/speaker benchmark foundation
 
-**No scene method has been adopted yet.** Primary-suite manual annotations and direct candidate measurements are still required.
+The merged dialogue slice contains:
+
+- `experiments/DIALOGUE_SPEAKER_BENCHMARK.md`;
+- provider-neutral exact quote-span reference/prediction/evaluation contracts;
+- paired curly/straight double-quote deterministic extraction;
+- conservative speech-verb + already-resolved-character attribution;
+- exact Unicode code-point evidence offsets and semantic fingerprints;
+- quote precision/recall/F1;
+- strict/resolved speaker accuracy, unresolved rate, cross-character contamination and end-to-end speaker recall;
+- explicit known/unknown/ambiguous speaker annotation semantics;
+- deterministic/adversarial tests and prediction/scoring CLIs.
+
+PR #201 exact head `acf0b4cd5759901bb7a0aa65c802c4957413f9c9` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility before merge.
+
+The Tier-0 method is deliberately conservative. Dependency-aware attribution, pronouns, paragraph-spanning/nested dialogue, BookNLP speaker evidence and combined stabilization remain future measured challengers.
+
+**No dialogue/speaker method has been adopted yet.** Private-suite qualification is still required.
 
 ## Locked Analysis Direction
 
@@ -89,9 +107,9 @@ Owner decisions D-026 through D-030 require:
 - deterministic/classical/local methods before generative inference;
 - whole-book resource accounting as part of provider selection;
 - an outbound-only local analysis worker using the existing Supabase durable queue and B2 storage boundaries;
-- model/provider output treated as evidence, while deterministic S.A.G.A. policy owns canonical product truth.
+- model/provider output treated as evidence while deterministic S.A.G.A. policy owns canonical product truth.
 
-The governing analysis cascade is:
+The governing cascade is:
 
 ```text
 Tier 0 deterministic structure/rules
@@ -117,7 +135,7 @@ Primary-suite metadata and protocols:
 - `experiments/WHOLE_BOOK_BENCHMARK.md`;
 - `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`.
 
-A 2026-09-12 recheck found historical File Library notes/scripts that reference the books, but not the actual EPUB binaries. Remote Desktop Commander also returned no connected devices. This remains a source-availability blocker for real primary-suite scene annotations/runs, not a reason to substitute public-domain books as the product gate.
+A 2026-09-12 recheck found historical File Library notes/scripts that reference the books, but not the actual EPUB binaries. Remote Desktop Commander also returned no connected devices. This is a source-availability blocker for primary-suite runs, not a reason to substitute public-domain books as the product gate.
 
 ## Active v2 Architecture / Product Contracts
 
@@ -130,7 +148,7 @@ A 2026-09-12 recheck found historical File Library notes/scripts that reference 
 - `v2/UI_SYSTEM.md` — Narrative Desk UI/UX/render-review rules
 - `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity/account/admin contract
 - `phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md` — active Phase-3 contract
-- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` — active Phase-3 corpus-priority amendment
+- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` — active corpus-priority amendment
 - `operations/VERCEL_DEPLOYMENT_POLICY.md` — manual-only Vercel deployment rule
 
 ## Active v2 Code
@@ -151,7 +169,7 @@ A 2026-09-12 recheck found historical File Library notes/scripts that reference 
 - `../services/analysis-worker/` — active v2 durable analysis-worker/control-plane runtime
 - `../services/analysis-worker/src/ingestion/` — deterministic TXT/EPUB normalization
 - `../services/analysis-worker/src/identity/` — provider-neutral evidence + precision-first resolver
-- `../services/analysis-worker/src/evaluation/` — benchmark/evaluation contracts, including merged scene tooling
+- `../services/analysis-worker/src/evaluation/` — benchmark/evaluation contracts, including identity, whole-book, scene and dialogue tooling
 - `../services/analysis-worker/tests/` — deterministic ingestion/identity/evaluation fixtures
 
 Phase 3 should extend these v2-owned surfaces or add a narrow v2 local-NLP sidecar. Do not add new v2 analysis behavior to historical pre-v2 runtime packages.
@@ -165,7 +183,7 @@ Phase 3 should extend these v2-owned surfaces or add a narrow v2 local-NLP sidec
 - `validation/PHASE_V2_2D_REPOSITORY_QUALIFICATION_2026-09-12.md`
 - `validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
 
-The 100-document LitBank oracle-evidence result remains a useful resolver-policy ceiling/reference, not a production-provider score and not product acceptance on modern fiction.
+The 100-document LitBank oracle-evidence result remains a useful resolver-policy ceiling/reference, not product acceptance on modern fiction.
 
 ## Historical Full-Analysis Reference
 
@@ -173,35 +191,23 @@ The recovered graduation-project *Cruel Prince* run reported 111,351 words, 35 c
 
 ## Hosted Resource Reality
 
-### Supabase
-
-Dedicated project ref `scmeqnpmhomzcwecjdtu` in `eu-central-1`. All five repository-qualified Phase-2 migrations were applied and verified on 2026-09-12.
-
-### Backblaze B2
-
-Dedicated private bucket `saga-v2-faresmohamed260-1207062480` in `us-east-005`. Master credentials remain operator-only; runtime access must use scoped non-master application keys.
-
-### Analysis runtime
-
-The permanent text-analysis target is local-first. `ops/phase2-hosted-proof` is experimental historical evidence and must not be merged as the active text runtime. Modal remains image/media-only.
-
-### Vercel
-
-Dedicated project `saga`, root `apps/web`, with Git-triggered deployments disabled. Any Preview or Production deployment requires fresh explicit owner approval after stating reason, deployment type and exact SHA.
+- **Supabase:** dedicated project `scmeqnpmhomzcwecjdtu` in `eu-central-1`; all five repository-qualified Phase-2 migrations applied/verified 2026-09-12.
+- **Backblaze B2:** private bucket `saga-v2-faresmohamed260-1207062480` in `us-east-005`; runtime access must use scoped non-master credentials.
+- **Analysis runtime:** permanent text path is local-first. `ops/phase2-hosted-proof` is historical experimental evidence only; Modal remains image/media-only.
+- **Vercel:** dedicated project `saga`, root `apps/web`, with Git-triggered deployments disabled. Preview/Production deployment requires fresh explicit owner approval for reason, deployment type and exact SHA.
 
 ## Immediate Continuation
 
 1. Verify live repository state before each new slice.
-2. When lawful primary EPUB access returns, create scene annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS first.
-3. Annotate representative chapters across dialogue, action, travel, explicit/subtle temporal changes, flashbacks, focal changes, decorative breaks and long continuous scenes.
-4. Compare the merged structural and lexical baselines first using exact + relaxed metrics and resource measurements.
-5. Test stronger local scene candidates only if cheaper tiers leave a measurable gap; adopt nothing before primary-suite evidence.
-6. After a measured scene baseline exists, proceed to dialogue/speaker, event/participant, location/entity, tension, relationships/state, timeline and causality experiments.
-7. Keep adoption/rejection records and negative experiments durable in the repository.
+2. While private EPUB access is blocked, continue source-neutral benchmark/evidence infrastructure without claiming product qualification.
+3. Next unblocked benchmark slice: event-candidate/participant evaluation contracts plus a conservative deterministic verb-candidate floor; dependency-aware and BookNLP challengers remain separate.
+4. When lawful primary EPUB access returns, create scene/dialogue annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score the merged baselines.
+5. Test stronger local candidates only if cheaper tiers leave a measurable gap; adopt nothing before primary-suite evidence.
+6. Keep adoption/rejection records and negative experiments durable in the repository.
 
 ## Historical v1 References
 
-Historical documents such as `analysis_foundation_runtime.md`, `canon_extraction_runtime.md`, and `character_world_modeling_runtime.md` remain evidence about prior quality, breadth, latency and failure modes, but their old LangGraph/provider/package topology is not active v2 architecture.
+Historical documents such as `analysis_foundation_runtime.md`, `canon_extraction_runtime.md`, and `character_world_modeling_runtime.md` remain evidence about prior quality, breadth, latency and failure modes, but their old provider/agent topology is not active v2 architecture.
 
 The clean pre-v2 boundary is `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`.
 
