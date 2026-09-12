@@ -115,7 +115,7 @@ test("historical false-canonical classes are quarantined instead of cleaned into
       what: ["quarantined", "blocked_surface"],
       this: ["quarantined", "blocked_surface"],
       lane: ["quarantined", "non_person_evidence"],
-      healer: ["quarantined", "blocked_surface"],
+      healer: ["quarantined", "generic_role_cannot_seed"],
       broken: ["quarantined", "malformed_span"],
     },
   );
