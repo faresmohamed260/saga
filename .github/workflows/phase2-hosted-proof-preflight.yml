@@ -1,0 +1,151 @@
+name: Phase 2 hosted proof preflight
+
+on:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - .github/workflows/phase2-hosted-proof-preflight.yml
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_SUPABASE_URL: https://scmeqnpmhomzcwecjdtu.supabase.co
+  EXPECTED_SUPABASE_REF: scmeqnpmhomzcwecjdtu
+  EXPECTED_B2_BUCKET: saga-v2-faresmohamed260-1207062480
+  EXPECTED_VERCEL_TEAM: team_r09C6RLmb2acHapENECQIn9T
+  EXPECTED_VERCEL_PROJECT: prj_AKQ8XTGUwpgOZRB9GHMd2lqIfRrc
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SAGA_B2_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
+      SAGA_B2_APP_KEY: ${{ secrets.SAGA_B2_APP_KEY }}
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      SAGA_SUPABASE_API_URL: ${{ secrets.SAGA_SUPABASE_API_URL }}
+      SAGA_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SAGA_SUPABASE_SERVICE_ROLE_KEY }}
+      SAGA_DATABASE_URL: ${{ secrets.SAGA_DATABASE_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Confirm required secret channels are populated
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            SAGA_B2_KEY_ID \
+            SAGA_B2_APP_KEY \
+            SAGA_MODAL_TOKENS_JSON \
+            SAGA_SUPABASE_API_URL \
+            SAGA_SUPABASE_SERVICE_ROLE_KEY \
+            SAGA_DATABASE_URL \
+            VERCEL_TOKEN
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing hosted-proof secret::${name} is not configured."
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+
+      - name: Validate dedicated Supabase secret targets without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          api = os.environ['SAGA_SUPABASE_API_URL'].rstrip('/')
+          expected = os.environ['EXPECTED_SUPABASE_URL']
+          if api != expected:
+              raise SystemExit('SAGA_SUPABASE_API_URL does not target the dedicated S.A.G.A. project')
+
+          database = os.environ['SAGA_DATABASE_URL']
+          parsed = urlparse(database)
+          marker = os.environ['EXPECTED_SUPABASE_REF']
+          if marker not in database and marker not in (parsed.hostname or '') and marker not in (parsed.username or ''):
+              raise SystemExit('SAGA_DATABASE_URL cannot be verified as the dedicated S.A.G.A. project')
+          PY
+
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            -H "apikey: ${SAGA_SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SAGA_SUPABASE_SERVICE_ROLE_KEY}" \
+            "${SAGA_SUPABASE_API_URL}/rest/v1/saga_projects?select=id&limit=1")
+          test "$code" = "200" || {
+            echo "::error title=Supabase service-role validation failed::Hosted REST probe returned HTTP ${code}."
+            exit 1
+          }
+
+      - name: Validate B2 operator credentials and dedicated bucket read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, json, os, urllib.request
+
+          key_id = os.environ['SAGA_B2_KEY_ID']
+          key = os.environ['SAGA_B2_APP_KEY']
+          basic = base64.b64encode(f'{key_id}:{key}'.encode()).decode()
+          req = urllib.request.Request(
+              'https://api.backblazeb2.com/b2api/v4/b2_authorize_account',
+              headers={'Authorization': f'Basic {basic}'},
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              auth = json.load(response)
+          api_url = auth['apiInfo']['storageApi']['apiUrl']
+          account_id = auth['accountId']
+          token = auth['authorizationToken']
+          body = json.dumps({'accountId': account_id, 'bucketName': os.environ['EXPECTED_B2_BUCKET']}).encode()
+          req = urllib.request.Request(
+              f'{api_url}/b2api/v4/b2_list_buckets',
+              data=body,
+              headers={'Authorization': token, 'Content-Type': 'application/json'},
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              buckets = json.load(response)['buckets']
+          if len(buckets) != 1 or buckets[0]['bucketName'] != os.environ['EXPECTED_B2_BUCKET']:
+              raise SystemExit('Dedicated S.A.G.A. B2 bucket was not found with the configured operator key')
+          PY
+
+      - name: Validate Modal token bundle structure without exposing tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          raw = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          accounts = raw.get('accounts') if isinstance(raw, dict) else raw
+          if not isinstance(accounts, list) or not accounts:
+              raise SystemExit('SAGA_MODAL_TOKENS_JSON has no accounts')
+          valid = [row for row in accounts if isinstance(row, dict) and row.get('token_id') and row.get('token_secret')]
+          if not valid:
+              raise SystemExit('SAGA_MODAL_TOKENS_JSON has no usable token pair')
+          PY
+
+      - name: Validate Vercel token against dedicated S.A.G.A. project read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --output /tmp/vercel-project.json --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "https://api.vercel.com/v9/projects/${EXPECTED_VERCEL_PROJECT}?teamId=${EXPECTED_VERCEL_TEAM}")
+          test "$code" = "200" || {
+            rm -f /tmp/vercel-project.json
+            echo "::error title=Vercel token validation failed::Dedicated project probe returned HTTP ${code}."
+            exit 1
+          }
+          python - <<'PY'
+          import json, os
+          with open('/tmp/vercel-project.json', encoding='utf-8') as handle:
+              project = json.load(handle)
+          if project.get('id') != os.environ['EXPECTED_VERCEL_PROJECT'] or project.get('name') != 'saga':
+              raise SystemExit('Vercel token resolved an unexpected project')
+          PY
+          rm -f /tmp/vercel-project.json
+
+      - name: Preflight complete
+        run: echo 'Hosted-proof credential channels are present and target the dedicated S.A.G.A. infrastructure.'
