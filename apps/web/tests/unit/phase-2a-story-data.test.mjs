@@ -70,7 +70,7 @@ test("project creation remains a bounded server action independent from source u
   assert.doesNotMatch(projectsPage, /type="file"/);
 });
 
-test("Phase 2A project and result surfaces remain active while Phase 2B adds source intake", () => {
+test("Phase 2A project and result surfaces remain active as Phase 2C adds inspectable identity evidence", () => {
   const projectsPage = read("src/app/(app)/projects/page.tsx");
   const projectWorkspace = read("src/app/(app)/projects/[projectId]/page.tsx");
   const libraryPage = read("src/app/(app)/library/page.tsx");
@@ -79,8 +79,7 @@ test("Phase 2A project and result surfaces remain active while Phase 2B adds sou
   assert.match(projectWorkspace, /getSagaProjectWorkspace/);
   assert.match(projectWorkspace, /Sources/);
   assert.match(projectWorkspace, /Analysis/);
-  assert.match(projectWorkspace, /Characters/);
-  assert.match(projectWorkspace, /Unresolved mentions will not be counted as canonicals/);
+  assert.match(projectWorkspace, /CharacterEvidenceSection/);
   assert.match(libraryPage, /listSagaSources/);
 });
 
