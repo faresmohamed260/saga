@@ -93,8 +93,6 @@ S.A.G.A. commit:
 
 - `068734bbe05511ee6146bd0c5c3cf12cced53c80`
 
-This is a distinct candidate configuration rather than rewriting Experiment 1.
-
 Code:
 
 - official upstream base: `3d900fc2224e55960c3363826ae28539b77b4204`
@@ -121,27 +119,98 @@ ModuleNotFoundError: No module named 'click'
 
 Classification: **benchmark-environment configuration failure**, not provider-quality evidence. No document was processed and no S.A.G.A. quality metric was produced.
 
-The next attempt keeps the same candidate code/model configuration and adds an explicit `click==8.1.7` pin. This is the only material environment correction.
+## Experiment 3 — bounded compatibility environment, 5-document smoke
 
-## Experiment 3 — bounded compatibility environment with explicit CLI dependency
+GitHub Actions run: `34699944924`
 
-Status: **IN PROGRESS**
-
-S.A.G.A. commit beginning the attempt:
+S.A.G.A. experiment head:
 
 - `b961a06f65c61a43828971b8d642f8ec51514124`
 
+Artifact:
+
+- name: `saga-phase3-booknlp-small-smoke`
+- artifact ID: `10299318866`
+- digest: `sha256:1dd92ea2d03f2abc8ed1dd2ad054e715f2bbaf37309e033c125d0b26ddc22e69`
+
 Pinned environment:
 
-- Python `3.10`
-- PyTorch `2.3.1` CPU wheel
+- Python `3.10.21`
+- PyTorch `2.3.1+cpu`
 - Click `8.1.7`
 - spaCy `3.7.5`
 - Transformers `4.43.4`
 - BookNLP compatibility commit `8875a1b616d764b7d13d1e30e9949cc21ca303c1`
-- no TensorFlow installation
+- TensorFlow not installed
 
-Initial workload remains the same five pinned LitBank documents. Only after this smoke run succeeds will the same fixed configuration be expanded to all 100 documents.
+### Result
+
+**SUCCESSFUL end-to-end provider run and S.A.G.A. evaluation.**
+
+All 5 attempted LitBank documents completed with no provider/evaluator failure.
+
+Quality after BookNLP evidence was normalized and passed through the existing deterministic S.A.G.A. identity resolver:
+
+- gold seed-eligible characters: `36`
+- predicted canonicals: `61`
+- pure canonicals: `19`
+- false canonicals: `22`
+- incorrect merges: `10`
+- contaminated canonicals: `38`
+- represented gold characters: `17`
+- fragmentation excess: `15`
+- relevant gold mentions: `552`
+- correct linked mentions: `75`
+- linked mentions: `299`
+- canonical precision: `0.3115`
+- canonical recall: `0.4722`
+- false-canonical rate: `0.3607`
+- incorrect-merge rate: `0.1639`
+- contaminated-canonical rate: `0.6230`
+- fragmentation rate: `0.4167`
+- linked-mention precision: `0.2508`
+- linked-mention recall: `0.1359`
+- unresolved relevant mention rate: `0.4964`
+- non-person quarantine rate: `0.9583`
+- cluster purity: `0.8510`
+
+Aggregate semantic output fingerprint:
+
+- `fa96751cbdb4d45e99e758187c83bdccd57eaee37fdae8ca1ec9fc796b188a5a`
+
+### Operational result
+
+- initialization: `15.57 s`
+- total wall clock for 5 documents: `32.78 s`
+- peak resident memory: `883.6 MiB`
+- GPU: none
+- peak VRAM: none
+- BookNLP model artifacts: `160,398,571 bytes` (`~153 MiB`)
+
+Exact downloaded model artifacts:
+
+- coreference: `40,831,851 bytes`, SHA-256 `eadd62a0b5d6f1d8908ee31c9949f863b731046e0e64df8c0c46bedf07a56116`
+- entities: `61,979,735 bytes`, SHA-256 `0620eed33c32c9b15dcbf3303bb3809b4f7ea29eef5311ba55db361a848cda5a`
+- speaker: `57,586,985 bytes`, SHA-256 `1f530622219b8d6d90881f0d2eaeeec08ff6b73287d9eac66a1505ee0e6887e5`
+
+### Interpretation
+
+The operational footprint is attractive once the environment is pinned correctly, but the **identity quality is not close to production-grade in this smoke set**. In particular, false canonicals, cross-character merges, contaminated canonicals, and linked-mention precision are far worse than the oracle-policy baseline.
+
+This is evidence against using BookNLP-small coreference/identity output as S.A.G.A.'s primary canonical identity provider in its current form. It is **not yet a final rejection**, because five documents are insufficient for a durable full-corpus conclusion and BookNLP may still be useful for narrower roles such as quote/speaker evidence, event triggers, syntax, or auxiliary mention evidence.
+
+## Experiment 4 — same pinned candidate, full 100-document LitBank run
+
+Status: **IN PROGRESS**
+
+No provider/model/runtime change is allowed from Experiment 3. The same exact environment and compatibility commit are expanded from 5 to all 100 pinned LitBank documents so the identity conclusion is based on the full literary benchmark rather than the smoke subset.
+
+The full run is intended to answer:
+
+1. whether the poor smoke identity precision/merge behavior persists over all 100 documents;
+2. whether provider failures appear at larger corpus scale;
+3. whole-corpus runtime and memory behavior;
+4. whether any BookNLP sub-capability remains promising enough to benchmark separately rather than discarding the package wholesale.
 
 ## Decision rule
 
