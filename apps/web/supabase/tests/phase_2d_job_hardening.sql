@@ -3,6 +3,19 @@
 RESET ROLE;
 SET ROLE service_role;
 
+-- Earlier database contracts intentionally exercise automatic ingestion ->
+-- identity handoff and may leave queued work. Close only those completed-test
+-- leftovers before introducing the dedicated Phase-2D qualification job so
+-- the production FIFO claim policy remains unchanged.
+UPDATE public.saga_analysis_jobs
+SET status = 'cancelled',
+    completed_at = now(),
+    lease_token = null,
+    lease_owner = null,
+    lease_expires_at = null
+WHERE kind = 'character_identity'
+  AND status IN ('queued', 'running');
+
 -- Reuse the completed Phase-2C source fixture but create an independent
 -- identity attempt. This isolates lease/retry/idempotency qualification from
 -- ingestion setup while exercising the real transactional commit functions.
