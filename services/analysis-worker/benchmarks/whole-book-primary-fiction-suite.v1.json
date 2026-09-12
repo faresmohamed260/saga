@@ -7,7 +7,7 @@
     {
       "id": "harry-potter-philosophers-stone",
       "title": "Harry Potter and the Philosopher's Stone",
-      "sourceFile": "Harry Potter/1 Harry Potter & the Philosophers Stone.epub",
+      "sourceFile": "1 Harry Potter & the Philosophers Stone.epub",
       "sourceLocator": "private:user-owned:historical-saga-regression",
       "tags": ["fantasy", "young-adult", "school", "honorifics", "family-surnames", "locations-groups", "alias-fragmentation"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -15,7 +15,7 @@
     {
       "id": "the-cruel-prince",
       "title": "The Cruel Prince",
-      "sourceFile": "The Cruel Prince/The Cruel Prince.epub",
+      "sourceFile": "The Cruel Prince.epub",
       "sourceLocator": "private:user-owned:historical-saga-regression",
       "tags": ["fantasy", "young-adult", "fae", "titles", "aliases", "nonhuman-personhood", "large-cast"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -23,7 +23,7 @@
     {
       "id": "caraval",
       "title": "Caraval",
-      "sourceFile": "Caraval/Caraval.epub",
+      "sourceFile": "Caraval.epub",
       "sourceLocator": "private:user-owned:historical-saga-regression",
       "tags": ["fantasy", "young-adult", "aliases", "titles", "identity-reveal", "location-name-confusion"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -31,7 +31,7 @@
     {
       "id": "acotar-1",
       "title": "A Court of Thorns and Roses",
-      "sourceFile": "ACOTAR/A Court of Thorns and Roses.epub",
+      "sourceFile": "A Court of Thorns and Roses.epub",
       "sourceLocator": "private:user-owned:acotar-series",
       "tags": ["romantasy", "fae", "courts", "titles", "species-groups", "relationship-heavy"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -39,7 +39,7 @@
     {
       "id": "acotar-2",
       "title": "A Court of Mist and Fury",
-      "sourceFile": "ACOTAR/A Court of Mist and Fury.epub",
+      "sourceFile": "A Court of Mist and Fury.epub",
       "sourceLocator": "private:user-owned:acotar-series",
       "tags": ["romantasy", "fae", "courts", "titles", "aliases", "relationship-heavy"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -47,7 +47,7 @@
     {
       "id": "acotar-3",
       "title": "A Court of Wings and Ruin",
-      "sourceFile": "ACOTAR/A Court of Wings and Ruin.epub",
+      "sourceFile": "A Court of Wings and Ruin.epub",
       "sourceLocator": "private:user-owned:acotar-series",
       "tags": ["romantasy", "fae", "war", "large-cast", "courts", "species-groups"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -55,7 +55,7 @@
     {
       "id": "acotar-4-acofas",
       "title": "A Court of Frost and Starlight",
-      "sourceFile": "ACOTAR/A Court of Frost and Starlight.epub",
+      "sourceFile": "A Court of Frost and Starlight.epub",
       "sourceLocator": "private:user-owned:historical-saga-regression",
       "tags": ["romantasy", "fae", "courts", "titles", "aliases", "historical-regression-anchor"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
@@ -63,7 +63,7 @@
     {
       "id": "acotar-5-acosf",
       "title": "A Court of Silver Flames",
-      "sourceFile": "ACOTAR/A Court of Silver Flames.epub",
+      "sourceFile": "A Court of Silver Flames.epub",
       "sourceLocator": "private:user-owned:acotar-series",
       "tags": ["romantasy", "fae", "courts", "titles", "relationship-heavy", "large-cast"],
       "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
