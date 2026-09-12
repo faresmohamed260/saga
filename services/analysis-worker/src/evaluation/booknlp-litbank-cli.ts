@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { canonicalJson, sha256Hex } from "../ingestion/hash.js";
 import { resolveCharacterIdentity } from "../identity/resolver.js";
 import { codePointLength, normalizeBookNlpOutput } from "../local-analysis/booknlp-output.js";
+import { BOOKNLP_SMALL_PROVIDER } from "../local-analysis/booknlp-provider.js";
 import {
   aggregateIdentityBenchmarkReports,
   evaluateIdentityBenchmarkCase,
@@ -11,14 +12,6 @@ import {
 import { convertLitBankTsvDocument } from "./litbank-tsv.js";
 
 const LITBANK_COMMIT = "3e50db0ffc033d7ccbb94f4d88f6b99210328ed8";
-const BOOKNLP_BASE_COMMIT = "3d900fc2224e55960c3363826ae28539b77b4204";
-const BOOKNLP_COMPAT_COMMIT = "8875a1b616d764b7d13d1e30e9949cc21ca303c1";
-
-export const BOOKNLP_SMALL_PROVIDER = {
-  name: "booknlp-small",
-  model: "small",
-  revision: `booknlp-base:${BOOKNLP_BASE_COMMIT}|compat-pr25:${BOOKNLP_COMPAT_COMMIT}`,
-} as const;
 
 function parseArgs(argv: string[]) {
   let litbankRoot: string | null = null;
