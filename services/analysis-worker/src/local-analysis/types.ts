@@ -1,3 +1,4 @@
+import type { NormalizedSection } from "../ingestion/types.js";
 import type { IdentityProviderDescriptor, NormalizedIdentityEvidence } from "../identity/types.js";
 
 export type LiteraryEntityCategory =
@@ -54,6 +55,26 @@ export type LocalLiteraryEvidenceBundle = {
   quotes: QuoteSpeakerEvidence[];
   eventTriggers: EventTriggerEvidence[];
 };
+
+export type LocalLiteraryAnalysisInput = {
+  normalizedInputFingerprint: string;
+  normalizedText: string;
+  sections: NormalizedSection[];
+};
+
+export type LocalLiteraryProviderHealth = {
+  status: "ok";
+  provider: IdentityProviderDescriptor;
+  protocolVersion: string;
+  configurationFingerprint: string;
+};
+
+export interface LocalLiteraryEvidenceProvider {
+  readonly descriptor: IdentityProviderDescriptor;
+  readonly configurationFingerprint: string;
+  analyze(input: LocalLiteraryAnalysisInput): Promise<LocalLiteraryEvidenceBundle>;
+  health(): Promise<LocalLiteraryProviderHealth>;
+}
 
 export type AnalysisBenchmarkResourceSample = {
   wallClockMs: number;
