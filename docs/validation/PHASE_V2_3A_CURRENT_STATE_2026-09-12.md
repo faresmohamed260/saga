@@ -8,8 +8,8 @@ This record captures the state reached during the 2026-09-12 local-first analysi
 
 `main` at the time this record was last updated:
 
-- `201af2638b4df22aa2734b0cac934fa12b8e3e5e`
-- PR #193 — `Phase 3A: restore narrative breadth baseline and scene benchmark`
+- `d029e465bc37d738debd1ebc8d5d831ab9249661`
+- PR #201 — `Phase 3A: add dialogue and speaker benchmark foundation`
 
 Always verify live `main` before continuing; this SHA is a handoff checkpoint, not permission to ignore newer repository work.
 
@@ -22,7 +22,7 @@ Locked requirements:
 - textual analysis must work without paid AI APIs/subscriptions;
 - Modal is reserved for image/media generation only;
 - prefer deterministic/classical/local methods, then specialized local models, then bounded local generative reasoning only when cheaper tiers leave material ambiguity;
-- the existing TypeScript durable worker, Supabase job/lease/run model, B2 source boundary, and deterministic provenance remain the application/control-plane foundation;
+- the existing TypeScript durable worker, Supabase job/lease/run model, B2 source boundary and deterministic provenance remain the application/control-plane foundation;
 - model/provider output is evidence; S.A.G.A. deterministic policy owns canonical IDs, merges, accepted/uncertain/rejected state, persistence and provenance;
 - whole-book runtime/RAM/VRAM/model size/license/repeatability are part of provider selection;
 - failed and rejected experiments remain in the repository ledger.
@@ -50,13 +50,13 @@ LitBank remains **secondary public/gold regression evidence** for component isol
 
 ### Governance / experiment process
 
-PR #186 established the local-first architecture reset. PR #187 added the first provider-neutral experiment and BookNLP evidence contracts. Later benchmark hardening requires multiple completed runs before a candidate can be considered repeatable and preserves negative results.
+PR #186 established the local-first architecture reset. PR #187 added the first provider-neutral experiment and BookNLP evidence contracts. Benchmark hardening requires multiple completed runs before a candidate can be considered repeatable and preserves negative results.
 
 ### BookNLP identity experiment
 
-BookNLP-small was evaluated as a broad literary baseline. Two independent 100-document LitBank runs produced the same semantic result fingerprint, proving repeatability of the result rather than random failure.
+BookNLP-small was evaluated as a broad literary baseline. Two independent 100-document LitBank runs produced the same semantic result fingerprint.
 
-Full public-regression result:
+Public-regression result:
 
 - canonical precision: `0.4613`;
 - canonical recall: `0.6030`;
@@ -66,24 +66,15 @@ Full public-regression result:
 - linked-mention precision: `0.2158`;
 - linked-mention recall: `0.1161`;
 - cluster purity: `0.8667`;
-- runtime: about `420.2 s` first full run / `352.2 s` second full run on the tested CPU runner;
+- runtime: about `420.2 s` first full run / `352.2 s` second full run;
 - peak RAM: about `1.16 GiB`;
-- BookNLP model artifacts: about `153 MiB`.
+- model artifacts: about `153 MiB`.
 
-Decision: **BookNLP-small is rejected for the primary character-identity role.** Its quote/speaker/event/syntax outputs remain separate future candidates.
+Decision: **BookNLP-small is rejected for the primary character-identity role.** Its quote/speaker/event/syntax outputs remain separate candidates.
 
 ### GLiNER-small-v2.1 + F-Coref challenger
 
-A technically valid five-document public smoke produced:
-
-- GLiNER proper-name PERSON span precision: about `0.763`;
-- GLiNER proper-name PERSON span recall: about `0.657`;
-- F-Coref with oracle mentions: canonical precision about `0.780`, recall about `0.889`, incorrect merges about `0.180`, fragmentation about `0.611`;
-- fully real GLiNER + F-Coref -> S.A.G.A. resolver: canonical precision about `0.412`, canonical recall about `0.500`, linked-mention precision about `0.076`;
-- peak RAM for the pair: about `1.99 GiB`;
-- model artifacts: about `1.25 GiB`.
-
-The combined stack is **not adoption-ready**. Component decisions remain separate and require primary-suite evidence.
+A technically valid five-document public smoke produced useful component evidence, but the fully real combined stack remains **not adoption-ready**. Any component promotion still requires primary-suite evidence.
 
 ### Whole-book benchmark foundation
 
@@ -97,7 +88,7 @@ Opening-prefix cases and full-book cases remain deliberately separate.
 
 ## Merged scene-analysis foundation
 
-PR #193 merged as `201af2638b4df22aa2734b0cac934fa12b8e3e5e` after the scene branch first reconciled the latest `main` documentation/governance without rewriting its existing work.
+PR #193 merged as `201af2638b4df22aa2734b0cac934fa12b8e3e5e`.
 
 Merged scene additions include:
 
@@ -110,42 +101,45 @@ Merged scene additions include:
 - cheap lexical scene-change baseline + CLI;
 - deterministic tests for annotation, evaluation and both baselines.
 
-### Scene benchmark contract
+The scene benchmark is paragraph-anchored and commits no copyrighted prose. It supports exact F1, relaxed `±1 paragraph` F1, optimal one-to-one tolerant matching, matched-boundary error, ambiguity zones and source/input/provider fingerprints.
 
-A scene is a contiguous narrative span coherent across time, space/location, local action/objective and active character/POV constellation.
+Coherent branch review fixed two benchmark-integrity defects before merge:
 
-The benchmark is paragraph-anchored and commits no copyrighted prose. It supports:
+1. the original distance-first greedy tolerant matcher could undercount valid one-to-one matches; the final evaluator uses deterministic dynamic programming to maximize valid match count before minimizing total paragraph error;
+2. partially reviewed annotation workspaces could silently omit pending selected sections; finalization now fails closed until every selected section is complete.
 
-- exact boundary precision/recall/F1;
-- relaxed `±1 paragraph` precision/recall/F1;
-- one-to-one tolerant matching;
-- mean absolute matched-boundary error;
-- explicit ambiguous/disputed boundary zones that are neither required gold nor false-positive traps;
-- source/input/provider fingerprints.
+PR #193 exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
 
-Historical design evidence remains: the old LLM design's useful idea was **semantic boundary proposal + deterministic source anchoring**. Phase 3 aims to retain that strength using measured local tiers rather than paid/full-chapter LLM calls.
+**No scene-segmentation method has been adopted.** The merged code is an experiment/measurement foundation, not a production default.
 
-Initial cascade under experiment:
+## Merged dialogue/speaker foundation
 
-1. Tier 0 deterministic structural boundary baseline;
-2. Tier 1 cheap lexical/local semantic-change challenger;
-3. later small permissively licensed local embedding/classifier candidates if measurements justify them;
-4. bounded local semantic adjudication only for ambiguous candidate windows if cheaper tiers leave a measurable gap.
+PR #201 merged as `d029e465bc37d738debd1ebc8d5d831ab9249661`.
 
-### Integrity findings fixed before PR #193 merge
+Merged dialogue additions include:
 
-Coherent branch review found two benchmark-integrity issues and fixed both before qualification:
+- `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`;
+- provider-neutral `saga-dialogue-reference-v1`, prediction and evaluation contracts;
+- exact quote anchoring by section key plus absolute Unicode code-point offsets;
+- paired curly and straight double-quote deterministic extraction;
+- conservative same-side speech-verb + already-resolved-character attribution;
+- deterministic provider/config/output fingerprints;
+- quote-span precision/recall/F1;
+- strict speaker accuracy on matched quotes;
+- resolved-speaker accuracy;
+- unresolved-speaker rate;
+- cross-character contamination rate;
+- end-to-end speaker recall;
+- explicit `known`, `unknown` and `ambiguous` speaker annotation states;
+- deterministic/adversarial tests and prediction/scoring CLIs.
 
-1. **Relaxed matching cardinality:** the first tolerant scorer greedily consumed the shortest-distance pair. That can undercount a valid one-to-one assignment, for example gold internal boundaries `[1,2]` versus predictions `[2,3]` at tolerance `±1`. The final evaluator uses deterministic dynamic programming to maximize valid match count first and minimize total paragraph error second.
-2. **Partial annotation finalization:** the first finalizer rejected a wholly pending workspace but could silently omit pending sections when another selected section was marked complete. Finalization now fails closed until every selected section is complete.
+The Tier-0 method intentionally does not claim to solve pronoun attribution, paragraph-spanning dialogue, nested quotations, non-dialogue quotation disambiguation or dependency-aware syntax. It returns unresolved when evidence is weak or competing candidates are too close.
 
-Regression tests cover both failure modes.
+An adversarial regression specifically covers `Alice said to Bob, “Hi.”` so nearest-name heuristics do not incorrectly select Bob over the character linked to the speech verb.
 
-### Exact-head qualification
+PR #201 exact head:
 
-PR #193 head:
-
-- `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7`
+- `acf0b4cd5759901bb7a0aa65c802c4957413f9c9`
 
 All four exact-head checks completed successfully before merge:
 
@@ -154,13 +148,13 @@ All four exact-head checks completed successfully before merge:
 - Backend Architecture CI — success;
 - Required Check Compatibility — success.
 
-**No scene-segmentation method has been adopted.** The merged code is an experiment/measurement foundation, not a production default.
+**No dialogue/speaker method has been adopted.** The next speaker-specific challengers remain dependency-aware/local-NLP attribution, BookNLP quote/speaker evidence and combined candidate stabilization, followed by private-suite qualification.
 
 ## Private source availability blocker
 
 The actual user-owned EPUB binaries remain unavailable to the current execution environment.
 
-A 2026-09-12 File Library recheck found historical notes/scripts and the old paths, but not the book binaries. A Remote Desktop Commander recheck returned no connected devices. Historical paths remain under `B:/Documents/PyCharm/graduationProject/uploads/...`.
+A 2026-09-12 File Library recheck found historical notes/scripts and old paths, but not the book binaries. Remote Desktop Commander returned no connected devices. Historical paths remain under `B:/Documents/PyCharm/graduationProject/uploads/...`.
 
 Do not replace the private suite with public-domain novels because the EPUBs are temporarily unavailable. Continue source-neutral harness work only where it advances the architecture without pretending to satisfy the product gate.
 
@@ -183,20 +177,21 @@ These are **coverage/reference observations, not gold truth**.
 ## Immediate continuation order
 
 1. Verify live `main`, PRs/issues and mandatory governance docs before writing.
-2. When the private EPUBs become reachable, generate scene annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS first.
-3. Annotate representative chapters covering dialogue-heavy scenes, action/fights, travel/location changes, explicit and subtle time jumps, flashbacks/recollections, POV/focal changes, decorative breaks and long scenes that should not be over-segmented.
-4. Compare the merged structural and lexical baselines first using exact + relaxed metrics and resource measurements.
-5. Research/test stronger local scene methods only if cheaper baselines leave a measurable quality gap.
-6. Do not select a production scene method before repeatable primary-suite evidence exists.
-7. After scene segmentation has a measured baseline, proceed independently to dialogue/speaker attribution, event/participant extraction, location/entity extraction, tension, relationships/state, timeline and causality.
-8. Preserve every adoption/rejection decision and negative experiment with exact source/model/config/resource fingerprints.
-9. Do not use Modal for textual analysis, add paid AI dependencies, or deploy Vercel without fresh explicit owner approval.
+2. While primary EPUBs remain unavailable, continue source-neutral benchmark/evidence infrastructure without claiming product qualification.
+3. Next unblocked slice: provider-neutral event-candidate/participant evaluation contracts plus a conservative deterministic verb-candidate floor; leave dependency-aware and BookNLP event challengers explicit.
+4. When private EPUBs become reachable, generate scene/dialogue annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score the merged Tier-0/Tier-1 candidates.
+5. Research/test stronger local methods only where cheaper baselines leave a measurable quality gap.
+6. Do not select production identity, scene, speaker or event methods before repeatable primary-suite evidence exists.
+7. Preserve every adoption/rejection decision and negative experiment with exact source/model/config/resource fingerprints.
+8. Do not use Modal for textual analysis, add paid AI dependencies, or deploy Vercel without fresh explicit owner approval.
 
 ## References
 
 - Phase 3 tracker: issue #185
+- dialogue foundation tracker: issue #196 — completed by PR #201
 - primary corpus amendment: `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
 - primary whole-book protocol: `docs/experiments/WHOLE_BOOK_BENCHMARK.md`
 - recovered identity regressions: `docs/experiments/2026-09-12_PRIMARY_FICTION_REGRESSION_RECOVERY.md`
 - scene protocol: `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`
+- dialogue protocol: `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`
 - historical Cruel Prince analysis baseline: `docs/experiments/2026-09-12_CRUEL_PRINCE_HISTORICAL_ANALYSIS_BASELINE.md`
