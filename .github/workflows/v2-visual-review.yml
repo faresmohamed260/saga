@@ -191,6 +191,184 @@ jobs:
           }
           EOF
 
+          cat > 'src/server/story/identity-data.ts' <<'EOF'
+          export type SagaIdentityMention = {
+            id: string;
+            characterId: string | null;
+            surfaceText: string;
+            startOffset: number;
+            endOffset: number;
+            structuralLocator: string | null;
+            mentionKind: "proper_name" | "nominal" | "pronoun";
+            resolutionState: "linked" | "unresolved" | "quarantined";
+            evidenceTier: "canonical_seed" | "attachment" | "quarantined";
+            decisionReason: string;
+          };
+
+          export type SagaIdentityCharacter = {
+            id: string;
+            canonicalName: string;
+            admissionTier: "canonical_seed" | "stabilized";
+            evidenceCount: number;
+            aliases: Array<{ surfaceForm: string; evidenceCount: number }>;
+            mentions: SagaIdentityMention[];
+          };
+
+          export type SagaIdentityRun = {
+            id: string;
+            sourceId: string;
+            sourceDisplayName: string;
+            resolverVersion: string;
+            providerName: string;
+            providerModel: string | null;
+            providerRevision: string;
+            outputFingerprint: string;
+            completedAt: string;
+            characters: SagaIdentityCharacter[];
+            unresolvedMentions: SagaIdentityMention[];
+            quarantinedMentions: SagaIdentityMention[];
+          };
+
+          const adaSeed: SagaIdentityMention = {
+            id: "identity-mention-ada",
+            characterId: "character-ada",
+            surfaceText: "Ada Vale",
+            startOffset: 112,
+            endOffset: 120,
+            structuralLocator: "epub:OEBPS/chapter1.xhtml",
+            mentionKind: "proper_name",
+            resolutionState: "linked",
+            evidenceTier: "canonical_seed",
+            decisionReason: "accepted_canonical_seed",
+          };
+
+          const adaPronoun: SagaIdentityMention = {
+            id: "identity-mention-she",
+            characterId: "character-ada",
+            surfaceText: "She",
+            startOffset: 41,
+            endOffset: 44,
+            structuralLocator: "epub:OEBPS/chapter1.xhtml",
+            mentionKind: "pronoun",
+            resolutionState: "linked",
+            evidenceTier: "attachment",
+            decisionReason: "unique_provider_cluster_attachment",
+          };
+
+          export async function getSagaProjectIdentityEvidence(projectId: string): Promise<SagaIdentityRun[]> {
+            if (projectId !== "33333333-3333-4333-8333-333333333333") return [];
+            return [
+              {
+                id: "identity-run-1",
+                sourceId: "44444444-4444-4444-8444-444444444444",
+                sourceDisplayName: "The Glass Archive — manuscript",
+                resolverVersion: "saga-identity-resolver-v1",
+                providerName: "recorded-lit-fixture",
+                providerModel: "coref-evidence-v1",
+                providerRevision: "fixture-2026-09-12",
+                outputFingerprint: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                completedAt: "2026-09-11T19:06:30.000Z",
+                characters: [
+                  {
+                    id: "character-ada",
+                    canonicalName: "Ada Vale",
+                    admissionTier: "stabilized",
+                    evidenceCount: 4,
+                    aliases: [
+                      { surfaceForm: "Ada Vale", evidenceCount: 2 },
+                      { surfaceForm: "Miss Vale", evidenceCount: 1 },
+                      { surfaceForm: "Ada", evidenceCount: 1 },
+                    ],
+                    mentions: [adaPronoun, adaSeed],
+                  },
+                  {
+                    id: "character-cardan",
+                    canonicalName: "Cardan",
+                    admissionTier: "canonical_seed",
+                    evidenceCount: 3,
+                    aliases: [{ surfaceForm: "Cardan", evidenceCount: 3 }],
+                    mentions: [
+                      {
+                        id: "identity-mention-cardan",
+                        characterId: "character-cardan",
+                        surfaceText: "Cardan",
+                        startOffset: 440,
+                        endOffset: 446,
+                        structuralLocator: "epub:OEBPS/chapter2.xhtml",
+                        mentionKind: "proper_name",
+                        resolutionState: "linked",
+                        evidenceTier: "canonical_seed",
+                        decisionReason: "accepted_canonical_seed",
+                      },
+                    ],
+                  },
+                  {
+                    id: "character-locke",
+                    canonicalName: "Locke",
+                    admissionTier: "canonical_seed",
+                    evidenceCount: 2,
+                    aliases: [{ surfaceForm: "Locke", evidenceCount: 2 }],
+                    mentions: [
+                      {
+                        id: "identity-mention-locke",
+                        characterId: "character-locke",
+                        surfaceText: "Locke",
+                        startOffset: 452,
+                        endOffset: 457,
+                        structuralLocator: "epub:OEBPS/chapter2.xhtml",
+                        mentionKind: "proper_name",
+                        resolutionState: "linked",
+                        evidenceTier: "canonical_seed",
+                        decisionReason: "accepted_canonical_seed",
+                      },
+                    ],
+                  },
+                ],
+                unresolvedMentions: [
+                  {
+                    id: "identity-mention-he",
+                    characterId: null,
+                    surfaceText: "He",
+                    startOffset: 459,
+                    endOffset: 461,
+                    structuralLocator: "epub:OEBPS/chapter2.xhtml",
+                    mentionKind: "pronoun",
+                    resolutionState: "unresolved",
+                    evidenceTier: "attachment",
+                    decisionReason: "ambiguous_provider_cluster",
+                  },
+                ],
+                quarantinedMentions: [
+                  {
+                    id: "identity-mention-what",
+                    characterId: null,
+                    surfaceText: "What",
+                    startOffset: 620,
+                    endOffset: 624,
+                    structuralLocator: "epub:OEBPS/chapter2.xhtml",
+                    mentionKind: "proper_name",
+                    resolutionState: "quarantined",
+                    evidenceTier: "quarantined",
+                    decisionReason: "blocked_surface",
+                  },
+                  {
+                    id: "identity-mention-lane",
+                    characterId: null,
+                    surfaceText: "Chancery Lane",
+                    startOffset: 700,
+                    endOffset: 713,
+                    structuralLocator: "epub:OEBPS/chapter2.xhtml",
+                    mentionKind: "proper_name",
+                    resolutionState: "quarantined",
+                    evidenceTier: "quarantined",
+                    decisionReason: "non_person_evidence",
+                  },
+                ],
+              },
+            ];
+          }
+          EOF
+
           cat > 'src/app/(app)/admin/page.tsx' <<'EOF'
           import { AdminWorkspace } from "@/features/admin/admin-workspace";
           import type { SagaAdminAccount, SagaAdminInvitation } from "@/server/admin/admin-operations";
@@ -300,12 +478,18 @@ jobs:
             assert(await page.getByRole("heading", { name: "The Glass Archive", level: 3 }).isVisible(), "Projects must render fixture project data");
             await page.screenshot({ path: "visual-review/projects-desktop-1440x960.png", fullPage: true });
 
-            await page.goto(`${origin}/projects/33333333-3333-4333-8333-333333333333`, { waitUntil: "networkidle" });
+            const projectUrl = `${origin}/projects/33333333-3333-4333-8333-333333333333`;
+            await page.goto(projectUrl, { waitUntil: "networkidle" });
             assert(await visibleDesktopCurrent(page) === "Projects", "Project workspace must keep Projects active");
             assert(await page.getByRole("heading", { name: "Sources", level: 2 }).isVisible(), "Project workspace must expose Sources");
             assert(await page.getByRole("heading", { name: "Analysis", level: 2 }).isVisible(), "Project workspace must expose Analysis");
             assert(await page.getByRole("heading", { name: "Characters", level: 2 }).isVisible(), "Project workspace must expose Characters");
-            await page.screenshot({ path: "visual-review/project-workspace-desktop-1440x960.png", fullPage: true });
+            assert(await page.getByRole("heading", { name: "Ada Vale", level: 4 }).isVisible(), "Identity surface must render an admitted canonical");
+            assert(await page.getByText("Unresolved evidence").isVisible(), "Identity surface must expose unresolved evidence");
+            assert(await page.getByText("Quarantined evidence").isVisible(), "Identity surface must expose quarantined evidence");
+            assert(await page.getByText("Run provenance").isVisible(), "Identity surface must expose run provenance");
+            assert(await page.getByText(/stabilized · 4 linked evidence items/i).isVisible(), "Identity surface must expose admission/evidence state");
+            await page.screenshot({ path: "visual-review/project-identity-desktop-1440x960.png", fullPage: true });
 
             await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
             assert(await visibleDesktopCurrent(page) === "Admin", "Admin must be the active desktop route");
@@ -328,6 +512,15 @@ jobs:
             );
             assert(projectControlsAreTouchSized, "Project creation controls must preserve approximately 44px touch targets");
             await page.screenshot({ path: "visual-review/projects-narrow-390x844.png", fullPage: true });
+
+            await page.goto(projectUrl, { waitUntil: "networkidle" });
+            const projectWorkspaceOverflow = await page.evaluate(
+              () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            );
+            assert(!projectWorkspaceOverflow, "Narrow project identity workspace has horizontal overflow");
+            assert(await page.getByRole("heading", { name: "Ada Vale", level: 4 }).isVisible(), "Narrow identity workspace must retain canonical evidence");
+            assert(await page.getByText("Unresolved evidence").isVisible(), "Narrow identity workspace must retain unresolved evidence");
+            await page.screenshot({ path: "visual-review/project-identity-narrow-390x844.png", fullPage: true });
 
             await page.goto(`${origin}/admin`, { waitUntil: "networkidle" });
             assert((await page.locator("header").first().textContent())?.includes("Admin"), "Narrow top bar must expose Admin route context");
@@ -380,7 +573,7 @@ jobs:
       - name: Upload rendered evidence
         uses: actions/upload-artifact@v4
         with:
-          name: saga-v2-phase-2a-visual-review
+          name: saga-v2-phase-2c-visual-review
           path: apps/web/visual-review/*.png
           if-no-files-found: error
           retention-days: 30
