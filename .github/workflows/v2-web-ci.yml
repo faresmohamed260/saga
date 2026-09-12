@@ -135,3 +135,4 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/story_intelligence_foundation.sql
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/source_ingestion.sql
           psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/character_identity.sql
+          psql -v ON_ERROR_STOP=1 -f apps/web/supabase/tests/phase_2d_job_hardening.sql

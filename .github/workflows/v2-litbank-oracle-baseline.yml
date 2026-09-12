@@ -1,0 +1,92 @@
+name: SAGA v2 LitBank Oracle Baseline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "services/analysis-worker/src/evaluation/**"
+      - "services/analysis-worker/tests/identity-benchmark.test.ts"
+      - "services/analysis-worker/tests/litbank-tsv.test.ts"
+      - "services/analysis-worker/package.json"
+      - ".github/workflows/v2-litbank-oracle-baseline.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v2-litbank-oracle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  litbank-oracle-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck evaluator
+        run: npm run typecheck
+
+      - name: Run deterministic evaluator tests
+        run: npm test
+
+      - name: Run full LitBank oracle-evidence policy baseline
+        run: >-
+          npm run benchmark:litbank --
+          --root ../../external/litbank
+          --out evaluation-artifacts/litbank-oracle-baseline.json
+
+      - name: Publish benchmark summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const report = require("./evaluation-artifacts/litbank-oracle-baseline.json");
+          const m = report.aggregate.metrics;
+          const c = report.aggregate.counts;
+          console.log("## S.A.G.A. v2 LitBank oracle-evidence policy baseline");
+          console.log("");
+          console.log(`- LitBank commit: \`${report.dataset.commit}\``);
+          console.log(`- Documents: ${report.dataset.documentCount}`);
+          console.log(`- Gold seed-eligible characters: ${c.goldSeedEligibleCharacterCount}`);
+          console.log(`- Predicted canonicals: ${c.predictedCanonicalCount}`);
+          console.log(`- Canonical precision: ${m.canonicalPrecision.toFixed(4)}`);
+          console.log(`- Canonical recall: ${m.canonicalRecall.toFixed(4)}`);
+          console.log(`- False canonical rate: ${m.falseCanonicalRate.toFixed(4)}`);
+          console.log(`- Incorrect merge rate: ${m.incorrectMergeRate.toFixed(4)}`);
+          console.log(`- Fragmentation rate: ${m.fragmentationRate.toFixed(4)}`);
+          console.log(`- Linked mention precision: ${m.linkedMentionPrecision.toFixed(4)}`);
+          console.log(`- Linked mention recall: ${m.linkedMentionRecall.toFixed(4)}`);
+          console.log(`- Cluster purity: ${m.clusterPurity.toFixed(4)}`);
+          console.log(`- Non-person quarantine rate: ${m.nonPersonQuarantineRate.toFixed(4)}`);
+          EOF
+
+      - name: Upload baseline report
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v2-litbank-oracle-baseline
+          path: services/analysis-worker/evaluation-artifacts/litbank-oracle-baseline.json
+          if-no-files-found: error
+          retention-days: 90
