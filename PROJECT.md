@@ -2,7 +2,7 @@
 
 S.A.G.A. is being rebuilt as a web-first storytelling-intelligence platform. The active architecture is the S.A.G.A. v2 rebuild; pre-v2 runtime material is historical/reference only unless a current v2 decision deliberately re-adopts an idea behind a v2-owned contract.
 
-This file is the short source-of-truth handoff for current work. For the detailed Phase-3A state, read `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`.
+This file is the short source-of-truth handoff for current work. For detailed Phase-3A evidence, read `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`.
 
 ## Current Status
 
@@ -32,28 +32,27 @@ Durable owner decisions D-026 through D-030 require local-first, subscription-fr
 
 At the time of this handoff, merged `main` is:
 
-- `d6c1a144d0c4b4ad82e7229c583cb22682249f07`
-- PR #192 — restored the primary-fiction regression evaluator
+- `201af2638b4df22aa2734b0cac934fa12b8e3e5e`
+- PR #193 — merged the Phase-3A narrative-breadth/scene-benchmark foundation after exact-head qualification
 
 Always verify live GitHub state before continuing. This SHA is a handoff checkpoint, not a substitute for checking newer commits/PRs.
 
 ## Product Goal
 
-S.A.G.A. is not a book summarizer. Its analysis runtime should progressively reverse-engineer a novel or series into an evidence-linked narrative model supporting:
+S.A.G.A. is not a book summarizer. Its analysis runtime should progressively reverse-engineer a novel or series into an evidence-linked narrative model covering:
 
 - source/book/chapter/scene structure;
 - canonical characters, aliases and mentions;
 - dialogue and speaker attribution;
 - locations, organizations, objects, creatures, factions and other entities;
 - atomic events and grounded participants;
-- relationships and how they change;
-- character/world state over time;
+- relationships and changing state;
 - narrative order plus story-world chronology and flashbacks;
 - causal links, motivations and consequences;
-- higher-level arcs, tension, conflict, themes and summaries;
+- arcs, tension, conflict, themes and summaries;
 - later canon-aware retrieval, visualization, media and generation.
 
-Keep three conceptual layers distinct:
+Keep three layers distinct:
 
 1. **source layer** — immutable text/structure and exact evidence spans;
 2. **resolved layer** — identities, references, speakers and other confidence-gated interpretation;
@@ -93,9 +92,7 @@ Do not repeatedly pass an entire raw novel through a large LLM merely because a 
 
 ## Primary Evaluation Policy
 
-The owner explicitly corrected the benchmark priority during Phase 3A.
-
-**Primary product qualification corpus:**
+Primary product qualification corpus:
 
 - *Harry Potter and the Philosopher's Stone*;
 - *The Cruel Prince*;
@@ -110,7 +107,7 @@ The repository stores only metadata, fingerprints, bounded diagnostics and expec
 
 ### Experiment governance
 
-Provider adoption is results-driven. Every experiment must preserve source/model/config/resource provenance, including negative and rejected candidates. Repeatability requires multiple completed runs; one successful result is not enough.
+Provider adoption is results-driven. Every experiment preserves source/model/config/resource provenance, including negative and rejected candidates. Repeatability requires multiple completed runs; one successful result is not enough.
 
 ### BookNLP-small
 
@@ -128,46 +125,45 @@ PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` added a provider-neut
 
 ### Primary-fiction identity regressions
 
-PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` restored provider-neutral regressions for the historical real-book failures, including Harry/Harry Potter, Dumbledore/Professor Dumbledore, Az/Azriel, Cardan/Prince Cardan, supporting-character leakage, and fantasy location/group/species contamination.
+PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` restored provider-neutral regressions for historical real-book failures, including Harry/Harry Potter, Dumbledore/Professor Dumbledore, Az/Azriel, Cardan/Prince Cardan, supporting-character leakage, and fantasy location/group/species contamination.
 
 Opening-prefix expectations are kept separate from full-book expectations.
 
-## Private EPUB Availability
+### Scene benchmark foundation
 
-The actual user-owned EPUB binaries are currently **not available in ChatGPT File Library**.
+PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` is **MERGED**.
 
-Historical test records reference old local paths under `B:/Documents/PyCharm/graduationProject/uploads/...`, but the connected Remote Desktop Commander had no online authorized device during the handoff session.
+It provides:
 
-Do not replace the primary suite with public-domain novels because of this temporary availability issue. Continue building and qualifying source-neutral harnesses, then run the real books when lawful EPUB access returns.
-
-## Active Unmerged Work — Scene Segmentation
-
-**Continue this branch; do not recreate it:**
-
-- branch: `v2/phase-3a-cruel-prince-analysis-baseline`
-- handoff head: `cc28f37270c389f7be288f48245105d4f9fdefc7`
-- ahead of merged `main` checkpoint by 21 commits at handoff
-
-Exact-head checks at that SHA are green:
-
-- SAGA v2 Analysis Worker CI — success
-- SAGA v2 LitBank Oracle Baseline — success
-- Backend Architecture CI — success
-- Required Check Compatibility — success
-
-The branch already contains:
-
-- recovered *Cruel Prince* historical full-analysis reference data;
+- recovered *Cruel Prince* historical full-analysis coverage as reference evidence, not gold truth;
 - `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`;
-- scene annotation workspace + CLI;
-- exact and relaxed scene-boundary evaluator + CLI;
+- local-only scene annotation workspace + CLI;
+- source-anchored deterministic paragraph IDs;
+- exact scene-boundary precision/recall/F1;
+- relaxed `±1 paragraph` scoring with one-to-one matching;
+- optimal tolerant matching that maximizes valid match count before minimizing paragraph error;
+- mean paragraph boundary error;
+- ambiguous/disputed scene-boundary support;
 - deterministic structural scene baseline + CLI;
 - cheap lexical scene-change baseline + CLI;
-- deterministic tests for all of the above.
+- deterministic regression tests.
 
-Scene gold/reference data is paragraph-indexed and contains no copyrighted prose. Exact boundary F1 and relaxed `±1 paragraph` F1 are both retained; ambiguous/disputed boundaries are explicitly represented so annotator uncertainty does not become fake model error.
+Review before merge fixed two integrity issues:
 
-No scene method has been adopted yet.
+1. the original greedy relaxed matcher could undercount valid one-to-one matches; it was replaced by deterministic dynamic programming;
+2. partially reviewed annotation workspaces could silently omit pending selected sections; finalization now fails closed until all selected sections are complete.
+
+All four exact-head checks were green on PR head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` before merge.
+
+**No scene-segmentation method has been adopted yet.** Production selection remains blocked on measured primary-suite annotations.
+
+## Private EPUB Availability
+
+The actual user-owned primary-suite EPUB binaries remain unavailable to the current execution environment.
+
+A File Library recheck on 2026-09-12 found historical notes/scripts and paths but not the EPUB binaries. A connected Remote Desktop Commander recheck returned no online devices. Historical paths remain under `B:/Documents/PyCharm/graduationProject/uploads/...`.
+
+Do not replace the primary suite with public-domain novels because of this temporary source-availability blocker. Continue source-neutral harness work where useful, then run the real books when lawful EPUB access returns.
 
 ## Recovered Historical Breadth Baseline
 
@@ -182,7 +178,7 @@ The old graduation prototype processed the complete *The Cruel Prince* and repor
 - average tension 5.49/10;
 - reported climax chapter 16.
 
-These are **coverage/reference observations, not gold targets**. The new architecture should reproduce or improve analytical breadth while being cheaper, more reproducible, source-grounded and reliable.
+These are **coverage/reference observations, not gold targets**.
 
 ## Existing Phase-2 Foundations To Preserve
 
@@ -190,8 +186,6 @@ These are **coverage/reference observations, not gold targets**. The new archite
 - Phase 2B — provider-neutral B2 source contracts, upload verification, hashing, deterministic TXT/EPUB normalization, separate v2 worker.
 - Phase 2C — provider-neutral identity evidence, precision-first canonical admission, unresolved/quarantine policy, deterministic stabilization and immutable character/alias/mention evidence.
 - Phase 2D — repository qualification, LitBank oracle-policy ceiling/reference and job lifecycle hardening.
-
-The 100-document LitBank oracle-evidence resolver ceiling remains useful as a policy reference, not as a production-provider score.
 
 ## Hosted Resources / Boundaries
 
@@ -213,14 +207,14 @@ Dedicated project `saga`, root `apps/web`. Automatic Git-triggered deployments a
 
 ## Current Execution Order
 
-1. verify live `main`, active branch/PR state and issue #185;
-2. read the mandatory governance/Phase-3 docs plus `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`;
-3. continue from `v2/phase-3a-cruel-prince-analysis-baseline` instead of rebuilding the scene foundation;
-4. review the 21-commit scene slice, fix benchmark-integrity issues if any, and open/qualify a PR when appropriate;
-5. once private EPUBs are reachable, generate scene annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS first and annotate representative chapter types;
-6. compare structural, lexical/local semantic and later licensed local model candidates using exact + relaxed scene metrics and resource measurements;
-7. after scene segmentation has a measured baseline, proceed independently to dialogue/speaker, event/participant, location/entity and tension experiments;
-8. choose production defaults only from real primary-suite evidence, repeatability, resource cost, failure modes, maintainability and licensing;
+1. verify live `main`, PR/issue state and repository governance before every new implementation slice;
+2. when private EPUBs become reachable, generate scene annotation workspaces first for Harry Potter, The Cruel Prince, Caraval and ACOFAS;
+3. annotate representative chapters covering dialogue, action, travel/location changes, explicit/subtle time jumps, flashbacks, focal changes, decorative breaks and long continuous scenes;
+4. compare the merged Tier-0 structural and Tier-1 lexical baselines using exact + relaxed metrics and resource measurements;
+5. research/test stronger permissively licensed local scene methods only if cheaper baselines leave a measurable quality gap;
+6. do not adopt a production scene method before primary-suite evidence exists;
+7. after scene segmentation has a measured baseline, continue independently with dialogue/speaker attribution, event/participant extraction, location/entity extraction, tension, relationships/state, timeline and causality;
+8. keep every adoption/rejection decision and negative experiment in repository experiment/validation records with exact fingerprints;
 9. wire adopted local providers into the durable worker only after benchmark evidence justifies them;
 10. use measured Phase-3 evidence to specify the later Event / State / Timeline Narrative Graph contract.
 
