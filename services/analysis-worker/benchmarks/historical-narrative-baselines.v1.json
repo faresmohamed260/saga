@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "saga-historical-narrative-baselines-v1",
+  "policy": "Historical prototype outputs are coverage references only. They are not gold truth, acceptance thresholds, or targets that new implementations should imitate blindly.",
+  "baselines": [
+    {
+      "baselineId": "cruel-prince-prototype-full-book-v1",
+      "bookId": "the-cruel-prince",
+      "title": "The Cruel Prince",
+      "sourceKind": "private-user-owned-epub",
+      "evidenceSource": "Graduation Project Documentation 2, prototype encoder evaluation",
+      "comparisonRole": "coverage_reference_only",
+      "notGold": true,
+      "historicalArchitecture": {
+        "sceneSegmentation": "LLM semantic supervisor proposes scene start phrases; deterministic string anchoring slices original chapter text",
+        "sceneAnalysis": "per-scene neuro-symbolic extraction",
+        "tension": "integer 1-10 per scene followed by global aggregation",
+        "causality": "causal-graph/divergence tracking over extracted events"
+      },
+      "observed": {
+        "wordCount": 111351,
+        "chapterCount": 35,
+        "sceneCount": 135,
+        "characterCount": 53,
+        "locationCount": 55,
+        "protagonistMentionCount": 128,
+        "keyCausalEventCount": 24,
+        "averageTension": 5.49,
+        "reportedClimaxChapter": 16
+      },
+      "knownLimitations": [
+        "Counts were produced by the historical LLM-heavy prototype and were not independently gold-annotated.",
+        "Multiple independent model requests caused rate limits, long runtimes, timeout risk, and repeated overlapping context transmission.",
+        "New local-first experiments should compare coverage and qualitative behavior, but quality decisions require fresh source-grounded evaluation."
+      ]
+    }
+  ]
+}
