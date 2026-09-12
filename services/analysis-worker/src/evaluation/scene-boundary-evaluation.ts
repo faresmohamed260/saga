@@ -19,6 +19,7 @@ export type SceneBoundaryAnnotation = {
   sectionKey: string;
   paragraphCount: number;
   sceneStartParagraphs: number[];
+  ambiguousSceneStartParagraphs?: number[];
 };
 
 export type SceneBoundaryReference = {
@@ -63,6 +64,8 @@ export type SceneBoundaryEvaluationReport = {
   tolerantMeanAbsoluteParagraphError: number | null;
   goldSceneCount: number;
   predictedSceneCount: number;
+  ambiguousBoundaryCount: number;
+  ignoredPredictionCount: number;
   extraPredictionCount: number;
   missedGoldCount: number;
   chapterCount: number;
@@ -70,7 +73,9 @@ export type SceneBoundaryEvaluationReport = {
   chapters: Array<{
     sectionKey: string;
     goldBoundaryCount: number;
+    ambiguousBoundaryCount: number;
     predictedBoundaryCount: number;
+    ignoredPredictionCount: number;
     exact: BoundaryScore;
     tolerant: BoundaryScore;
     tolerantMeanAbsoluteParagraphError: number | null;
@@ -114,14 +119,14 @@ export function buildSceneParagraphIndex(sections: NormalizedSection[]): SceneSe
     });
 }
 
-function validateStarts(sectionKey: string, paragraphCount: number, starts: number[]) {
+function validateStarts(sectionKey: string, paragraphCount: number, starts: number[], requireZero: boolean) {
   if (!Number.isSafeInteger(paragraphCount) || paragraphCount < 1) {
     throw new Error(`invalid_scene_paragraph_count:${sectionKey}`);
   }
-  if (starts.length === 0 || starts[0] !== 0) throw new Error(`scene_first_start_missing:${sectionKey}`);
+  if (requireZero && (starts.length === 0 || starts[0] !== 0)) throw new Error(`scene_first_start_missing:${sectionKey}`);
   const seen = new Set<number>();
   for (const start of starts) {
-    if (!Number.isSafeInteger(start) || start < 0 || start >= paragraphCount) {
+    if (!Number.isSafeInteger(start) || start < (requireZero ? 0 : 1) || start >= paragraphCount) {
       throw new Error(`invalid_scene_start:${sectionKey}:${start}`);
     }
     if (seen.has(start)) throw new Error(`duplicate_scene_start:${sectionKey}:${start}`);
@@ -142,7 +147,11 @@ export function validateSceneBoundaryReference(reference: SceneBoundaryReference
   for (const annotation of reference.annotations) {
     if (sectionKeys.has(annotation.sectionKey)) throw new Error(`duplicate_scene_reference_section:${annotation.sectionKey}`);
     sectionKeys.add(annotation.sectionKey);
-    validateStarts(annotation.sectionKey, annotation.paragraphCount, annotation.sceneStartParagraphs);
+    validateStarts(annotation.sectionKey, annotation.paragraphCount, annotation.sceneStartParagraphs, true);
+    const ambiguous = annotation.ambiguousSceneStartParagraphs ?? [];
+    validateStarts(annotation.sectionKey, annotation.paragraphCount, ambiguous, false);
+    const required = new Set(annotation.sceneStartParagraphs);
+    if (ambiguous.some((value) => required.has(value))) throw new Error(`overlapping_scene_reference_boundary:${annotation.sectionKey}`);
   }
 }
 
@@ -154,7 +163,7 @@ function validateProviderResult(result: SceneBoundaryProviderResult) {
   for (const prediction of result.predictions) {
     if (keys.has(prediction.sectionKey)) throw new Error(`duplicate_scene_prediction_section:${prediction.sectionKey}`);
     keys.add(prediction.sectionKey);
-    validateStarts(prediction.sectionKey, prediction.paragraphCount, prediction.sceneStartParagraphs);
+    validateStarts(prediction.sectionKey, prediction.paragraphCount, prediction.sceneStartParagraphs, true);
   }
 }
 
@@ -169,6 +178,18 @@ function score(tp: number, fp: number, fn: number): BoundaryScore {
     recall,
     f1: precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall),
   };
+}
+
+function removeAmbiguousPredictions(gold: number[], predicted: number[], ambiguous: number[], tolerance: number) {
+  const retained: number[] = [];
+  let ignored = 0;
+  for (const prediction of predicted) {
+    const nearRequired = gold.some((boundary) => Math.abs(boundary - prediction) <= tolerance);
+    const nearAmbiguous = ambiguous.some((boundary) => Math.abs(boundary - prediction) <= tolerance);
+    if (!nearRequired && nearAmbiguous) ignored += 1;
+    else retained.push(prediction);
+  }
+  return { retained, ignored };
 }
 
 function exactScore(gold: number[], predicted: number[]) {
@@ -226,6 +247,7 @@ export function evaluateSceneBoundaries(input: {
   const chapters: SceneBoundaryEvaluationReport["chapters"] = [];
   const allGold: Array<{ sectionKey: string; boundary: number }> = [];
   const allPredicted: Array<{ sectionKey: string; boundary: number }> = [];
+  const allAmbiguous: Array<{ sectionKey: string; boundary: number }> = [];
   let totalTolerantDistance = 0;
   let totalTolerantMatches = 0;
   let exactTp = 0;
@@ -236,6 +258,8 @@ export function evaluateSceneBoundaries(input: {
   let tolerantFn = 0;
   let goldSceneCount = 0;
   let predictedSceneCount = 0;
+  let ambiguousBoundaryCount = 0;
+  let ignoredPredictionCount = 0;
 
   for (const annotation of input.reference.annotations) {
     const prediction = predictions.get(annotation.sectionKey);
@@ -245,15 +269,20 @@ export function evaluateSceneBoundaries(input: {
     }
     predictions.delete(annotation.sectionKey);
     const gold = internalBoundaries(annotation.sceneStartParagraphs);
-    const predicted = internalBoundaries(prediction.sceneStartParagraphs);
-    const exact = exactScore(gold, predicted);
-    const tolerant = tolerantScore(gold, predicted, toleranceParagraphs);
+    const ambiguous = annotation.ambiguousSceneStartParagraphs ?? [];
+    const rawPredicted = internalBoundaries(prediction.sceneStartParagraphs);
+    const exactFiltered = removeAmbiguousPredictions(gold, rawPredicted, ambiguous, 0);
+    const tolerantFiltered = removeAmbiguousPredictions(gold, rawPredicted, ambiguous, toleranceParagraphs);
+    const exact = exactScore(gold, exactFiltered.retained);
+    const tolerant = tolerantScore(gold, tolerantFiltered.retained, toleranceParagraphs);
     exactTp += exact.truePositive;
     exactFp += exact.falsePositive;
     exactFn += exact.falseNegative;
     tolerantTp += tolerant.score.truePositive;
     tolerantFp += tolerant.score.falsePositive;
     tolerantFn += tolerant.score.falseNegative;
+    ignoredPredictionCount += tolerantFiltered.ignored;
+    ambiguousBoundaryCount += ambiguous.length;
     if (tolerant.meanAbsoluteParagraphError !== null) {
       totalTolerantDistance += tolerant.meanAbsoluteParagraphError * tolerant.score.truePositive;
       totalTolerantMatches += tolerant.score.truePositive;
@@ -261,11 +290,14 @@ export function evaluateSceneBoundaries(input: {
     goldSceneCount += annotation.sceneStartParagraphs.length;
     predictedSceneCount += prediction.sceneStartParagraphs.length;
     allGold.push(...gold.map((boundary) => ({ sectionKey: annotation.sectionKey, boundary })));
-    allPredicted.push(...predicted.map((boundary) => ({ sectionKey: annotation.sectionKey, boundary })));
+    allPredicted.push(...rawPredicted.map((boundary) => ({ sectionKey: annotation.sectionKey, boundary })));
+    allAmbiguous.push(...ambiguous.map((boundary) => ({ sectionKey: annotation.sectionKey, boundary })));
     chapters.push({
       sectionKey: annotation.sectionKey,
       goldBoundaryCount: gold.length,
-      predictedBoundaryCount: predicted.length,
+      ambiguousBoundaryCount: ambiguous.length,
+      predictedBoundaryCount: rawPredicted.length,
+      ignoredPredictionCount: tolerantFiltered.ignored,
       exact,
       tolerant: tolerant.score,
       tolerantMeanAbsoluteParagraphError: tolerant.meanAbsoluteParagraphError,
@@ -284,7 +316,10 @@ export function evaluateSceneBoundaries(input: {
     tolerant,
     goldSceneCount,
     predictedSceneCount,
+    ambiguousBoundaryCount,
+    ignoredPredictionCount,
     referenceBoundaries: allGold,
+    ambiguousBoundaries: allAmbiguous,
     predictedBoundaries: allPredicted,
   };
   return {
@@ -298,6 +333,8 @@ export function evaluateSceneBoundaries(input: {
     tolerantMeanAbsoluteParagraphError: totalTolerantMatches === 0 ? null : totalTolerantDistance / totalTolerantMatches,
     goldSceneCount,
     predictedSceneCount,
+    ambiguousBoundaryCount,
+    ignoredPredictionCount,
     extraPredictionCount: tolerantFp,
     missedGoldCount: tolerantFn,
     chapterCount: chapters.length,
