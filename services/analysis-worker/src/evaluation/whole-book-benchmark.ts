@@ -52,6 +52,11 @@ function nonEmpty(value: string, code: string) {
   if (!value.trim()) throw new Error(code);
 }
 
+function maxObserved(values: Array<number | null>) {
+  const observed = values.filter((value): value is number => value !== null);
+  return observed.length === 0 ? null : Math.max(...observed);
+}
+
 export function validateWholeBookSuite(manifest: WholeBookSuiteManifest) {
   if (manifest.schemaVersion !== "saga-whole-book-suite-v1") {
     throw new Error("unsupported_whole_book_suite");
@@ -65,6 +70,7 @@ export function validateWholeBookSuite(manifest: WholeBookSuiteManifest) {
   const sourceFiles = new Set<string>();
   for (const book of manifest.books) {
     nonEmpty(book.id, "invalid_whole_book_id");
+    if (!/^[a-z0-9][a-z0-9._-]*$/u.test(book.id)) throw new Error(`unsafe_whole_book_id:${book.id}`);
     nonEmpty(book.title, `invalid_whole_book_title:${book.id}`);
     nonEmpty(book.sourceFile, `invalid_whole_book_source_file:${book.id}`);
     nonEmpty(book.sourceLocator, `invalid_whole_book_source_locator:${book.id}`);
@@ -78,6 +84,7 @@ export function validateWholeBookSuite(manifest: WholeBookSuiteManifest) {
     const normalized = normalize(book.sourceFile);
     if (
       isAbsolute(book.sourceFile) ||
+      normalized === "." ||
       normalized === ".." ||
       normalized.startsWith(`..${sep}`) ||
       normalized.includes(`${sep}..${sep}`)
@@ -168,8 +175,8 @@ export function buildWholeBookBenchmarkReport(input: {
       inputBytes: ordered.reduce((sum, record) => sum + record.source.bytes, 0),
       outputBytes: ordered.reduce((sum, record) => sum + record.outputBytes, 0),
       wallClockSeconds: ordered.reduce((sum, record) => sum + record.wallClockSeconds, 0),
-      peakResidentMemoryMb: Math.max(0, ...ordered.map((record) => record.peakResidentMemoryMb ?? 0)),
-      peakVramMb: Math.max(0, ...ordered.map((record) => record.peakVramMb ?? 0)),
+      peakResidentMemoryMb: maxObserved(ordered.map((record) => record.peakResidentMemoryMb)),
+      peakVramMb: maxObserved(ordered.map((record) => record.peakVramMb)),
     },
     books: ordered,
   };
