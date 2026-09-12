@@ -1,0 +1,199 @@
+{
+  "schemaVersion": "saga-novel-diversity-matrix-v1",
+  "dataset": {
+    "repository": "dbamman/litbank",
+    "commit": "3e50db0ffc033d7ccbb94f4d88f6b99210328ed8",
+    "annotationLayer": "coref/tsv",
+    "license": "CC BY 4.0"
+  },
+  "policy": {
+    "purpose": "Prevent aggregate literary scores from hiding provider failures on specific novel genres, narrative forms, cast structures, and identity stressors.",
+    "adoptionRule": "A character-identity candidate must report every applicable stratum. Aggregate quality alone is insufficient for adoption.",
+    "minimumRepeatabilityRuns": 2
+  },
+  "litbankStrata": [
+    {
+      "id": "genre-romance-social",
+      "dimension": "genre",
+      "label": "Romance / social novel",
+      "requiredMinDocuments": 4,
+      "documentIds": ["105_persuasion_brat", "1342_pride_and_prejudice_brat", "541_the_age_of_innocence_brat", "2641_a_room_with_a_view_brat"],
+      "rationale": "Tests honorifics, family/social relations, repeated surnames and dialogue-heavy social interaction."
+    },
+    {
+      "id": "genre-gothic-horror",
+      "dimension": "genre",
+      "label": "Gothic / horror",
+      "requiredMinDocuments": 4,
+      "documentIds": ["345_dracula_brat", "84_frankenstein_or_the_modern_prometheus_brat", "209_the_turn_of_the_screw_brat", "3268_the_mysteries_of_udolpho_brat"],
+      "rationale": "Tests embedded narration, supernatural vocabulary, titles, journals and ambiguous human/non-human references."
+    },
+    {
+      "id": "genre-detective-mystery",
+      "dimension": "genre",
+      "label": "Detective / mystery",
+      "requiredMinDocuments": 4,
+      "documentIds": ["155_the_moonstone_brat", "2852_the_hound_of_the_baskervilles_brat", "1155_the_secret_adversary_brat", "434_the_circular_staircase_brat"],
+      "rationale": "Tests aliases, withheld identity, dense dialogue, evidence-focused narration and recurring role nouns."
+    },
+    {
+      "id": "genre-adventure",
+      "dimension": "genre",
+      "label": "Adventure",
+      "requiredMinDocuments": 4,
+      "documentIds": ["120_treasure_island_brat", "2166_king_solomons_mines_brat", "521_the_life_and_adventures_of_robinson_crusoe_brat", "95_the_prisoner_of_zenda_brat"],
+      "rationale": "Tests travel/location density, nicknames, crews/groups and first-person narration."
+    },
+    {
+      "id": "genre-speculative-scifi",
+      "dimension": "genre",
+      "label": "Speculative / science fiction",
+      "requiredMinDocuments": 4,
+      "documentIds": ["36_the_war_of_the_worlds_brat", "5230_the_invisible_man_a_grotesque_romance_brat", "62_a_princess_of_mars_brat", "32_herland_brat"],
+      "rationale": "Tests unusual entity classes, invented concepts and person/non-person separation."
+    },
+    {
+      "id": "genre-childrens-youth",
+      "dimension": "genre",
+      "label": "Children's / youth fiction",
+      "requiredMinDocuments": 4,
+      "documentIds": ["11_alices_adventures_in_wonderland_brat", "113_the_secret_garden_brat", "45_anne_of_green_gables_brat", "74_the_adventures_of_tom_sawyer_brat"],
+      "rationale": "Tests nonstandard names, personified entities, child-focused dialogue and simpler but alias-rich prose."
+    },
+    {
+      "id": "genre-historical-war",
+      "dimension": "genre",
+      "label": "Historical / war fiction",
+      "requiredMinDocuments": 3,
+      "documentIds": ["940_the_last_of_the_mohicans_a_narrative_of_1757_brat", "73_the_red_badge_of_courage_an_episode_of_the_american_civil_war_brat", "60_the_scarlet_pimpernel_brat"],
+      "rationale": "Tests ranks, titles, groups/factions, historical naming and military role nouns."
+    },
+    {
+      "id": "genre-western-frontier",
+      "dimension": "genre",
+      "label": "Western / frontier fiction",
+      "requiredMinDocuments": 3,
+      "documentIds": ["1206_the_flying_u_ranch_brat", "3457_the_man_of_the_forest_brat", "502_desert_gold_brat"],
+      "rationale": "Tests nicknames, colloquial naming, sparse role mentions and action-heavy prose."
+    },
+    {
+      "id": "genre-satire-comedy",
+      "dimension": "genre",
+      "label": "Satire / comedy",
+      "requiredMinDocuments": 3,
+      "documentIds": ["829_gullivers_travels_into_several_remote_nations_of_the_world_brat", "2005_piccadilly_jim_brat", "599_vanity_fair_brat"],
+      "rationale": "Tests exaggerated roles, ironic descriptions and frequent nominal references."
+    },
+    {
+      "id": "style-modernist-experimental",
+      "dimension": "style",
+      "label": "Modernist / experimental prose",
+      "requiredMinDocuments": 4,
+      "documentIds": ["4300_ulysses_brat", "4217_a_portrait_of_the_artist_as_a_young_man_brat", "2775_the_good_soldier_brat", "219_heart_of_darkness_brat"],
+      "rationale": "Tests stream-of-consciousness, fragmented syntax, free indirect discourse and difficult mention boundaries."
+    },
+    {
+      "id": "form-first-person",
+      "dimension": "narration",
+      "label": "First-person narration",
+      "requiredMinDocuments": 5,
+      "documentIds": ["2489_moby_dick_brat", "1260_jane_eyre_an_autobiography_brat", "76_adventures_of_huckleberry_finn_brat", "766_david_copperfield_brat", "1400_great_expectations_brat"],
+      "rationale": "Tests narrator self-reference and pronoun-heavy identity attachment."
+    },
+    {
+      "id": "form-epistolary",
+      "dimension": "narration",
+      "label": "Epistolary / document-framed narration",
+      "requiredMinDocuments": 4,
+      "documentIds": ["345_dracula_brat", "238_dear_enemy_brat", "6053_evelina_or_the_history_of_a_young_ladys_entrance_into_the_world_brat", "969_the_tenant_of_wildfell_hall_brat"],
+      "rationale": "Tests letter/journal speaker shifts, addressees and repeated first/second-person pronouns."
+    },
+    {
+      "id": "form-multi-narrator-nested",
+      "dimension": "narration",
+      "label": "Multiple / nested narrators",
+      "requiredMinDocuments": 4,
+      "documentIds": ["768_wuthering_heights_brat", "155_the_moonstone_brat", "345_dracula_brat", "2775_the_good_soldier_brat"],
+      "rationale": "Tests narrator changes, embedded accounts and cross-section identity continuity."
+    },
+    {
+      "id": "cast-ensemble",
+      "dimension": "cast",
+      "label": "Large ensemble / social cast",
+      "requiredMinDocuments": 4,
+      "documentIds": ["1023_bleak_house_brat", "145_middlemarch_brat", "514_little_women_brat", "599_vanity_fair_brat"],
+      "rationale": "Tests same-surname families, many recurring minor characters and merge pressure."
+    },
+    {
+      "id": "protagonist-nonhuman",
+      "dimension": "protagonist",
+      "label": "Non-human protagonist",
+      "requiredMinDocuments": 2,
+      "documentIds": ["271_black_beauty_brat", "215_the_call_of_the_wild_brat"],
+      "rationale": "Tests personhood policy when major narrative agents are animals rather than humans."
+    },
+    {
+      "id": "language-archaic-eighteenth-century",
+      "dimension": "language",
+      "label": "Archaic / eighteenth-century prose",
+      "requiredMinDocuments": 4,
+      "documentIds": ["6593_history_of_tom_jones_a_foundling_brat", "6053_evelina_or_the_history_of_a_young_ladys_entrance_into_the_world_brat", "829_gullivers_travels_into_several_remote_nations_of_the_world_brat", "3268_the_mysteries_of_udolpho_brat"],
+      "rationale": "Tests older syntax, orthography, titles and discourse conventions."
+    },
+    {
+      "id": "identity-alias-title-heavy",
+      "dimension": "identity-stressor",
+      "label": "Aliases / titles / honorifics",
+      "requiredMinDocuments": 4,
+      "documentIds": ["60_the_scarlet_pimpernel_brat", "95_the_prisoner_of_zenda_brat", "1342_pride_and_prejudice_brat", "345_dracula_brat"],
+      "rationale": "Directly stresses canonical-name admission, title stripping, aliases and reveal-aware attachment."
+    }
+  ],
+  "wholeBookStressSuite": [
+    {"id":"pride-and-prejudice-1342","title":"Pride and Prejudice","gutenbergKey":"1342","tags":["romance-social","third-person","honorifics","family-surnames"]},
+    {"id":"dracula-345","title":"Dracula","gutenbergKey":"345","tags":["gothic-horror","epistolary","multi-narrator","supernatural"]},
+    {"id":"hound-baskervilles-2852","title":"The Hound of the Baskervilles","gutenbergKey":"2852","tags":["detective-mystery","first-person","dialogue","aliases"]},
+    {"id":"treasure-island-120","title":"Treasure Island","gutenbergKey":"120","tags":["adventure","first-person","crew","nicknames"]},
+    {"id":"war-of-the-worlds-36","title":"The War of the Worlds","gutenbergKey":"36","tags":["science-fiction","first-person","non-person-entities"]},
+    {"id":"alice-11","title":"Alice's Adventures in Wonderland","gutenbergKey":"11","tags":["children","fantasy","personified-nonhumans","unusual-names"]},
+    {"id":"red-badge-73","title":"The Red Badge of Courage","gutenbergKey":"73","tags":["war","ranks","groups","role-nouns"]},
+    {"id":"desert-gold-502","title":"Desert Gold","gutenbergKey":"502","tags":["western","nicknames","action-heavy"]},
+    {"id":"ulysses-4300","title":"Ulysses","gutenbergKey":"4300","tags":["modernist","experimental","stream-of-consciousness"]},
+    {"id":"black-beauty-271","title":"Black Beauty","gutenbergKey":"271","tags":["nonhuman-protagonist","first-person","animal-identity"]},
+    {"id":"middlemarch-145","title":"Middlemarch","gutenbergKey":"145","tags":["ensemble","social","family-surnames","many-minor-characters"]},
+    {"id":"moonstone-155","title":"The Moonstone","gutenbergKey":"155","tags":["mystery","multi-narrator","embedded-documents","identity-reveal"]}
+  ],
+  "privateContemporaryCoverageRequirements": [
+    "contemporary fantasy / romantasy",
+    "contemporary romance",
+    "thriller / crime",
+    "modern science fiction",
+    "contemporary literary fiction",
+    "young adult",
+    "progression fantasy / LitRPG or web-serial style",
+    "fanfiction",
+    "English translated fiction",
+    "very large ensemble / series installment"
+  ],
+  "supplementalEvaluationDatasets": [
+    {
+      "id": "bookcoref",
+      "repository": "SapienzaNLP/bookcoref",
+      "repositoryCommit": "9283951b92978f97ae6cd60eeefe79bd3a7cb34c",
+      "role": "full-book gold coreference scale evaluation",
+      "licenseNote": "Evaluation-only until license/usage implications are accepted; upstream repository states CC BY-NC-SA 4.0 and the dataset reconstructs Project Gutenberg books."
+    },
+    {
+      "id": "golemcoref",
+      "repository": "GOLEM-lab/GOLEMcoref",
+      "role": "supplemental fiction/fanfiction and multilingual coreference stress evaluation",
+      "licenseNote": "CC BY-NC 4.0; evaluation-only and not a runtime dependency."
+    }
+  ],
+  "limitations": [
+    "LitBank is English and mostly public-domain canonical fiction; it does not represent contemporary commercial fiction by itself.",
+    "Genre labels in this matrix are evaluation strata, not claims of exclusive literary classification; documents may appear in multiple strata.",
+    "The private contemporary suite must never commit copyrighted source text or redistribute user-owned books.",
+    "Whole-book Project Gutenberg retrieval must obey source terms and copyright law applicable to the execution jurisdiction."
+  ]
+}

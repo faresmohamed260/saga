@@ -8,8 +8,11 @@ on:
     paths:
       - ".github/workflows/v2-phase3-booknlp-experiment.yml"
       - "services/analysis-worker/benchmarks/run_booknlp_litbank.py"
+      - "services/analysis-worker/benchmarks/litbank-novel-diversity.v1.json"
       - "services/analysis-worker/src/evaluation/booknlp-litbank-cli.ts"
+      - "services/analysis-worker/src/evaluation/stratified-identity-*.ts"
       - "services/analysis-worker/src/local-analysis/**"
+      - "services/analysis-worker/tests/stratified-identity-benchmark.test.ts"
       - "services/analysis-worker/package.json"
 
 permissions:
@@ -83,12 +86,22 @@ jobs:
       - name: Typecheck evaluator
         run: npm run typecheck
 
+      - name: Run evaluator tests
+        run: npm test
+
       - name: Evaluate real BookNLP output through S.A.G.A.
         run: >-
           npm run benchmark:booknlp-litbank --
           --litbank-root ../../external/litbank
           --booknlp-root evaluation-artifacts/booknlp-output
           --out evaluation-artifacts/booknlp-litbank-full.json
+
+      - name: Slice quality by novel diversity strata
+        run: >-
+          npm run benchmark:identity-strata --
+          --report evaluation-artifacts/booknlp-litbank-full.json
+          --manifest benchmarks/litbank-novel-diversity.v1.json
+          --out evaluation-artifacts/booknlp-litbank-diversity.json
 
       - name: Publish experiment summary
         shell: bash
@@ -97,8 +110,12 @@ jobs:
           const fs = require("fs");
           const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-litbank-full.json", "utf8"));
           const runtime = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-run-metadata.json", "utf8"));
+          const diversity = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-litbank-diversity.json", "utf8"));
           const m = report.aggregate.metrics;
-          console.log("## Phase 3 BookNLP-small full LitBank experiment");
+          const byPrecision = [...diversity.strata].sort((a, b) => a.aggregate.metrics.canonicalPrecision - b.aggregate.metrics.canonicalPrecision);
+          const byMerge = [...diversity.strata].sort((a, b) => b.aggregate.metrics.incorrectMergeRate - a.aggregate.metrics.incorrectMergeRate);
+          const byRecall = [...diversity.strata].sort((a, b) => a.aggregate.metrics.canonicalRecall - b.aggregate.metrics.canonicalRecall);
+          console.log("## Phase 3 BookNLP-small full LitBank + diversity experiment");
           console.log("");
           console.log(`- LitBank commit: \`${report.dataset.commit}\``);
           console.log(`- BookNLP revision: \`${report.provider.revision}\``);
@@ -115,6 +132,11 @@ jobs:
           console.log(`- Peak RSS: ${runtime.peakResidentMemoryMb.toFixed(1)} MiB`);
           console.log(`- Model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
           console.log(`- Aggregate output fingerprint: \`${report.aggregateOutputFingerprint}\``);
+          console.log(`- Diversity report fingerprint: \`${diversity.reportFingerprint}\``);
+          console.log(`- Diversity strata/dimensions/docs: ${diversity.coverage.stratumCount}/${diversity.coverage.dimensionCount}/${diversity.coverage.uniqueDocumentCount}`);
+          console.log(`- Lowest precision stratum: ${byPrecision[0].label} (${byPrecision[0].aggregate.metrics.canonicalPrecision.toFixed(4)})`);
+          console.log(`- Lowest recall stratum: ${byRecall[0].label} (${byRecall[0].aggregate.metrics.canonicalRecall.toFixed(4)})`);
+          console.log(`- Highest merge stratum: ${byMerge[0].label} (${byMerge[0].aggregate.metrics.incorrectMergeRate.toFixed(4)})`);
           console.log(`- TensorFlow installed: ${runtime.packages.tensorflow !== null}`);
           console.log(`- Code license: ${report.providerCodeLicense}`);
           console.log(`- Model-weight license: ${report.providerModelWeightsLicense}`);
@@ -126,6 +148,7 @@ jobs:
           name: saga-phase3-booknlp-small-full-litbank
           path: |
             services/analysis-worker/evaluation-artifacts/booknlp-litbank-full.json
+            services/analysis-worker/evaluation-artifacts/booknlp-litbank-diversity.json
             services/analysis-worker/evaluation-artifacts/booknlp-run-metadata.json
           if-no-files-found: error
           retention-days: 90
