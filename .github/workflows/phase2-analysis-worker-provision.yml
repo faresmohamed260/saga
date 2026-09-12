@@ -1,0 +1,257 @@
+name: Phase 2 analysis worker provision
+
+on:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - .github/workflows/phase2-analysis-worker-provision.yml
+      - ops/phase2/analysis_worker_modal.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase2-analysis-worker-provision
+  cancel-in-progress: false
+
+env:
+  APPROVED_APP_SHA: 696393fa6badb7e6f21850dbe0af0a4fee67a51e
+  MODAL_ACCOUNT: modal-44
+  SAGA_SUPABASE_URL: https://scmeqnpmhomzcwecjdtu.supabase.co
+  SAGA_B2_BUCKET: saga-v2-faresmohamed260-1207062480
+  SAGA_B2_BUCKET_ID: b2af6d676af585d3aa0e0912
+  SAGA_B2_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+  SAGA_B2_REGION: us-east-005
+  SAGA_XCORE_MODEL_REVISION: a77857e473848d85acc01debdaa8353c59440d84
+  SAGA_IDENTITY_PROVIDER_NAME: modal_xcore_litbank
+  SAGA_IDENTITY_PROVIDER_MODEL: sapienzanlp/xcore-litbank
+  SAGA_IDENTITY_PROVIDER_REVISION: model:a77857e473848d85acc01debdaa8353c59440d84|adapter:saga-xcore-spacy-adapter-v1@7f19acb506029d05fdea53bcbc1ae19c4fce6c09
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SAGA_B2_KEY_ID: ${{ secrets.SAGA_B2_KEY_ID }}
+      SAGA_B2_MASTER_APPLICATION_KEY: ${{ secrets.SAGA_B2_MASTER_APPLICATION_KEY }}
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify approved worker tree remains unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$APPROVED_APP_SHA" -- services/analysis-worker
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Provision least-privilege B2 key and synchronized Modal secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import secrets
+          import subprocess
+          import tempfile
+          import urllib.request
+          from pathlib import Path
+
+          required = [
+              'SAGA_B2_KEY_ID',
+              'SAGA_B2_MASTER_APPLICATION_KEY',
+              'SAGA_MODAL_TOKENS_JSON',
+          ]
+          for name in required:
+              if not os.environ.get(name, '').strip():
+                  raise SystemExit(f'missing required secret: {name}')
+
+          service_role = (
+              os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '').strip()
+              or os.environ.get('SUPABASE_SECRET_KEY', '').strip()
+          )
+          if not service_role:
+              raise SystemExit('missing Supabase privileged server credential')
+
+          def json_request(url, *, token=None, body=None, basic=None):
+              data = None if body is None else json.dumps(body).encode('utf-8')
+              headers = {'Content-Type': 'application/json'}
+              if token:
+                  headers['Authorization'] = token
+              if basic:
+                  encoded = base64.b64encode(f'{basic[0]}:{basic[1]}'.encode()).decode()
+                  headers['Authorization'] = f'Basic {encoded}'
+              req = urllib.request.Request(url, data=data, headers=headers, method='POST' if data is not None else 'GET')
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  return json.load(response)
+
+          auth = json_request(
+              'https://api.backblazeb2.com/b2api/v4/b2_authorize_account',
+              basic=(os.environ['SAGA_B2_KEY_ID'], os.environ['SAGA_B2_MASTER_APPLICATION_KEY']),
+          )
+          account_id = auth['accountId']
+          api_url = auth['apiInfo']['storageApi']['apiUrl']
+          auth_token = auth['authorizationToken']
+          key_name = 'saga-phase2-worker-modal'
+
+          listed = json_request(
+              f'{api_url}/b2api/v4/b2_list_keys',
+              token=auth_token,
+              body={'accountId': account_id, 'maxKeyCount': 1000},
+          )
+          for row in listed.get('keys', []):
+              if row.get('keyName') == key_name:
+                  json_request(
+                      f'{api_url}/b2api/v4/b2_delete_key',
+                      token=auth_token,
+                      body={'applicationKeyId': row['applicationKeyId']},
+                  )
+
+          created = json_request(
+              f'{api_url}/b2api/v4/b2_create_key',
+              token=auth_token,
+              body={
+                  'accountId': account_id,
+                  'capabilities': ['listAllBucketNames', 'listFiles', 'readFiles'],
+                  'keyName': key_name,
+                  'bucketIds': [os.environ['SAGA_B2_BUCKET_ID']],
+                  'namePrefix': 'sources/',
+              },
+          )
+          scoped_id = created['applicationKeyId']
+          scoped_key = created['applicationKey']
+
+          scoped_auth = json_request(
+              'https://api.backblazeb2.com/b2api/v4/b2_authorize_account',
+              basic=(scoped_id, scoped_key),
+          )
+          allowed = scoped_auth.get('allowed') or {}
+          if allowed.get('bucketId') != os.environ['SAGA_B2_BUCKET_ID']:
+              raise SystemExit('scoped B2 key bucket restriction mismatch')
+          if allowed.get('namePrefix') != 'sources/':
+              raise SystemExit('scoped B2 key prefix restriction mismatch')
+          caps = set(allowed.get('capabilities') or [])
+          if not {'listFiles', 'readFiles'}.issubset(caps):
+              raise SystemExit('scoped B2 key capabilities mismatch')
+
+          roster = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          rows = roster.get('accounts') if isinstance(roster, dict) else roster
+          account = next(
+              (row for row in rows if isinstance(row, dict) and str(row.get('label') or row.get('name') or row.get('account')) == os.environ['MODAL_ACCOUNT']),
+              None,
+          )
+          if not account:
+              raise SystemExit('selected Modal account is unavailable')
+          modal_env = dict(os.environ)
+          modal_env['MODAL_TOKEN_ID'] = str(account['token_id'])
+          modal_env['MODAL_TOKEN_SECRET'] = str(account['token_secret'])
+
+          bearer = secrets.token_urlsafe(48)
+          provider_secret = {'SAGA_IDENTITY_PROVIDER_TOKEN': bearer}
+
+          def create_modal_secret(name, payload):
+              path = Path(tempfile.mkstemp(prefix='saga-modal-secret-', suffix='.json')[1])
+              try:
+                  path.write_text(json.dumps(payload), encoding='utf-8')
+                  path.chmod(0o600)
+                  subprocess.run(
+                      ['modal', 'secret', 'create', '--force', '--from-json', str(path), name],
+                      env=modal_env,
+                      check=True,
+                  )
+              finally:
+                  path.unlink(missing_ok=True)
+
+          create_modal_secret('saga-phase2-xcore-provider', provider_secret)
+
+          modal_env['SAGA_XCORE_MODEL_REVISION'] = os.environ['SAGA_XCORE_MODEL_REVISION']
+          subprocess.run(['modal', 'deploy', 'ops/phase2/xcore_provider.py'], env=modal_env, check=True)
+          url_code = (
+              "import modal; "
+              "fn=modal.Function.from_name('saga-phase2-xcore-provider','web'); "
+              "print(fn.get_web_url())"
+          )
+          resolved = subprocess.run(
+              ['python', '-c', url_code],
+              env=modal_env,
+              text=True,
+              capture_output=True,
+              check=True,
+          )
+          provider_url = resolved.stdout.strip().splitlines()[-1].rstrip('/') + '/'
+
+          worker_payload = {
+              'SAGA_SUPABASE_URL': os.environ['SAGA_SUPABASE_URL'],
+              'SAGA_SUPABASE_SERVICE_ROLE_KEY': service_role,
+              'SAGA_B2_BUCKET': os.environ['SAGA_B2_BUCKET'],
+              'SAGA_B2_ENDPOINT': os.environ['SAGA_B2_ENDPOINT'],
+              'SAGA_B2_REGION': os.environ['SAGA_B2_REGION'],
+              'SAGA_B2_APPLICATION_KEY_ID': scoped_id,
+              'SAGA_B2_APPLICATION_KEY': scoped_key,
+              'SAGA_IDENTITY_PROVIDER_URL': provider_url,
+              'SAGA_IDENTITY_PROVIDER_NAME': os.environ['SAGA_IDENTITY_PROVIDER_NAME'],
+              'SAGA_IDENTITY_PROVIDER_MODEL': os.environ['SAGA_IDENTITY_PROVIDER_MODEL'],
+              'SAGA_IDENTITY_PROVIDER_REVISION': os.environ['SAGA_IDENTITY_PROVIDER_REVISION'],
+              'SAGA_IDENTITY_PROVIDER_BEARER_TOKEN': bearer,
+          }
+          create_modal_secret('saga-phase2-analysis-worker-runtime', worker_payload)
+
+          proof = {
+              'b2KeyName': key_name,
+              'bucketId': os.environ['SAGA_B2_BUCKET_ID'],
+              'namePrefix': 'sources/',
+              'capabilities': sorted(caps),
+              'providerUrl': provider_url,
+              'providerName': os.environ['SAGA_IDENTITY_PROVIDER_NAME'],
+              'providerModel': os.environ['SAGA_IDENTITY_PROVIDER_MODEL'],
+              'providerRevision': os.environ['SAGA_IDENTITY_PROVIDER_REVISION'],
+              'modalAccount': os.environ['MODAL_ACCOUNT'],
+              'approvedAppSha': os.environ['APPROVED_APP_SHA'],
+          }
+          Path('phase2-worker-provision.json').write_text(json.dumps(proof, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps({'ok': True, **proof}, sort_keys=True))
+          PY
+
+      - name: Deploy exact approved analysis worker and run one live queue iteration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          payload=json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          rows=payload.get('accounts') if isinstance(payload,dict) else payload
+          account=next(row for row in rows if str(row.get('label') or row.get('name') or row.get('account')) == os.environ['MODAL_ACCOUNT'])
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:
+              f.write(f"MODAL_TOKEN_ID={account['token_id']}\n")
+              f.write(f"MODAL_TOKEN_SECRET={account['token_secret']}\n")
+          PY
+      - name: Deploy worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          modal deploy ops/phase2/analysis_worker_modal.py
+          modal run ops/phase2/analysis_worker_modal.py::run_once | tee phase2-worker-live-smoke.txt
+          grep -q 'source_ingestion_iteration' phase2-worker-live-smoke.txt
+          grep -q 'character_identity_iteration' phase2-worker-live-smoke.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase2-analysis-worker-provision
+          path: |
+            phase2-worker-provision.json
+            phase2-worker-live-smoke.txt
+          if-no-files-found: error
+          retention-days: 30
