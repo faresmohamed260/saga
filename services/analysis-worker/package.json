@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit --pretty false --incremental false",
     "test": "tsx --test tests/*.test.ts",
     "quality": "npm run typecheck && npm test",
+    "benchmark:litbank": "tsx src/evaluation/litbank-oracle-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
