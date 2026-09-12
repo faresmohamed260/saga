@@ -24,7 +24,9 @@ if (mode === "fail-if-secret" && process.env.SAGA_SUPABASE_SERVICE_ROLE_KEY) pro
 const request = JSON.parse(input);
 const provider = mode === "bad-provider"
   ? { name: "unexpected", model: null, revision: "v1" }
-  : { name: "fixture-local", model: null, revision: "v1" };
+  : mode === "malformed-provider"
+    ? { name: "fixture-local", model: 7, revision: "v1" }
+    : { name: "fixture-local", model: null, revision: "v1" };
 const requestId = mode === "bad-request-id" ? "wrong-request" : request.requestId;
 const protocolVersion = mode === "bad-protocol" ? "wrong-protocol" : request.protocolVersion;
 
