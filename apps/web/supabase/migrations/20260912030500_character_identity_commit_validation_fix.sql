@@ -1,10 +1,7 @@
 begin;
 
--- The initial Phase-2C commit function duplicated provider-evidence uniqueness
--- validation in PL/pgSQL even though the result table already enforces the
--- invariant with saga_character_mentions_run_provider_evidence_unique. Keep
--- semantic/shape/offset/character-link validation here and let the unique
--- index enforce duplicate evidence IDs atomically during the same transaction.
+-- Keep semantic identity-result validation explicit while relying on the
+-- transactional uniqueness indexes for duplicate resolver/evidence IDs.
 create or replace function public.saga_service_commit_identity_success(
   p_job_id uuid,
   p_lease_token uuid,
@@ -27,6 +24,7 @@ declare
   v_run_id uuid := gen_random_uuid();
   v_normalized_sha256 text;
   v_total_characters bigint;
+  v_invalid_mention jsonb;
 begin
   select job.*
     into v_job
@@ -77,7 +75,7 @@ begin
   order by ingestion_run.completed_at desc, ingestion_run.created_at desc
   limit 1;
 
-  if v_normalized_sha256 is null then
+  if v_normalized_sha256 is null or v_total_characters is null then
     raise exception 'saga_identity_input_not_found';
   end if;
 
@@ -99,14 +97,6 @@ begin
        or character.evidence_count < 1
        or character.aliases is null
        or jsonb_typeof(character.aliases) <> 'array'
-  ) or exists (
-    select 1
-    from (
-      select character_key, count(*) as row_count
-      from jsonb_to_recordset(p_characters) as character(character_key text)
-      group by character_key
-      having count(*) > 1
-    ) as duplicates
   ) then
     raise exception 'saga_invalid_identity_characters';
   end if;
@@ -129,46 +119,76 @@ begin
     raise exception 'saga_invalid_identity_aliases';
   end if;
 
-  if exists (
-    select 1
-    from jsonb_to_recordset(p_mentions) as mention(
-      evidence_id text,
-      character_key text,
-      surface_text text,
-      start_offset bigint,
-      end_offset bigint,
-      structural_locator text,
-      mention_kind text,
-      resolution_state text,
-      evidence_tier text,
-      decision_reason text
+  select jsonb_build_object(
+      'evidence_id', mention.evidence_id,
+      'character_key', mention.character_key,
+      'surface_text', mention.surface_text,
+      'start_offset', mention.start_offset,
+      'end_offset', mention.end_offset,
+      'mention_kind', mention.mention_kind,
+      'resolution_state', mention.resolution_state,
+      'evidence_tier', mention.evidence_tier,
+      'decision_reason', mention.decision_reason,
+      'invalid_evidence_id', mention.evidence_id is null or char_length(btrim(mention.evidence_id)) not between 1 and 256,
+      'invalid_surface_text', mention.surface_text is null or char_length(mention.surface_text) not between 1 and 2000,
+      'invalid_start_offset', mention.start_offset is null or mention.start_offset < 0,
+      'invalid_end_offset', mention.end_offset is null or mention.end_offset <= mention.start_offset,
+      'end_exceeds_total', mention.end_offset > v_total_characters,
+      'invalid_kind', mention.mention_kind not in ('proper_name', 'nominal', 'pronoun'),
+      'invalid_resolution_state', mention.resolution_state not in ('linked', 'unresolved', 'quarantined'),
+      'invalid_evidence_tier', mention.evidence_tier not in ('canonical_seed', 'attachment', 'quarantined'),
+      'invalid_decision_reason', mention.decision_reason is null or char_length(btrim(mention.decision_reason)) not between 1 and 1000,
+      'linked_without_character', mention.resolution_state = 'linked' and mention.character_key is null,
+      'unlinked_with_character', mention.resolution_state in ('unresolved', 'quarantined') and mention.character_key is not null,
+      'unknown_character_key', mention.character_key is not null and not exists (
+        select 1
+        from jsonb_to_recordset(p_characters) as character(character_key text)
+        where character.character_key = mention.character_key
+      )
     )
-    where mention.evidence_id is null
-       or char_length(btrim(mention.evidence_id)) not between 1 and 256
-       or mention.surface_text is null
-       or char_length(mention.surface_text) not between 1 and 2000
-       or mention.start_offset is null
-       or mention.start_offset < 0
-       or mention.end_offset is null
-       or mention.end_offset <= mention.start_offset
-       or mention.end_offset > v_total_characters
-       or mention.mention_kind not in ('proper_name', 'nominal', 'pronoun')
-       or mention.resolution_state not in ('linked', 'unresolved', 'quarantined')
-       or mention.evidence_tier not in ('canonical_seed', 'attachment', 'quarantined')
-       or mention.decision_reason is null
-       or char_length(btrim(mention.decision_reason)) not between 1 and 1000
-       or (mention.resolution_state = 'linked' and mention.character_key is null)
-       or (mention.resolution_state in ('unresolved', 'quarantined') and mention.character_key is not null)
-       or (
-         mention.character_key is not null
-         and not exists (
-           select 1
-           from jsonb_to_recordset(p_characters) as character(character_key text)
-           where character.character_key = mention.character_key
-         )
+    into v_invalid_mention
+  from jsonb_to_recordset(p_mentions) as mention(
+    evidence_id text,
+    character_key text,
+    surface_text text,
+    start_offset bigint,
+    end_offset bigint,
+    structural_locator text,
+    mention_kind text,
+    resolution_state text,
+    evidence_tier text,
+    decision_reason text
+  )
+  where mention.evidence_id is null
+     or char_length(btrim(mention.evidence_id)) not between 1 and 256
+     or mention.surface_text is null
+     or char_length(mention.surface_text) not between 1 and 2000
+     or mention.start_offset is null
+     or mention.start_offset < 0
+     or mention.end_offset is null
+     or mention.end_offset <= mention.start_offset
+     or mention.end_offset > v_total_characters
+     or mention.mention_kind not in ('proper_name', 'nominal', 'pronoun')
+     or mention.resolution_state not in ('linked', 'unresolved', 'quarantined')
+     or mention.evidence_tier not in ('canonical_seed', 'attachment', 'quarantined')
+     or mention.decision_reason is null
+     or char_length(btrim(mention.decision_reason)) not between 1 and 1000
+     or (mention.resolution_state = 'linked' and mention.character_key is null)
+     or (mention.resolution_state in ('unresolved', 'quarantined') and mention.character_key is not null)
+     or (
+       mention.character_key is not null
+       and not exists (
+         select 1
+         from jsonb_to_recordset(p_characters) as character(character_key text)
+         where character.character_key = mention.character_key
        )
-  ) then
-    raise exception 'saga_invalid_identity_mentions';
+     )
+  limit 1;
+
+  if v_invalid_mention is not null then
+    raise exception 'saga_invalid_identity_mentions total_characters=% invalid=%',
+      v_total_characters,
+      v_invalid_mention;
   end if;
 
   insert into public.saga_analysis_runs (
