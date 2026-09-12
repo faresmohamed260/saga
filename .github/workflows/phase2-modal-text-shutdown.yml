@@ -1,0 +1,98 @@
+name: Phase 2 Modal text-analysis shutdown
+
+on:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - .github/workflows/phase2-modal-text-shutdown.yml
+
+permissions:
+  contents: read
+
+jobs:
+  shutdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+
+      - name: Stop only superseded S.A.G.A. text apps and delete their runtime secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "")
+          if not raw.strip():
+              raise SystemExit("missing Modal token roster")
+          roster = json.loads(raw)
+          rows = roster.get("accounts") if isinstance(roster, dict) else roster
+          if not isinstance(rows, list):
+              raise SystemExit("invalid Modal token roster")
+
+          account_labels = ("modal-43", "modal-44")
+          app_names = (
+              "saga-phase2-xcore-provider",
+              "saga-phase2-analysis-worker",
+          )
+          secret_names = (
+              "saga-phase2-xcore-provider",
+              "saga-phase2-analysis-worker-runtime",
+          )
+
+          for label in account_labels:
+              account = next(
+                  (
+                      row
+                      for row in rows
+                      if isinstance(row, dict)
+                      and str(row.get("label") or row.get("name") or row.get("account")) == label
+                  ),
+                  None,
+              )
+              if not account:
+                  print(f"{label}: account not present; skipped")
+                  continue
+              token_id = str(account.get("token_id") or "").strip()
+              token_secret = str(account.get("token_secret") or "").strip()
+              if not token_id or not token_secret:
+                  raise SystemExit(f"{label}: unusable token pair")
+
+              env = dict(os.environ)
+              env["MODAL_TOKEN_ID"] = token_id
+              env["MODAL_TOKEN_SECRET"] = token_secret
+
+              for app_name in app_names:
+                  result = subprocess.run(
+                      ["modal", "app", "stop", "-y", app_name],
+                      env=env,
+                      text=True,
+                      capture_output=True,
+                  )
+                  if result.returncode == 0:
+                      print(f"{label}: stopped {app_name}")
+                  else:
+                      print(f"{label}: {app_name} not active/present")
+
+              for secret_name in secret_names:
+                  result = subprocess.run(
+                      ["modal", "secret", "delete", "--allow-missing", "-y", secret_name],
+                      env=env,
+                      text=True,
+                      capture_output=True,
+                  )
+                  if result.returncode != 0:
+                      raise SystemExit(f"{label}: failed deleting runtime secret {secret_name}")
+                  print(f"{label}: removed runtime secret {secret_name} if present")
+          PY
