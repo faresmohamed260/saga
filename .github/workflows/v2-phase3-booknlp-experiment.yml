@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  booknlp-small-smoke:
+  booknlp-small-full-litbank:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:
@@ -63,13 +63,12 @@ jobs:
                   print(f"{package}=missing")
           PY
 
-      - name: Run BookNLP small on five pinned LitBank documents
+      - name: Run BookNLP small on all pinned LitBank documents
         run: >-
           python benchmarks/run_booknlp_litbank.py
           --litbank-root ../../external/litbank
           --output-root evaluation-artifacts/booknlp-output
           --metadata-out evaluation-artifacts/booknlp-run-metadata.json
-          --limit 5
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -89,18 +88,17 @@ jobs:
           npm run benchmark:booknlp-litbank --
           --litbank-root ../../external/litbank
           --booknlp-root evaluation-artifacts/booknlp-output
-          --out evaluation-artifacts/booknlp-litbank-smoke.json
-          --limit 5
+          --out evaluation-artifacts/booknlp-litbank-full.json
 
       - name: Publish experiment summary
         shell: bash
         run: |
           node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
           const fs = require("fs");
-          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-litbank-smoke.json", "utf8"));
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-litbank-full.json", "utf8"));
           const runtime = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-run-metadata.json", "utf8"));
           const m = report.aggregate.metrics;
-          console.log("## Phase 3 BookNLP-small compatibility smoke experiment");
+          console.log("## Phase 3 BookNLP-small full LitBank experiment");
           console.log("");
           console.log(`- LitBank commit: \`${report.dataset.commit}\``);
           console.log(`- BookNLP revision: \`${report.provider.revision}\``);
@@ -108,12 +106,15 @@ jobs:
           console.log(`- Canonical precision: ${m.canonicalPrecision.toFixed(4)}`);
           console.log(`- Canonical recall: ${m.canonicalRecall.toFixed(4)}`);
           console.log(`- Incorrect merge rate: ${m.incorrectMergeRate.toFixed(4)}`);
+          console.log(`- Contaminated canonical rate: ${m.contaminatedCanonicalRate.toFixed(4)}`);
           console.log(`- Fragmentation rate: ${m.fragmentationRate.toFixed(4)}`);
           console.log(`- Linked mention precision: ${m.linkedMentionPrecision.toFixed(4)}`);
           console.log(`- Linked mention recall: ${m.linkedMentionRecall.toFixed(4)}`);
+          console.log(`- Non-person quarantine rate: ${m.nonPersonQuarantineRate.toFixed(4)}`);
           console.log(`- Runtime: ${runtime.wallClockSeconds.toFixed(2)} s`);
           console.log(`- Peak RSS: ${runtime.peakResidentMemoryMb.toFixed(1)} MiB`);
           console.log(`- Model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log(`- Aggregate output fingerprint: \`${report.aggregateOutputFingerprint}\``);
           console.log(`- TensorFlow installed: ${runtime.packages.tensorflow !== null}`);
           console.log(`- Code license: ${report.providerCodeLicense}`);
           console.log(`- Model-weight license: ${report.providerModelWeightsLicense}`);
@@ -122,9 +123,9 @@ jobs:
       - name: Upload experiment evidence
         uses: actions/upload-artifact@v4
         with:
-          name: saga-phase3-booknlp-small-smoke
+          name: saga-phase3-booknlp-small-full-litbank
           path: |
-            services/analysis-worker/evaluation-artifacts/booknlp-litbank-smoke.json
+            services/analysis-worker/evaluation-artifacts/booknlp-litbank-full.json
             services/analysis-worker/evaluation-artifacts/booknlp-run-metadata.json
           if-no-files-found: error
           retention-days: 90
