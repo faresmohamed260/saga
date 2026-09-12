@@ -1,0 +1,149 @@
+name: Phase 3 BookNLP component benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-booknlp-component-benchmark
+    paths:
+      - ".github/workflows/v2-phase3-booknlp-components.yml"
+      - "services/analysis-worker/benchmarks/run_booknlp_litbank.py"
+      - "services/analysis-worker/src/evaluation/booknlp-component-cli.ts"
+      - "services/analysis-worker/src/evaluation/litbank-component-benchmark.ts"
+      - "services/analysis-worker/src/evaluation/dialogue-*.ts"
+      - "services/analysis-worker/src/evaluation/event-*.ts"
+      - "services/analysis-worker/src/evaluation/litbank-tsv.ts"
+      - "services/analysis-worker/src/local-analysis/booknlp-*.ts"
+      - "services/analysis-worker/tests/litbank-component-benchmark.test.ts"
+      - "services/analysis-worker/package.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-phase3-booknlp-components
+  cancel-in-progress: true
+
+jobs:
+  booknlp-small-components:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install pinned BookNLP compatibility candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install "click==8.1.7" "spacy==3.7.5" "transformers==4.43.4"
+          python -m pip install --no-deps "git+https://github.com/Plazmius/booknlp.git@8875a1b616d764b7d13d1e30e9949cc21ca303c1"
+          python -m spacy download en_core_web_sm
+          python - <<'PY'
+          import importlib.metadata
+          for package in ["booknlp", "click", "spacy", "torch", "tensorflow", "transformers"]:
+              try:
+                  print(f"{package}={importlib.metadata.version(package)}")
+              except importlib.metadata.PackageNotFoundError:
+                  print(f"{package}=missing")
+          PY
+
+      - name: Run BookNLP small on all pinned LitBank documents
+        run: >-
+          python benchmarks/run_booknlp_litbank.py
+          --litbank-root ../../external/litbank
+          --output-root evaluation-artifacts/booknlp-output
+          --metadata-out evaluation-artifacts/booknlp-component-run-metadata.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck component benchmark
+        run: npm run typecheck
+
+      - name: Run deterministic benchmark tests
+        run: npm test
+
+      - name: Score BookNLP speaker and event components
+        run: >-
+          npm run benchmark:booknlp-components --
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --out evaluation-artifacts/booknlp-litbank-components.json
+
+      - name: Publish component benchmark summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-litbank-components.json", "utf8"));
+          const runtime = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-component-run-metadata.json", "utf8"));
+          const bq = report.dialogue.bookNlp;
+          const dq = report.dialogue.deterministicOracleIdentity;
+          const be = report.events.bookNlp;
+          const de = report.events.deterministicLexicalOracleIdentity;
+          const map = report.dialogue.bookNlpSpeakerMentionMapping;
+          console.log("## Phase 3 BookNLP speaker/event component benchmark");
+          console.log("");
+          console.log(`- LitBank commit: \`${report.dataset.commit}\``);
+          console.log(`- Attempted/completed/failed documents: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- Runtime: ${runtime.wallClockSeconds.toFixed(2)} s; peak RSS: ${runtime.peakResidentMemoryMb.toFixed(1)} MiB; model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log("");
+          console.log("### Quote detection");
+          console.log(`- BookNLP P/R/F1: ${bq.quoteDetection.precision.toFixed(4)} / ${bq.quoteDetection.recall.toFixed(4)} / ${bq.quoteDetection.f1.toFixed(4)}`);
+          console.log(`- S.A.G.A. deterministic floor + oracle identity P/R/F1: ${dq.quoteDetection.precision.toFixed(4)} / ${dq.quoteDetection.recall.toFixed(4)} / ${dq.quoteDetection.f1.toFixed(4)}`);
+          console.log("");
+          console.log("### Speaker attribution");
+          console.log(`- BookNLP accuracy on matched known-speaker quotes: ${bq.speakerAccuracyOnMatchedQuotes.toFixed(4)}`);
+          console.log(`- BookNLP resolved-speaker accuracy: ${bq.resolvedSpeakerAccuracy.toFixed(4)}`);
+          console.log(`- BookNLP end-to-end speaker recall: ${bq.endToEndSpeakerRecall.toFixed(4)}`);
+          console.log(`- BookNLP cross-character contamination: ${bq.crossCharacterContaminationRateOnMatchedQuotes.toFixed(4)}`);
+          console.log(`- BookNLP unresolved rate on matched known-speaker quotes: ${bq.speakerUnresolvedRateOnMatchedQuotes.toFixed(4)}`);
+          console.log(`- BookNLP attributed-mention -> gold-coref mapping coverage: ${map.coverage.toFixed(4)} (${map.goldMappedMentionCount}/${map.attributedMentionCount})`);
+          console.log(`- Deterministic floor accuracy on matched known-speaker quotes: ${dq.speakerAccuracyOnMatchedQuotes.toFixed(4)}`);
+          console.log(`- Deterministic floor end-to-end speaker recall: ${dq.endToEndSpeakerRecall.toFixed(4)}`);
+          console.log(`- Deterministic floor cross-character contamination: ${dq.crossCharacterContaminationRateOnMatchedQuotes.toFixed(4)}`);
+          console.log("");
+          console.log("### Event trigger detection");
+          console.log(`- BookNLP P/R/F1: ${be.triggerDetection.precision.toFixed(4)} / ${be.triggerDetection.recall.toFixed(4)} / ${be.triggerDetection.f1.toFixed(4)}`);
+          console.log(`- S.A.G.A. lexical Tier-0 P/R/F1: ${de.triggerDetection.precision.toFixed(4)} / ${de.triggerDetection.recall.toFixed(4)} / ${de.triggerDetection.f1.toFixed(4)}`);
+          console.log("- Participant grounding: not scored by this LitBank layer.");
+          console.log(`- Report fingerprint: \`${report.reportFingerprint}\``);
+          EOF
+
+      - name: Upload component benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-booknlp-component-benchmark
+          path: |
+            services/analysis-worker/evaluation-artifacts/booknlp-litbank-components.json
+            services/analysis-worker/evaluation-artifacts/booknlp-component-run-metadata.json
+          if-no-files-found: error
+          retention-days: 90
