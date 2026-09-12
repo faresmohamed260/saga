@@ -10,6 +10,7 @@ import modal
 APP_NAME = "saga-phase2-xcore-provider"
 MODEL_REPO = "sapienzanlp/xcore-litbank"
 MODEL_REVISION = os.environ.get("SAGA_XCORE_MODEL_REVISION", "main").strip() or "main"
+XCORE_SOURCE_REVISION = "9a5713b210abaaa6ded158966b200740ea1bfbfc"
 MODEL_DIR = "/cache/xcore-litbank"
 CACHE_DIR = "/cache"
 PROVIDER_NAME = "modal_xcore_litbank"
@@ -30,12 +31,15 @@ image = (
         f"modal=={MODAL_VERSION}",
         "fastapi[standard]==0.121.0",
         "huggingface-hub==0.36.0",
-        "xcore-coref==0.1.3",
-        "torch==2.5.1",
+        "spacy==3.7.5",
+        f"git+https://github.com/SapienzaNLP/xcore.git@{XCORE_SOURCE_REVISION}",
+        "torch==2.6.0",
         extra_index_url="https://download.pytorch.org/whl/cu124",
         extra_options="--index-strategy unsafe-best-match",
     )
-    .run_commands("python -m spacy download en_core_web_sm")
+    .run_commands(
+        "python -m pip install --no-deps https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
+    )
     .env(
         {
             "HF_HOME": CACHE_DIR,
@@ -155,6 +159,7 @@ def web():
             "provider": PROVIDER_NAME,
             "model": MODEL_REPO,
             "model_revision": MODEL_REVISION,
+            "xcore_source_revision": XCORE_SOURCE_REVISION,
             "adapter_revision": ADAPTER_REVISION,
             "license": "CC-BY-NC-SA-4.0",
             "qualification_only": True,
