@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/shell/page-header";
+import { CharacterEvidenceSection } from "@/features/characters/character-evidence-section";
 import { SourceUploadForm } from "@/features/library/source-upload-form";
 import {
   getSagaProjectWorkspace,
@@ -95,28 +96,21 @@ export default async function ProjectWorkspacePage({
         <dl className="grid gap-6 border-b border-[var(--app-separator)] py-6 sm:grid-cols-3">
           <div>
             <dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--app-muted)]">
-              <BookOpen className="size-4" aria-hidden="true" />
-              Sources
+              <BookOpen className="size-4" aria-hidden="true" /> Sources
             </dt>
-            <dd className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
-              {workspace.sources.length}
-            </dd>
+            <dd className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{workspace.sources.length}</dd>
           </div>
           <div>
             <dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--app-muted)]">
-              <Activity className="size-4" aria-hidden="true" />
-              Active jobs
+              <Activity className="size-4" aria-hidden="true" /> Active jobs
             </dt>
             <dd className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{activeJobs}</dd>
           </div>
           <div>
             <dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--app-muted)]">
-              <Users className="size-4" aria-hidden="true" />
-              Characters
+              <Users className="size-4" aria-hidden="true" /> Characters
             </dt>
-            <dd className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
-              {workspace.characterCount}
-            </dd>
+            <dd className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{workspace.characterCount}</dd>
           </div>
         </dl>
       </section>
@@ -124,9 +118,7 @@ export default async function ProjectWorkspacePage({
       <section className="max-w-6xl" aria-labelledby="sources-heading">
         <div className="flex flex-col gap-2 border-b border-[var(--app-separator)] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 id="sources-heading" className="text-base font-semibold text-[var(--app-text)]">
-              Sources
-            </h2>
+            <h2 id="sources-heading" className="text-base font-semibold text-[var(--app-text)]">Sources</h2>
             <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
               Originals stay private in object storage. Upload completion is verified before deterministic ingestion is queued.
             </p>
@@ -159,17 +151,13 @@ export default async function ProjectWorkspacePage({
                   className="grid gap-3 py-5 lg:grid-cols-[minmax(0,1fr)_7rem_9rem_10rem_auto] lg:items-center"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[var(--app-text)]">
-                      {source.displayName}
-                    </p>
+                    <p className="truncate text-sm font-semibold text-[var(--app-text)]">{source.displayName}</p>
                     <p className="mt-1 truncate text-xs text-[var(--app-muted)]">
                       {source.originalFilename} · {formatBytes(source.byteSize)}
                     </p>
                   </div>
                   <p className="text-sm uppercase text-[var(--app-muted)]">{source.format}</p>
-                  <p className="text-sm capitalize text-[var(--app-muted)]">
-                    {statusLabel(source.ingestionStatus)}
-                  </p>
+                  <p className="text-sm capitalize text-[var(--app-muted)]">{statusLabel(source.ingestionStatus)}</p>
                   <p className="text-xs capitalize text-[var(--app-muted)]">
                     {latestJob ? `${statusLabel(latestJob.kind)}: ${latestJob.status}` : "No analysis job"}
                   </p>
@@ -192,9 +180,7 @@ export default async function ProjectWorkspacePage({
 
       <section className="max-w-6xl" aria-labelledby="analysis-heading">
         <div className="border-b border-[var(--app-separator)] pb-4">
-          <h2 id="analysis-heading" className="text-base font-semibold text-[var(--app-text)]">
-            Analysis
-          </h2>
+          <h2 id="analysis-heading" className="text-base font-semibold text-[var(--app-text)]">Analysis</h2>
           <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
             Durable jobs are separate from immutable analysis runs. Full-book work executes outside the web request boundary.
           </p>
@@ -210,30 +196,14 @@ export default async function ProjectWorkspacePage({
               <li key={job.id} className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_8rem_8rem] sm:items-center">
                 <p className="text-sm capitalize text-[var(--app-text)]">{statusLabel(job.kind)}</p>
                 <p className="text-sm capitalize text-[var(--app-muted)]">{job.status}</p>
-                <p className="text-xs text-[var(--app-muted)]">
-                  Attempt {job.attemptCount}/{job.maxAttempts}
-                </p>
+                <p className="text-xs text-[var(--app-muted)]">Attempt {job.attemptCount}/{job.maxAttempts}</p>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section className="max-w-6xl" aria-labelledby="characters-heading">
-        <div className="border-b border-[var(--app-separator)] pb-4">
-          <h2 id="characters-heading" className="text-base font-semibold text-[var(--app-text)]">
-            Characters
-          </h2>
-          <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
-            Character identities remain empty until the Phase 2C resolver writes evidence-backed results. Unresolved mentions will not be counted as canonicals.
-          </p>
-        </div>
-        <p className="border-b border-[var(--app-separator)] py-8 text-sm text-[var(--app-muted)]">
-          {workspace.characterCount === 0
-            ? "No resolved characters yet."
-            : `${workspace.characterCount} resolved character${workspace.characterCount === 1 ? "" : "s"} recorded for this project.`}
-        </p>
-      </section>
+      <CharacterEvidenceSection projectId={projectId} />
     </div>
   );
 }
