@@ -30,12 +30,13 @@ async function createWorkspace(argv: string[]) {
     );
   }
   const normalization = JSON.parse(await readFile(resolve(normalizationPath), "utf8")) as NormalizationResult;
+  const sectionKeys = sectionsRaw ? sectionsRaw.split(",").map((value) => value.trim()).filter(Boolean) : null;
   const workspace = createSceneAnnotationWorkspace({
     bookId,
     sourceSha256,
     normalization,
     annotationProtocolVersion: "saga-scene-annotation-v1",
-    sectionKeys: sectionsRaw ? sectionsRaw.split(",").map((value) => value.trim()).filter(Boolean) : undefined,
+    ...(sectionKeys ? { sectionKeys } : {}),
   });
   await writeJson(resolve(output), workspace);
   process.stderr.write("PRIVATE annotation workspace contains copyrighted source text. Do not commit or upload it.\n");
