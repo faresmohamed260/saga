@@ -2,7 +2,36 @@
 
 Status: **ACTIVE PHASE-3 BENCHMARK FOUNDATION**
 
-The whole-book benchmark exists to stop S.A.G.A. from selecting narrative-analysis providers from excerpts alone. It is deliberately provider-neutral and source-acquisition-neutral.
+The whole-book benchmark exists to stop S.A.G.A. from selecting narrative-analysis providers from excerpts or academic corpora alone. It is deliberately provider-neutral and source-acquisition-neutral.
+
+## Product qualification principle
+
+S.A.G.A. is built for real modern novels and series. The primary acceptance corpus therefore uses the same contemporary/fantasy books that historically exposed the resolver's real failures:
+
+- *Harry Potter and the Philosopher's Stone*;
+- *The Cruel Prince*;
+- *Caraval*;
+- the ACOTAR series, with *A Court of Frost and Starlight* retained as the historical regression anchor.
+
+LitBank remains useful as a reproducible public gold benchmark for metric decomposition and regression detection. It is **secondary evidence**. A candidate must not be promoted merely because it performs well on LitBank or another public-domain/classical corpus.
+
+## Historical S.A.G.A. regression context
+
+The previous full-book deterministic runs used:
+
+- `max_chapters=999`;
+- `max_windows=100000`;
+- `paragraphs_per_window=3`;
+- `overlap_paragraphs=1`.
+
+They exposed product-relevant failures including:
+
+- identity fragmentation: `Harry` / `Harry Potter`, `Dumbledore` / `Professor Dumbledore`, `Az` / `Azriel`, `Cardan` / `Prince Cardan`;
+- real characters routed to supporting entities: `Hagrid`, `Snape`, `Neville`, `Cassian`, `Nesta`, `Rhys`, `Azriel`, `Tamlin`, `Julian`, `Taryn`, `Vivi`, `Valerian`, `Nicasia`;
+- fantasy locations/groups/species promoted as characters: examples included `Illyrian Mountains`, `High Fae`, and `Castillo Maldito`;
+- generic noun phrases flooding supporting entities.
+
+Those classes of failure are first-class regression targets for the current v2 benchmark stack.
 
 ## What this runner proves
 
@@ -24,52 +53,42 @@ Runtime/resource measurements are kept separate from semantic fingerprints so a 
 
 The repository does **not** store the novels and the runner does **not** download them.
 
-`services/analysis-worker/benchmarks/whole-book-diversity-suite.v1.json` describes the intended complete-novel diversity set and expected filenames. The operator provisions lawful UTF-8 text files under a separate source directory. At execution time the runner hashes the exact bytes actually used.
+`services/analysis-worker/benchmarks/whole-book-primary-fiction-suite.v1.json` contains only the private suite metadata and expected filenames. The operator provisions lawful, user-owned source files outside the repository. At execution time the runner hashes the exact bytes actually used.
 
-This avoids:
+For copyrighted books:
 
-- silently depending on a mutable download URL;
-- committing public-domain or copyrighted book text merely for benchmarks;
-- treating a Project Gutenberg identifier as proof that a work is public domain in every execution jurisdiction;
-- contaminating private contemporary-book evaluation with repository artifacts.
+- source text, extracted chapters, or reconstructive excerpts must never be committed;
+- benchmark artifacts must contain only non-reconstructive metrics, fingerprints, counts, labels, failure categories, and bounded diagnostics;
+- the benchmark harness must not automatically fetch commercial ebooks from the internet.
 
 A benchmark artifact, not the repo manifest alone, is the authority for the exact source digest used in a run.
 
-## Public complete-novel diversity suite
+## Primary private fiction suite
 
-The v1 suite covers twelve materially different works/forms:
+The v1 primary suite contains:
 
-- romance/social and honorific-heavy naming — *Pride and Prejudice*;
-- gothic, epistolary and multiple narrators — *Dracula*;
-- detective/mystery, aliases and first-person narration — *The Hound of the Baskervilles*;
-- adventure, crews and nicknames — *Treasure Island*;
-- science fiction and non-person entities — *The War of the Worlds*;
-- children's fantasy and personified non-humans — *Alice's Adventures in Wonderland*;
-- war, ranks and role nouns — *The Red Badge of Courage*;
-- western/action-heavy naming — *Desert Gold*;
-- modernist/experimental prose — *Ulysses*;
-- non-human first-person protagonist — *Black Beauty*;
-- large social ensemble — *Middlemarch*;
-- multi-narrator identity-reveal mystery — *The Moonstone*.
+1. *Harry Potter and the Philosopher's Stone* — honorifics, family surnames, organizations/locations, alias fragmentation;
+2. *The Cruel Prince* — Fae personhood, titles, aliases, non-human characters, large cast;
+3. *Caraval* — aliases, titles, identity reveal, location/name confusion;
+4. *A Court of Thorns and Roses*;
+5. *A Court of Mist and Fury*;
+6. *A Court of Wings and Ruin*;
+7. *A Court of Frost and Starlight* — historical S.A.G.A. regression anchor;
+8. *A Court of Silver Flames*.
 
-This suite complements rather than replaces LitBank's gold-labelled 17-stratum evaluation. Whole books measure scale, resource behavior and qualitative failure modes; gold corpora remain necessary for precision/recall claims.
+Additional contemporary books can be added later when they cover a genuinely new stressor. They should not displace these historical anchors without an explicit owner decision.
 
-## Contemporary/private suite
+## Secondary public benchmark
 
-No production character-analysis provider can be selected from public-domain classics alone. A later private suite must cover at least:
+LitBank remains valuable for:
 
-- contemporary fantasy / romantasy;
-- contemporary romance;
-- thriller / crime;
-- modern science fiction;
-- contemporary literary fiction;
-- young adult;
-- progression fantasy / LitRPG / web-serial style;
-- fanfiction;
-- English translated fiction;
-- a very large ensemble or series installment.
+- labelled mention/coreference metrics;
+- deterministic regression tests;
+- provider decomposition;
+- repeatable public CI/manual experiments;
+- comparing components under a shared gold standard.
 
-Those source texts remain outside the repository. Only non-reconstructive benchmark metadata/results may be persisted.
+But LitBank is not representative enough to act as the final promotion gate for S.A.G.A.'s modern fantasy/romantasy target workload. Its results must be reported as **secondary academic/regression evidence**, not as proof of production suitability.
 
 ## Invocation
 
@@ -79,7 +98,7 @@ Example shape:
 
 ```bash
 npm run benchmark:whole-book -- \
-  --manifest benchmarks/whole-book-diversity-suite.v1.json \
+  --manifest benchmarks/whole-book-primary-fiction-suite.v1.json \
   --sources-root /benchmark/books \
   --output-root evaluation-artifacts/whole-books/provider-x \
   --report-out evaluation-artifacts/whole-books/provider-x.json \
@@ -94,6 +113,6 @@ The provider command owns task-specific output. The generic runner owns source/p
 
 ## Promotion rule
 
-A candidate that survives LitBank is not production-ready until it is run through the relevant complete-novel suite. Character/entity candidates must then also survive the private contemporary suite before adoption.
+A character/entity candidate may use LitBank to establish reproducible public metrics, but final adoption requires the private primary fiction suite. The acceptance decision must explicitly review modern-fantasy failure modes such as alias/title fragmentation, Fae/species/group confusion, person-vs-location typing, narrator/pronoun attachment, and real-character leakage into supporting/unresolved buckets.
 
-One complete novel is enough to prove the Phase-3 runtime can operate at book scale. It is **not** enough to prove cross-novel quality.
+One complete novel is enough to prove that the Phase-3 runtime can operate at book scale. It is **not** enough to prove product quality across S.A.G.A.'s target fiction.
