@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { availableParallelism, cpus, platform, release } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { finished } from "node:stream/promises";
 import { spawn } from "node:child_process";
 
 import {
@@ -80,7 +81,10 @@ async function listFilesRecursive(root: string, current = root): Promise<string[
 }
 
 async function fingerprintOutput(root: string) {
-  const files = await listFilesRecursive(root);
+  const files = (await listFilesRecursive(root)).filter((path) => {
+    const name = relative(root, path).replaceAll("\\", "/");
+    return name !== "benchmark.stdout.log" && name !== "benchmark.stderr.log";
+  });
   const rows = [];
   let outputBytes = 0;
   for (const path of files) {
@@ -230,8 +234,7 @@ async function runBook(input: {
     if (!settled) await delay(200);
   }
   await exitPromise;
-  stdout.end();
-  stderr.end();
+  await Promise.all([finished(stdout), finished(stderr)]);
   const wallClockSeconds = (performance.now() - started) / 1000;
   const output = await fingerprintOutput(input.output);
 
