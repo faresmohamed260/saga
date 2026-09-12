@@ -82,7 +82,7 @@ function normalizeUniqueStrings(values: string[]) {
 }
 
 function deriveStableOutput(completedRuns: number, outputFingerprints: string[]) {
-  if (completedRuns === 0 || outputFingerprints.length !== completedRuns) return false;
+  if (completedRuns < 2 || outputFingerprints.length !== completedRuns) return false;
   return new Set(outputFingerprints).size === 1;
 }
 
@@ -132,6 +132,10 @@ export function createAnalysisExperimentRecord(
 
   if (input.decision.status === "adopted" && input.quality.length === 0) {
     throw new Error("experiment_adoption_requires_quality_evidence");
+  }
+
+  if (input.decision.status === "adopted" && input.repeatability.completedRuns < 2) {
+    throw new Error("experiment_adoption_requires_repeatability_evidence");
   }
 
   const repeatability: AnalysisExperimentRepeatability = {

@@ -82,7 +82,7 @@ function makeRecord() {
   });
 }
 
-test("experiment records are deterministic and derive repeatability", () => {
+test("experiment records are deterministic and derive repeatability from at least two matching runs", () => {
   const first = makeRecord();
   const second = makeRecord();
 
@@ -90,6 +90,50 @@ test("experiment records are deterministic and derive repeatability", () => {
   assert.equal(first.repeatability.stableOutput, true);
   assert.deepEqual(first.repeatability.failureCodes, []);
   assert.equal(first.schemaVersion, "saga-analysis-experiment-v1");
+});
+
+test("a single successful run is evidence but not repeatability proof", () => {
+  const candidate = makeRecord();
+  const record = createAnalysisExperimentRecord({
+    experimentId: candidate.experimentId,
+    capability: candidate.capability,
+    candidate: candidate.candidate,
+    benchmark: candidate.benchmark,
+    quality: candidate.quality,
+    repeatability: {
+      attemptedRuns: 1,
+      completedRuns: 1,
+      outputFingerprints: ["d".repeat(64)],
+      failureCodes: [],
+    },
+    decision: candidate.decision,
+    limitations: candidate.limitations,
+    notes: candidate.notes,
+  });
+
+  assert.equal(record.repeatability.stableOutput, false);
+});
+
+test("two completed runs with different outputs are not stable", () => {
+  const candidate = makeRecord();
+  const record = createAnalysisExperimentRecord({
+    experimentId: candidate.experimentId,
+    capability: candidate.capability,
+    candidate: candidate.candidate,
+    benchmark: candidate.benchmark,
+    quality: candidate.quality,
+    repeatability: {
+      attemptedRuns: 2,
+      completedRuns: 2,
+      outputFingerprints: ["d".repeat(64), "e".repeat(64)],
+      failureCodes: [],
+    },
+    decision: candidate.decision,
+    limitations: candidate.limitations,
+    notes: candidate.notes,
+  });
+
+  assert.equal(record.repeatability.stableOutput, false);
 });
 
 test("repeatability fails closed when completed runs do not have fingerprints", () => {
@@ -117,9 +161,9 @@ test("production adoption requires completed quality evidence", () => {
       benchmark: candidate.benchmark,
       quality: [],
       repeatability: {
-        attemptedRuns: 1,
-        completedRuns: 1,
-        outputFingerprints: ["d".repeat(64)],
+        attemptedRuns: 2,
+        completedRuns: 2,
+        outputFingerprints: ["d".repeat(64), "d".repeat(64)],
         failureCodes: [],
       },
       decision: {
@@ -132,5 +176,33 @@ test("production adoption requires completed quality evidence", () => {
       notes: [],
     }),
     /adoption_requires_quality_evidence/u,
+  );
+});
+
+test("production adoption requires more than one completed run", () => {
+  const candidate = makeRecord();
+  assert.throws(
+    () => createAnalysisExperimentRecord({
+      experimentId: candidate.experimentId,
+      capability: candidate.capability,
+      candidate: candidate.candidate,
+      benchmark: candidate.benchmark,
+      quality: candidate.quality,
+      repeatability: {
+        attemptedRuns: 1,
+        completedRuns: 1,
+        outputFingerprints: ["d".repeat(64)],
+        failureCodes: [],
+      },
+      decision: {
+        status: "adopted",
+        rationale: "Should be rejected until repeatability is measured.",
+        comparedAgainst: ["current-baseline"],
+        decidedAt: "2026-09-12T00:00:00Z",
+      },
+      limitations: [],
+      notes: [],
+    }),
+    /adoption_requires_repeatability_evidence/u,
   );
 });
