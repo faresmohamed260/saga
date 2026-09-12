@@ -2,7 +2,7 @@
 
 S.A.G.A. is being rebuilt as a web-first storytelling-intelligence platform. The active architecture is the S.A.G.A. v2 rebuild; pre-v2 runtime material is historical/reference only unless a current v2 decision deliberately re-adopts an idea behind a v2-owned contract.
 
-This file is the short source-of-truth handoff for current work.
+This file is the short source-of-truth handoff for current work. For the detailed Phase-3A state, read `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`.
 
 ## Current Status
 
@@ -15,29 +15,31 @@ This file is the short source-of-truth handoff for current work.
 - 2C Character Identity Engine — COMPLETE
 - 2D Repository/CI Qualification — COMPLETE
 - Phase-2 hosted Supabase migrations — APPLIED AND VERIFIED 2026-09-12
-- the experimental Modal/xCoRe worker/provider proof — SUPERSEDED by the owner’s 2026-09-12 local-first analysis decision
+- experimental Modal/xCoRe worker/provider proof — SUPERSEDED by the owner’s local-first analysis decision
 
 **Phase 3 — Local-First Narrative Analysis Rebaseline: ACTIVE.**
 
-Authoritative Phase-3 contract:
+Authoritative Phase-3 documents:
 
 - `docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
-
-Authoritative textual-analysis architecture:
-
+- `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
 - `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
+- `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
 
-Durable owner decisions:
+Durable owner decisions D-026 through D-030 require local-first, subscription-free text analysis; Modal media-only; a cost-aware evidence cascade; measurement-driven provider adoption; and local workers using the existing Supabase/B2 control plane.
 
-- D-026 — textual book analysis is local-first and subscription-free
-- D-027 — Modal is reserved for image/media generation, not textual analysis
-- D-028 — analysis uses a cost-aware evidence cascade
-- D-029 — providers are adopted by product quality **and** resource measurements
-- D-030 — local analysis workers use the existing durable Supabase/B2 control plane
+## Current Authoritative Checkpoint
+
+At the time of this handoff, merged `main` is:
+
+- `d6c1a144d0c4b4ad82e7229c583cb22682249f07`
+- PR #192 — restored the primary-fiction regression evaluator
+
+Always verify live GitHub state before continuing. This SHA is a handoff checkpoint, not a substitute for checking newer commits/PRs.
 
 ## Product Goal
 
-S.A.G.A. is not a book summarizer. Its analysis runtime should progressively reverse-engineer a novel or series into an evidence-linked narrative model that can support:
+S.A.G.A. is not a book summarizer. Its analysis runtime should progressively reverse-engineer a novel or series into an evidence-linked narrative model supporting:
 
 - source/book/chapter/scene structure;
 - canonical characters, aliases and mentions;
@@ -59,7 +61,7 @@ Keep three conceptual layers distinct:
 
 Do not rewrite source text when later evidence changes interpretation.
 
-## Phase 3 Architecture Direction
+## Locked Analysis Strategy
 
 The default textual-analysis topology is:
 
@@ -69,18 +71,16 @@ apps/web
       -> local S.A.G.A. analysis worker
           -> B2 source bytes
           -> deterministic orchestration / evidence bookkeeping
-          -> local Python literary-NLP provider(s)
+          -> local literary-NLP provider(s)
           -> optional localhost llama.cpp structured reasoning
           -> structured evidence/results back to Supabase
 ```
 
 The analysis host should require outbound HTTPS only. No public inbound home-server port is required.
 
-The existing TypeScript `services/analysis-worker` remains the preferred job/orchestration owner unless measurements prove there is a better reason to change it. Model-specific Python code belongs behind a narrow local sidecar/provider boundary rather than inside Next.js.
+The existing TypeScript `services/analysis-worker` remains the preferred job/orchestration owner unless measurements prove a better reason to change it.
 
-### Analysis cascade
-
-For every stage, prefer:
+For every stage prefer:
 
 ```text
 Tier 0 deterministic structure/rules
@@ -89,153 +89,140 @@ Tier 0 deterministic structure/rules
   -> Tier 3 small local generative reasoning over bounded evidence packets only
 ```
 
-Do not repeatedly pass an entire raw novel through a large LLM merely because the context window permits it.
+Do not repeatedly pass an entire raw novel through a large LLM merely because a context window permits it. Provider/model output is evidence; deterministic S.A.G.A. policy owns canonical IDs, admission/merge decisions, provenance and accepted/uncertain/rejected state.
 
-Provider/model outputs are evidence. S.A.G.A. deterministic code owns canonical IDs, admission/merge policy, provenance, job state, persistence, validation and accepted/uncertain/rejected status.
+## Primary Evaluation Policy
 
-## Phase 3A — Immediate Work
+The owner explicitly corrected the benchmark priority during Phase 3A.
 
-The first implementation slice is **benchmark-before-adoption**, not another provider deployment.
+**Primary product qualification corpus:**
 
-Evaluate:
+- *Harry Potter and the Philosopher's Stone*;
+- *The Cruel Prince*;
+- *Caraval*;
+- ACOTAR series, with *A Court of Frost and Starlight* retained as the historical regression anchor.
 
-### Broad literary baseline
+LitBank remains **secondary public/gold regression evidence** for reproducible metrics and component isolation. It cannot by itself promote a provider into production. If LitBank and the private modern-fiction suite disagree, the private suite governs the product decision and the discrepancy must be documented.
 
-- **BookNLP small** — literary entities, events, coreference/name clustering and quote speaker attribution in one local pipeline.
+The repository stores only metadata, fingerprints, bounded diagnostics and expectations for copyrighted books. Novel text/EPUB bytes remain private and outside Git.
 
-### Typed entity challenger
+## Phase 3A Results So Far
 
-- **GLiNER small v2.x** — configurable PERSON/location/organization/object/faction/etc. spans, prioritizing CPU/ONNX/INT8.
+### Experiment governance
 
-### Coreference challengers
+Provider adoption is results-driven. Every experiment must preserve source/model/config/resource provenance, including negative and rejected candidates. Repeatability requires multiple completed runs; one successful result is not enough.
 
-- **F-Coref** first as the cheap permissive candidate;
-- **LingMess** only if its larger footprint earns a meaningful quality gain;
-- xCoRe/Maverick remain research comparisons by default because their released LitBank weights are non-commercial.
+### BookNLP-small
 
-### Dialogue
+BookNLP-small is **rejected for primary character identity**. Two independent 100-document public-regression runs produced the same semantic output, but identity quality was poor: canonical precision about `0.4613`, recall `0.6030`, incorrect merges `0.1934`, fragmentation `0.4607`, linked-mention precision `0.2158`. Its speaker/event/syntax outputs remain separate candidates.
 
-Compare deterministic quote/speech-verb attribution, BookNLP speaker attribution, and a combined candidate-restriction path.
+### GLiNER-small-v2.1 + F-Coref
 
-### Events
+A technically valid five-document public smoke produced useful component evidence but the fully real combined stack is **not adoption-ready**. Approximate smoke results: GLiNER proper-name PERSON precision `0.763`, recall `0.657`; F-Coref with oracle mentions canonical precision `0.780`, recall `0.889`, incorrect merges `0.180`; combined real stack canonical precision `0.412`, recall `0.500`, linked-mention precision `0.076`.
 
-Compare dependency/verb candidates, BookNLP literary event triggers, their combination, then optionally a **Qwen3.5-4B** local schema-constrained normalizer over surviving candidates only.
+Do not select or reject individual GLiNER/F-Coref roles solely from LitBank. The private suite is the production gate.
 
-### Local structured reasoning
+### Whole-book benchmark foundation
 
-Initial benchmark candidates:
+PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` added a provider-neutral whole-book harness that records source SHA-256, provider/model/revision/license, runtime, RAM/VRAM, output size and semantic fingerprints without storing novel text.
 
-- Qwen3.5-4B quantized — default small reasoning candidate;
-- Qwen3.5-9B quantized — quality escalation candidate;
-- `llama.cpp` — initial local serving/JSON-schema constraint layer.
+### Primary-fiction identity regressions
 
-No local LLM is adopted until measured against a non-generative baseline.
+PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` restored provider-neutral regressions for the historical real-book failures, including Harry/Harry Potter, Dumbledore/Professor Dumbledore, Az/Azriel, Cardan/Prince Cardan, supporting-character leakage, and fantasy location/group/species contamination.
 
-## Benchmark Rules
+Opening-prefix expectations are kept separate from full-book expectations.
 
-Every provider comparison must report both product quality and resource cost.
+## Private EPUB Availability
 
-At minimum record:
+The actual user-owned EPUB binaries are currently **not available in ChatGPT File Library**.
 
-- exact source digest and provider/model revision;
-- task metrics / false-positive contamination;
-- whole-book wall-clock time;
-- peak RAM;
-- peak VRAM where applicable;
-- model/download size;
-- license;
-- output determinism/reproducibility;
-- operational complexity;
-- percentage of evidence requiring expensive escalation.
+Historical test records reference old local paths under `B:/Documents/PyCharm/graduationProject/uploads/...`, but the connected Remote Desktop Commander had no online authorized device during the handoff session.
 
-Reuse the existing LitBank evaluation layer where applicable, plus small deterministic fixtures for normal CI and at least one complete public-domain novel for dedicated whole-book resource qualification.
+Do not replace the primary suite with public-domain novels because of this temporary availability issue. Continue building and qualifying source-neutral harnesses, then run the real books when lawful EPUB access returns.
 
-Normal CI must not download heavyweight models on every change.
+## Active Unmerged Work — Scene Segmentation
+
+**Continue this branch; do not recreate it:**
+
+- branch: `v2/phase-3a-cruel-prince-analysis-baseline`
+- handoff head: `cc28f37270c389f7be288f48245105d4f9fdefc7`
+- ahead of merged `main` checkpoint by 21 commits at handoff
+
+Exact-head checks at that SHA are green:
+
+- SAGA v2 Analysis Worker CI — success
+- SAGA v2 LitBank Oracle Baseline — success
+- Backend Architecture CI — success
+- Required Check Compatibility — success
+
+The branch already contains:
+
+- recovered *Cruel Prince* historical full-analysis reference data;
+- `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`;
+- scene annotation workspace + CLI;
+- exact and relaxed scene-boundary evaluator + CLI;
+- deterministic structural scene baseline + CLI;
+- cheap lexical scene-change baseline + CLI;
+- deterministic tests for all of the above.
+
+Scene gold/reference data is paragraph-indexed and contains no copyrighted prose. Exact boundary F1 and relaxed `±1 paragraph` F1 are both retained; ambiguous/disputed boundaries are explicitly represented so annotator uncertainty does not become fake model error.
+
+No scene method has been adopted yet.
+
+## Recovered Historical Breadth Baseline
+
+The old graduation prototype processed the complete *The Cruel Prince* and reported:
+
+- 111,351 words;
+- 35 chapters;
+- 135 scenes;
+- 53 unique characters;
+- 55 locations;
+- 24 key causal events;
+- average tension 5.49/10;
+- reported climax chapter 16.
+
+These are **coverage/reference observations, not gold targets**. The new architecture should reproduce or improve analytical breadth while being cheaper, more reproducible, source-grounded and reliable.
 
 ## Existing Phase-2 Foundations To Preserve
 
-### Phase 2A
+- Phase 2A — member-owned projects/sources, forced RLS, durable lease-based jobs, immutable runs and private product surfaces.
+- Phase 2B — provider-neutral B2 source contracts, upload verification, hashing, deterministic TXT/EPUB normalization, separate v2 worker.
+- Phase 2C — provider-neutral identity evidence, precision-first canonical admission, unresolved/quarantine policy, deterministic stabilization and immutable character/alias/mention evidence.
+- Phase 2D — repository qualification, LitBank oracle-policy ceiling/reference and job lifecycle hardening.
 
-PR #177 / merge `7a053697e874d8fb6e0b03571b7cf0f2e885dd61` established member-owned projects/sources, forced RLS, durable lease-based jobs, immutable runs and private Projects/Library surfaces.
+The 100-document LitBank oracle-evidence resolver ceiling remains useful as a policy reference, not as a production-provider score.
 
-### Phase 2B
-
-PR #179 / merge `fad0b8e5a3cc5c0e819d86fb41f50fe587574aab` established provider-neutral B2 source contracts, upload verification, worker-side hashing, deterministic TXT/EPUB normalization and a separate v2 analysis worker.
-
-### Phase 2C
-
-PR #181 / merge `191e2e4ab4ad9d4023f198b295922b5675e8d269` established provider-neutral identity evidence, precision-first canonical admission, unresolved/quarantine policy, deterministic stabilization and immutable character/alias/mention evidence.
-
-### Phase 2D repository qualification
-
-PR #183 / merge `8463f1686b4ab24cbec2fae67e027b96bd87497f` qualified the repository and added the full 100-document LitBank oracle-policy benchmark plus lifecycle hardening.
-
-Qualified resolver-policy baseline under oracle evidence:
-
-- canonical precision `0.9516`
-- canonical recall `0.9970`
-- incorrect-merge rate `0.0000`
-- fragmentation rate `0.1422`
-- linked-mention precision `0.9942`
-- linked-mention recall `0.7566`
-- non-person quarantine rate `1.0000`
-- cluster purity `1.0000`
-
-This is a resolver ceiling/policy reference, not a production-provider score.
-
-## Hosted Resources / Current Reality
+## Hosted Resources / Boundaries
 
 ### Supabase
 
-Dedicated S.A.G.A. project:
-
-- ref: `scmeqnpmhomzcwecjdtu`
-- organization: `Fares Home Lab`
-- region: `eu-central-1`
-- API URL: `https://scmeqnpmhomzcwecjdtu.supabase.co`
-- public signup disabled
-- custom Resend SMTP active
-
-All five repository-qualified Phase-2 migrations were applied to this hosted project on 2026-09-12 and the Phase-2 tables/RLS/service-function boundaries were verified.
+Dedicated project ref `scmeqnpmhomzcwecjdtu`, region `eu-central-1`. All five repository-qualified Phase-2 migrations were applied and verified on 2026-09-12.
 
 ### Backblaze B2
 
-Dedicated private bucket:
+Dedicated private bucket `saga-v2-faresmohamed260-1207062480`, region `us-east-005`. Master credentials remain bootstrap/operator-only; runtime access must use scoped non-master application keys.
 
-- bucket: `saga-v2-faresmohamed260-1207062480`
-- region: `us-east-005`
-- endpoint: `https://s3.us-east-005.backblazeb2.com`
+### Modal
 
-The master credential remains bootstrap/operator-only. Runtime access must use scoped non-master application keys.
-
-### Analysis runtime
-
-`services/analysis-worker/` is the active v2 analysis control-plane runtime.
-
-The `ops/phase2-hosted-proof` branch contains experimental Modal/xCoRe qualification work from before the owner reset. It is **not authoritative and must not be merged as the text-analysis runtime**. Modal is now reserved for image/media generation.
+Modal is reserved for image/media generation. The old `ops/phase2-hosted-proof` text-analysis experiment is non-authoritative and must not be revived as the production NLP runtime.
 
 ### Vercel
 
-Dedicated project:
-
-- project: `saga`
-- root: `apps/web`
-- current temporary production alias: `https://saga-pi-two.vercel.app`
-
-Automatic Git-triggered deployments are disabled.
-
-**Deployment rule:** before any Vercel deployment, state why it is needed, Preview vs Production, and exact commit/SHA, then obtain fresh explicit owner approval. The 2026-09-12 analysis reset does not authorize a Vercel deployment.
+Dedicated project `saga`, root `apps/web`. Automatic Git-triggered deployments are disabled. Before any Preview or Production deploy, state reason, deployment type and exact SHA, then obtain fresh explicit owner approval.
 
 ## Current Execution Order
 
-1. merge the Phase-3 local-first contract/governance update;
-2. create a fresh Phase-3A implementation branch from the resulting `main`;
-3. build provider adapters + resource instrumentation before changing production analysis policy;
-4. benchmark BookNLP-small, GLiNER and coreference/dialogue/event alternatives through common S.A.G.A. contracts;
-5. choose the cheapest acceptable defaults and explicit escalation conditions from measurements;
-6. wire the adopted local provider stack into the durable worker;
-7. prove one real whole-book queued run with paid APIs and Modal text inference disabled;
-8. use those measurements to specify the next Event / State / Timeline Narrative Graph phase.
+1. verify live `main`, active branch/PR state and issue #185;
+2. read the mandatory governance/Phase-3 docs plus `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`;
+3. continue from `v2/phase-3a-cruel-prince-analysis-baseline` instead of rebuilding the scene foundation;
+4. review the 21-commit scene slice, fix benchmark-integrity issues if any, and open/qualify a PR when appropriate;
+5. once private EPUBs are reachable, generate scene annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS first and annotate representative chapter types;
+6. compare structural, lexical/local semantic and later licensed local model candidates using exact + relaxed scene metrics and resource measurements;
+7. after scene segmentation has a measured baseline, proceed independently to dialogue/speaker, event/participant, location/entity and tension experiments;
+8. choose production defaults only from real primary-suite evidence, repeatability, resource cost, failure modes, maintainability and licensing;
+9. wire adopted local providers into the durable worker only after benchmark evidence justifies them;
+10. use measured Phase-3 evidence to specify the later Event / State / Timeline Narrative Graph contract.
 
 ## Working Convention
 
@@ -246,7 +233,9 @@ Every substantial session starts from:
 3. `docs/README.md`
 4. `docs/DECISIONS.md`
 5. `docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
-6. `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
-7. other relevant `docs/v2/` contracts
+6. `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
+7. `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
+8. `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
+9. relevant active experiment docs such as `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`
 
 GitHub is authoritative. Chat history is secondary context only.
