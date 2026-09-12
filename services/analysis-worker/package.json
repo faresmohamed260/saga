@@ -18,6 +18,8 @@
     "benchmark:scene-score": "tsx src/evaluation/scene-boundary-cli.ts",
     "benchmark:dialogue-deterministic": "tsx src/evaluation/dialogue-deterministic-cli.ts",
     "benchmark:dialogue-score": "tsx src/evaluation/dialogue-score-cli.ts",
+    "benchmark:event-deterministic": "tsx src/evaluation/event-deterministic-cli.ts",
+    "benchmark:event-score": "tsx src/evaluation/event-score-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
