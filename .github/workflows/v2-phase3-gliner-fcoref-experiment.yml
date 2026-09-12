@@ -1,0 +1,139 @@
+name: Phase 3 GLiNER + F-Coref benchmark experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-gliner-fcoref-benchmark
+    paths:
+      - ".github/workflows/v2-phase3-gliner-fcoref-experiment.yml"
+      - "services/analysis-worker/benchmarks/run_gliner_fcoref_litbank.py"
+      - "services/analysis-worker/src/evaluation/gliner-fcoref-litbank-cli.ts"
+      - "services/analysis-worker/package.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-phase3-gliner-fcoref-real-benchmark
+  cancel-in-progress: true
+
+jobs:
+  five-document-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install pinned CPU candidate environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install \
+            "transformers==4.51.3" \
+            "huggingface_hub==0.36.2" \
+            "numpy==1.26.4" \
+            "spacy==3.7.5" \
+            "datasets==2.21.0" \
+            "scipy==1.14.1" \
+            "sentencepiece==0.2.0" \
+            "safetensors==0.5.3" \
+            "tqdm==4.70.1"
+          python -m pip install --no-deps "git+https://github.com/urchade/GLiNER.git@cf9e5f7d9fb99158b592132a9ec7cbfabb43a9a0"
+          python -m pip install --no-deps "git+https://github.com/Digital-Insight-Technologies-Ltd/fastcoref.git@8888e51d97d4818a25dd5f5d8b541d397fad9362"
+          python - <<'PY'
+          import importlib.metadata
+          for package in ["gliner", "fastcoref", "torch", "transformers", "huggingface_hub", "spacy", "datasets"]:
+              print(f"{package}={importlib.metadata.version(package)}")
+          PY
+
+      - name: Run real GLiNER and F-Coref on five LitBank documents
+        run: >-
+          python benchmarks/run_gliner_fcoref_litbank.py
+          --litbank-root ../../external/litbank
+          --output-root evaluation-artifacts/gliner-fcoref-raw
+          --metadata-out evaluation-artifacts/gliner-fcoref-run-metadata.json
+          --limit 5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck evaluator
+        run: npm run typecheck
+
+      - name: Run deterministic worker tests
+        run: npm test
+
+      - name: Evaluate component and combined identity quality
+        run: >-
+          npm run benchmark:gliner-fcoref-litbank --
+          --litbank-root ../../external/litbank
+          --raw-root evaluation-artifacts/gliner-fcoref-raw
+          --out-dir evaluation-artifacts/gliner-fcoref-reports
+          --limit 5
+
+      - name: Publish experiment summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const runtime = JSON.parse(fs.readFileSync("evaluation-artifacts/gliner-fcoref-run-metadata.json", "utf8"));
+          const gliner = JSON.parse(fs.readFileSync("evaluation-artifacts/gliner-fcoref-reports/gliner-span.json", "utf8"));
+          const coref = JSON.parse(fs.readFileSync("evaluation-artifacts/gliner-fcoref-reports/fcoref-oracle-mentions.json", "utf8"));
+          const combined = JSON.parse(fs.readFileSync("evaluation-artifacts/gliner-fcoref-reports/gliner-fcoref-combined.json", "utf8"));
+          const gm = gliner.aggregate.metrics;
+          const fm = coref.aggregate.metrics;
+          const cm = combined.aggregate.metrics;
+          console.log("## Phase 3 GLiNER-small-v2.1 + F-Coref five-document smoke");
+          console.log("");
+          console.log(`- completed/failed: ${combined.dataset.completedDocumentCount}/${combined.dataset.failedDocumentCount}`);
+          console.log(`- GLiNER person span precision/recall: ${gm.personSpanPrecision.toFixed(4)} / ${gm.personSpanRecall.toFixed(4)}`);
+          console.log(`- GLiNER proper-person precision/recall: ${gm.properPersonSpanPrecision.toFixed(4)} / ${gm.properPersonSpanRecall.toFixed(4)}`);
+          console.log(`- F-Coref oracle-mention canonical precision/recall: ${fm.canonicalPrecision.toFixed(4)} / ${fm.canonicalRecall.toFixed(4)}`);
+          console.log(`- F-Coref oracle-mention merge rate: ${fm.incorrectMergeRate.toFixed(4)}`);
+          console.log(`- Combined canonical precision/recall: ${cm.canonicalPrecision.toFixed(4)} / ${cm.canonicalRecall.toFixed(4)}`);
+          console.log(`- Combined merge/contamination: ${cm.incorrectMergeRate.toFixed(4)} / ${cm.contaminatedCanonicalRate.toFixed(4)}`);
+          console.log(`- Combined linked mention precision/recall: ${cm.linkedMentionPrecision.toFixed(4)} / ${cm.linkedMentionRecall.toFixed(4)}`);
+          console.log(`- Combined fingerprint: \`${combined.aggregateOutputFingerprint}\``);
+          console.log(`- Runtime: ${runtime.wallClockSeconds.toFixed(2)} s; init: ${runtime.initializationSeconds.toFixed(2)} s`);
+          console.log(`- Peak RSS: ${runtime.peakResidentMemoryMb.toFixed(1)} MiB`);
+          console.log(`- Model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          EOF
+
+      - name: Upload experiment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-gliner-fcoref-smoke
+          path: |
+            services/analysis-worker/evaluation-artifacts/gliner-fcoref-run-metadata.json
+            services/analysis-worker/evaluation-artifacts/gliner-fcoref-reports/*.json
+          if-no-files-found: error
+          retention-days: 90
