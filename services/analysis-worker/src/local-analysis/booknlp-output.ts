@@ -111,21 +111,23 @@ function structuralLocatorForSpan(sections: NormalizedSection[], startOffset: nu
 function parseTokens(tokensTsv: string, normalizedText: string) {
   const rows = parseTsv(tokensTsv, TOKEN_HEADERS, "tokens");
   const sourceLength = codePointLength(normalizedText);
-  const tokens = rows.map<BookNlpToken>((row, index) => {
+  const tokens = rows.map<BookNlpToken>((row) => {
     const tokenId = parseNonNegativeInteger(row.token_ID_within_document!, "token_ID_within_document");
     const startOffset = parseNonNegativeInteger(row.byte_onset!, "byte_onset");
     const endOffset = parseNonNegativeInteger(row.byte_offset!, "byte_offset");
     if (endOffset <= startOffset || endOffset > sourceLength) throw new Error(`booknlp_token_span_out_of_range:${tokenId}`);
 
     const surface = codePointSlice(normalizedText, startOffset, endOffset);
+    const providerWord = row.word!;
     if (surface.length === 0) throw new Error(`booknlp_token_empty_surface:${tokenId}`);
+    if (surface !== providerWord) throw new Error(`booknlp_token_source_mismatch:${tokenId}`);
 
     return {
       paragraphId: parseNonNegativeInteger(row.paragraph_ID!, "paragraph_ID"),
       sentenceId: parseNonNegativeInteger(row.sentence_ID!, "sentence_ID"),
       tokenIdWithinSentence: parseNonNegativeInteger(row.token_ID_within_sentence!, "token_ID_within_sentence"),
       tokenId,
-      providerWord: row.word!,
+      providerWord,
       lemma: row.lemma!,
       startOffset,
       endOffset,
