@@ -10,7 +10,8 @@ For substantial current work, read in this order:
 2. `../PROJECT.md`
 3. `DECISIONS.md`
 4. the active phase contract referenced by `PROJECT.md`
-5. the relevant `v2/` architecture document
+5. any active owner-directed phase amendment
+6. the relevant `v2/` architecture document
 
 GitHub is authoritative. Do not reconstruct project state from chat history when the repository can establish it.
 
@@ -33,6 +34,10 @@ Authoritative contract:
 
 - `phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
 
+Active owner-directed benchmark-corpus amendment:
+
+- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` — contemporary/private fiction is the primary product qualification corpus; LitBank is secondary public regression evidence.
+
 Authoritative analysis architecture:
 
 - `v2/ANALYSIS_ARCHITECTURE_2026.md`
@@ -49,6 +54,8 @@ Owner decisions D-026 through D-030 require:
 - whole-book resource accounting as part of provider selection;
 - an outbound-only local analysis worker using the existing Supabase durable queue and B2 storage boundaries;
 - model/provider output treated as evidence, while deterministic S.A.G.A. policy owns canonical product truth.
+
+The Phase-3 corpus amendment additionally requires that production provider selection be judged primarily on the private modern-fiction suite built around Harry Potter, The Cruel Prince, Caraval, and ACOTAR. LitBank remains useful for reproducible gold metrics but cannot by itself promote a provider.
 
 The governing analysis cascade is:
 
@@ -72,6 +79,7 @@ Do not repeatedly pass a full raw novel through a large generative model merely 
 - `v2/UI_SYSTEM.md` — Narrative Desk UI/UX/render-review rules
 - `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity/account/admin contract
 - `phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md` — active Phase-3 contract
+- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` — active Phase-3 corpus-priority amendment
 - `operations/VERCEL_DEPLOYMENT_POLICY.md` — manual-only Vercel deployment rule
 
 ## Active v2 Code
@@ -125,7 +133,7 @@ Validation records:
 - non-person quarantine rate `1.0000`
 - cluster purity `1.0000`
 
-This measures S.A.G.A. resolver policy under oracle evidence, not production-provider quality.
+This measures S.A.G.A. resolver policy under oracle evidence, not production-provider quality and not product acceptance on modern fiction.
 
 ## Phase 3 Immediate Benchmark Candidates
 
