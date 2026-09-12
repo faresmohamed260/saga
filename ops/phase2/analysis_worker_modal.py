@@ -15,7 +15,10 @@ image = (
     .apt_install("ca-certificates")
     .add_local_dir("services/analysis-worker", remote_path=WORKER_DIR, copy=True)
     .workdir(WORKER_DIR)
-    .run_commands("npm ci")
+    # The approved worker package intentionally has exact direct dependency pins
+    # but no service-local package-lock.json. Do not mutate the qualified worker
+    # tree merely to satisfy `npm ci`; install from its pinned manifest instead.
+    .run_commands("npm install --package-lock=false --no-audit --no-fund")
     .env(
         {
             "SAGA_WORKER_ONCE": "1",
