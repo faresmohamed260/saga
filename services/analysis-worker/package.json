@@ -14,6 +14,7 @@
     "benchmark:primary-fiction-regression": "tsx src/evaluation/primary-fiction-regression-cli.ts",
     "benchmark:scene-annotate": "tsx src/evaluation/scene-annotation-cli.ts",
     "benchmark:scene-structural": "tsx src/evaluation/scene-structural-cli.ts",
+    "benchmark:scene-lexical": "tsx src/evaluation/scene-lexical-cli.ts",
     "benchmark:scene-score": "tsx src/evaluation/scene-boundary-cli.ts",
     "worker": "tsx src/worker.ts"
   },
