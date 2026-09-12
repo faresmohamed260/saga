@@ -78,6 +78,47 @@ Initial smoke configuration:
 
 The chunking/threshold/label set are configuration, not hidden tuning. Any change after seeing results becomes a separately recorded experiment.
 
+## Environment qualification attempts
+
+### Attempt 1 — initial pinned environment
+
+GitHub Actions run: `34704189734`
+
+Result: **FAILED before model inference**.
+
+Both pinned code packages installed successfully, but importing `fastcoref` reached spaCy and failed because the bounded environment did not contain `click`:
+
+```text
+ModuleNotFoundError: No module named 'click'
+```
+
+Classification: benchmark-environment configuration failure. No model-quality evidence was produced. The next attempt added only `click==8.1.7`; model revisions, labels, threshold, chunking and S.A.G.A. identity policy were unchanged.
+
+### Attempt 2 — Click pinned
+
+GitHub Actions run: `34704312565`
+S.A.G.A. head: `602c37418ff79cc2239f12c23f43f7f802132207`
+
+Result: **FAILED during GLiNER tokenizer initialization before document inference**.
+
+The run progressed further than Attempt 1:
+
+- GLiNER `0.2.29` installed from the exact pinned code commit;
+- fastcoref `2.1.6` installed from the exact pinned code commit;
+- `click==8.1.7` resolved correctly;
+- both pinned Hugging Face model snapshots downloaded;
+- GLiNER began loading `UniEncoderSpanGLiNER`.
+
+Transformers' DeBERTa-v2 tokenizer conversion then failed because the bounded environment did not contain the protobuf runtime:
+
+```text
+ImportError: DebertaV2Converter requires the protobuf library but it was not found in your environment.
+```
+
+Classification: benchmark-environment configuration failure. No document was processed and no quality metric was produced.
+
+The next attempt pins `protobuf==5.29.6`, a maintained non-yanked 5.29.x release compatible with Python 3.10, and changes nothing about the candidate model/configuration or S.A.G.A. resolver policy.
+
 ## Promotion sequence
 
 1. five-document environment/offset/quality smoke;
