@@ -32,8 +32,8 @@ Durable owner decisions D-026 through D-030 require local-first, subscription-fr
 
 At the time of this handoff, merged `main` is:
 
-- `d029e465bc37d738debd1ebc8d5d831ab9249661`
-- PR #201 — merged the source-neutral dialogue/speaker benchmark foundation after exact-head qualification
+- `0b638058f355c9e0610b7d13b9364948e4aa003f`
+- PR #204 — merged the source-neutral event-candidate/participant benchmark foundation after exact-head qualification
 
 Always verify live GitHub state before continuing. This SHA is a handoff checkpoint, not a substitute for checking newer commits/PRs.
 
@@ -149,6 +149,27 @@ The Tier-0 baseline intentionally remains unresolved where evidence is weak. Pro
 
 **No dialogue/speaker method is adopted yet.** Private-suite qualification is still required.
 
+### Event candidate / participant benchmark foundation
+
+PR #204 / merge `0b638058f355c9e0610b7d13b9364948e4aa003f` merged the first provider-neutral event-trigger/participant measurement layer. Exact head `6a8b39b2d1e4461a420e2ecb0122cba1fb7fbbc2` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
+
+It provides:
+
+- `docs/experiments/EVENT_CANDIDATE_BENCHMARK.md`;
+- provider-neutral exact event-trigger reference/prediction/evaluation contracts;
+- exact Unicode code-point source anchors and deterministic semantic fingerprints;
+- trigger precision/recall/F1;
+- participant grounding precision/recall/F1 over canonical character keys with coarse actor/patient/other roles;
+- duplicate and unsupported-candidate rates;
+- end-to-end participant recall that penalizes missed event triggers;
+- explicit unknown-participant gold that remains unscored rather than becoming fake labels;
+- a dependency-free lexical event floor with bounded character attachment that does not cross sentence-ending punctuation;
+- deterministic/adversarial tests and prediction/scoring CLIs.
+
+The merged Tier-0 implementation is deliberately named a **dependency-free lexical floor**, not the final dependency/verb baseline. POS/dependency-aware extraction, BookNLP event evidence, stronger participant grounding, non-character participants, negation/modality/realis and combined candidate stabilization remain measured challengers.
+
+**No event method is adopted yet.** Private-suite qualification is still required.
+
 ## Private EPUB Availability
 
 The actual user-owned primary-suite EPUB binaries remain unavailable to the current execution environment.
@@ -178,14 +199,15 @@ The old graduation prototype processed the complete *The Cruel Prince* and repor
 ## Current Execution Order
 
 1. verify live `main`, PR/issue state and repository governance before every new implementation slice;
-2. while primary EPUBs are unavailable, continue source-neutral Phase-3A benchmark/evidence foundations that do not pretend to establish product quality;
-3. next source-neutral slice: event-candidate/participant evaluation contracts and a conservative deterministic verb-candidate floor, while leaving dependency-aware and BookNLP event challengers explicit;
-4. when private EPUBs become reachable, create scene and dialogue annotation workspaces first for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score the merged baselines;
-5. test stronger permissively licensed local candidates only where cheaper tiers leave a measured quality gap;
-6. adopt no scene, speaker, identity or event provider without primary-suite evidence, repeatability, resource cost, failure-mode review and production-compatible licensing;
-7. after measured first-pass evidence stacks exist, continue with locations/entities, tension, relationships/state, timeline and causality;
-8. wire adopted local providers into the durable worker only after benchmark evidence justifies them;
-9. use measured Phase-3 evidence to specify the later Event / State / Timeline Narrative Graph contract.
+2. keep the merged identity/scene/dialogue/event benchmark contracts provider-neutral and do not treat their Tier-0 floors as product-qualified methods;
+3. while private EPUBs are unavailable, make the local literary-NLP execution boundary real behind the existing TypeScript worker: prefer a narrow subprocess or loopback contract with exact fingerprint/offset validation and model-light CI fixtures;
+4. use that boundary to benchmark dependency-aware dialogue/event challengers and BookNLP speaker/event evidence without leaking provider-specific records into product tables;
+5. when private EPUBs become reachable, create scene/dialogue/event annotation workspaces first for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score the merged baselines/challengers;
+6. test stronger permissively licensed local candidates only where cheaper tiers leave a measured quality gap;
+7. adopt no scene, speaker, identity or event provider without primary-suite evidence, repeatability, resource cost, failure-mode review and production-compatible licensing;
+8. after measured first-pass evidence stacks exist, continue with locations/entities, tension, relationships/state, timeline and causality;
+9. wire adopted local providers into durable application jobs only after benchmark evidence justifies them;
+10. use measured Phase-3 evidence to specify the later Event / State / Timeline Narrative Graph contract.
 
 ## Working Convention
 
@@ -199,6 +221,6 @@ Every substantial session starts from:
 6. `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
 7. `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
 8. `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
-9. relevant active experiment docs such as `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md` and `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`
+9. relevant active experiment docs such as `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`, `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`, and `docs/experiments/EVENT_CANDIDATE_BENCHMARK.md`
 
 GitHub is authoritative. Chat history is secondary context only.
