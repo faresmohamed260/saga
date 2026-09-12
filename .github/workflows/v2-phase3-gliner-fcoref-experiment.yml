@@ -52,6 +52,7 @@ jobs:
           python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
           python -m pip install \
             "click==8.1.7" \
+            "protobuf==5.29.6" \
             "transformers==4.51.3" \
             "huggingface_hub==0.36.2" \
             "numpy==1.26.4" \
@@ -65,7 +66,7 @@ jobs:
           python -m pip install --no-deps "git+https://github.com/Digital-Insight-Technologies-Ltd/fastcoref.git@8888e51d97d4818a25dd5f5d8b541d397fad9362"
           python - <<'PY'
           import importlib.metadata
-          for package in ["gliner", "fastcoref", "click", "torch", "transformers", "huggingface_hub", "spacy", "datasets"]:
+          for package in ["gliner", "fastcoref", "click", "protobuf", "torch", "transformers", "huggingface_hub", "spacy", "datasets"]:
               print(f"{package}={importlib.metadata.version(package)}")
           PY
 
