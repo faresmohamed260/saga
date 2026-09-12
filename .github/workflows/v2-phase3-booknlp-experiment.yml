@@ -51,12 +51,12 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
-          python -m pip install "spacy==3.7.5" "transformers==4.43.4"
+          python -m pip install "click==8.1.7" "spacy==3.7.5" "transformers==4.43.4"
           python -m pip install --no-deps "git+https://github.com/Plazmius/booknlp.git@8875a1b616d764b7d13d1e30e9949cc21ca303c1"
           python -m spacy download en_core_web_sm
           python - <<'PY'
           import importlib.metadata
-          for package in ["booknlp", "spacy", "torch", "tensorflow", "transformers"]:
+          for package in ["booknlp", "click", "spacy", "torch", "tensorflow", "transformers"]:
               try:
                   print(f"{package}={importlib.metadata.version(package)}")
               except importlib.metadata.PackageNotFoundError:
