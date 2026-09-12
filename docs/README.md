@@ -31,60 +31,54 @@ GitHub is authoritative. Do not reconstruct project state from chat history when
 
 **Phase 3 — Local-First Narrative Analysis Rebaseline: ACTIVE.**
 
-Authoritative contract:
+Authoritative contract and amendment:
 
 - `phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
+- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
 
-Active owner-directed benchmark-corpus amendment:
-
-- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` — contemporary/private fiction is the primary product qualification corpus; LitBank is secondary public regression evidence.
-
-Authoritative analysis architecture:
+Authoritative analysis architecture and current state:
 
 - `v2/ANALYSIS_ARCHITECTURE_2026.md`
-
-Current detailed handoff:
-
 - `validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
-
-Phase 2 remains the durable application/control-plane foundation. Its original plan to prove a permanent hosted text worker/provider is no longer the architecture target; end-to-end acceptance moves to the local-first worker path.
 
 ## Latest Phase 3A Progress
 
-Merged work now includes:
+Merged work includes:
 
 - benchmark-before-adoption experiment governance;
 - BookNLP-small primary-identity evaluation and rejection for that role;
 - GLiNER/F-Coref component smoke evidence;
 - provider-neutral whole-book benchmark infrastructure;
 - the owner-directed private primary fiction suite;
-- restored real-book identity regressions for Harry Potter, The Cruel Prince, Caraval and ACOFAS.
+- restored real-book identity regressions for Harry Potter, The Cruel Prince, Caraval and ACOFAS;
+- the first provider-neutral scene-segmentation benchmark foundation.
 
 Important merged checkpoints:
 
 - PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` — whole-book benchmark foundation + primary private fiction corpus;
-- PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` — primary-fiction identity regression evaluator.
+- PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` — primary-fiction identity regression evaluator;
+- PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` — historical narrative breadth reference + scene annotation/evaluation + structural/lexical scene baselines.
 
-### Active unmerged scene-analysis branch
+### Scene benchmark foundation now on `main`
 
-Do not recreate this work. Continue from:
-
-- branch `v2/phase-3a-cruel-prince-analysis-baseline`;
-- handoff head `cc28f37270c389f7be288f48245105d4f9fdefc7`.
-
-At that head the branch was 21 commits ahead of the merged checkpoint and all exact-head checks were green.
-
-It already contains:
+The merged scene slice contains:
 
 - `experiments/2026-09-12_CRUEL_PRINCE_HISTORICAL_ANALYSIS_BASELINE.md`;
 - `experiments/SCENE_SEGMENTATION_BENCHMARK.md`;
 - scene annotation workspace/CLI;
 - exact + relaxed scene-boundary evaluator/CLI;
-- structural scene baseline/CLI;
+- deterministic structural scene baseline/CLI;
 - lexical scene-change baseline/CLI;
 - deterministic tests for the scene benchmark stack.
 
-No scene method has been adopted yet.
+Pre-merge review hardened benchmark integrity in two places:
+
+- tolerant one-to-one boundary matching now deterministically maximizes the number of valid matches before minimizing paragraph error rather than using a greedy distance-first assignment;
+- selected annotation workspaces cannot be finalized while any selected section remains pending.
+
+PR #193 exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility before merge.
+
+**No scene method has been adopted yet.** Primary-suite manual annotations and direct candidate measurements are still required.
 
 ## Locked Analysis Direction
 
@@ -96,8 +90,6 @@ Owner decisions D-026 through D-030 require:
 - whole-book resource accounting as part of provider selection;
 - an outbound-only local analysis worker using the existing Supabase durable queue and B2 storage boundaries;
 - model/provider output treated as evidence, while deterministic S.A.G.A. policy owns canonical product truth.
-
-The corpus amendment additionally requires that production provider selection be judged primarily on the private modern-fiction suite built around Harry Potter, The Cruel Prince, Caraval and ACOTAR. LitBank remains useful for reproducible gold metrics but cannot by itself promote a provider.
 
 The governing analysis cascade is:
 
@@ -125,7 +117,7 @@ Primary-suite metadata and protocols:
 - `experiments/WHOLE_BOOK_BENCHMARK.md`;
 - `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`.
 
-The actual user-owned EPUBs are currently not available through ChatGPT File Library, and the historical remote machine was not online through the connected desktop integration at handoff. This is a source-availability blocker for real primary-suite runs, not a reason to substitute public-domain books as the production gate.
+A 2026-09-12 recheck found historical File Library notes/scripts that reference the books, but not the actual EPUB binaries. Remote Desktop Commander also returned no connected devices. This remains a source-availability blocker for real primary-suite scene annotations/runs, not a reason to substitute public-domain books as the product gate.
 
 ## Active v2 Architecture / Product Contracts
 
@@ -159,15 +151,12 @@ The actual user-owned EPUBs are currently not available through ChatGPT File Lib
 - `../services/analysis-worker/` — active v2 durable analysis-worker/control-plane runtime
 - `../services/analysis-worker/src/ingestion/` — deterministic TXT/EPUB normalization
 - `../services/analysis-worker/src/identity/` — provider-neutral evidence + precision-first resolver
-- `../services/analysis-worker/src/evaluation/` — benchmark/evaluation contracts
-- `../services/analysis-worker/src/runtime/` — Supabase/B2/config boundaries
+- `../services/analysis-worker/src/evaluation/` — benchmark/evaluation contracts, including merged scene tooling
 - `../services/analysis-worker/tests/` — deterministic ingestion/identity/evaluation fixtures
 
 Phase 3 should extend these v2-owned surfaces or add a narrow v2 local-NLP sidecar. Do not add new v2 analysis behavior to historical pre-v2 runtime packages.
 
-## Phase 2 Baseline Evidence
-
-Validation records:
+## Phase 2 / 3 Validation Records
 
 - `validation/PHASE_V2_2A_PRODUCT_DATA_FOUNDATION_2026-09-12.md`
 - `validation/PHASE_V2_2B_SOURCE_INGESTION_2026-09-12.md`
@@ -180,18 +169,7 @@ The 100-document LitBank oracle-evidence result remains a useful resolver-policy
 
 ## Historical Full-Analysis Reference
 
-The recovered graduation-project *Cruel Prince* run reported:
-
-- 111,351 words;
-- 35 chapters;
-- 135 scenes;
-- 53 characters;
-- 55 locations;
-- 24 key causal events;
-- average tension 5.49/10;
-- climax chapter 16.
-
-These are reference/coverage observations only. They are not gold thresholds.
+The recovered graduation-project *Cruel Prince* run reported 111,351 words, 35 chapters, 135 scenes, 53 characters, 55 locations, 24 key causal events, average tension 5.49/10 and climax chapter 16. These are reference/coverage observations only, not gold thresholds.
 
 ## Hosted Resource Reality
 
@@ -211,17 +189,19 @@ The permanent text-analysis target is local-first. `ops/phase2-hosted-proof` is 
 
 Dedicated project `saga`, root `apps/web`, with Git-triggered deployments disabled. Any Preview or Production deployment requires fresh explicit owner approval after stating reason, deployment type and exact SHA.
 
+## Immediate Continuation
+
+1. Verify live repository state before each new slice.
+2. When lawful primary EPUB access returns, create scene annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS first.
+3. Annotate representative chapters across dialogue, action, travel, explicit/subtle temporal changes, flashbacks, focal changes, decorative breaks and long continuous scenes.
+4. Compare the merged structural and lexical baselines first using exact + relaxed metrics and resource measurements.
+5. Test stronger local scene candidates only if cheaper tiers leave a measurable gap; adopt nothing before primary-suite evidence.
+6. After a measured scene baseline exists, proceed to dialogue/speaker, event/participant, location/entity, tension, relationships/state, timeline and causality experiments.
+7. Keep adoption/rejection records and negative experiments durable in the repository.
+
 ## Historical v1 References
 
-Historical documents such as:
-
-- `analysis_foundation_runtime.md`
-- `canon_extraction_runtime.md`
-- `character_world_modeling_runtime.md`
-
-are evidence about prior quality, breadth, latency and failure modes, but their old LangGraph/provider/package topology is not active v2 architecture.
-
-Important historical lesson: cloud-heavy full-book extraction repeatedly retransmitted overlapping context and provider latency dominated. Phase 3 replaces that pattern with deterministic narrowing, specialized local models and bounded reasoning.
+Historical documents such as `analysis_foundation_runtime.md`, `canon_extraction_runtime.md`, and `character_world_modeling_runtime.md` remain evidence about prior quality, breadth, latency and failure modes, but their old LangGraph/provider/package topology is not active v2 architecture.
 
 The clean pre-v2 boundary is `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`.
 
