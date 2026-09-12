@@ -16,7 +16,7 @@ from typing import Any
 B2_AUTHORIZE_URL = "https://api.backblazeb2.com/b2api/v4/b2_authorize_account"
 B2_KEY_NAME = "saga-phase2-worker-modal"
 B2_NAME_PREFIX = "sources/"
-SUPABASE_WORKER_KEY_NAME = "saga-phase2-analysis-worker"
+SUPABASE_WORKER_KEY_NAME = "saga_phase2_analysis_worker"
 MODAL_PROVIDER_SECRET = "saga-phase2-xcore-provider"
 MODAL_WORKER_SECRET = "saga-phase2-analysis-worker-runtime"
 
