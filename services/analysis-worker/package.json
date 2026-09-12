@@ -1,0 +1,23 @@
+{
+  "name": "saga-analysis-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit --pretty false --incremental false",
+    "test": "tsx --test tests/*.test.ts",
+    "quality": "npm run typecheck && npm test",
+    "worker": "tsx src/worker.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1116.0",
+    "@supabase/supabase-js": "2.112.4",
+    "fast-xml-parser": "5.11.1",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}

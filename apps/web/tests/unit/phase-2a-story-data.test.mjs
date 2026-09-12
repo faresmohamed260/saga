@@ -57,7 +57,7 @@ test("member story operations use the active account boundary plus session-scope
   assert.doesNotMatch(storyData, /service[_-]?role/i);
 });
 
-test("project creation is a server action with bounded validation and no upload shortcut", () => {
+test("project creation remains a bounded server action independent from source upload", () => {
   const actions = read("src/features/projects/actions.ts");
   const projectsPage = read("src/app/(app)/projects/page.tsx");
 
@@ -67,11 +67,10 @@ test("project creation is a server action with bounded validation and no upload 
   assert.match(actions, /project_created/);
   assert.match(projectsPage, /action=\{createProjectAction\}/);
   assert.match(projectsPage, /maxLength=\{160\}/);
-  assert.match(projectsPage, /Source upload and ingestion attach to this project in the next Phase 2 slice/);
   assert.doesNotMatch(projectsPage, /type="file"/);
 });
 
-test("Projects and Library render real private records while Phase 2B upload stays deferred", () => {
+test("Phase 2A project and result surfaces remain active while Phase 2B adds source intake", () => {
   const projectsPage = read("src/app/(app)/projects/page.tsx");
   const projectWorkspace = read("src/app/(app)/projects/[projectId]/page.tsx");
   const libraryPage = read("src/app/(app)/library/page.tsx");
@@ -83,8 +82,6 @@ test("Projects and Library render real private records while Phase 2B upload sta
   assert.match(projectWorkspace, /Characters/);
   assert.match(projectWorkspace, /Unresolved mentions will not be counted as canonicals/);
   assert.match(libraryPage, /listSagaSources/);
-  assert.match(libraryPage, /Uploading new UTF-8 text or EPUB files begins in Phase 2B/);
-  assert.doesNotMatch(`${projectWorkspace}\n${libraryPage}`, /createUploadUrl|<input[^>]+type="file"/i);
 });
 
 test("Phase 2A database contract exercises owner isolation and stale worker leases", () => {

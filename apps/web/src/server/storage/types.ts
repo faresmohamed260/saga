@@ -8,11 +8,13 @@ export type ObjectMetadata = {
   sizeBytes: number;
   contentType: string | null;
   etag: string | null;
+  metadata: Record<string, string>;
 };
 
 export type CreateUploadUrlInput = {
   key: string;
   contentType: string;
+  metadata?: Record<string, string>;
   expiresInSeconds?: number;
 };
 

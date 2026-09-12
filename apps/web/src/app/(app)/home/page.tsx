@@ -12,7 +12,7 @@ const workspaceLinks = [
   {
     href: "/library",
     title: "Library",
-    description: "Private source records and ingestion state live here. New text and EPUB uploads arrive in Phase 2B.",
+    description: "Private source records, upload verification, and deterministic ingestion state live here.",
     icon: BookOpen,
   },
   {
@@ -39,7 +39,7 @@ export default function HomePage() {
               Workspace
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--app-muted)]">
-              Projects now provide the private ownership boundary. Library reads real source records; adding new source files begins in Phase 2B.
+              Projects own your private story boundaries. Add UTF-8 text or EPUB sources from a project workspace; ingestion runs outside the web request.
             </p>
           </div>
         </div>
