@@ -30,7 +30,7 @@ image = (
     .uv_pip_install(
         f"modal=={MODAL_VERSION}",
         "fastapi[standard]==0.121.0",
-        "huggingface-hub==0.36.0",
+        "huggingface-hub==0.17.3",
         "spacy==3.7.5",
         f"git+https://github.com/SapienzaNLP/xcore.git@{XCORE_SOURCE_REVISION}",
         "torch==2.6.0",
