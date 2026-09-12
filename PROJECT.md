@@ -2,7 +2,7 @@
 
 S.A.G.A. is being rebuilt as a web-first storytelling-intelligence platform. The active architecture is the S.A.G.A. v2 rebuild; pre-v2 runtime material is historical/reference only unless a current v2 decision deliberately re-adopts an idea behind a v2-owned contract.
 
-This file is the short source-of-truth handoff for current work. For detailed Phase-3A evidence, read `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`.
+This file is the short source-of-truth handoff for current work. For detailed Phase-3 evidence, read `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`.
 
 ## Current Status
 
@@ -24,6 +24,7 @@ Authoritative Phase-3 documents:
 - `docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
 - `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
 - `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
+- `docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`
 - `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
 
 Durable owner decisions D-026 through D-030 require local-first, subscription-free text analysis; Modal media-only; a cost-aware evidence cascade; measurement-driven provider adoption; and local workers using the existing Supabase/B2 control plane.
@@ -32,8 +33,15 @@ Durable owner decisions D-026 through D-030 require local-first, subscription-fr
 
 At the time of this handoff, merged `main` is:
 
-- `0b638058f355c9e0610b7d13b9364948e4aa003f`
-- PR #204 — merged the source-neutral event-candidate/participant benchmark foundation after exact-head qualification
+- `c1dfa9f9e57545a7a3565b21e779f2514abacd04`
+- PR #207 — merged the first provider-neutral local literary-NLP subprocess execution/validation boundary after exact-head qualification
+
+Exact qualified PR head:
+
+- `551f22dd318740695a3e1922e56d79fcdcf09ecf`
+- Required Check Compatibility — success
+- SAGA v2 Analysis Worker CI — success
+- Backend Architecture CI — success
 
 Always verify live GitHub state before continuing. This SHA is a handoff checkpoint, not a substitute for checking newer commits/PRs.
 
@@ -111,64 +119,58 @@ PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` restored provider-neu
 
 ### Whole-book benchmark foundation
 
-PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` added a provider-neutral whole-book harness that records source SHA-256, provider/model/revision/license, runtime, RAM/VRAM, output size and semantic fingerprints without storing novel text.
+PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` added a provider-neutral whole-book harness recording source SHA-256, provider/model/revision/license, runtime, RAM/VRAM, output size and semantic fingerprints without storing novel text.
 
 ### Scene benchmark foundation
 
-PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` merged:
+PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` merged the recovered historical breadth reference, scene annotation workspace, exact and relaxed `±1 paragraph` evaluation, structural/lexical scene floors, and deterministic regression tests.
 
-- the recovered *Cruel Prince* historical breadth baseline as reference evidence, not gold truth;
-- `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`;
-- local-only scene annotation workspace + CLI;
-- source-anchored paragraph IDs;
-- exact and relaxed `±1 paragraph` boundary evaluation;
-- deterministic structural and lexical scene baselines;
-- deterministic regression tests.
-
-Pre-merge review fixed an undercounting greedy tolerant matcher and fail-open partial annotation finalization. Exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed all four required CI gates.
+Pre-merge review fixed an undercounting greedy tolerant matcher and fail-open partial annotation finalization. Exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
 
 **No scene-segmentation method is adopted yet.** Production selection remains blocked on measured primary-suite annotations.
 
 ### Dialogue/speaker benchmark foundation
 
-PR #201 / merge `d029e465bc37d738debd1ebc8d5d831ab9249661` merged the first source-neutral dialogue/speaker benchmark slice. Exact head `acf0b4cd5759901bb7a0aa65c802c4957413f9c9` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
+PR #201 / merge `d029e465bc37d738debd1ebc8d5d831ab9249661` merged provider-neutral exact quote/speaker evaluation plus a conservative deterministic speech-verb + already-resolved-character floor. Exact head `acf0b4cd5759901bb7a0aa65c802c4957413f9c9` passed all four then-active gates.
 
-It provides:
-
-- `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`;
-- provider-neutral exact quote-span reference/prediction/evaluation contracts;
-- paired curly/straight double-quote deterministic extraction;
-- a conservative speech-verb + already-resolved-character attribution sieve;
-- exact Unicode code-point source offsets and semantic fingerprints;
-- quote precision/recall/F1;
-- strict speaker accuracy, resolved-speaker accuracy, unresolved rate, cross-character contamination and end-to-end speaker recall;
-- explicit `known` / `unknown` / `ambiguous` gold-speaker semantics;
-- deterministic/adversarial tests and CLI entry points.
-
-The Tier-0 baseline intentionally remains unresolved where evidence is weak. Pronoun attribution, paragraph-spanning dialogue, nested quotation handling, dependency-aware attribution and BookNLP speaker evidence remain measured challengers.
+The Tier-0 baseline intentionally remains unresolved where evidence is weak. Pronoun attribution, paragraph-spanning/nested dialogue, dependency-aware attribution and BookNLP speaker evidence remain measured challengers.
 
 **No dialogue/speaker method is adopted yet.** Private-suite qualification is still required.
 
 ### Event candidate / participant benchmark foundation
 
-PR #204 / merge `0b638058f355c9e0610b7d13b9364948e4aa003f` merged the first provider-neutral event-trigger/participant measurement layer. Exact head `6a8b39b2d1e4461a420e2ecb0122cba1fb7fbbc2` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
+PR #204 / merge `0b638058f355c9e0610b7d13b9364948e4aa003f` merged provider-neutral exact event-trigger/participant evaluation plus a dependency-free lexical event floor. Exact head `6a8b39b2d1e4461a420e2ecb0122cba1fb7fbbc2` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
 
-It provides:
+The event evaluator records trigger precision/recall/F1, participant precision/recall/F1, duplicate and unsupported rates, exact Unicode source anchors and deterministic fingerprints. The lexical floor uses bounded already-resolved-character attachment and does not cross sentence-ending punctuation.
 
-- `docs/experiments/EVENT_CANDIDATE_BENCHMARK.md`;
-- provider-neutral exact event-trigger reference/prediction/evaluation contracts;
-- exact Unicode code-point source anchors and deterministic semantic fingerprints;
-- trigger precision/recall/F1;
-- participant grounding precision/recall/F1 over canonical character keys with coarse actor/patient/other roles;
-- duplicate and unsupported-candidate rates;
-- end-to-end participant recall that penalizes missed event triggers;
-- explicit unknown-participant gold that remains unscored rather than becoming fake labels;
-- a dependency-free lexical event floor with bounded character attachment that does not cross sentence-ending punctuation;
-- deterministic/adversarial tests and prediction/scoring CLIs.
-
-The merged Tier-0 implementation is deliberately named a **dependency-free lexical floor**, not the final dependency/verb baseline. POS/dependency-aware extraction, BookNLP event evidence, stronger participant grounding, non-character participants, negation/modality/realis and combined candidate stabilization remain measured challengers.
+The floor is deliberately **not** the final dependency/verb solution. POS/dependency-aware extraction, BookNLP event evidence, stronger participant grounding, non-character participants, negation/modality/realis and combined candidate stabilization remain open.
 
 **No event method is adopted yet.** Private-suite qualification is still required.
+
+## Phase 3B Local Runtime Foundation
+
+PR #207 / merge `c1dfa9f9e57545a7a3565b21e779f2514abacd04` merged the first generic local literary-NLP execution boundary.
+
+Merged behavior:
+
+- `LocalLiteraryEvidenceProvider` provider-neutral interface and health contract;
+- `saga-local-literary-subprocess-v1` one-request-per-process JSON protocol;
+- `health`, `analyze` and structured `error` responses;
+- `shell: false` process launch;
+- bounded stdin/stdout/stderr and execution timeout;
+- explicit retryable versus terminal provider error classification;
+- provider/configuration/normalized-input fingerprint matching;
+- exact Unicode code-point source-span validation for identity, entity, quote/speaker and event evidence;
+- structural-locator containment checks and duplicate evidence-ID rejection;
+- fail-closed malformed/partial payload parsing;
+- source code-point indexing built once per returned result to avoid repeated full-book rescans;
+- sanitized child-process environment so Supabase/B2/arbitrary SAGA worker secrets are not inherited ambiently;
+- model-light adversarial fixture tests only; no heavyweight model download in normal CI;
+- protocol/security/operational contract in `docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`.
+
+Review before merge hardened malformed response descriptors so they surface as explicit terminal provider errors rather than escaping as an unrelated validation exception.
+
+**This does not adopt subprocess as the permanent transport winner.** The repository still permits a loopback sidecar and should compare operational/runtime behavior after a real provider is exercised. It also does not create durable narrative-analysis jobs, promote BookNLP, or satisfy product quality.
 
 ## Private EPUB Availability
 
@@ -176,7 +178,7 @@ The actual user-owned primary-suite EPUB binaries remain unavailable to the curr
 
 A File Library recheck on 2026-09-12 found historical notes/scripts and paths but not the EPUB binaries. Remote Desktop Commander also returned no connected devices. Historical paths remain under `B:/Documents/PyCharm/graduationProject/uploads/...`.
 
-Do not replace the primary suite with public-domain novels because of this source-availability blocker. Continue source-neutral benchmark/evidence infrastructure where useful, then run the real books when lawful EPUB access returns.
+Do not replace the primary suite with public-domain novels because of this source-availability blocker. Continue source-neutral benchmark/runtime infrastructure where useful, then run the real books when lawful EPUB access returns.
 
 ## Recovered Historical Breadth Baseline
 
@@ -199,14 +201,14 @@ The old graduation prototype processed the complete *The Cruel Prince* and repor
 ## Current Execution Order
 
 1. verify live `main`, PR/issue state and repository governance before every new implementation slice;
-2. keep the merged identity/scene/dialogue/event benchmark contracts provider-neutral and do not treat their Tier-0 floors as product-qualified methods;
-3. while private EPUBs are unavailable, make the local literary-NLP execution boundary real behind the existing TypeScript worker: prefer a narrow subprocess or loopback contract with exact fingerprint/offset validation and model-light CI fixtures;
-4. use that boundary to benchmark dependency-aware dialogue/event challengers and BookNLP speaker/event evidence without leaking provider-specific records into product tables;
-5. when private EPUBs become reachable, create scene/dialogue/event annotation workspaces first for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score the merged baselines/challengers;
-6. test stronger permissively licensed local candidates only where cheaper tiers leave a measured quality gap;
-7. adopt no scene, speaker, identity or event provider without primary-suite evidence, repeatability, resource cost, failure-mode review and production-compatible licensing;
-8. after measured first-pass evidence stacks exist, continue with locations/entities, tension, relationships/state, timeline and causality;
-9. wire adopted local providers into durable application jobs only after benchmark evidence justifies them;
+2. keep identity/scene/dialogue/event benchmark contracts provider-neutral and do not treat Tier-0 floors as product-qualified methods;
+3. use the merged local provider boundary to instantiate a **real, explicit experiment wrapper** for a local literary-NLP challenger without adding model downloads to normal CI;
+4. prefer reusing the existing BookNLP TSV normalization for BookNLP speaker/event evidence rather than creating a second provider-specific evidence schema;
+5. record provider executable/model/revision/license/configuration fingerprints and runtime/resource measurements; do not wire a candidate into durable application jobs before benchmark evidence justifies it;
+6. compare one-shot subprocess versus persistent loopback operation only after real startup/runtime measurements make that comparison meaningful;
+7. when private EPUBs become reachable, create scene/dialogue/event annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score merged floors/challengers;
+8. adopt no scene, speaker, identity or event provider without primary-suite evidence, repeatability, resource cost, failure-mode review and production-compatible licensing;
+9. after measured first-pass evidence stacks exist, continue with locations/entities, tension, relationships/state, timeline and causality;
 10. use measured Phase-3 evidence to specify the later Event / State / Timeline Narrative Graph contract.
 
 ## Working Convention
@@ -220,7 +222,8 @@ Every substantial session starts from:
 5. `docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
 6. `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
 7. `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
-8. `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
-9. relevant active experiment docs such as `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`, `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`, and `docs/experiments/EVENT_CANDIDATE_BENCHMARK.md`
+8. `docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`
+9. `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
+10. relevant experiment docs such as `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`, `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`, and `docs/experiments/EVENT_CANDIDATE_BENCHMARK.md`
 
 GitHub is authoritative. Chat history is secondary context only.
