@@ -1,0 +1,160 @@
+name: Phase 2 xCoRe qualification provider deploy
+
+on:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - ops/phase2/xcore_provider.py
+      - .github/workflows/phase2-xcore-provider-deploy.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase2-xcore-provider-deploy
+  cancel-in-progress: false
+
+env:
+  APPROVED_APP_SHA: 696393fa6badb7e6f21850dbe0af0a4fee67a51e
+  MODAL_ACCOUNT: modal-44
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify approved worker tree remains unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$APPROVED_APP_SHA" -- services/analysis-worker
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned Modal CLI
+        run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Deploy pinned xCoRe provider and run authenticated smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_REVISION="$(git ls-remote https://huggingface.co/sapienzanlp/xcore-litbank HEAD | awk '{print $1}')"
+          test -n "$MODEL_REVISION"
+          export MODEL_REVISION
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import secrets
+          import subprocess
+          import sys
+          import tempfile
+          import urllib.request
+          from pathlib import Path
+
+          account_label = os.environ['MODAL_ACCOUNT']
+          payload = json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          rows = payload.get('accounts') if isinstance(payload, dict) else payload
+          if not isinstance(rows, list):
+              raise SystemExit('Modal token roster is invalid')
+          account = next((row for row in rows if isinstance(row, dict) and str(row.get('label') or row.get('name') or row.get('account')) == account_label), None)
+          if not account:
+              raise SystemExit(f'Modal account {account_label} is unavailable')
+          token_id = str(account.get('token_id') or '').strip()
+          token_secret = str(account.get('token_secret') or '').strip()
+          if not token_id or not token_secret:
+              raise SystemExit(f'Modal account {account_label} has no usable token pair')
+
+          env = dict(os.environ)
+          env['MODAL_TOKEN_ID'] = token_id
+          env['MODAL_TOKEN_SECRET'] = token_secret
+          env['SAGA_XCORE_MODEL_REVISION'] = os.environ['MODEL_REVISION']
+          bearer = secrets.token_urlsafe(48)
+
+          secret_file = Path(tempfile.mkstemp(prefix='saga-xcore-secret-', suffix='.json')[1])
+          try:
+              secret_file.write_text(json.dumps({'SAGA_IDENTITY_PROVIDER_TOKEN': bearer}), encoding='utf-8')
+              secret_file.chmod(0o600)
+              subprocess.run(
+                  ['modal', 'secret', 'create', '--force', '--from-json', str(secret_file), 'saga-phase2-xcore-provider'],
+                  env=env,
+                  check=True,
+              )
+          finally:
+              secret_file.unlink(missing_ok=True)
+
+          subprocess.run(['modal', 'deploy', 'ops/phase2/xcore_provider.py'], env=env, check=True)
+          url_code = (
+              "import modal; "
+              "fn=modal.Function.from_name('saga-phase2-xcore-provider','web'); "
+              "print(fn.get_web_url())"
+          )
+          resolved = subprocess.run([sys.executable, '-c', url_code], env=env, text=True, capture_output=True, check=True)
+          provider_url = resolved.stdout.strip().splitlines()[-1].rstrip('/') + '/'
+
+          with urllib.request.urlopen(provider_url + 'health', timeout=120) as response:
+              health = json.load(response)
+          if health.get('ready') is not True or health.get('model_revision') != os.environ['MODEL_REVISION']:
+              raise SystemExit(f'Provider health mismatch: {health}')
+
+          text = 'Alice entered the garden. She greeted Bob. Bob smiled at Alice.'
+          fingerprint = hashlib.sha256(text.encode('utf-8')).hexdigest()
+          body = json.dumps({
+              'normalizedInputFingerprint': fingerprint,
+              'normalizedText': text,
+              'sections': [{
+                  'stable_key': 'document:0',
+                  'ordinal': 0,
+                  'section_kind': 'document',
+                  'title': None,
+                  'source_locator': 'hosted-proof:smoke',
+                  'start_offset': 0,
+                  'end_offset': len(text),
+                  'normalized_text': text,
+              }],
+          }).encode('utf-8')
+          request = urllib.request.Request(
+              provider_url,
+              data=body,
+              method='POST',
+              headers={
+                  'Authorization': f'Bearer {bearer}',
+                  'Content-Type': 'application/json',
+              },
+          )
+          with urllib.request.urlopen(request, timeout=900) as response:
+              result = json.load(response)
+          mentions = result.get('mentions') if isinstance(result, dict) else None
+          if not isinstance(mentions, list) or not mentions:
+              raise SystemExit('xCoRe smoke returned no normalized mentions')
+          strong_names = [row for row in mentions if row.get('mentionKind') == 'proper_name' and row.get('entityType') == 'person' and row.get('personEvidence') == 'strong']
+          if not strong_names:
+              raise SystemExit(f'xCoRe smoke returned no strong PERSON proper-name evidence: {mentions[:8]}')
+
+          deployment = {
+              'provider': 'modal_xcore_litbank',
+              'model': 'sapienzanlp/xcore-litbank',
+              'modelRevision': os.environ['MODEL_REVISION'],
+              'adapterRevision': 'saga-xcore-spacy-adapter-v1',
+              'adapterCommit': os.environ['GITHUB_SHA'],
+              'modalAccount': account_label,
+              'providerUrl': provider_url,
+              'smokeMentionCount': len(mentions),
+              'strongNameCount': len(strong_names),
+              'license': 'CC-BY-NC-SA-4.0',
+              'qualificationOnly': True,
+          }
+          Path('provider-deployment.json').write_text(json.dumps(deployment, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(deployment, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase2-xcore-provider-deployment
+          path: provider-deployment.json
+          if-no-files-found: error
+          retention-days: 30
