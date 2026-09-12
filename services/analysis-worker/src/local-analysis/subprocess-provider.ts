@@ -144,6 +144,14 @@ function responseRecord(value: unknown) {
   return value as Record<string, unknown>;
 }
 
+function responseProviderDescriptor(value: unknown) {
+  try {
+    return validateProviderDescriptor(value);
+  } catch {
+    throw new LocalLiteraryProviderError("local_provider_invalid_descriptor", false);
+  }
+}
+
 function providerReportedError(row: Record<string, unknown>) {
   if (!row.error || typeof row.error !== "object" || Array.isArray(row.error)) {
     throw new LocalLiteraryProviderError("local_provider_invalid_error_response", false);
@@ -295,7 +303,7 @@ export class SubprocessLocalLiteraryEvidenceProvider implements LocalLiteraryEvi
     ) {
       throw new LocalLiteraryProviderError("local_provider_protocol_mismatch", false);
     }
-    const provider = validateProviderDescriptor(row.provider);
+    const provider = responseProviderDescriptor(row.provider);
     if (!sameProviderDescriptor(provider, this.descriptor)) {
       throw new LocalLiteraryProviderError("local_provider_descriptor_mismatch", false);
     }
