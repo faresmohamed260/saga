@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "saga-whole-book-suite-v1",
+  "suiteId": "primary-fiction-qualification-v1",
+  "purpose": "Primary whole-book qualification corpus for S.A.G.A. narrative analysis. Measure candidates on the modern fantasy/YA/romantasy books that historically exposed S.A.G.A.'s real identity-resolution failure modes rather than using public-domain literary benchmarks as the product acceptance target.",
+  "sourcePolicy": "All source books are user-owned/private copyrighted material. The repository stores metadata only. Operators provision the EPUBs outside the repository; every execution hashes the exact bytes used. Source text, extracted chapters, or reconstructive excerpts must never be committed or published in benchmark artifacts.",
+  "books": [
+    {
+      "id": "harry-potter-philosophers-stone",
+      "title": "Harry Potter and the Philosopher's Stone",
+      "sourceFile": "Harry Potter/1 Harry Potter & the Philosophers Stone.epub",
+      "sourceLocator": "private:user-owned:historical-saga-regression",
+      "tags": ["fantasy", "young-adult", "school", "honorifics", "family-surnames", "locations-groups", "alias-fragmentation"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "the-cruel-prince",
+      "title": "The Cruel Prince",
+      "sourceFile": "The Cruel Prince/The Cruel Prince.epub",
+      "sourceLocator": "private:user-owned:historical-saga-regression",
+      "tags": ["fantasy", "young-adult", "fae", "titles", "aliases", "nonhuman-personhood", "large-cast"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "caraval",
+      "title": "Caraval",
+      "sourceFile": "Caraval/Caraval.epub",
+      "sourceLocator": "private:user-owned:historical-saga-regression",
+      "tags": ["fantasy", "young-adult", "aliases", "titles", "identity-reveal", "location-name-confusion"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "acotar-1",
+      "title": "A Court of Thorns and Roses",
+      "sourceFile": "ACOTAR/A Court of Thorns and Roses.epub",
+      "sourceLocator": "private:user-owned:acotar-series",
+      "tags": ["romantasy", "fae", "courts", "titles", "species-groups", "relationship-heavy"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "acotar-2",
+      "title": "A Court of Mist and Fury",
+      "sourceFile": "ACOTAR/A Court of Mist and Fury.epub",
+      "sourceLocator": "private:user-owned:acotar-series",
+      "tags": ["romantasy", "fae", "courts", "titles", "aliases", "relationship-heavy"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "acotar-3",
+      "title": "A Court of Wings and Ruin",
+      "sourceFile": "ACOTAR/A Court of Wings and Ruin.epub",
+      "sourceLocator": "private:user-owned:acotar-series",
+      "tags": ["romantasy", "fae", "war", "large-cast", "courts", "species-groups"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "acotar-4-acofas",
+      "title": "A Court of Frost and Starlight",
+      "sourceFile": "ACOTAR/A Court of Frost and Starlight.epub",
+      "sourceLocator": "private:user-owned:historical-saga-regression",
+      "tags": ["romantasy", "fae", "courts", "titles", "aliases", "historical-regression-anchor"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    },
+    {
+      "id": "acotar-5-acosf",
+      "title": "A Court of Silver Flames",
+      "sourceFile": "ACOTAR/A Court of Silver Flames.epub",
+      "sourceLocator": "private:user-owned:acotar-series",
+      "tags": ["romantasy", "fae", "courts", "titles", "relationship-heavy", "large-cast"],
+      "licenseNote": "Copyrighted private evaluation source; do not commit, redistribute, or publish reconstructive outputs."
+    }
+  ]
+}
