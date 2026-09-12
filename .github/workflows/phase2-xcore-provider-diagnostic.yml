@@ -1,0 +1,44 @@
+name: Phase 2 xCoRe provider diagnostic
+
+on:
+  push:
+    branches:
+      - ops/phase2-hosted-proof
+    paths:
+      - .github/workflows/phase2-xcore-provider-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
+      MODAL_ACCOUNT: modal-44
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade "modal==1.4.2"
+      - name: Capture bounded provider logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          payload=json.loads(os.environ['SAGA_MODAL_TOKENS_JSON'])
+          rows=payload.get('accounts') if isinstance(payload,dict) else payload
+          account=next(row for row in rows if str(row.get('label') or row.get('name') or row.get('account')) == os.environ['MODAL_ACCOUNT'])
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:
+              f.write(f"MODAL_TOKEN_ID={account['token_id']}\n")
+              f.write(f"MODAL_TOKEN_SECRET={account['token_secret']}\n")
+          PY
+          set +e
+          timeout 25s modal app logs saga-phase2-xcore-provider --timestamps
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
+            exit "$code"
+          fi
