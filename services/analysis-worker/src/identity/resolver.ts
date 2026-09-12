@@ -134,6 +134,10 @@ function namesCompatible(a: SeedCandidate, b: SeedCandidate) {
 }
 
 function groupCompatible(group: SeedGroup, candidate: SeedCandidate) {
+  const anchors = group.seeds.filter((seed) => seed.compareTokens.length > 1);
+  if (anchors.length > 0) {
+    return anchors.every((anchor) => namesCompatible(anchor, candidate));
+  }
   return group.seeds.every((seed) => namesCompatible(seed, candidate));
 }
 
