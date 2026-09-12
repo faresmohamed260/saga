@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -93,7 +94,9 @@ def modal_account_env() -> dict[str, str]:
 
 
 def create_modal_secret(name: str, payload: dict[str, str], env: dict[str, str]) -> None:
-    path = Path(tempfile.mkstemp(prefix="saga-modal-secret-", suffix=".json")[1])
+    descriptor, raw_path = tempfile.mkstemp(prefix="saga-modal-secret-", suffix=".json")
+    os.close(descriptor)
+    path = Path(raw_path)
     try:
         path.write_text(json.dumps(payload), encoding="utf-8")
         path.chmod(0o600)
@@ -104,6 +107,63 @@ def create_modal_secret(name: str, payload: dict[str, str], env: dict[str, str])
         )
     finally:
         path.unlink(missing_ok=True)
+
+
+def verify_provider(provider_url: str, bearer: str) -> tuple[int, int]:
+    with urllib.request.urlopen(provider_url + "health", timeout=120) as response:
+        health = json.load(response)
+    expected_revision = required("SAGA_XCORE_MODEL_REVISION").strip()
+    if health.get("ready") is not True or health.get("model_revision") != expected_revision:
+        raise RuntimeError(f"provider health mismatch: {health}")
+
+    text = "Alice entered the garden. She greeted Bob. Bob smiled at Alice."
+    body = json.dumps(
+        {
+            "normalizedInputFingerprint": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "normalizedText": text,
+            "sections": [
+                {
+                    "stable_key": "document:0",
+                    "ordinal": 0,
+                    "section_kind": "document",
+                    "title": None,
+                    "source_locator": "hosted-proof:worker-provision",
+                    "start_offset": 0,
+                    "end_offset": len(text),
+                    "normalized_text": text,
+                }
+            ],
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        provider_url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {bearer}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=900) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:4000]
+        raise RuntimeError(f"provider smoke HTTP {error.code}: {detail}") from None
+    mentions = result.get("mentions") if isinstance(result, dict) else None
+    if not isinstance(mentions, list) or not mentions:
+        raise RuntimeError("provider smoke returned no mentions")
+    strong_names = [
+        row
+        for row in mentions
+        if isinstance(row, dict)
+        and row.get("mentionKind") == "proper_name"
+        and row.get("entityType") == "person"
+        and row.get("personEvidence") == "strong"
+    ]
+    if not strong_names:
+        raise RuntimeError("provider smoke returned no strong PERSON proper-name evidence")
+    return len(mentions), len(strong_names)
 
 
 def main() -> None:
@@ -191,6 +251,7 @@ def main() -> None:
         check=True,
     )
     provider_url = resolved.stdout.strip().splitlines()[-1].rstrip("/") + "/"
+    smoke_mentions, strong_names = verify_provider(provider_url, bearer)
 
     worker_payload = {
         "SAGA_SUPABASE_URL": required("SAGA_SUPABASE_URL").strip(),
@@ -217,6 +278,8 @@ def main() -> None:
         "providerName": worker_payload["SAGA_IDENTITY_PROVIDER_NAME"],
         "providerModel": worker_payload["SAGA_IDENTITY_PROVIDER_MODEL"],
         "providerRevision": worker_payload["SAGA_IDENTITY_PROVIDER_REVISION"],
+        "providerSmokeMentionCount": smoke_mentions,
+        "providerSmokeStrongNameCount": strong_names,
         "modalAccount": required("MODAL_ACCOUNT").strip(),
         "approvedAppSha": required("APPROVED_APP_SHA").strip(),
     }
