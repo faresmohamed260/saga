@@ -154,6 +154,14 @@ function renderOrdered(nodes: unknown[]): string {
   return output;
 }
 
+function normalizeRenderedBlockText(value: string) {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n");
+}
+
 function firstTagText(nodes: unknown[], tags: string[]) {
   for (const tag of tags) {
     const found = findOrderedTag(nodes, tag);
@@ -251,7 +259,7 @@ export function normalizeEpubSource(bytes: Uint8Array) {
     const xhtml = decodeXml(archive[contentPath], "invalid_epub");
     const ordered = orderedXml(xhtml);
     const body = findOrderedTag(ordered, "body") ?? ordered;
-    const text = renderOrdered(body);
+    const text = normalizeRenderedBlockText(renderOrdered(body));
     rawSections.push({
       title: firstTagText(body, ["h1", "h2", "h3"]) ?? firstTagText(ordered, ["title"]),
       text,
