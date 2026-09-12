@@ -87,7 +87,11 @@ This is retained as a negative result. It shows that `pip install BookNLP` with 
 
 ## Experiment 2 — compatibility-patched, CPU-bounded environment
 
-Status: **IN PROGRESS**
+GitHub Actions run: `34699861942`
+
+S.A.G.A. commit:
+
+- `068734bbe05511ee6146bd0c5c3cf12cced53c80`
 
 This is a distinct candidate configuration rather than rewriting Experiment 1.
 
@@ -96,14 +100,46 @@ Code:
 - official upstream base: `3d900fc2224e55960c3363826ae28539b77b4204`
 - exact open PR-25 compatibility head: `8875a1b616d764b7d13d1e30e9949cc21ca303c1`
 
+Pinned environment attempted:
+
+- Python `3.10.21`
+- PyTorch `2.3.1+cpu`
+- spaCy `3.7.5`
+- Transformers `4.43.4`
+- BookNLP fork commit installed with `--no-deps`
+- TensorFlow deliberately omitted because it is not imported by the active BookNLP runtime source
+
+### Result
+
+**FAILED during environment setup before BookNLP inference.**
+
+The bounded dependency strategy itself worked: CPU-only PyTorch resolved to a `190.4 MB` wheel and avoided the prior CUDA/TensorFlow dependency explosion. The run then failed when invoking the spaCy CLI because `click` was not present in the resolved environment:
+
+```text
+ModuleNotFoundError: No module named 'click'
+```
+
+Classification: **benchmark-environment configuration failure**, not provider-quality evidence. No document was processed and no S.A.G.A. quality metric was produced.
+
+The next attempt keeps the same candidate code/model configuration and adds an explicit `click==8.1.7` pin. This is the only material environment correction.
+
+## Experiment 3 — bounded compatibility environment with explicit CLI dependency
+
+Status: **IN PROGRESS**
+
+S.A.G.A. commit beginning the attempt:
+
+- `b961a06f65c61a43828971b8d642f8ec51514124`
+
 Pinned environment:
 
 - Python `3.10`
 - PyTorch `2.3.1` CPU wheel
+- Click `8.1.7`
 - spaCy `3.7.5`
 - Transformers `4.43.4`
-- BookNLP fork commit installed with `--no-deps`
-- TensorFlow deliberately not installed because it is not imported by the active BookNLP runtime source
+- BookNLP compatibility commit `8875a1b616d764b7d13d1e30e9949cc21ca303c1`
+- no TensorFlow installation
 
 Initial workload remains the same five pinned LitBank documents. Only after this smoke run succeeds will the same fixed configuration be expanded to all 100 documents.
 
