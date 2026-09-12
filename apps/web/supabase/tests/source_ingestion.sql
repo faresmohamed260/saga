@@ -394,4 +394,18 @@ BEGIN
 END;
 $$;
 
+-- Phase 2C adds an automatic ingestion -> character_identity handoff. This
+-- Phase-2B contract has finished validating its source lifecycle, so cancel
+-- only its downstream queued identity job to keep subsequent database tests
+-- isolated from this older 25-character fixture.
+RESET ROLE;
+SET ROLE service_role;
+UPDATE public.saga_analysis_jobs
+SET status = 'cancelled',
+    completed_at = now(),
+    error_code = null,
+    error_summary = null
+WHERE source_id = current_setting('saga.test.txt_source_id')::uuid
+  AND kind = 'character_identity'
+  AND status = 'queued';
 RESET ROLE;
