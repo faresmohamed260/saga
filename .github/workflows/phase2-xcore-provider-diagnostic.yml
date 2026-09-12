@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Capture bounded provider logs
+      - name: Select Modal account credentials without printing them
         shell: bash
         run: |
           set -euo pipefail
@@ -35,6 +35,10 @@ jobs:
               f.write(f"MODAL_TOKEN_ID={account['token_id']}\n")
               f.write(f"MODAL_TOKEN_SECRET={account['token_secret']}\n")
           PY
+      - name: Capture bounded provider logs
+        shell: bash
+        run: |
+          set -euo pipefail
           set +e
           timeout 25s modal app logs saga-phase2-xcore-provider --timestamps
           code=$?
