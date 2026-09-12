@@ -1,6 +1,6 @@
 # BookNLP Quote / Speaker / Event Challenger
 
-Status: **EXPERIMENT WRAPPER READY — REAL MODEL QUALIFICATION NOT YET RUN**
+Status: **PUBLIC COMPONENT QUALIFICATION COMPLETE AND REPEATABLE — PRIVATE PRODUCT GATE PENDING**
 
 This experiment narrows BookNLP-small to roles that remain open after its rejection as S.A.G.A.'s primary character-identity provider: quotation/speaker evidence, literary event triggers, and dependency/syntax evidence used by later deterministic grounding.
 
@@ -19,7 +19,7 @@ The measured compatibility lineage remains unchanged:
 - pipeline: `entity,quote,event,coref`;
 - model-weight license: **unverified** and therefore still an adoption blocker.
 
-The pinned upstream README documents `BookNLP("en", model_params)` followed by `.process(input_file, output_directory, book_id)` and explicitly supports selecting a subset of pipeline elements. The pinned implementation requires entity tagging for quotation attribution and requires quotation attribution plus entities for coreference, which is why the challenger pipeline keeps `entity`, `quote`, and `coref` together while adding `event`.
+The pinned upstream implementation requires entity tagging for quotation attribution and requires quotation attribution plus entities for coreference, which is why the challenger pipeline keeps `entity`, `quote`, and `coref` together while adding `event`.
 
 ## S.A.G.A. boundary
 
@@ -36,7 +36,7 @@ S.A.G.A. owns:
 
 BookNLP owns only model inference and its native output files.
 
-The TypeScript provider process then reuses `src/local-analysis/booknlp-output.ts` to normalize:
+The TypeScript provider process reuses `src/local-analysis/booknlp-output.ts` to normalize:
 
 - `.tokens` -> source-anchored event/syntax evidence;
 - `.entities` -> typed entity + identity evidence;
@@ -61,16 +61,18 @@ The wrapper removes the temporary workspace after each request.
 
 ## Network / artifact policy
 
-Pinned BookNLP 1.0.7 contains direct model-download behavior when its model files are missing. The S.A.G.A. runner therefore **fails before BookNLP initialization unless all three required model files already exist** in the explicitly configured model directory.
+Pinned BookNLP 1.0.7 contains direct model-download behavior when its model files are missing. The S.A.G.A. provider runner therefore fails before BookNLP initialization unless all required files already exist in the explicitly configured model directory.
 
-The child environment also sets:
+The controlled GitHub benchmark harness is a separate experiment runner and may download/install its pinned experimental dependencies and artifacts before inference. That must not be confused with the production/local provider contract.
+
+The provider child environment also sets:
 
 - `HF_HUB_OFFLINE=1`;
 - `TRANSFORMERS_OFFLINE=1`;
 - `TOKENIZERS_PARALLELISM=false`;
 - `CUDA_VISIBLE_DEVICES=` for this CPU baseline.
 
-This is defense in depth, not a general operating-system network sandbox. The experiment host must have all required package/model/cache artifacts installed before execution.
+This is defense in depth, not a general operating-system network sandbox.
 
 ## Configuration fingerprint
 
@@ -87,13 +89,11 @@ The runtime configuration fingerprint includes:
 
 A different executable, wrapper path, model path, pipeline/provenance constant, or compatibility revision produces a different configuration fingerprint.
 
-For a real measured run, the experiment record must additionally capture the environment/lock digest and artifact sizes/digests where practical. Package version alone does not prove that an installation contains the exact compatibility commit.
-
-## CI qualification
+## Model-light CI qualification
 
 Normal CI does **not** install or download BookNLP.
 
-A model-light fixture runner implements the same inner-runner CLI and emits representative `.tokens`, `.entities`, and `.quotes` files for the existing Unicode BookNLP fixture. End-to-end tests exercise:
+A model-light fixture runner implements the same inner-runner CLI and emits representative `.tokens`, `.entities`, and `.quotes` files. End-to-end tests exercise:
 
 - generic S.A.G.A. subprocess client;
 - BookNLP-specific protocol process;
@@ -104,24 +104,50 @@ A model-light fixture runner implements the same inner-runner CLI and emits repr
 - wrong pinned package version;
 - missing required output files.
 
-This proves wrapper/control-plane behavior only. It is not model-quality evidence.
+This proves wrapper/control-plane behavior only.
 
-## Existing negative evidence remains binding
+## Public component qualification
 
-BookNLP-small remains **not adopted for primary character identity** based on the reproducible 100-document LitBank result documented in `2026-09-12_character_identity_booknlp-small.md`.
+PR #212 added the direct 100-document pinned LitBank component benchmark. Two independent CPU runs on exact benchmark head `f013f23f11d2883e8ef1f2e70f9e181e8556df08` produced the exact same semantic report fingerprint:
 
-This challenger must not use its quote/event usefulness to silently reverse that decision.
+`e0ec94d8d1f678f98057a29117d365926a3253a4a6d5e6e0f7c96e36cab3bef9`
 
-## Next measured work
+Measured results:
 
-Once a compatible local environment is available:
+- BookNLP quote P/R/F1: `0.7706 / 0.8640 / 0.8146`;
+- deterministic quote P/R/F1: `0.8570 / 0.8555 / 0.8563`;
+- BookNLP matched-known-speaker accuracy: `0.7830`;
+- BookNLP end-to-end speaker recall: `0.6765`;
+- BookNLP cross-character contamination: `0.1889`;
+- BookNLP event-trigger P/R/F1: `0.8003 / 0.7591 / 0.7791`;
+- lexical Tier-0 event-trigger P/R/F1: `0.4914 / 0.0585 / 0.1045`.
 
-1. health-check the wrapper against the exact pinned BookNLP environment;
-2. run source-neutral/public quote/event smoke material first;
-3. record startup time, per-document/whole-book wall time, peak RAM/VRAM, model artifact size and semantic fingerprints;
-4. compare BookNLP quote/speaker evidence against the deterministic dialogue floor through `DIALOGUE_SPEAKER_BENCHMARK.md`;
-5. compare BookNLP event triggers against the lexical event floor through `EVENT_CANDIDATE_BENCHMARK.md`;
-6. preserve failures and false positives rather than patching the benchmark around them;
-7. when the private EPUB suite becomes reachable, use those books as the production promotion gate.
+Operational evidence:
+
+- run 1: `452.68 s`, `1123.8 MiB` peak RSS;
+- run 2: `293.66 s`, `1157.2 MiB` peak RSS;
+- model artifacts: `160,398,571 bytes`;
+- both runs completed `100 / 100` documents with zero failures;
+- heavyweight workflow typecheck + `111 / 111` tests passed on both attempts.
+
+The full benchmark interpretation lives in `BOOKNLP_COMPONENT_BENCHMARK.md`.
+
+## Component decision
+
+The public evidence narrows BookNLP rather than promoting it wholesale:
+
+- primary identity remains **rejected**;
+- deterministic quote boundaries remain preferred over BookNLP quote detection;
+- BookNLP speaker attribution is a **strong challenger** but needs confidence gating because `18.89%` contamination remains material;
+- BookNLP event triggering is the leading measured trigger challenger;
+- event participant grounding remains unmeasured and must be developed separately.
+
+Follow-up combined speaker work is tracked in `#213`; dependency-aware event grounding is tracked in `#214`.
+
+## Important limitations
+
+BookNLP's speaker/event models use LitBank-derived literary annotations, so this public benchmark is strong regression/component evidence but not an independent modern-fiction generalization test.
+
+The owner-controlled modern-fiction suite remains the production promotion gate, and the required private EPUB binaries are still unavailable to the current execution environment.
 
 No production adoption is possible while the model-weight license remains unverified.
