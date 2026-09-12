@@ -25,40 +25,44 @@ Authoritative completion records:
 
 **S.A.G.A. v2 Phase 2 — Story Intake & Character Identity Foundation: ACTIVE.**
 
-Authoritative Phase-2 contract:
+Authoritative contract:
 
 - `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md`
 
-**Phase 2A — Product/Data Foundation: COMPLETE.**
+Repository/CI slice state:
 
-Authoritative Phase-2A deterministic evidence:
+- **2A Product/Data Foundation — COMPLETE**
+- **2B Source Storage & Deterministic Ingestion — COMPLETE**
+- **2C Character Identity Engine — NEXT**
+- **2D Qualification / Hosted Proof — PENDING**
+
+Authoritative Phase-2 evidence:
 
 - `validation/PHASE_V2_2A_PRODUCT_DATA_FOUNDATION_2026-09-12.md`
+- `validation/PHASE_V2_2B_SOURCE_INGESTION_2026-09-12.md`
 
-Phase 2 restores the first real storytelling intelligence loop behind the proven private application boundary:
+The active loop is:
 
 ```text
 member-owned project
   -> .txt/.epub source
-  -> B2 object + Supabase metadata
+  -> private B2 object + Supabase metadata
   -> durable Postgres analysis job
-  -> separate analysis worker
+  -> services/analysis-worker
   -> deterministic normalized source
   -> precision-first character identity resolution
   -> character / alias / mention evidence in the private app
 ```
 
-The phase explicitly avoids recreating the old v1 monolithic runtime or jumping directly to a general agent/LLM framework.
-
-The next active slice is **Phase 2B — Source storage + deterministic ingestion**.
+The phase explicitly avoids recreating the old v1 monolithic runtime or jumping to a general agent/LLM framework.
 
 ## Active v2 Governance
 
 - `../AGENTS.md` — mandatory working rules, source-of-truth order, phase discipline, v2/v1 boundary, RenderLab boundary
-- `../PROJECT.md` — current hosted reality, active Phase-2 direction, completed Phase-2A baseline, deferred items and immediate next work
+- `../PROJECT.md` — current state, completed 2A/2B baselines, hosted reality, deferred gates and immediate 2C work
 - `DECISIONS.md` — durable cross-cutting v2 decisions
 - `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` — active Phase-2 product/data/job/provider/testing/hosted-validation contract
-- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — completed Phase-1 contract and exit evidence
+- `phases/PHASE_V2_1_CLOSED_DEMO_APP.md` — completed Phase-1 contract
 - `operations/VERCEL_DEPLOYMENT_POLICY.md` — manual-only Vercel deployment rule
 
 ## Phase Baselines
@@ -73,54 +77,79 @@ The next active slice is **Phase 2B — Source storage + deterministic ingestion
 - manual-only Vercel deployment policy — PR #173, merge `4c592a5590fdd46ac075a20def4b9d03c169f880`
 - Phase 1 hosted closure — PR #174, merge `3802222714c300b9777b65b34f94668be50f9582`
 - Phase 2 contract — PR #175, merge `bf955d3d02f327a655d4406615b2e1fa6e35e574`
-- Phase 2A product/data foundation — PR #177, merge `7a053697e874d8fb6e0b03571b7cf0f2e885dd61`
+- Phase 2A implementation — PR #177, merge `7a053697e874d8fb6e0b03571b7cf0f2e885dd61`
+- Phase 2A closure — PR #178, merge `4b405ecacdb10e2a15b702210c2cdfef4daa2a9b`
+- Phase 2B implementation — PR #179, merge `fad0b8e5a3cc5c0e819d86fb41f50fe587574aab`
 
 ## Active v2 Architecture / Product Contracts
 
-- `v2/ARCHITECTURE.md` — top-level web-first ownership/deployment boundary
-- `v2/FRONTEND_ARCHITECTURE.md` — Next.js route/component/server ownership, state and API direction
-- `v2/UI_SYSTEM.md` — S.A.G.A.-specific UI/UX, component sourcing, responsive/accessibility and visual-review rules
-- `v2/PHASE_1D_UI_CONCEPT.md` — approved Narrative Desk shell/navigation/composition direction
-- `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity, account access, invitations, admin and email-delivery contract
-- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` — Phase-2 project/source ownership, analysis runtime, storage, identity-provider, deterministic testing and qualification boundary
+- `v2/ARCHITECTURE.md` — top-level web/data/storage/deployment ownership boundary
+- `v2/FRONTEND_ARCHITECTURE.md` — Next.js route/component/server ownership
+- `v2/UI_SYSTEM.md` — S.A.G.A.-specific UI/UX, accessibility/responsive/render-review rules
+- `v2/PHASE_1D_UI_CONCEPT.md` — approved Narrative Desk shell direction
+- `v2/ACCESS_AND_INVITATIONS.md` — closed-demo identity/account/invitation/admin contract
+- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md` — active source/worker/identity/determinism/qualification contract
 
 ## Active v2 Code / Operations
 
-- `../apps/web/` — active Next.js web product
-- `../apps/web/src/components/shell/` — Narrative Desk shell and responsive navigation
-- `../apps/web/src/features/auth/` — invitation/password/sign-in/sign-out product surfaces
-- `../apps/web/src/features/admin/` — Admin server actions and workspace
-- `../apps/web/src/features/projects/` — project actions for the Phase-2 private story boundary
-- `../apps/web/src/server/account/` — fresh Auth identity and S.A.G.A. account/access resolution
-- `../apps/web/src/server/admin/` — active-admin authorization and bounded Admin operations
-- `../apps/web/src/server/story/` — member-scoped project/source/job/result domain reads behind authenticated RLS
-- `../apps/web/src/server/supabase/` — ordinary SSR/server and isolated privileged Supabase boundaries
-- `../apps/web/src/server/storage/` — provider-neutral object-storage boundary + B2 implementation
-- `../apps/web/supabase/migrations/` — active v2 Supabase migration lineage
-- `../apps/web/supabase/tests/` — disposable-Postgres database contracts
-- `../config/v2-storage.json` — safe Backblaze B2 metadata
-- `../.github/workflows/v2-web-ci.yml` — deterministic web/database CI
-- `../.github/workflows/v2-visual-review.yml` — production-build Chromium rendered validation
-- `../.github/workflows/v2-b2-bootstrap.yml` — manual-only Backblaze bootstrap/storage smoke workflow
+### Web application
 
-Phase-2 analysis worker code does not yet exist at Phase-2A completion. Its implementation must follow the runtime boundary in the active phase contract rather than reviving a v1 package as the active runtime.
+- `../apps/web/` — active Next.js product
+- `../apps/web/src/components/shell/` — Narrative Desk shell/navigation
+- `../apps/web/src/features/auth/` — auth/invitation/password surfaces
+- `../apps/web/src/features/admin/` — Admin operations/workspace
+- `../apps/web/src/features/projects/` — project actions
+- `../apps/web/src/features/library/` — bounded source-upload interaction/action boundary
+- `../apps/web/src/server/account/` — fresh identity/access resolution
+- `../apps/web/src/server/admin/` — active-admin services
+- `../apps/web/src/server/story/` — member-scoped project/source/job/result/upload services
+- `../apps/web/src/server/storage/` — provider-neutral `ObjectStorage` + B2 implementation
+- `../apps/web/src/server/supabase/` — ordinary SSR and isolated privileged Supabase boundaries
+- `../apps/web/supabase/migrations/` — active v2 migration lineage
+- `../apps/web/supabase/tests/` — disposable-Postgres contracts
+
+### Analysis worker
+
+- `../services/analysis-worker/` — active v2 separate analysis-worker runtime
+- `../services/analysis-worker/src/ingestion/` — deterministic TXT/EPUB normalizers and fingerprints
+- `../services/analysis-worker/src/runtime/` — worker Supabase/B2/config boundaries
+- `../services/analysis-worker/tests/` — deterministic normalizer/control-plane fixtures
+
+This worker is v2-owned. Do not add new v2 analysis functionality to the historical pre-v2 Python/runtime surfaces.
+
+### CI / storage operations
+
+- `../config/v2-storage.json` — safe Backblaze B2 metadata
+- `../.github/workflows/v2-web-ci.yml` — web/database deterministic CI
+- `../.github/workflows/v2-analysis-worker-ci.yml` — analysis-worker typecheck + fixture CI
+- `../.github/workflows/v2-visual-review.yml` — production-build Chromium validation
+- `../.github/workflows/v2-b2-bootstrap.yml` — manual-only B2 bootstrap/storage smoke workflow
 
 ## Phase 2 Validation Evidence
 
-- `validation/PHASE_V2_2A_PRODUCT_DATA_FOUNDATION_2026-09-12.md` — owner/RLS data foundation, durable lease-based jobs, immutable run/result boundary, Projects/Library/product-workspace rendering and exact-head CI proof
+### Phase 2A
 
-Phase-2A exact-head proof runs:
-
+- validation record: `validation/PHASE_V2_2A_PRODUCT_DATA_FOUNDATION_2026-09-12.md`
+- exact implementation head: `51147ddf5855a43c3b50770502f2cf9f8fdf1f54`
 - Web CI `34654618229` — success
-- Required Check Compatibility `34654618239` — success
-- Backend Architecture CI `34654618234` — success
+- Compatibility `34654618239` — success
+- Backend Architecture `34654618234` — success
 - Visual Review `34654618236` — success
+- artifact `10284398956`
 
-Phase-2A rendered artifact:
+### Phase 2B
 
-- ID `10284398956`
-- name `saga-v2-phase-2a-visual-review`
-- exact head `51147ddf5855a43c3b50770502f2cf9f8fdf1f54`
+- validation record: `validation/PHASE_V2_2B_SOURCE_INGESTION_2026-09-12.md`
+- exact implementation head: `20a0e222aac42208b45a4faac3814208afd50762`
+- implementation merge: `fad0b8e5a3cc5c0e819d86fb41f50fe587574aab`
+- Web CI `34661457524` — success
+- Analysis Worker CI `34661457497` — success
+- Visual Review `34661457496` — success
+- Backend Architecture `34661457500` — success
+- Compatibility `34661457516` — success
+- artifact `10287611789`, digest `ccadb4a2bd382ea7d69e34b9d72aa8f1ac0b6bbe5d5c8b2f0de8ad43daa61fb6`
+
+The visual artifact retains the shared workflow's older Phase-2A artifact name; use the recorded exact head/digest rather than inferring phase ownership from the artifact label.
 
 ## Phase 1 Validation Evidence
 
@@ -130,12 +159,12 @@ Phase-2A rendered artifact:
 - `validation/PHASE_V2_1E_ADMIN_OPERATIONS_2026-09-11.md`
 - `validation/PHASE_V2_1E_HOSTED_SUPABASE_2026-09-11.md`
 - `validation/PHASE_V2_1E_HOSTED_VERCEL_2026-09-11.md`
-- `validation/PHASE_V2_1_HOSTED_AUTH_LIVE_PROOF_2026-09-11.md` — final hosted Auth/email/invitation/access proof; supersedes earlier pending conclusions in the foundation snapshots
+- `validation/PHASE_V2_1_HOSTED_AUTH_LIVE_PROOF_2026-09-11.md`
 
 Key hosted proof runs:
 
-- access/suspension: `34647243289` — success
-- full invitation lifecycle: `34647592382` — success
+- access/suspension `34647243289` — success
+- full invitation lifecycle `34647592382` — success
 
 ## Current Hosted Boundary
 
@@ -150,67 +179,65 @@ Dedicated project:
 - Auth Site URL currently `https://saga-pi-two.vercel.app`
 - future custom-domain redirect allowance includes `https://saga.faresuniform.uk/**`
 
-The existing `AI Studio` Supabase project was not reused or modified.
+The existing `AI Studio` project was not reused.
 
-Phase-2A repository migrations are merged and disposable-Postgres qualified. This index does **not** claim those new migrations have been applied to hosted Supabase until a later hosted validation explicitly proves that state.
+Phase-2A/2B migrations are repository-merged and disposable-Postgres qualified. This index does **not** claim they have been applied to hosted Supabase; that must be proven explicitly during hosted qualification.
 
 ### Vercel
 
 Dedicated `saga` project uses `apps/web`.
 
-The historical `studio` project was disconnected from S.A.G.A. Git pushes. Git-triggered Preview and Production deployments are disabled. Any Vercel deployment requires fresh explicit owner approval after stating the reason, deployment type, and exact commit/SHA.
+The historical `studio` project is disconnected. Git-triggered Preview/Production deployments are disabled. Any Vercel deployment requires fresh explicit owner approval after stating the reason, deployment type, and exact SHA.
 
-No Vercel deployment was performed for Phase 2A.
+No Vercel deployment was performed for Phase 2A or Phase 2B.
 
 ### Backblaze B2
 
-The dedicated private S.A.G.A. bucket is validated. Phase 2B requires a real source-object lifecycle, but deterministic repository implementation can proceed against the existing provider-neutral storage boundary without a hosted runtime credential.
+The dedicated private S.A.G.A. bucket is validated and the Phase-2B repository integration is implemented. Real hosted source object I/O still requires a bucket-scoped non-master runtime application key and any required browser-upload CORS configuration.
 
-A bucket-scoped runtime application key is required only when real hosted source object I/O becomes necessary. Bootstrap/master credentials remain operator-only.
+Bootstrap/master credentials remain operator-only.
+
+### Analysis worker hosting
+
+`services/analysis-worker/` is repository/CI-proven but not hosted. Permanent host/provider/account/cost selection remains deliberately deferred until Phase 2D hosted proof requires it.
 
 ## Open / Deferred Work
 
-- custom domain `saga.faresuniform.uk` — tracked by issue #165; not part of Phase 2 unless explicitly resumed;
-- scoped B2 runtime credentials — external gate for real hosted Phase-2 source object I/O;
-- worker host/provider — deliberately deferred until the separate worker contract is implemented/proven far enough to require a host/cost choice;
-- PR #172 (`Expose hosted release identity in health checks`) — closed without merge after Phase 1 completed without it; reintroduce only as a fresh current-main change if a future hosted gate needs release fingerprinting.
+- custom domain `saga.faresuniform.uk` — issue #165; not current Phase-2 scope unless explicitly resumed;
+- scoped B2 runtime credential + upload CORS — hosted proof gate;
+- hosted application of Phase-2 migrations — hosted proof step;
+- worker host/provider/cost — hosted proof gate;
+- Vercel deployment — explicit per-deployment owner approval required;
+- PR #172 release identity concept — closed without merge; reconsider only if a future hosted gate needs it.
 
 ## Phase-2 Execution Boundary
 
-Implement the active phase contract in this order:
+1. **2A Product/data foundation — COMPLETE**
+2. **2B Source storage + deterministic ingestion — COMPLETE**
+3. **2C Character identity engine — NEXT**
+4. **2D Qualification — PENDING**
 
-1. **2A Product/data foundation — COMPLETE** — project/source/job/run/character schema, owner RLS, atomic job contract, database tests, initial Projects/Library/product-workspace surfaces;
-2. **2B Source storage + ingestion — NEXT** — bounded source-object lifecycle, upload completion/fingerprint verification, `.txt`/`.epub` deterministic normalizers, golden fixtures and normalized structure persistence;
-3. **2C Character identity engine** — normalized evidence-provider interface, conservative canonical admission, attachment/quarantine, aliases/mentions, adversarial fixtures and user-visible result surface;
-4. **2D Qualification** — retries/idempotency, literary benchmark baseline, rendered validation, then hosted B2+worker+app proof after the required explicit approvals.
+Phase 2C should add the provider-neutral evidence interface, conservative canonical admission, deterministic alias/name clustering, attachment/quarantine/unresolved policy, adversarial historical-failure fixtures, immutable identity-run persistence, and a user-visible character/evidence surface.
 
-Do not skip the schema/job/runtime boundary by embedding full-book parsing or NLP in Next.js requests.
+Do not embed full-book NLP in Next.js requests.
 
-Do not use generative LLMs as a shortcut around the deterministic Phase-2 identity contract.
+Do not use a generative LLM as a shortcut around the deterministic identity contract.
+
+Do not let a provider/coreference model bypass S.A.G.A. canonical-admission policy.
 
 ## RenderLab Reference Boundary
 
-`faresmohamed260/renderlab` is a separate product and read-only reference for process/architecture/UI conventions only.
+`faresmohamed260/renderlab` is a separate product and read-only process/architecture/UI reference only.
 
 Do not modify RenderLab or copy its product code, page composition, visual identity, routes, schema/table names, data, credentials, storage or deployment state.
 
-S.A.G.A.-owned translations are authoritative:
-
-- `v2/FRONTEND_ARCHITECTURE.md`
-- `v2/UI_SYSTEM.md`
-- `v2/ACCESS_AND_INVITATIONS.md`
-- `phases/PHASE_V2_2_STORY_INTAKE_CHARACTER_IDENTITY.md`
-
 ## Historical v1 Material
 
-The following remain useful for requirements discovery, algorithms, evaluation history, provider experiments, and lessons learned, but do **not** define active v2 architecture unless explicitly re-adopted:
+Historical documents and pre-v2 code remain useful for requirements discovery, algorithms, evaluation history, provider experiments, and lessons learned, but do **not** define active v2 architecture unless deliberately re-adopted.
+
+Important historical docs include:
 
 - `system_agent_roadmap.md`
-- `agent_framework.md`
-- `production_orchestration_runtime.md`
-- `execution_runtime.md`
-- `lineage_runtime.md`
-- `observability_runtime.md`
 - `analysis_foundation_runtime.md`
 - `identity_runtime.md`
 - `canon_extraction_runtime.md`
@@ -220,7 +247,6 @@ The following remain useful for requirements discovery, algorithms, evaluation h
 - `narrative_generation_runtime.md`
 - `visual_generation_runtime.md`
 - `audiobook_generation_runtime.md`
-- `persistence_runtime.md`
 - `storage_architecture.md`
 - `runtime_secrets.md`
 - `modal_runtime.md`
@@ -238,8 +264,8 @@ When v2 changes:
 - phase scope/evidence -> `phases/PHASE_V2_*.md`
 - frontend/server ownership -> `v2/FRONTEND_ARCHITECTURE.md`
 - UI/UX rules -> `v2/UI_SYSTEM.md`
-- account/invitation/auth rules -> `v2/ACCESS_AND_INVITATIONS.md`
-- broader deployment/system boundary -> `v2/ARCHITECTURE.md`
-- dated validation evidence -> `validation/`
+- account/auth rules -> `v2/ACCESS_AND_INVITATIONS.md`
+- broader system/deployment boundary -> `v2/ARCHITECTURE.md`
+- dated deterministic/hosted evidence -> `validation/`
 
 If v1 behavior or an external-project convention is reused, document the new v2 ownership instead of making the old source active again.
