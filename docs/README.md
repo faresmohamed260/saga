@@ -12,6 +12,7 @@ For substantial current work, read in this order:
 4. the active phase contract referenced by `PROJECT.md`
 5. any active owner-directed phase amendment
 6. the relevant `v2/` architecture document
+7. the current validation/handoff record for the active phase
 
 GitHub is authoritative. Do not reconstruct project state from chat history when the repository can establish it.
 
@@ -42,7 +43,48 @@ Authoritative analysis architecture:
 
 - `v2/ANALYSIS_ARCHITECTURE_2026.md`
 
-Phase 2 remains important as the durable application/control-plane foundation. Its original plan to prove a permanent hosted text worker/provider is no longer the architecture target; end-to-end acceptance moves to the local-first worker path.
+Current detailed handoff:
+
+- `validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
+
+Phase 2 remains the durable application/control-plane foundation. Its original plan to prove a permanent hosted text worker/provider is no longer the architecture target; end-to-end acceptance moves to the local-first worker path.
+
+## Latest Phase 3A Progress
+
+Merged work now includes:
+
+- benchmark-before-adoption experiment governance;
+- BookNLP-small primary-identity evaluation and rejection for that role;
+- GLiNER/F-Coref component smoke evidence;
+- provider-neutral whole-book benchmark infrastructure;
+- the owner-directed private primary fiction suite;
+- restored real-book identity regressions for Harry Potter, The Cruel Prince, Caraval and ACOFAS.
+
+Important merged checkpoints:
+
+- PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` — whole-book benchmark foundation + primary private fiction corpus;
+- PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` — primary-fiction identity regression evaluator.
+
+### Active unmerged scene-analysis branch
+
+Do not recreate this work. Continue from:
+
+- branch `v2/phase-3a-cruel-prince-analysis-baseline`;
+- handoff head `cc28f37270c389f7be288f48245105d4f9fdefc7`.
+
+At that head the branch was 21 commits ahead of the merged checkpoint and all exact-head checks were green.
+
+It already contains:
+
+- `experiments/2026-09-12_CRUEL_PRINCE_HISTORICAL_ANALYSIS_BASELINE.md`;
+- `experiments/SCENE_SEGMENTATION_BENCHMARK.md`;
+- scene annotation workspace/CLI;
+- exact + relaxed scene-boundary evaluator/CLI;
+- structural scene baseline/CLI;
+- lexical scene-change baseline/CLI;
+- deterministic tests for the scene benchmark stack.
+
+No scene method has been adopted yet.
 
 ## Locked Analysis Direction
 
@@ -55,7 +97,7 @@ Owner decisions D-026 through D-030 require:
 - an outbound-only local analysis worker using the existing Supabase durable queue and B2 storage boundaries;
 - model/provider output treated as evidence, while deterministic S.A.G.A. policy owns canonical product truth.
 
-The Phase-3 corpus amendment additionally requires that production provider selection be judged primarily on the private modern-fiction suite built around Harry Potter, The Cruel Prince, Caraval, and ACOTAR. LitBank remains useful for reproducible gold metrics but cannot by itself promote a provider.
+The corpus amendment additionally requires that production provider selection be judged primarily on the private modern-fiction suite built around Harry Potter, The Cruel Prince, Caraval and ACOTAR. LitBank remains useful for reproducible gold metrics but cannot by itself promote a provider.
 
 The governing analysis cascade is:
 
@@ -66,7 +108,24 @@ Tier 0 deterministic structure/rules
   -> Tier 3 small local structured reasoning over bounded evidence packets
 ```
 
-Do not repeatedly pass a full raw novel through a large generative model merely because a long context window exists.
+Do not repeatedly pass a full raw novel through a large generative model merely because a context window exists.
+
+## Primary Fiction Evaluation
+
+Primary product qualification material:
+
+- *Harry Potter and the Philosopher's Stone*;
+- *The Cruel Prince*;
+- *Caraval*;
+- ACOTAR series, with *A Court of Frost and Starlight* as a historical regression anchor.
+
+Primary-suite metadata and protocols:
+
+- `../services/analysis-worker/benchmarks/whole-book-primary-fiction-suite.v1.json`;
+- `experiments/WHOLE_BOOK_BENCHMARK.md`;
+- `phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`.
+
+The actual user-owned EPUBs are currently not available through ChatGPT File Library, and the historical remote machine was not online through the connected desktop integration at handoff. This is a source-availability blocker for real primary-suite runs, not a reason to substitute public-domain books as the production gate.
 
 ## Active v2 Architecture / Product Contracts
 
@@ -100,19 +159,13 @@ Do not repeatedly pass a full raw novel through a large generative model merely 
 - `../services/analysis-worker/` — active v2 durable analysis-worker/control-plane runtime
 - `../services/analysis-worker/src/ingestion/` — deterministic TXT/EPUB normalization
 - `../services/analysis-worker/src/identity/` — provider-neutral evidence + precision-first resolver
-- `../services/analysis-worker/src/evaluation/` — identity evaluation/LitBank adapter
+- `../services/analysis-worker/src/evaluation/` — benchmark/evaluation contracts
 - `../services/analysis-worker/src/runtime/` — Supabase/B2/config boundaries
 - `../services/analysis-worker/tests/` — deterministic ingestion/identity/evaluation fixtures
 
 Phase 3 should extend these v2-owned surfaces or add a narrow v2 local-NLP sidecar. Do not add new v2 analysis behavior to historical pre-v2 runtime packages.
 
 ## Phase 2 Baseline Evidence
-
-Phase 2 repository qualification implementation:
-
-- PR #183
-- qualified head `d2f9a9bde10f689278b5facd5da027ef03e78615`
-- merge `8463f1686b4ab24cbec2fae67e027b96bd87497f`
 
 Validation records:
 
@@ -121,58 +174,42 @@ Validation records:
 - `validation/PHASE_V2_2C_CHARACTER_IDENTITY_2026-09-12.md`
 - `validation/PHASE_V2_2D_LITBANK_ORACLE_BASELINE_2026-09-12.md`
 - `validation/PHASE_V2_2D_REPOSITORY_QUALIFICATION_2026-09-12.md`
+- `validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
 
-100-document LitBank oracle-policy baseline:
+The 100-document LitBank oracle-evidence result remains a useful resolver-policy ceiling/reference, not a production-provider score and not product acceptance on modern fiction.
 
-- canonical precision `0.9516`
-- canonical recall `0.9970`
-- incorrect-merge rate `0.0000`
-- fragmentation rate `0.1422`
-- linked-mention precision `0.9942`
-- linked-mention recall `0.7566`
-- non-person quarantine rate `1.0000`
-- cluster purity `1.0000`
+## Historical Full-Analysis Reference
 
-This measures S.A.G.A. resolver policy under oracle evidence, not production-provider quality and not product acceptance on modern fiction.
+The recovered graduation-project *Cruel Prince* run reported:
 
-## Phase 3 Immediate Benchmark Candidates
+- 111,351 words;
+- 35 chapters;
+- 135 scenes;
+- 53 characters;
+- 55 locations;
+- 24 key causal events;
+- average tension 5.49/10;
+- climax chapter 16.
 
-Research-backed candidates to evaluate through common S.A.G.A. evidence contracts:
-
-- BookNLP small — broad literary entity/event/coreference/quote-speaker baseline;
-- GLiNER small v2.x — configurable typed-span baseline/challenger;
-- F-Coref — cheap permissive coreference challenger;
-- LingMess — heavier coreference challenger only if quality earns its footprint;
-- Qwen3.5-4B / 9B through llama.cpp — bounded local structured-reasoning candidates, not mandatory full-book passes;
-- small ONNX embeddings only if a measured retrieval/candidate-generation task needs them.
-
-xCoRe/Maverick LitBank weights remain research comparisons by default because the released checkpoints use a non-commercial license.
+These are reference/coverage observations only. They are not gold thresholds.
 
 ## Hosted Resource Reality
 
 ### Supabase
 
-Dedicated project ref `scmeqnpmhomzcwecjdtu` in `eu-central-1`.
-
-All five repository-qualified Phase-2 migrations were applied and verified on 2026-09-12. Hosted schema/RLS is therefore no longer a Phase-2 blocker.
+Dedicated project ref `scmeqnpmhomzcwecjdtu` in `eu-central-1`. All five repository-qualified Phase-2 migrations were applied and verified on 2026-09-12.
 
 ### Backblaze B2
 
-Dedicated private bucket `saga-v2-faresmohamed260-1207062480` in `us-east-005`.
-
-Master credentials remain operator/bootstrap-only. Runtime access must use scoped non-master application keys.
+Dedicated private bucket `saga-v2-faresmohamed260-1207062480` in `us-east-005`. Master credentials remain operator-only; runtime access must use scoped non-master application keys.
 
 ### Analysis runtime
 
-The permanent text-analysis target is now local-first. `ops/phase2-hosted-proof` contains experimental Modal/xCoRe work created before the reset and must not be merged as the active architecture.
-
-Modal remains available for image/media generation only.
+The permanent text-analysis target is local-first. `ops/phase2-hosted-proof` is experimental historical evidence and must not be merged as the active text runtime. Modal remains image/media-only.
 
 ### Vercel
 
-Dedicated project `saga`, root `apps/web`, with Git-triggered deployments disabled.
-
-Any Preview or Production deployment requires fresh explicit owner approval after stating reason, deployment type and exact SHA. The analysis reset itself authorizes no deployment.
+Dedicated project `saga`, root `apps/web`, with Git-triggered deployments disabled. Any Preview or Production deployment requires fresh explicit owner approval after stating reason, deployment type and exact SHA.
 
 ## Historical v1 References
 
@@ -182,9 +219,9 @@ Historical documents such as:
 - `canon_extraction_runtime.md`
 - `character_world_modeling_runtime.md`
 
-are useful evidence about prior quality, latency and failure modes, but their old LangGraph/provider/package topology is not active v2 architecture.
+are evidence about prior quality, breadth, latency and failure modes, but their old LangGraph/provider/package topology is not active v2 architecture.
 
-Important historical lesson: full-book extraction spent hundreds to thousands of seconds in cloud reasoning stages and provider latency dominated. Phase 3 explicitly replaces that pattern with candidate narrowing and selective local inference.
+Important historical lesson: cloud-heavy full-book extraction repeatedly retransmitted overlapping context and provider latency dominated. Phase 3 replaces that pattern with deterministic narrowing, specialized local models and bounded reasoning.
 
 The clean pre-v2 boundary is `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`.
 
@@ -195,6 +232,7 @@ When v2 changes:
 - current state/next action -> `PROJECT.md`
 - cross-cutting decision -> `DECISIONS.md`
 - phase scope/evidence -> `phases/` and `validation/`
+- experiment protocols/results -> `experiments/`
 - textual analysis architecture -> `v2/ANALYSIS_ARCHITECTURE_2026.md`
 - broader web/data/storage/deployment boundary -> `v2/ARCHITECTURE.md`
 - frontend/server ownership -> `v2/FRONTEND_ARCHITECTURE.md`
