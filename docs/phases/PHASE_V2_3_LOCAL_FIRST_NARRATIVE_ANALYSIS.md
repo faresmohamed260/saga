@@ -4,6 +4,8 @@ Status: **ACTIVE CONTRACT DRAFT — merge before implementation**
 
 Owner direction on 2026-09-12 changes the textual-analysis architecture: S.A.G.A. should achieve its full book/series analysis goals with minimal resources, no paid AI subscriptions/APIs, and no dependency on Modal for textual NLP/reasoning. Modal is reserved for image-generation/media workloads.
 
+**Owner benchmark-corpus correction:** `PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` is an active amendment to this contract. It supersedes section 9 wherever this file would otherwise imply that LitBank or a public-domain/classical whole-book suite is the primary product acceptance corpus. The private modern-fiction suite built around Harry Potter, The Cruel Prince, Caraval, and ACOTAR governs product promotion; LitBank remains secondary regression/academic evidence.
+
 This phase is therefore a deliberate rebaseline, not a continuation of the abandoned hosted-xCoRe path.
 
 ## 1. Objective
@@ -228,21 +230,21 @@ Requirements:
 
 ## 9. Benchmark corpus
 
-Use three levels of evidence:
+Use three levels of evidence, with the active corpus amendment governing priority:
 
 ### Merge-gate fixtures
 
 Small committed synthetic/adversarial text and selected license-compatible LitBank snippets. No heavyweight model download in normal CI.
 
-### Literature benchmark
+### Secondary public/gold benchmark
 
-Reuse the existing pinned LitBank adapter/evaluator where applicable and extend metrics for entity/event/dialogue tasks.
+Reuse the existing pinned LitBank adapter/evaluator where applicable and extend metrics for entity/event/dialogue tasks. LitBank is for reproducible metric decomposition and regression; it is not sufficient for product promotion.
 
-### Whole-book benchmark
+### Primary whole-book product benchmark
 
-Use at least one complete public-domain novel with a stable source revision. Whole-book benchmark runs are manual/local/dedicated, not required for every PR.
+Use the private user-owned modern-fiction suite defined by `PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md` and `services/analysis-worker/benchmarks/whole-book-primary-fiction-suite.v1.json`. These whole-book runs are manual/local/dedicated, not required for every PR, and their copyrighted source text remains outside Git.
 
-The benchmark report must record the exact source digest, model revisions, hardware class/configuration and runtime settings.
+The benchmark report must record the exact source digest, model revisions, hardware class/configuration and runtime settings. If public benchmark evidence and the private product suite disagree, the private product suite governs the adoption decision and the discrepancy must be documented.
 
 ## 10. Quality gates
 
@@ -320,8 +322,8 @@ Before Phase 3 can be called complete:
 |---|---|
 | textual path is subscription-free | local/offline provider configuration and successful run with paid APIs disabled |
 | worker is durable | real queued job claimed from the existing Postgres control plane and committed through existing lease/run semantics |
-| broad NLP is useful | BookNLP/local baseline metrics on literature fixtures + whole-book timing |
-| chosen identity evidence is justified | direct provider comparison through the same S.A.G.A. resolver harness |
+| broad NLP is useful | local baseline metrics plus primary whole-book timing on the private fiction suite |
+| chosen identity evidence is justified | direct provider comparison through the same S.A.G.A. resolver harness plus private primary-suite qualification |
 | speaker path is grounded | quote/speaker benchmark with unresolved/contamination reporting |
 | event path is grounded | event/participant benchmark and source-evidence assertions |
 | local LLM is bounded | measured escalation rate + schema/evidence validation; no full-book mandatory calls |
@@ -335,7 +337,7 @@ Phase 3 exits when:
 1. this architecture is represented by active v2 code/contracts rather than only research;
 2. one local analysis host can process a real supported book from the durable queue without Modal or a paid model API;
 3. a measured provider stack is adopted for character/entity, dialogue/speaker and event-candidate evidence;
-4. benchmark reports include quality + resource cost and justify the selected defaults/escalation path;
+4. benchmark reports include quality + resource cost and justify the selected defaults/escalation path, including primary private-fiction qualification;
 5. outputs remain evidence-linked, private and provenance-complete;
 6. the next phase can build event/state/timeline/relationship intelligence on these evidence layers without repeating raw-book inference.
 

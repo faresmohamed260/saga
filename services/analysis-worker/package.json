@@ -10,6 +10,7 @@
     "benchmark:litbank": "tsx src/evaluation/litbank-oracle-cli.ts",
     "benchmark:booknlp-litbank": "tsx src/evaluation/booknlp-litbank-cli.ts",
     "benchmark:identity-strata": "tsx src/evaluation/stratified-identity-cli.ts",
+    "benchmark:whole-book": "tsx src/evaluation/whole-book-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
