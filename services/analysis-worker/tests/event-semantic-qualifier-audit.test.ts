@@ -137,16 +137,16 @@ test("audit separates direct lexical negatives rejected by the strict relation p
   assert.equal(result.associations[0]!.capturedByCurrentPolicy, false);
 });
 
-test("audit distinguishes deeper descendants, ancestors and siblings", () => {
+test("audit distinguishes deeper descendants and siblings", () => {
   const text = "If Alice can leave and Bob might stay.";
   const ifToken = token({ text, surface: "If", tokenId: 0, head: 1, dep: "mark", lemma: "if" });
   const alice = token({ text, surface: "Alice", tokenId: 1, head: 3, dep: "nsubj" });
   const can = token({ text, surface: "can", tokenId: 2, head: 1, dep: "aux" });
   const leave = token({ text, surface: "leave", tokenId: 3, head: 3, dep: "ROOT" });
-  const and = token({ text, surface: "and", tokenId: 4, head: 7, dep: "cc" });
-  const bob = token({ text, surface: "Bob", tokenId: 5, head: 7, dep: "nsubj" });
-  const might = token({ text, surface: "might", tokenId: 6, head: 3, dep: "aux" });
-  const stay = token({ text, surface: "stay", tokenId: 7, head: 3, dep: "conj" });
+  const and = token({ text, surface: "and", tokenId: 4, head: 5, dep: "cc" });
+  const bob = token({ text, surface: "Bob", tokenId: 5, head: 5, dep: "ROOT" });
+  const might = token({ text, surface: "might", tokenId: 6, head: 5, dep: "aux" });
+  const stay = token({ text, surface: "stay", tokenId: 7, head: 5, dep: "conj" });
 
   const result = audit([trigger(leave), trigger(stay)], [ifToken, alice, can, leave, and, bob, might, stay]);
   const ifRow = result.associations.find((row) => row.cueLemma === "if")!;
@@ -155,6 +155,7 @@ test("audit distinguishes deeper descendants, ancestors and siblings", () => {
 
   assert.equal(ifRow.structuralCategory, "descendant_depth_2_plus");
   assert.equal(canRow.structuralCategory, "descendant_depth_2_plus");
+  assert.equal(mightRow.triggerTokenId, stay.tokenId);
   assert.equal(mightRow.structuralCategory, "sibling_shared_head");
   assert.equal(result.sameSentenceCueTriggerPairCount, 6);
 });
