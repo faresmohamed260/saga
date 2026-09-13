@@ -1,0 +1,149 @@
+name: Phase 3 event semantic qualifier coverage audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-event-semantic-qualifier-audit
+    paths:
+      - ".github/workflows/v2-phase3-event-semantic-qualifier-audit.yml"
+      - "services/analysis-worker/package.json"
+      - "services/analysis-worker/src/evaluation/event-semantic-qualifier-audit.ts"
+      - "services/analysis-worker/src/evaluation/event-semantic-qualifier-audit-litbank-cli.ts"
+      - "services/analysis-worker/tests/event-semantic-qualifier-audit.test.ts"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-event-semantic-qualifier-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved pinned BookNLP syntax and event outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck qualifier coverage audit
+        run: npm run typecheck
+
+      - name: Run deterministic and model-light tests
+        run: npm test
+
+      - name: Audit structural qualifier coverage gaps
+        run: >-
+          npm run benchmark:event-semantic-qualifier-audit --
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --out evaluation-artifacts/event-semantic-qualifier-audit-litbank.json
+
+      - name: Verify complete audit and unchanged trigger floor
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/event-semantic-qualifier-audit-litbank.json", "utf8"));
+          const d = report.dataset;
+          if (d.attemptedDocumentCount !== 100 || d.completedDocumentCount !== 100 || d.failedDocumentCount !== 0) {
+            throw new Error(`incomplete audit: ${d.attemptedDocumentCount}/${d.completedDocumentCount}/${d.failedDocumentCount}`);
+          }
+          const f1 = report.triggerEvaluation.triggerDetection.f1;
+          if (f1.toFixed(4) !== "0.7791") throw new Error(`event trigger F1 regressed: ${f1}`);
+          if (report.audit.eventTriggerCount !== 7445) throw new Error(`event trigger denominator drifted: ${report.audit.eventTriggerCount}`);
+          if (report.triggerRegressionCheck.triggerCountDelta !== 0) throw new Error(`trigger count delta: ${report.triggerRegressionCheck.triggerCountDelta}`);
+          if (report.scope.newModelInference !== false) throw new Error("audit unexpectedly reran model inference");
+          if (report.scope.qualifierPolicyChanged !== false) throw new Error("audit unexpectedly changed qualifier policy");
+          if (report.scope.correctnessScored !== false) throw new Error("audit incorrectly claims correctness scoring");
+          if (report.scope.rawSourceTextEmitted !== false) throw new Error("audit unexpectedly emits raw source text");
+          if (report.audit.candidateCueTokenCount !== report.audit.cueTokenWithEventSentenceCount + report.audit.cueTokenWithoutEventSentenceCount) {
+            throw new Error("cue-token accounting mismatch");
+          }
+          if (report.audit.cueTokenWithEventSentenceCount !== report.audit.capturedAssociatedCueCount + report.audit.uncapturedAssociatedCueCount) {
+            throw new Error("association accounting mismatch");
+          }
+          EOF
+
+      - name: Publish qualifier coverage audit summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/event-semantic-qualifier-audit-litbank.json", "utf8"));
+          const a = report.audit;
+          console.log("## Phase 3 event semantic qualifier coverage audit");
+          console.log("");
+          console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- Reused BookNLP inference from run: ${report.sourceEvidence.sourceRunId}`);
+          console.log(`- trigger count: ${a.eventTriggerCount}`);
+          console.log(`- event trigger P/R/F1: ${report.triggerEvaluation.triggerDetection.precision.toFixed(4)} / ${report.triggerEvaluation.triggerDetection.recall.toFixed(4)} / ${report.triggerEvaluation.triggerDetection.f1.toFixed(4)}`);
+          console.log(`- unique cue tokens: ${a.candidateCueTokenCount}`);
+          console.log(`- cue tokens in event-bearing sentences: ${a.cueTokenWithEventSentenceCount}`);
+          console.log(`- cue tokens in sentences without events: ${a.cueTokenWithoutEventSentenceCount}`);
+          console.log(`- cue↔trigger same-sentence pairs: ${a.sameSentenceCueTriggerPairCount}`);
+          console.log(`- captured associated cues: ${a.capturedAssociatedCueCount} (${(a.capturedRateAmongAssociated * 100).toFixed(2)}%)`);
+          console.log(`- uncaptured associated cues: ${a.uncapturedAssociatedCueCount}`);
+          console.log("");
+          console.log("### Structural categories");
+          for (const [category, count] of Object.entries(a.byStructuralCategory).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))) {
+            console.log(`- ${category}: ${count}`);
+          }
+          console.log("");
+          console.log("### Cue families");
+          for (const [family, summary] of Object.entries(a.byFamily)) {
+            console.log(`- ${family}: candidates ${summary.candidateCueTokenCount}, associated ${summary.associatedCueTokenCount}, captured ${summary.capturedAssociatedCueCount}, uncaptured ${summary.uncapturedAssociatedCueCount}`);
+          }
+          console.log("");
+          console.log("### Cue lemmas");
+          for (const [family, lemmas] of Object.entries(a.byLemma)) {
+            for (const [lemma, summary] of Object.entries(lemmas).sort((left, right) => right[1].candidateCueTokenCount - left[1].candidateCueTokenCount || left[0].localeCompare(right[0]))) {
+              console.log(`- ${family}/${lemma}: candidates ${summary.candidateCueTokenCount}, associated ${summary.associatedCueTokenCount}, captured ${summary.capturedAssociatedCueCount}`);
+            }
+          }
+          console.log("");
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log("> Structural coverage/failure-mode audit only. LitBank does not provide S.A.G.A.-style polarity/modality/realis correctness gold.");
+          EOF
+
+      - name: Upload aggregate qualifier coverage audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-event-semantic-qualifier-audit-${{ github.sha }}
+          path: services/analysis-worker/evaluation-artifacts/event-semantic-qualifier-audit-litbank.json
+          if-no-files-found: error
+          retention-days: 90
