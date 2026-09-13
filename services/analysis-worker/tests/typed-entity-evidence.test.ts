@@ -28,7 +28,6 @@ const section: NormalizedSection = {
 };
 
 function span(surface: string) {
-  const codePoints = Array.from(text);
   const start = text.indexOf(surface);
   assert.ok(start >= 0);
   const prefix = Array.from(text.slice(0, start)).length;
@@ -107,7 +106,7 @@ test("GLiNER typed entity normalizer fails closed on configuration, fingerprint,
       normalizedText: text,
       normalizedInputFingerprint: fingerprint,
       sections: [section],
-      raw: { ...base, configuration: { ...GLINER_TYPED_ENTITY_CONFIG, threshold: 0.4 } as typeof GLINER_TYPED_ENTITY_CONFIG },
+      raw: { ...base, configuration: { ...GLINER_TYPED_ENTITY_CONFIG, threshold: 0.4 } },
     }),
     /gliner_configuration_mismatch/u,
   );
