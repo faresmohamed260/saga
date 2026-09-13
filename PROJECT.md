@@ -6,6 +6,7 @@ This file is the short source-of-truth handoff. For detailed Phase-3 state and m
 
 - `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
 - `docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`
+- the relevant records under `docs/experiments/`
 
 ## Current Status
 
@@ -28,40 +29,57 @@ Durable decisions D-026 through D-030 require local-first, subscription-free tex
 
 ## Current Authoritative Checkpoint
 
-At this branch handoff, merged `main` is:
+Merged `main` at the start of the active qualifier-audit branch is:
 
-`1856ee5f8c5e51e229c7777ff14192acfbb99945`
+`de289a9590e6e4449c942257030a57bc8d65d430`
 
-Latest merged checkpoints:
+That merge is PR #234, which added the first source-grounded event semantic qualifier evidence contract.
 
+Latest merged Phase-3 checkpoints include:
+
+- PR #221 — combined speaker V2 challenger;
+- PR #222 — dependency-aware event character grounding;
 - PR #223 — patient-candidate failure-mode audit;
 - PR #225 — real BookNLP proof through the generic one-shot subprocess boundary;
-- PR #227 — persistent loaded BookNLP stdio runtime, completing issue #226;
+- PR #227 — persistent loaded BookNLP stdio runtime;
 - PR #230 — provider-neutral typed non-character event-participant evidence and BookNLP public coverage diagnostic;
-- PR #232 — GLiNER typed-entity challenger benchmark, rejecting GLiNER for the current direct world-entity participant slot.
+- PR #232 — GLiNER typed-entity challenger benchmark, rejecting GLiNER for the current direct world-entity participant slot;
+- PR #234 — source-grounded event semantic qualifier evidence.
 
-Current measured semantic-qualifier slice:
+Current unmerged measured work is issue #235 / PR #236 on branch `v2/phase-3a-event-semantic-qualifier-audit`.
 
-- issue #233 / branch `v2/phase-3a-event-semantic-qualifiers`;
-- exact measured scorer head `6fe886f89a2f3dc9a3ba942077993928e7417fa6`;
-- `100 / 100` pinned LitBank documents completed with `0` failures;
-- typecheck passes and the analysis-worker regression floor is now **`168 / 168` tests passing**, up from `160 / 160` before this contract;
-- no new model inference was run; preserved BookNLP syntax/event evidence was reused;
-- trigger population remains exactly `7,445` and trigger P/R/F1 remains `0.8003 / 0.7591 / 0.7791` rounded;
-- only `53 / 7,445` events (`0.71%`) receive any explicit qualifier cue under the first strict policy;
-- explicit negation: `3` (`0.04%`);
-- modalized: `45` (`0.60%`);
-- explicit conditional cue: `5` (`0.07%`);
-- irrealis-cued: `50` (`0.67%`);
-- unmarked/undetermined: `7,392` (`99.29%`).
+Exact measured audit head:
 
-Decision: **keep the source-grounded semantic qualifier evidence contract and its `undetermined` default, but do not treat this first policy as a complete factuality classifier.** Unmarked events are not factual/realis by default. Before widening scope, audit failure modes or obtain suitable semantic/factuality annotations; do not loosen dependency scope just to increase coverage.
+`95034eef9cfaeb9935756d05fcfc1f3b60dfa2a8`
 
-The persistent BookNLP runtime was measured twice on exact implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`. Across six real analyses it reproduced the exact validated one-shot evidence fingerprint and exact counts. Its model-light qualification is **145 / 145 tests passing** for that runtime slice.
+The audit completed `100 / 100` pinned LitBank documents with `0` failures, typecheck pass, and **`177 / 177` analysis-worker tests passing**, up from `168 / 168` before the audit contract. The test-count increase is regression coverage only, not semantic quality.
 
-Persistent median analyze latency measured `4.627 s` and `2.853 s` on two independent hosted runners versus one-shot measurements of `6.314 s` and `8.930 s`. Peak process-tree RSS remained close to one-shot, so persistence is a latency/model-reuse improvement rather than a material memory reduction. Cold startup is not faster than one-shot health.
+No new model inference was run. The audit reused the preserved BookNLP syntax/event artifact from run `34727310506`.
 
-Decision: **when S.A.G.A. invokes BookNLP repeatedly, use the persistent local stdio runtime; keep one-shot subprocess execution as the simple correctness/reference path.**
+Trigger population and quality remain unchanged:
+
+- triggers: `7,445`;
+- precision / recall / F1: `0.8003 / 0.7591 / 0.7791` rounded;
+- trigger-count delta: `0`.
+
+The audit found `4,261` candidate negation/modal/conditional cue tokens. `1,528` occur in event-bearing sentences, producing `3,246` cue↔trigger pairs before deterministic nearest-trigger selection. Only `53 / 1,528` nearest-trigger cue associations (`3.47%`) match the strict qualifier policy.
+
+The uncaptured structural distribution is dominated by farther relationships:
+
+- deeper descendants, depth >=2: `961` (`62.89%` of associated cues);
+- other connected same-sentence: `354` (`23.17%`);
+- sibling/shared head: `149` (`9.75%`);
+- direct-child nonqualifying: only `9` (`0.59%`);
+- parent/ancestor: only `2` (`0.13%`).
+
+Negation shows the same pattern: `566` negative cues occur in event-bearing sentences, but only `3` are strict captures; `334` are deeper descendants, `82` siblings/shared-head and `146` other connected same-sentence cues.
+
+Decision: **keep the current semantic qualifier policy unchanged.** The audit does not reveal a broad safe one-hop omission. Generic descendant/sibling/nearest-sentence propagation would increase coverage while erasing semantic scope boundaries, and LitBank has no S.A.G.A.-style qualifier-scope/factuality gold to measure the resulting contamination. Unsupported states remain `undetermined`.
+
+Detailed evidence:
+
+- `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`
+- `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIER_AUDIT.md`
 
 ## Product Goal
 
@@ -167,45 +185,34 @@ Across `7,445` trigger predictions the corrected public diagnostic measured:
 - actor-opportunity grounding yield: `83.75%`;
 - direct syntactic patient-candidate grounding yield: `33.20%`.
 
-The patient audit then found **zero true linked-character grounding misses** among `2,546` direct syntactic patient candidates. The low patient-candidate yield is dominated by broad direct-object semantics, especially common nouns/pronouns, rather than a measured identity-attachment defect.
+The patient audit found **zero true linked-character grounding misses** among `2,546` direct syntactic patient candidates. The low patient-candidate yield is dominated by broad direct-object semantics rather than a measured identity-attachment defect.
 
 These are coverage/failure-mode diagnostics, not participant correctness metrics. Do not broaden attachment rules merely to inflate coverage.
 
 ### Typed non-character event participants
 
-PR #230 added a provider-neutral evidence layer for direct non-character actor/patient arguments while keeping canonical characters in the existing character-specific contract.
+BookNLP public diagnostic on the fixed direct-role denominator:
 
-BookNLP public diagnostic on the fixed role denominator:
+- clean typed non-character candidates: `146 / 6,701` (`2.18%`);
+- candidate events gaining typed evidence: `142 / 5,085` (`2.79%`).
 
-- clean typed non-character candidates: `146 / 6,701` (**`2.18%`**);
-- candidate events gaining typed evidence: `142 / 5,085` (**`2.79%`**).
+GLiNER PR #232 on the same role denominator:
 
-PR #232 measured GLiNER using the same BookNLP syntax/triggers and the same S.A.G.A. identity/event path but a separate typed-span provider:
-
-- clean typed non-character candidates: `47 / 6,701` (**`0.70%`**);
-- candidate events gaining typed evidence: `44 / 5,085` (**`0.87%`**);
+- clean typed non-character candidates: `47 / 6,701` (`0.70%`);
+- candidate events gaining typed evidence: `44 / 5,085` (`0.87%`);
 - relative coverage vs BookNLP: `0.322x` candidate / `0.310x` event;
-- trigger F1 unchanged at `0.7791` rounded;
-- `100 / 100` documents, `0` failures;
-- `160 / 160` model-light tests pass.
+- trigger F1 unchanged at `0.7791` rounded.
 
 Decision: **retain the provider-neutral evidence contract, reject GLiNER at this pinned configuration for the current direct-role slot, and do not weaken role or locator policy to make coverage larger.** BookNLP remains the stronger public coverage source for this narrow diagnostic but is still blocked from production by unverified model-weight licensing and the private-corpus gate.
 
-Detailed evidence:
-
-- `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
-- `docs/experiments/GLINER_TYPED_ENTITY_EVENT_PARTICIPANTS.md`
-
 ### Event semantic qualifiers
 
-Issue #233 adds a separate, deterministic evidence layer over validated trigger/dependency syntax. It records only explicit source-anchored cues and never turns missing evidence into a positive factuality claim.
+PR #234 merged a deterministic evidence layer over validated trigger/dependency syntax. It records only explicit source-anchored cues and never turns missing evidence into a positive factuality claim.
 
-Public diagnostic on exact scorer head `6fe886f89a2f3dc9a3ba942077993928e7417fa6`:
+First public qualifier diagnostic:
 
 - `100 / 100` LitBank documents, `0` failures;
-- typecheck pass;
-- **`168 / 168` tests pass**, up from `160 / 160` before this contract;
-- no new model inference;
+- `168 / 168` tests pass;
 - trigger count unchanged at `7,445`;
 - trigger P/R/F1 unchanged at `0.8003 / 0.7591 / 0.7791` rounded;
 - any explicit qualifier cue: `53` (`0.71%`);
@@ -215,44 +222,33 @@ Public diagnostic on exact scorer head `6fe886f89a2f3dc9a3ba942077993928e7417fa6
 - irrealis-cued: `50` (`0.67%`);
 - unmarked/undetermined: `7,392` (`99.29%`).
 
-Modal evidence is dominated by `could` (`24`) and `can` (`11`), then `will` (`5`), `must` (`4`) and `shall` (`1`). Conditional evidence is `if` (`5`), with no `unless` hits under the strict first policy.
+Issue #235's 100-document structural audit then increased the model-light regression floor to `177 / 177` and showed that low coverage is **not primarily a missed direct dependency edge**. Only `11 / 1,528` associated cue tokens are uncaptured one-hop cases; most uncaptured cues are farther descendants, siblings or other same-sentence relationships.
 
-Decision: **keep the qualifier evidence contract and strict `undetermined` default, but do not treat it as a complete event-factuality classifier.** The public coverage is intentionally narrow and correctness is unmeasured because LitBank has no S.A.G.A.-style polarity/modality/realis gold. Before widening dependency scope, audit failure modes or obtain suitable factuality annotations. No trigger, participant or production-adoption decision changes.
-
-Detailed evidence: `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`.
+Decision: **keep the strict qualifier contract and `undetermined` default unchanged.** Do not propagate cues through generic graph proximity without suitable semantic-scope correctness evidence.
 
 ### BookNLP runtime transport
 
 The generic one-shot boundary is validated with exact semantic equality to preserved direct BookNLP evidence.
 
-Persistent BookNLP stdio proof, exact implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`:
+Persistent BookNLP stdio proof:
 
-- attempt 1 median analyze: `4.627 s`, peak RSS `1007.1 MiB`;
-- attempt 2 median analyze: `2.853 s`, peak RSS `1028.7 MiB`;
-- validated one-shot analyze measurements: `6.314 s` and `8.930 s`;
-- all six persistent passes exactly reproduced evidence fingerprint `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
-- exact evidence counts stayed `230 / 230 / 5 / 20 / 2,319`;
-- model-light and heavyweight qualification: `145 / 145` tests pass;
-- full prepared offline runtime footprint remains about `439 MiB`;
+- independent-run median analyze latency: `4.627 s` and `2.853 s`;
+- one-shot analyze references: `6.314 s` and `8.930 s`;
+- peak process-tree RSS remains about `1 GiB`, so persistence is a latency/model-reuse improvement, not a material memory reduction;
+- all six persistent passes exactly reproduced the one-shot semantic fingerprint and evidence counts;
 - BookNLP model-weight license remains **unverified**.
 
 Decision: **persistent local stdio is preferred for repeated BookNLP execution; one-shot remains the correctness/reference path.** This changes transport, not model quality or production adoption.
 
-Detailed evidence:
-
-- `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`
-- `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`
-
 ## Current Execution Order
 
-1. Merge/close the measured event semantic qualifier slice once exact-head repository gates are green.
-2. Before broadening negation/modality/realis rules, run a **semantic qualifier failure-mode audit** that explains why the strict public layer marks only `0.71%` of triggers, especially the `3` explicit negation hits. Categorize nearby known cue lemmas by dependency relationship to event triggers without changing policy.
-3. Keep the current `undetermined` default; never infer factual/realis from missing cues.
+1. Merge/close the qualifier coverage audit once exact-head repository gates are green; do not widen qualifier policy from the public structural audit.
+2. Move Phase-3 source-neutral work to a genuinely new narrative capability rather than another post-hoc qualifier/provider tuning loop. Prefer a bounded **relationship/state evidence foundation** before timeline/causality, because relationships/state can be source-anchored from already-resolved characters, dialogue, entities and events without pretending to solve chronology first.
+3. Keep new public/source-neutral work diagnostic unless suitable gold supports correctness claims.
 4. If broader world entities such as artifacts/objects, factions/groups, creatures/species or other story-world classes are needed, introduce them through an explicit ontology contract and separate benchmark; never remap them silently into current labels.
-5. Keep public/source-neutral event work diagnostic unless suitable gold supports correctness claims.
-6. When private EPUB access returns, create/score primary-suite scene/dialogue/event annotations and use those results for production decisions.
-7. Adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
-8. After first-pass event/entity evidence is stable, continue relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
+5. When private EPUB access returns, create/score primary-suite scene/dialogue/event/semantic annotations and use those results for production decisions.
+6. Adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
+7. After a first-pass relationship/state layer is stable, continue chronology/timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
 
 ## Working Convention
 
