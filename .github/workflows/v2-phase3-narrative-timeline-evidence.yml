@@ -1,0 +1,143 @@
+name: Phase 3 narrative timeline evidence diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-narrative-timeline-evidence
+    paths:
+      - ".github/workflows/v2-phase3-narrative-timeline-evidence.yml"
+      - "services/analysis-worker/package.json"
+      - "services/analysis-worker/src/evaluation/narrative-timeline-evidence.ts"
+      - "services/analysis-worker/src/evaluation/narrative-timeline-litbank-cli.ts"
+      - "services/analysis-worker/tests/narrative-timeline-evidence.test.ts"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-narrative-timeline-evidence
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved pinned BookNLP outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck timeline evaluator
+        run: npm run typecheck
+
+      - name: Run deterministic and model-light tests
+        run: npm test
+
+      - name: Measure narrative-order and temporal-cue evidence
+        run: >-
+          npm run benchmark:narrative-timeline --
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --out evaluation-artifacts/narrative-timeline-litbank.json
+
+      - name: Verify complete diagnostic and invariant preservation
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/narrative-timeline-litbank.json", "utf8"));
+          const d = report.dataset;
+          const e = report.eventBaseline;
+          const t = report.timeline;
+          if (d.attemptedDocumentCount !== 100 || d.completedDocumentCount !== 100 || d.failedDocumentCount !== 0) {
+            throw new Error(`incomplete timeline diagnostic: ${d.attemptedDocumentCount}/${d.completedDocumentCount}/${d.failedDocumentCount}`);
+          }
+          if (e.predictedEventCount !== 7445 || t.eventCandidateCount !== 7445) {
+            throw new Error(`event denominator drift: ${e.predictedEventCount}/${t.eventCandidateCount}`);
+          }
+          if (e.triggerDetection.precision.toFixed(4) !== "0.8003" || e.triggerDetection.recall.toFixed(4) !== "0.7591" || e.triggerDetection.f1.toFixed(4) !== "0.7791") {
+            throw new Error(`trigger benchmark drift: ${e.triggerDetection.precision}/${e.triggerDetection.recall}/${e.triggerDetection.f1}`);
+          }
+          if (t.eventWithCueCount + t.eventWithoutCueCount !== t.eventCandidateCount) throw new Error("timeline cue accounting mismatch");
+          if (t.storyTimeResolvedCount !== 0 || t.storyTimeRelationCount !== 0) throw new Error("story-time inference leaked into v1 timeline evidence");
+          if (t.narrativeOrderViolationCount !== 0) throw new Error(`narrative-order violation: ${t.narrativeOrderViolationCount}`);
+          if (report.scope.newModelInference !== false || report.scope.eventExtractionChanged !== false) throw new Error("timeline diagnostic changed inference/event extraction");
+          if (report.scope.timelineCorrectnessScored !== false || report.scope.chronologyAccuracyClaimed !== false) throw new Error("timeline diagnostic overclaims correctness");
+          if (report.scope.storyTimeInferencePerformed !== false || report.scope.flashbackInferencePerformed !== false) throw new Error("timeline diagnostic inferred story time");
+          if (report.scope.productionAdoptionClaimed !== false || report.scope.rawSourceTextEmitted !== false) throw new Error("timeline diagnostic adoption/source-output policy violation");
+          EOF
+
+      - name: Publish timeline evidence summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/narrative-timeline-litbank.json", "utf8"));
+          const e = report.eventBaseline;
+          const t = report.timeline;
+          const pct = (n, d) => d === 0 ? "0.00" : (100 * n / d).toFixed(2);
+          console.log("## Phase 3 narrative-order and temporal-cue evidence diagnostic");
+          console.log("");
+          console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- event candidates preserved: ${t.eventCandidateCount}`);
+          console.log(`- trigger P/R/F1: ${e.triggerDetection.precision.toFixed(4)} / ${e.triggerDetection.recall.toFixed(4)} / ${e.triggerDetection.f1.toFixed(4)}`);
+          console.log(`- unique temporal cue tokens in event-bearing sentences: ${t.temporalCueCount}`);
+          console.log(`- events with >=1 same-sentence cue: ${t.eventWithCueCount} (${pct(t.eventWithCueCount, t.eventCandidateCount)}%)`);
+          console.log(`- cue attachments to events: ${t.cueAttachmentCount}`);
+          console.log(`- event-bearing sentences with >=1 cue: ${t.eventBearingSentenceWithCueCount}/${t.eventBearingSentenceCount} (${pct(t.eventBearingSentenceWithCueCount, t.eventBearingSentenceCount)}%)`);
+          console.log(`- multi-event sentences: ${t.multiEventSentenceCount}`);
+          console.log(`- multi-cue sentences: ${t.multiCueSentenceCount}`);
+          console.log(`- multi-event + cue sentences: ${t.multiEventAndCueSentenceCount}`);
+          console.log(`- resolved story-time statuses / story-time relations: ${t.storyTimeResolvedCount}/${t.storyTimeRelationCount}`);
+          console.log(`- narrative order violations: ${t.narrativeOrderViolationCount}`);
+          console.log("");
+          console.log("### Cue families");
+          for (const [family, count] of Object.entries(t.familyCounts).sort((l, r) => r[1] - l[1] || l[0].localeCompare(r[0]))) console.log(`- ${family}: ${count}`);
+          console.log("");
+          console.log("### Cue lemmas");
+          for (const [lemma, count] of Object.entries(t.lemmaCounts).sort((l, r) => r[1] - l[1] || l[0].localeCompare(r[0]))) console.log(`- ${lemma}: ${count}`);
+          console.log("");
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log("> Narrative/source-order and cue-prevalence evidence only. Same-sentence cues are unscoped; no story-time, before/after, simultaneity, or flashback edge is inferred.");
+          EOF
+
+      - name: Upload aggregate timeline diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-narrative-timeline-evidence-${{ github.sha }}
+          path: services/analysis-worker/evaluation-artifacts/narrative-timeline-litbank.json
+          if-no-files-found: error
+          retention-days: 90
