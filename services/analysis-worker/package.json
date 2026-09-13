@@ -21,6 +21,7 @@
     "benchmark:dialogue-score": "tsx src/evaluation/dialogue-score-cli.ts",
     "benchmark:event-deterministic": "tsx src/evaluation/event-deterministic-cli.ts",
     "benchmark:event-score": "tsx src/evaluation/event-score-cli.ts",
+    "benchmark:event-gliner-typed-participants": "tsx src/evaluation/event-gliner-typed-entity-litbank-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
