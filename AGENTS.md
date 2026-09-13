@@ -295,3 +295,11 @@ Update the existing authoritative file instead of creating competing status docu
 Follow the owner's requested scope. Phase 1 prioritizes the closed-demo main site/frontend/backend/account system before the agentic AI component.
 
 Do not modify RenderLab during S.A.G.A. work. Do not revive the v1 production qualification/R2 repair path unless the owner explicitly reverses the v2 decision.
+
+## Modal Project Ownership Rule
+
+Modal account ownership is a locked cross-project infrastructure boundary. S.A.G.A. owns only `modal-03` through `modal-41`. RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`.
+
+Possession of an omnibus Modal credential roster does not authorize use of every credential. S.A.G.A. scripts and workflows must pass the checked-in ownership guard before exporting `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`, and must fail closed for RenderLab-owned labels. Do not re-enable historical worker maintenance/provisioning or live media-smoke workflows that target or spend against RenderLab-owned workers. Changing this partition requires an explicit owner decision recorded in both repositories.
+
+This rule does not change D-027: Modal remains outside S.A.G.A. v2 textual analysis and is reserved for future S.A.G.A.-owned media/image workloads.
