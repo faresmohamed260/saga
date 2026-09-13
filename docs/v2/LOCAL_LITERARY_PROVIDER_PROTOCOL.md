@@ -75,12 +75,15 @@ Returns `kind = health` and `status = ok`.
 
 ### `analyze`
 
-Returns `kind = analyze`, the exact normalized-input fingerprint, and a `LocalLiteraryEvidenceBundle` containing only provider-neutral evidence families currently owned by v2:
+Returns `kind = analyze`, the exact normalized-input fingerprint, and a `LocalLiteraryEvidenceBundle` containing provider-neutral evidence families owned by v2:
 
 - identity mentions;
 - typed literary entities;
 - quote/speaker evidence;
-- literary event triggers.
+- literary event triggers;
+- optional sentence-wide syntax-token evidence for providers that expose dependency structure.
+
+The syntax layer is additive and optional so providers without dependency output remain protocol-compatible. When present, each syntax token contains exact source span/surface, lemma, paragraph/sentence/document token coordinates, POS tags, dependency relation and document-level syntactic head token ID. This layer exists to support deterministic grounding such as actor/patient attachment; it is evidence, not canonical narrative truth.
 
 ### `error`
 
@@ -105,6 +108,14 @@ The TypeScript boundary fails closed unless returned evidence satisfies all curr
 - quote speaker span fields are either all present or all absent;
 - event token/sentence/head IDs are non-negative safe integers;
 - malformed or partial payload shapes fail closed.
+
+When optional syntax-token evidence is present, the validator additionally requires:
+
+- unique document token IDs;
+- unique `(sentenceId, tokenIdWithinSentence)` coordinates;
+- every syntactic head ID resolves to another returned syntax token (or the same token for a root/self-head representation);
+- dependency heads stay within the same sentence;
+- every returned event trigger maps to the same syntax token ID with identical source span, surface, lemma, sentence, dependency relation and head ID.
 
 The validator builds the source code-point index once per analysis result so validating many spans does not repeatedly rescan the whole novel.
 
@@ -146,6 +157,7 @@ Normal CI must remain model-light. The subprocess contract is tested with a tiny
 - secret stripping;
 - protocol/provider/fingerprint mismatch;
 - exact source-span validation;
+- optional syntax graph/head/event consistency validation;
 - timeout and I/O limits;
 - process crash/spawn failure;
 - provider-reported retryable versus terminal errors.
@@ -154,15 +166,18 @@ No BookNLP, GLiNER, F-Coref, Qwen, GPU runtime, paid API, or Modal textual workl
 
 ## Adoption boundary
 
-This Phase-3B slice implements and validates an execution boundary only.
+This Phase-3B boundary implements and validates local evidence transport only.
 
 It does **not**:
 
 - promote BookNLP or any other provider;
+- make dependency relations canonical participants/events;
 - create a new durable application analysis job/table;
 - replace the current TypeScript orchestration owner;
 - satisfy the private modern-fiction product qualification gate;
 - authorize a Vercel deployment;
 - authorize paid inference or Modal text analysis.
 
-Next measured work may instantiate this interface for dependency-aware speaker/event challengers and existing BookNLP evidence normalization, then compare one-shot subprocess execution against a persistent loopback sidecar if startup/resource measurements make that comparison worthwhile.
+The syntax extension specifically enables the measured #214 dependency-aware event-grounding challenger. Participant attachment must still resolve through S.A.G.A.-owned identity/entity evidence and must be benchmarked separately from trigger detection.
+
+A persistent loopback sidecar may still be compared against one-shot subprocess execution if real startup/resource measurements justify it.

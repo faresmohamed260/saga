@@ -12,6 +12,7 @@ import type {
   LiteraryEntityEvidence,
   LocalLiteraryEvidenceBundle,
   QuoteSpeakerEvidence,
+  SyntaxTokenEvidence,
 } from "./types.js";
 
 type TsvRow = Record<string, string>;
@@ -222,6 +223,23 @@ export function normalizeBookNlpOutput(input: NormalizeBookNlpOutputInput): Loca
   const entityRows = parseTsv(input.entitiesTsv, ENTITY_HEADERS, "entities");
   const quoteRows = parseTsv(input.quotesTsv, QUOTE_HEADERS, "quotes");
 
+  const syntaxTokens: SyntaxTokenEvidence[] = tokens.map((token) => ({
+    evidenceId: `booknlp:syntax:${token.tokenId}`,
+    surfaceText: codePointSlice(input.normalizedText, token.startOffset, token.endOffset),
+    lemma: token.lemma,
+    startOffset: token.startOffset,
+    endOffset: token.endOffset,
+    structuralLocator: structuralLocatorForSpan(input.sections, token.startOffset, token.endOffset),
+    paragraphId: token.paragraphId,
+    sentenceId: token.sentenceId,
+    tokenIdWithinSentence: token.tokenIdWithinSentence,
+    tokenId: token.tokenId,
+    posTag: token.posTag,
+    finePosTag: token.finePosTag,
+    dependencyRelation: token.dependencyRelation,
+    syntacticHeadTokenId: token.syntacticHeadTokenId,
+  }));
+
   const entities: LiteraryEntityEvidence[] = [];
   const identityMentions: NormalizedIdentityEvidence["mentions"] = [];
 
@@ -313,5 +331,6 @@ export function normalizeBookNlpOutput(input: NormalizeBookNlpOutputInput): Loca
     entities,
     quotes,
     eventTriggers,
+    syntaxTokens,
   };
 }
