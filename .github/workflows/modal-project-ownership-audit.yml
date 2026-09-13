@@ -23,7 +23,7 @@ jobs:
           python-version: "3.11"
       - name: Install pinned Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Inspect non-secret app-list shape for fleet accounts
+      - name: Resolve project apps across the roster
         shell: bash
         run: |
           python - <<'PY'
@@ -33,7 +33,6 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          targets = {f"modal-{n:02d}" for n in range(42, 48)}
           raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "").strip()
           if not raw:
               raise SystemExit("SAGA_MODAL_TOKENS_JSON is not configured")
@@ -47,15 +46,12 @@ jobs:
               if not isinstance(row, dict):
                   continue
               label = str(row.get("label") or row.get("name") or row.get("account") or f"modal-{index:02d}").strip()
-              if label not in targets:
-                  continue
               token_id = str(row.get("token_id") or "").strip()
               token_secret = str(row.get("token_secret") or "").strip()
               combined = str(row.get("api_key") or row.get("token") or "").strip()
               if (not token_id or not token_secret) and "." in combined:
                   token_id, token_secret = combined.split(".", 1)
               if not token_id or not token_secret:
-                  findings.append({"label": label, "state": "missing-credential"})
                   continue
 
               env = dict(os.environ)
@@ -68,23 +64,37 @@ jobs:
                   capture_output=True,
                   timeout=60,
               )
-              entry = {
-                  "label": label,
-                  "tokenFingerprint": hashlib.sha256(token_id.encode()).hexdigest()[:12],
-                  "state": "available" if result.returncode == 0 else "unavailable",
-              }
-              if result.returncode == 0:
-                  try:
-                      entry["apps"] = json.loads(result.stdout or "[]")
-                  except json.JSONDecodeError:
-                      entry["apps"] = {"unparsed": (result.stdout or "")[:2000]}
-              findings.append(entry)
+              if result.returncode != 0:
+                  continue
+              try:
+                  apps = json.loads(result.stdout or "[]")
+              except json.JSONDecodeError:
+                  continue
+              matched = []
+              if isinstance(apps, list):
+                  for app in apps:
+                      if not isinstance(app, dict):
+                          continue
+                      description = str(app.get("Description") or app.get("description") or app.get("Name") or app.get("name") or "").strip()
+                      lowered = description.lower()
+                      if description and ("saga" in lowered or "renderlab" in lowered):
+                          matched.append({
+                              "description": description,
+                              "state": app.get("State") or app.get("state"),
+                              "tasks": app.get("Tasks") or app.get("tasks"),
+                          })
+              if matched:
+                  findings.append({
+                      "label": label,
+                      "tokenFingerprint": hashlib.sha256(token_id.encode()).hexdigest()[:12],
+                      "apps": matched,
+                  })
 
           Path("modal-project-ownership-audit.json").write_text(
-              json.dumps({"accounts": findings}, indent=2) + "\n",
+              json.dumps({"relevantAccounts": findings, "rosterEntries": len(rows)}, indent=2) + "\n",
               encoding="utf-8",
           )
-          print(json.dumps({"accounts": [{"label": row.get("label"), "state": row.get("state"), "tokenFingerprint": row.get("tokenFingerprint")} for row in findings]}, sort_keys=True))
+          print(json.dumps({"relevantAccountLabels": [row["label"] for row in findings], "rosterEntries": len(rows)}, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         with:
