@@ -4,6 +4,7 @@ import test from "node:test";
 import { sha256Hex } from "../src/ingestion/hash.js";
 import { resolveCharacterIdentity } from "../src/identity/resolver.js";
 import { codePointLength, codePointSlice, normalizeBookNlpOutput } from "../src/local-analysis/booknlp-output.js";
+import type { SyntaxTokenEvidence } from "../src/local-analysis/types.js";
 
 const text = "Élodie smiled. 😀 Alice said, “Hello, Bob.” Bob waved.";
 
@@ -155,7 +156,9 @@ test("BookNLP output becomes source-anchored identity, quote, syntax, and event 
     ],
   );
   for (const event of evidence.eventTriggers) {
-    const matchingSyntaxToken = evidence.syntaxTokens?.find((token) => token.tokenId === event.tokenId);
+    const matchingSyntaxToken: SyntaxTokenEvidence | undefined = evidence.syntaxTokens?.find(
+      (token) => token.tokenId === event.tokenId,
+    );
     assert.ok(matchingSyntaxToken);
     assert.equal(matchingSyntaxToken.surfaceText, event.surfaceText);
     assert.equal(matchingSyntaxToken.sentenceId, event.sentenceId);
