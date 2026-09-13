@@ -13,7 +13,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
     steps:
@@ -21,9 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install pinned Modal CLI
+      - name: Install pinned Modal SDK
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Resolve project apps across the roster
+      - name: Resolve recovered LTX gateway URLs
         shell: bash
         run: |
           python - <<'PY'
@@ -33,68 +33,35 @@ jobs:
           import subprocess
           from pathlib import Path
 
+          targets = {"modal-01", "modal-02"}
           raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "").strip()
-          if not raw:
-              raise SystemExit("SAGA_MODAL_TOKENS_JSON is not configured")
           payload = json.loads(raw)
           rows = payload.get("accounts") or payload.get("tokens") or payload.get("roster") or [] if isinstance(payload, dict) else payload
-          if not isinstance(rows, list):
-              raise SystemExit("Modal roster must be a list")
-
           findings = []
           for index, row in enumerate(rows, start=1):
               if not isinstance(row, dict):
                   continue
               label = str(row.get("label") or row.get("name") or row.get("account") or f"modal-{index:02d}").strip()
+              if label not in targets:
+                  continue
               token_id = str(row.get("token_id") or "").strip()
               token_secret = str(row.get("token_secret") or "").strip()
               combined = str(row.get("api_key") or row.get("token") or "").strip()
               if (not token_id or not token_secret) and "." in combined:
                   token_id, token_secret = combined.split(".", 1)
-              if not token_id or not token_secret:
-                  continue
-
               env = dict(os.environ)
               env["MODAL_TOKEN_ID"] = token_id
               env["MODAL_TOKEN_SECRET"] = token_secret
-              result = subprocess.run(
-                  ["modal", "app", "list", "--json"],
-                  env=env,
-                  text=True,
-                  capture_output=True,
-                  timeout=60,
-              )
-              if result.returncode != 0:
-                  continue
-              try:
-                  apps = json.loads(result.stdout or "[]")
-              except json.JSONDecodeError:
-                  continue
-              matched = []
-              if isinstance(apps, list):
-                  for app in apps:
-                      if not isinstance(app, dict):
-                          continue
-                      description = str(app.get("Description") or app.get("description") or app.get("Name") or app.get("name") or "").strip()
-                      lowered = description.lower()
-                      if description and ("saga" in lowered or "renderlab" in lowered):
-                          matched.append({
-                              "description": description,
-                              "state": app.get("State") or app.get("state"),
-                              "tasks": app.get("Tasks") or app.get("tasks"),
-                          })
-              if matched:
-                  findings.append({
-                      "label": label,
-                      "tokenFingerprint": hashlib.sha256(token_id.encode()).hexdigest()[:12],
-                      "apps": matched,
-                  })
-
-          Path("modal-project-ownership-audit.json").write_text(
-              json.dumps({"relevantAccounts": findings, "rosterEntries": len(rows)}, indent=2) + "\n",
-              encoding="utf-8",
-          )
-          print(json.dumps({"relevantAccountLabels": [row["label"] for row in findings], "rosterEntries": len(rows)}, sort_keys=True))
+              code = "import modal; print(modal.Function.from_name('saga-ltx25-gateway','web').get_web_url())"
+              result = subprocess.run(["python", "-c", code], env=env, text=True, capture_output=True, timeout=60)
+              findings.append({
+                  "label": label,
+                  "tokenFingerprint": hashlib.sha256(token_id.encode()).hexdigest()[:12],
+                  "gatewayUrl": (result.stdout or "").strip().splitlines()[-1] if result.returncode == 0 and (result.stdout or "").strip() else None,
+                  "state": "resolved" if result.returncode == 0 else "unavailable",
+              })
+          Path("modal-project-ownership-audit.json").write_text(json.dumps({"ltxRecovered": findings}, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps({"labels": [row["label"] for row in findings], "resolved": sum(row["state"] == "resolved" for row in findings)}, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         with:
