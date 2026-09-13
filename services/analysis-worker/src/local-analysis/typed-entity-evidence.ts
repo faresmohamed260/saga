@@ -6,21 +6,9 @@ import type { LiteraryEntityCategory, LiteraryEntityEvidence } from "./types.js"
 export const TYPED_ENTITY_EVIDENCE_SCHEMA = "saga-typed-entity-evidence-v1";
 export const GLINER_RAW_ENTITY_SCHEMA = "saga-gliner-raw-entity-output-v1";
 
-export type GlinerTypedEntityConfiguration = {
-  package: string;
-  packageVersion: string;
-  model: string;
-  modelRevision: string;
-  labels: readonly string[];
-  threshold: number;
-  windowCodePoints: number;
-  overlapCodePoints: number;
-  batchSize: number;
-};
-
 export const GLINER_TYPED_ENTITY_CONFIG = {
   package: "gliner",
-  packageVersion: "0.2.24",
+  packageVersion: "0.2.29",
   model: "urchade/gliner_small-v2.1",
   modelRevision: "f23104c107e3c57f5c7aa36d53a9667c67b4b866",
   labels: [
@@ -35,12 +23,24 @@ export const GLINER_TYPED_ENTITY_CONFIG = {
   windowCodePoints: 1400,
   overlapCodePoints: 180,
   batchSize: 12,
-} as const satisfies GlinerTypedEntityConfiguration;
+} as const;
 
 export const GLINER_TYPED_ENTITY_PROVIDER: IdentityProviderDescriptor = {
   name: "gliner_typed_entity",
   model: GLINER_TYPED_ENTITY_CONFIG.model,
   revision: `${GLINER_TYPED_ENTITY_CONFIG.package}@${GLINER_TYPED_ENTITY_CONFIG.packageVersion}:model@${GLINER_TYPED_ENTITY_CONFIG.modelRevision}`,
+};
+
+type GlinerTypedEntityConfiguration = {
+  package: string;
+  packageVersion: string;
+  model: string;
+  modelRevision: string;
+  labels: readonly string[];
+  threshold: number;
+  windowCodePoints: number;
+  overlapCodePoints: number;
+  batchSize: number;
 };
 
 export type TypedEntityEvidenceSource = {
