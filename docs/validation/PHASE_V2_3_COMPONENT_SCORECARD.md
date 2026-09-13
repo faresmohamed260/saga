@@ -165,7 +165,7 @@ Across `2,546` direct syntactic patient candidates in `2,476` events:
 - **true linked-character not grounded: `0`**;
 - ambiguous linked character: `17` (`0.67%`);
 - **structural-locator mismatch: `0`**;
-- **gold-linked person missing from oracle identity: `0`**;
+- **gold-linked person missing from identity: `0`**;
 - unresolved person gold: `8` (`0.31%`);
 - non-person gold: `142` (`5.58%`);
 - provider non-person only: `15` (`0.59%`);
@@ -200,12 +200,52 @@ Progress/decision:
 - do **not** enable dative, conjunction inheritance or provider clusters merely to inflate coverage;
 - call this denominator **direct syntactic patient candidates/opportunities**, not an expectation that every object is a character patient.
 
-Decision: **direct dependency grounding remains the current public participant-grounding challenger infrastructure, but no participant method is production-adopted**. Next event work should add genuinely new semantic capability—non-character entity participants, negation/modality/realis—or wait for suitable private actor/patient gold rather than broadening attachment rules without evidence.
+### Typed non-character participant evidence
+
+Issue #229 adds a separate evidence layer for direct actor/patient arguments that are **not already grounded to a canonical character**. The layer does not place non-character entities into the character-specific `characterKey` contract and does not create canonical world-entity IDs.
+
+A scorer-only 100-document diagnostic reused the same preserved BookNLP inference and completed `100 / 100` documents with `0` failures, passing typecheck and **`153 / 153`** worker tests, up from the previous `145 / 145` model-light floor.
+
+Across `6,701` direct actor/patient candidate tokens in `5,085` candidate events:
+
+- already grounded canonical character: `4,265` (`63.65%`);
+- clean typed non-character evidence: **`146` (`2.18%`)**;
+- ambiguous typed non-character: `4` (`0.06%`);
+- malformed typed non-character: `0`;
+- structural-locator mismatch: `0`;
+- provider person only: `140` (`2.09%`);
+- no provider entity evidence: **`2,146` (`32.03%`)**;
+- events gaining at least one typed non-character evidence item: **`142 / 5,085` (`2.79%`)**.
+
+Typed evidence is narrow:
+
+- facility `90`;
+- vehicle `32`;
+- location `17`;
+- geopolitical `6`;
+- organization `1`.
+
+The trigger benchmark is unchanged at `0.8003 / 0.7591 / 0.7791`; the scorer's full-precision F1 is `0.7791290702`, so the tiny difference from the stored four-decimal `0.7791` is rounding only.
+
+Report fingerprint:
+
+`bcd749129620eab5ac9f4271520e3727587a8b0f768ee4860870bdac90561b30`
+
+Artifact digest:
+
+`sha256:d228a6329ec4a8a41c421876750df1febde227bb3143b4ba45d17e4d92a57637`
+
+Interpretation: BookNLP's typed non-character evidence is source-grounded and structurally clean, but **too sparse to serve as S.A.G.A.'s world-entity participant solution**. Preserve the evidence layer, keep character grounding unchanged, and benchmark the planned GLiNER typed-entity challenger through the same role/source contract rather than weakening attachment rules.
+
+These are coverage diagnostics only; LitBank does not supply non-character participant correctness gold.
+
+Decision: **direct dependency grounding remains the current public participant-grounding infrastructure; BookNLP typed non-character evidence is retained as sparse optional evidence, not a production-adopted participant method.** Next typed-entity work should measure GLiNER or another purpose-built typed span provider.
 
 Detailed records:
 
 - `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
 - `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
+- `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
 
 ## BookNLP component repeatability / resources
 
