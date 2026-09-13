@@ -1,0 +1,140 @@
+name: Phase 3 character relationship failure-mode audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-character-relationship-failure-audit
+    paths:
+      - ".github/workflows/v2-phase3-character-relationship-failure-audit.yml"
+      - "services/analysis-worker/package.json"
+      - "services/analysis-worker/src/evaluation/character-relationship-audit.ts"
+      - "services/analysis-worker/src/evaluation/character-relationship-audit-litbank-cli.ts"
+      - "services/analysis-worker/src/evaluation/character-relationship-evidence.ts"
+      - "services/analysis-worker/tests/character-relationship-audit.test.ts"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-character-relationship-failure-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved pinned BookNLP syntax outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck relationship audit
+        run: npm run typecheck
+
+      - name: Run deterministic and model-light tests
+        run: npm test
+
+      - name: Audit relationship coverage failures
+        run: >-
+          npm run benchmark:character-relationship-audit --
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --out evaluation-artifacts/character-relationship-failure-audit.json
+
+      - name: Verify preserved baseline and accounting
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/character-relationship-failure-audit.json", "utf8"));
+          const d = report.dataset;
+          const a = report.audit;
+          if (d.attemptedDocumentCount !== 100 || d.completedDocumentCount !== 100 || d.failedDocumentCount !== 0) {
+            throw new Error(`incomplete audit: ${d.attemptedDocumentCount}/${d.completedDocumentCount}/${d.failedDocumentCount}`);
+          }
+          if (!report.baseline.preserved) throw new Error("relationship baseline drifted");
+          if (a.predicateHitCount !== 196) throw new Error(`predicate denominator drift: ${a.predicateHitCount}`);
+          if (a.supportedBinarySyntaxCount !== 48) throw new Error(`syntax denominator drift: ${a.supportedBinarySyntaxCount}`);
+          if (a.groundedObservationCount !== 23) throw new Error(`observation denominator drift: ${a.groundedObservationCount}`);
+          if (a.unsupportedSyntaxCount !== 148) throw new Error(`unsupported syntax count drift: ${a.unsupportedSyntaxCount}`);
+          if (a.groundingFailureCount !== 25) throw new Error(`grounding failure count drift: ${a.groundingFailureCount}`);
+          if (report.scope.newModelInference !== false || report.scope.extractionPolicyChanged !== false) {
+            throw new Error("audit changed inference or extraction policy");
+          }
+          if (report.scope.correctnessScored !== false || report.scope.relationshipAccuracyClaimed !== false) {
+            throw new Error("audit incorrectly claims relationship correctness");
+          }
+          if (report.scope.productionAdoptionClaimed !== false || report.scope.storyTimeInferred !== false || report.scope.persistenceClaimed !== false) {
+            throw new Error("audit incorrectly claims adoption/state/story time");
+          }
+          if (report.scope.rawSourceTextEmitted !== false) throw new Error("audit claims raw source emission");
+          EOF
+
+      - name: Publish failure-mode summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/character-relationship-failure-audit.json", "utf8"));
+          const a = report.audit;
+          const pct = (n, d) => d === 0 ? "0.00" : (100 * n / d).toFixed(2);
+          console.log("## Phase 3 explicit character relationship failure-mode audit");
+          console.log("");
+          console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- preserved baseline predicate / syntax / observation counts: ${a.predicateHitCount} / ${a.supportedBinarySyntaxCount} / ${a.groundedObservationCount}`);
+          console.log(`- unsupported syntax: ${a.unsupportedSyntaxCount} (${pct(a.unsupportedSyntaxCount, a.predicateHitCount)}%)`);
+          console.log(`- grounding failures after supported syntax: ${a.groundingFailureCount} (${pct(a.groundingFailureCount, a.supportedBinarySyntaxCount)}%)`);
+          console.log("");
+          console.log("### Syntax-shape categories");
+          for (const [key, value] of Object.entries(a.syntaxCategoryCounts).sort((l, r) => r[1] - l[1] || l[0].localeCompare(r[0]))) console.log(`- ${key}: ${value}`);
+          console.log("");
+          console.log("### Grounding categories");
+          for (const [key, value] of Object.entries(a.groundingCategoryCounts).sort((l, r) => r[1] - l[1] || l[0].localeCompare(r[0]))) console.log(`- ${key}: ${value}`);
+          console.log("");
+          console.log("### No-character argument POS");
+          for (const [key, value] of Object.entries(a.noCharacterArgumentPosTags).sort((l, r) => r[1] - l[1] || l[0].localeCompare(r[0]))) console.log(`- ${key}: ${value}`);
+          console.log("");
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log("> Structural coverage/failure audit only. No relationship correctness, persistence, reciprocity, narrative-time, or production-adoption claim is made.");
+          EOF
+
+      - name: Upload aggregate relationship failure audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-character-relationship-failure-audit-${{ github.sha }}
+          path: services/analysis-worker/evaluation-artifacts/character-relationship-failure-audit.json
+          if-no-files-found: error
+          retention-days: 90

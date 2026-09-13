@@ -207,9 +207,9 @@ Detailed records:
 
 ## Character relationship / source-order state evidence
 
-Issue #237 / PR #238 add an explicit relationship-observation contract and immutable source-order evidence ledger. Persistent relationship state and narrative-time interpretation remain separate future layers.
+PR #238 merged an explicit relationship-observation contract and immutable source-order evidence ledger. Persistent relationship state and narrative-time interpretation remain separate future layers.
 
-Pinned first-policy predicates:
+Pinned predicates:
 
 `love`, `hate`, `trust`, `distrust`, `marry`, `divorce`, `befriend`, `betray`.
 
@@ -220,28 +220,18 @@ Supported shapes:
 
 Both roles must ground through exactly one linked canonical identity with exact structural-locator agreement. Self-relations, reciprocal inference, conjunction inheritance, co-occurrence inference and shared-event inference are excluded. Direct negation/modal/conditional cues remain attached.
 
-### Model-light qualification
+### Foundation qualification
 
-Clean implementation baseline `9d13b9acd5f968b36aae23ed6ba83a62808a92df`:
-
-- typecheck: pass;
+- typecheck pass;
 - **`188 / 188` tests pass**, up from `177 / 177` before the contract;
 - +11 tests are regression/contract coverage, not relationship-quality improvement.
 
-### 100-document public coverage diagnostic
+### Foundation 100-document coverage diagnostic
 
-Exact measured scorer head:
-
-`bab1b898ba8aeb23fff5d9be1820b368910ee82d`
-
-Run `34782059516`, job `103790751005`:
+Exact measured scorer head `bab1b898ba8aeb23fff5d9be1820b368910ee82d`; run `34782059516`, job `103790751005`.
 
 - documents: `100 / 100`, `0` failures;
-- typecheck pass;
-- `188 / 188` tests pass;
 - no new model inference; preserved BookNLP syntax reused.
-
-Coverage funnel:
 
 | Stage | Count | Yield |
 | --- | ---: | ---: |
@@ -254,35 +244,87 @@ Candidate hits: `love 95`, `marry 54`, `trust 20`, `hate 20`, `distrust 5`, `bet
 
 Grounded observations: `love 16`, `marry 5`, `trust 2`; all others `0`.
 
-Source-order support:
+Source-order support: `23` observations, `20` unique directed pairs, `20` pair+predicate groups, `1 / 20` repeated-support group with `4` observations.
 
-- observations: `23`;
-- unique directed pairs: `20`;
-- unique pair+predicate groups: `20`;
-- repeated-support groups: `1 / 20` (`5.00%`);
-- repeated group support: `4` observations.
-
-Qualification:
-
-- qualified observations: `6 / 23` (`26.09%`);
-- negated: `4` (`17.39%`);
-- modalized: `3` (`13.04%`);
-- conditional: `0`.
+Qualification: `6 / 23` observations carry explicit cues; negated `4`, modalized `3`, conditional `0`.
 
 Report fingerprint:
 
 `66b228428713aa6b0b59b0e36f3e50e759f533eed243e015e77c9e69e1061c78`
 
-Artifact:
+Artifact ID `10325625680`, digest `sha256:efce6db6204928799b2e8b8feefa03d45632a54491252cdf11ba8fdddbd3e73b`.
 
-- ID `10325625680`;
-- digest `sha256:efce6db6204928799b2e8b8feefa03d45632a54491252cdf11ba8fdddbd3e73b`.
+### Relationship failure-mode audit — issue #239
 
-Decision: **keep the explicit observation + source-order ledger foundation, but do not call it a general relationship extractor and do not derive persistent state from it.** LitBank has no S.A.G.A.-style relationship/state gold, so these are coverage/yield diagnostics only. No production relationship/state default is adopted.
+Exact measured head:
 
-Next measured question: explain the `148 / 196` predicate hits outside the exact binary syntax and the `25 / 48` exact syntax candidates that do not ground to two canonical characters before considering any expansion.
+`b738cb4296af2c9811d5cf18aac9aa8d44c9fe66`
 
-Detailed record: `docs/experiments/CHARACTER_RELATIONSHIP_STATE_EVIDENCE.md`.
+Dedicated run `34783109777`, job `103793595218`:
+
+- documents: **`100 / 100`**, `0` failures;
+- typecheck pass;
+- **`195 / 195` tests pass**, up from `188 / 188` solely because of seven audit classifier tests;
+- new model inference: **none**;
+- baseline preserved exactly: **`196 predicate hits / 48 supported syntax / 23 observations`**.
+
+#### Syntax drop-off
+
+The `148` unsupported predicate hits are:
+
+| Category | Count | Share of unsupported |
+| --- | ---: | ---: |
+| no direct role shape | **86** | **58.11%** |
+| active subject only | **36** | **24.32%** |
+| active object only | **18** | **12.16%** |
+| passive subject only | `5` | `3.38%` |
+| passive agent only | `1` | `0.68%` |
+| multiple active subjects | `1` | `0.68%` |
+| multiple active objects | `1` | `0.68%` |
+| exact accepted passive shape | `0` | — |
+| mixed / other unsupported | `0` | `0%` |
+
+The drop-off is therefore broad absent/one-sided syntax rather than one narrow multiplicity, passive or conjunction defect.
+
+#### Canonical-character grounding drop-off
+
+The `25` supported syntax candidates that do not become distinct-character observations are:
+
+| Category | Count | Share of failures |
+| --- | ---: | ---: |
+| object has no linked character | **19** | **76%** |
+| self relation | `2` | `8%` |
+| subject ambiguous | `2` | `8%` |
+| subject has no linked character | `1` | `4%` |
+| object ambiguous | `1` | `4%` |
+| structural-locator mismatch, any side | **0** | `0%` |
+
+Subjects are grounded in `45 / 48`; objects in `28 / 48`. The `20` no-character role positions split `PRON 10 / NOUN 10`; fine POS is `NN 9`, `PRP 5`, `WP 3`, `NNS 2`, `DT 1`.
+
+Predicate-specific supported -> grounded counts:
+
+- `love`: `29 -> 16`, with `12` object-no-character;
+- `marry`: `9 -> 5`;
+- `hate`: `6 -> 0`, **all 6 object-no-character**;
+- `trust`: `3 -> 2`, one self relation;
+- `betray`: `1 -> 0`, object-no-character.
+
+Audit report fingerprint:
+
+`7e04a17d1cb5b9e0d48bc98d8a634b36e3e11ecbf5e81f9f3c54a90ec9ee69a1`
+
+Audit artifact ID `10325579385`, digest `sha256:5be3f8c48b931acbc3967c7261b0f17f318a840307ffa89d6be6a99774fccc5d`.
+
+Decision: **keep the strict relationship observation policy unchanged**. The audit found no high-volume, low-risk omission: most syntax misses have no direct or only one-sided relationship-role structure, and most grounding misses are object-side arguments with no linked canonical character. Exact locator matching caused zero failures. Do not widen the predicate lexicon, dependency traversal, conjunction inheritance, co-occurrence/shared-event inference or identity rules to inflate coverage. Do not derive persistent state from repeated source-order observations.
+
+LitBank has no S.A.G.A.-style relationship/state gold; foundation and audit numbers are coverage/failure-mode diagnostics, not semantic accuracy.
+
+No production relationship/state default is adopted.
+
+Detailed records:
+
+- `docs/experiments/CHARACTER_RELATIONSHIP_STATE_EVIDENCE.md`
+- `docs/experiments/CHARACTER_RELATIONSHIP_FAILURE_AUDIT.md`
 
 ## BookNLP component repeatability / resources
 
