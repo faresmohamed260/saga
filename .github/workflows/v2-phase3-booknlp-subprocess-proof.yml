@@ -1,0 +1,204 @@
+name: Phase 3B real BookNLP subprocess proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3b-booknlp-subprocess-proof
+    paths:
+      - ".github/workflows/v2-phase3-booknlp-subprocess-proof.yml"
+      - "services/analysis-worker/benchmarks/prepare_booknlp_small_models.py"
+      - "services/analysis-worker/benchmarks/measure_process_tree.py"
+      - "services/analysis-worker/providers/booknlp_runner.py"
+      - "services/analysis-worker/src/evaluation/booknlp-subprocess-proof-cli.ts"
+      - "services/analysis-worker/src/local-analysis/booknlp-*.ts"
+      - "services/analysis-worker/src/local-analysis/subprocess-provider.ts"
+      - "services/analysis-worker/src/local-analysis/validation.ts"
+      - "services/analysis-worker/package.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-booknlp-subprocess-proof
+  cancel-in-progress: true
+
+jobs:
+  real-subprocess-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved direct BookNLP native outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install pinned BookNLP compatibility environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install "click==8.1.7" "spacy==3.7.5" "transformers==4.43.4" "psutil==6.1.1"
+          python -m pip install --no-deps "git+https://github.com/Plazmius/booknlp.git@8875a1b616d764b7d13d1e30e9949cc21ca303c1"
+          python -m spacy download en_core_web_sm
+          python - <<'PY'
+          import importlib.metadata
+          for package in ["booknlp", "click", "spacy", "en_core_web_sm", "torch", "tensorflow", "transformers", "psutil"]:
+              try:
+                  print(f"{package}={importlib.metadata.version(package)}")
+              except importlib.metadata.PackageNotFoundError:
+                  print(f"{package}=missing")
+          PY
+
+      - name: Prepare exact BookNLP and transformer artifacts before offline runtime
+        run: >-
+          python benchmarks/prepare_booknlp_small_models.py
+          --model-dir evaluation-artifacts/booknlp-model
+          --hf-home evaluation-artifacts/hf-home
+          --manifest-out evaluation-artifacts/booknlp-runtime-manifest.json
+
+      - name: Verify prepared runtime loads with transformers offline
+        shell: bash
+        env:
+          HF_HOME: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          TRANSFORMERS_CACHE: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          CUDA_VISIBLE_DEVICES: ""
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import gc
+          import os
+          import spacy
+          from transformers import BertModel, BertTokenizer
+
+          cache = os.environ["HF_HOME"]
+          models = [
+              "google/bert_uncased_L-4_H-256_A-4",
+              "google/bert_uncased_L-2_H-256_A-4",
+              "google/bert_uncased_L-8_H-256_A-4",
+          ]
+          for model_id in models:
+              tokenizer = BertTokenizer.from_pretrained(
+                  model_id,
+                  do_lower_case=False,
+                  do_basic_tokenize=False,
+                  cache_dir=cache,
+                  local_files_only=True,
+              )
+              model = BertModel.from_pretrained(model_id, cache_dir=cache, local_files_only=True)
+              print(f"offline_transformer_ok={model_id}:{type(tokenizer).__name__}:{type(model).__name__}")
+              del tokenizer, model
+              gc.collect()
+          nlp = spacy.load("en_core_web_sm", disable=["ner"])
+          print(f"offline_spacy_ok={nlp.meta.get('name')}:{nlp.meta.get('version')}")
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck runtime proof
+        run: npm run typecheck
+
+      - name: Run model-light worker tests
+        run: npm test
+
+      - name: Measure real generic subprocess boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHON_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
+          python benchmarks/measure_process_tree.py \
+            --metadata-out evaluation-artifacts/booknlp-subprocess-resources.json \
+            --sample-interval-ms 50 \
+            -- \
+            npx tsx src/evaluation/booknlp-subprocess-proof-cli.ts \
+              --litbank-root ../../external/litbank \
+              --direct-output-root evaluation-artifacts/booknlp-output \
+              --model-dir evaluation-artifacts/booknlp-model \
+              --hf-home evaluation-artifacts/hf-home \
+              --runtime-manifest evaluation-artifacts/booknlp-runtime-manifest.json \
+              --runner-executable "$PYTHON_EXECUTABLE" \
+              --out evaluation-artifacts/booknlp-subprocess-proof.json
+
+      - name: Publish runtime proof summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-subprocess-proof.json", "utf8"));
+          const resources = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-subprocess-resources.json", "utf8"));
+          const c = report.directComparison;
+          const p = report.preparedRuntime;
+          console.log("## Phase 3B real BookNLP subprocess proof");
+          console.log("");
+          console.log(`- document: ${report.dataset.documentId}`);
+          console.log(`- source bytes: ${report.dataset.sourceBytes}`);
+          console.log(`- provider protocol: ${report.provider.protocolVersion}`);
+          console.log(`- health wall clock: ${report.runtime.healthWallClockSeconds.toFixed(3)} s`);
+          console.log(`- analyze wall clock: ${report.runtime.analyzeWallClockSeconds.toFixed(3)} s`);
+          console.log(`- whole proof wall clock: ${resources.wallClockSeconds.toFixed(3)} s`);
+          console.log(`- peak aggregate process-tree RSS: ${resources.peakProcessTreeRssMiB.toFixed(1)} MiB`);
+          console.log(`- BookNLP model artifacts: ${(p.booknlpArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log(`- transformer cache: ${(p.transformerCache.bytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log(`- spaCy model: ${(p.spacyModel.bytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log(`- total prepared runtime footprint: ${(p.totalPreparedArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log("");
+          console.log("### Semantic transport check");
+          console.log(`- exact evidence fingerprint equality: ${c.semanticEvidenceEqual}`);
+          console.log(`- exact evidence-count equality: ${c.countsEqual}`);
+          console.log(`- direct evidence fingerprint: \`${c.directEvidenceFingerprint}\``);
+          console.log(`- subprocess evidence fingerprint: \`${c.subprocessEvidenceFingerprint}\``);
+          console.log(`- semantic comparison fingerprint: \`${report.semanticComparisonFingerprint}\``);
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log(`- evidence counts: identity ${c.subprocessCounts.identityMentions}, entities ${c.subprocessCounts.entities}, quotes ${c.subprocessCounts.quotes}, events ${c.subprocessCounts.eventTriggers}, syntax ${c.subprocessCounts.syntaxTokens}`);
+          console.log("");
+          console.log("> Runtime-boundary proof only. Existing quote/speaker/event quality scores and production adoption decisions are unchanged.");
+          EOF
+
+      - name: Upload runtime proof evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-booknlp-subprocess-proof
+          path: |
+            services/analysis-worker/evaluation-artifacts/booknlp-subprocess-proof.json
+            services/analysis-worker/evaluation-artifacts/booknlp-subprocess-resources.json
+            services/analysis-worker/evaluation-artifacts/booknlp-runtime-manifest.json
+          if-no-files-found: error
+          retention-days: 90
