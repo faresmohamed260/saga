@@ -67,6 +67,15 @@ jobs:
           --output-root evaluation-artifacts/booknlp-output
           --metadata-out evaluation-artifacts/combined-speaker-run-metadata.json
 
+      - name: Preserve pinned BookNLP native outputs for scorer-only follow-up
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-${{ github.sha }}
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -103,6 +112,7 @@ jobs:
           const db = report.dialogue.deltaVsBookNlp;
           const dd = report.dialogue.deltaVsDeterministic;
           const f = report.dialogue.fusionCounts;
+          const a = report.dialogue.goldAudit;
           console.log("## Phase 3 combined speaker benchmark");
           console.log("");
           console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
@@ -121,6 +131,12 @@ jobs:
           console.log(`- end-to-end recall: ${db.endToEndSpeakerRecall >= 0 ? "+" : ""}${db.endToEndSpeakerRecall.toFixed(4)}`);
           console.log(`- contamination: ${db.crossCharacterContamination >= 0 ? "+" : ""}${db.crossCharacterContamination.toFixed(4)}`);
           console.log(`- unresolved: ${db.unresolvedRate >= 0 ? "+" : ""}${db.unresolvedRate.toFixed(4)}`);
+          console.log("");
+          console.log("### Conflict gold audit");
+          console.log(`- known-speaker conflicts on matched deterministic quotes: ${a.conflict.count}`);
+          console.log(`- BookNLP correct / deterministic wrong: ${a.conflict.bookNlpCorrectDeterministicWrong}`);
+          console.log(`- deterministic correct / BookNLP wrong: ${a.conflict.deterministicCorrectBookNlpWrong}`);
+          console.log(`- both wrong: ${a.conflict.bothWrong}`);
           console.log("");
           console.log("### Delta vs deterministic floor");
           console.log(`- accuracy: ${dd.matchedKnownSpeakerAccuracy >= 0 ? "+" : ""}${dd.matchedKnownSpeakerAccuracy.toFixed(4)}`);
