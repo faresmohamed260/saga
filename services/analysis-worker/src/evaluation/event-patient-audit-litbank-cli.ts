@@ -24,6 +24,7 @@ const GROUNDING_REPORT_FINGERPRINT = "d2392c11869bf42d92d244af3cc58b4b39d3602577
 
 const CATEGORIES: PatientAuditCategory[] = [
   "grounded_character",
+  "same_character_grounded_other_mention",
   "linked_character_not_grounded",
   "ambiguous_linked_character",
   "structural_locator_mismatch",
@@ -79,11 +80,22 @@ function addMap(target: Record<string, number>, source: Record<string, number>) 
   for (const [key, value] of Object.entries(source)) target[key] = (target[key] ?? 0) + value;
 }
 
+function addNestedMap(target: Record<string, Record<string, number>>, source: Record<string, Record<string, number>>) {
+  for (const [outer, values] of Object.entries(source)) {
+    const current = target[outer] ?? {};
+    addMap(current, values);
+    target[outer] = current;
+  }
+}
+
 function aggregate(rows: PatientAuditResult[]) {
   const byCategory = emptyCategoryCounts();
   const byRelation: Record<string, number> = {};
   const byRelationAndCategory: Record<string, Record<PatientAuditCategory, number>> = {};
   const providerNonPersonCategories: Partial<Record<LiteraryEntityCategory, number>> = {};
+  const noEntityPosTags: Record<string, number> = {};
+  const noEntityFinePosTags: Record<string, number> = {};
+  const noEntityByRelationAndPos: Record<string, Record<string, number>> = {};
   let candidateTokenCount = 0;
   let eventWithPatientCandidateCount = 0;
   let eventWithMultiplePatientCandidatesCount = 0;
@@ -103,6 +115,9 @@ function aggregate(rows: PatientAuditResult[]) {
       const typed = category as LiteraryEntityCategory;
       providerNonPersonCategories[typed] = (providerNonPersonCategories[typed] ?? 0) + count;
     }
+    addMap(noEntityPosTags, row.noEntityPosTags);
+    addMap(noEntityFinePosTags, row.noEntityFinePosTags);
+    addNestedMap(noEntityByRelationAndPos, row.noEntityByRelationAndPos);
   }
 
   return {
@@ -113,6 +128,9 @@ function aggregate(rows: PatientAuditResult[]) {
     byCategory,
     byRelationAndCategory,
     providerNonPersonCategories,
+    noEntityPosTags,
+    noEntityFinePosTags,
+    noEntityByRelationAndPos,
   };
 }
 
@@ -182,7 +200,7 @@ async function main() {
 
   const audit = aggregate(completed.map((row) => row.audit));
   const semantic = {
-    schemaVersion: "saga-event-patient-audit-litbank-v1",
+    schemaVersion: "saga-event-patient-audit-litbank-v2",
     dataset: {
       repository: "dbamman/litbank",
       commit: LITBANK_COMMIT,
@@ -205,6 +223,7 @@ async function main() {
       participantQualityScored: false,
       providerClusterIdsCanonical: false,
       rawSourceTextEmitted: false,
+      noEntityProfile: "POS and fine-POS counts only; no source surfaces are emitted",
     },
     audit: {
       ...audit,
@@ -216,6 +235,8 @@ async function main() {
           rates(categories, audit.byRelation[relation] ?? 0),
         ]),
       ),
+      noEntityPosRates: rates(audit.noEntityPosTags, audit.byCategory.no_entity_evidence),
+      noEntityFinePosRates: rates(audit.noEntityFinePosTags, audit.byCategory.no_entity_evidence),
     },
     failures,
     perDocument: completed,
