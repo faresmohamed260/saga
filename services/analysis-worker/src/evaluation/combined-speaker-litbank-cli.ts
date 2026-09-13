@@ -106,12 +106,11 @@ function evaluateDialogueAllowEmpty(input: {
   if (input.reference.normalizedInputFingerprint !== input.prediction.normalizedInputFingerprint) {
     throw new Error("dialogue_input_fingerprint_mismatch");
   }
-  const quoteDetection = metricScore(0, input.prediction.quotes.length, 0);
   const semantic = {
     bookId: input.reference.bookId,
     provider: input.prediction.provider,
     normalizedInputFingerprint: input.reference.normalizedInputFingerprint,
-    quoteDetection,
+    quoteDetection: metricScore(0, input.prediction.quotes.length, 0),
     knownSpeakerGoldCount: 0,
     matchedKnownSpeakerCount: 0,
     knownSpeakerMissedQuoteCount: 0,
@@ -161,18 +160,12 @@ function fusionCategory(quote: DialogueQuotePrediction): FusionCategory {
 }
 
 function fusionCounts(prediction: DialogueProviderResult) {
-  const counts = {
-    agreement: 0,
-    providerFallback: 0,
-    deterministicOnly: 0,
-    conflictUnresolved: 0,
-    unresolved: 0,
-  };
+  const counts = { agreement: 0, providerFallback: 0, deterministicOnly: 0, conflictUnresolved: 0, unresolved: 0 };
   for (const quote of prediction.quotes) counts[fusionCategory(quote)] += 1;
   return counts;
 }
 
-function emptyFusionGoldAudit(): FusionGoldAudit {
+function emptyAudit(): FusionGoldAudit {
   return {
     knownGoldQuoteCount: 0,
     deterministicMatchedKnownQuoteCount: 0,
@@ -193,25 +186,25 @@ function emptyFusionGoldAudit(): FusionGoldAudit {
   };
 }
 
-function incrementResolvedOutcome(
+function addOutcome(
   target: { count: number; correct: number; wrong: number; unresolved?: number },
-  speakerKey: string | null,
-  goldSpeakerKey: string,
+  predicted: string | null,
+  gold: string,
 ) {
   target.count += 1;
-  if (speakerKey === null) {
+  if (predicted === null) {
     if (target.unresolved !== undefined) target.unresolved += 1;
-  } else if (speakerKey === goldSpeakerKey) target.correct += 1;
+  } else if (predicted === gold) target.correct += 1;
   else target.wrong += 1;
 }
 
-function auditFusionAgainstKnownGold(input: {
+function auditAgainstGold(input: {
   reference: DialogueReference;
   deterministic: DialogueProviderResult;
   bookNlp: DialogueProviderResult;
   combined: DialogueProviderResult;
 }): FusionGoldAudit {
-  const audit = emptyFusionGoldAudit();
+  const audit = emptyAudit();
   const deterministicBySpan = bySpan(input.deterministic);
   const bookNlpBySpan = bySpan(input.bookNlp);
   const combinedBySpan = bySpan(input.combined);
@@ -231,61 +224,88 @@ function auditFusionAgainstKnownGold(input: {
     const category = fusionCategory(combined);
 
     if (category === "agreement") {
-      incrementResolvedOutcome(audit.agreement, combined.speakerKey, gold.speakerKey);
+      addOutcome(audit.agreement, combined.speakerKey, gold.speakerKey);
       continue;
     }
     if (category === "providerFallback") {
-      incrementResolvedOutcome(audit.providerFallback, bookNlp?.speakerKey ?? null, gold.speakerKey);
+      addOutcome(audit.providerFallback, bookNlp?.speakerKey ?? null, gold.speakerKey);
       continue;
     }
     if (category === "deterministicOnly") {
-      incrementResolvedOutcome(audit.deterministicOnly, deterministic.speakerKey, gold.speakerKey);
+      addOutcome(audit.deterministicOnly, deterministic.speakerKey, gold.speakerKey);
       continue;
     }
-    if (category === "conflictUnresolved") {
-      audit.conflict.count += 1;
-      const deterministicSpeaker = deterministic.speakerKey;
-      const bookNlpSpeaker = bookNlp?.speakerKey ?? null;
-      if (deterministicSpeaker === null) audit.conflict.deterministicUnresolved += 1;
-      if (bookNlpSpeaker === null) audit.conflict.bookNlpUnresolved += 1;
-      if (bookNlpSpeaker === gold.speakerKey && deterministicSpeaker !== gold.speakerKey) {
-        audit.conflict.bookNlpCorrectDeterministicWrong += 1;
-      } else if (deterministicSpeaker === gold.speakerKey && bookNlpSpeaker !== gold.speakerKey) {
-        audit.conflict.deterministicCorrectBookNlpWrong += 1;
-      } else if (deterministicSpeaker !== gold.speakerKey && bookNlpSpeaker !== gold.speakerKey) {
-        audit.conflict.bothWrong += 1;
-      }
-      const reason = deterministic.decisionReason;
-      const current = audit.conflictByDeterministicReason[reason] ?? {
-        count: 0,
-        bookNlpCorrect: 0,
-        deterministicCorrect: 0,
-        bothWrong: 0,
-      };
-      current.count += 1;
-      if (bookNlpSpeaker === gold.speakerKey) current.bookNlpCorrect += 1;
-      else if (deterministicSpeaker === gold.speakerKey) current.deterministicCorrect += 1;
-      else current.bothWrong += 1;
-      audit.conflictByDeterministicReason[reason] = current;
+    if (category !== "conflictUnresolved") {
+      audit.unresolved.count += 1;
       continue;
     }
-    audit.unresolved.count += 1;
+
+    audit.conflict.count += 1;
+    const deterministicSpeaker = deterministic.speakerKey;
+    const bookNlpSpeaker = bookNlp?.speakerKey ?? null;
+    if (deterministicSpeaker === null) audit.conflict.deterministicUnresolved += 1;
+    if (bookNlpSpeaker === null) audit.conflict.bookNlpUnresolved += 1;
+
+    const bookNlpCorrect = bookNlpSpeaker === gold.speakerKey;
+    const deterministicCorrect = deterministicSpeaker === gold.speakerKey;
+    if (bookNlpCorrect && !deterministicCorrect) audit.conflict.bookNlpCorrectDeterministicWrong += 1;
+    else if (deterministicCorrect && !bookNlpCorrect) audit.conflict.deterministicCorrectBookNlpWrong += 1;
+    else if (!bookNlpCorrect && !deterministicCorrect) audit.conflict.bothWrong += 1;
+
+    const reason = deterministic.decisionReason;
+    const reasonAudit: ConflictReasonAudit = audit.conflictByDeterministicReason[reason] ?? {
+      count: 0,
+      bookNlpCorrect: 0,
+      deterministicCorrect: 0,
+      bothWrong: 0,
+    };
+    reasonAudit.count += 1;
+    if (bookNlpCorrect) reasonAudit.bookNlpCorrect += 1;
+    else if (deterministicCorrect) reasonAudit.deterministicCorrect += 1;
+    else reasonAudit.bothWrong += 1;
+    audit.conflictByDeterministicReason[reason] = reasonAudit;
   }
   return audit;
 }
 
-function aggregateFusionGoldAudits(audits: FusionGoldAudit[]): FusionGoldAudit {
-  const total = emptyFusionGoldAudit();
+function mergeReasonAudits(target: FusionGoldAudit, source: FusionGoldAudit) {
+  for (const reason of Object.keys(source.conflictByDeterministicReason)) {
+    const values = source.conflictByDeterministicReason[reason]!;
+    const current: ConflictReasonAudit = target.conflictByDeterministicReason[reason] ?? {
+      count: 0,
+      bookNlpCorrect: 0,
+      deterministicCorrect: 0,
+      bothWrong: 0,
+    };
+    current.count += values.count;
+    current.bookNlpCorrect += values.bookNlpCorrect;
+    current.deterministicCorrect += values.deterministicCorrect;
+    current.bothWrong += values.bothWrong;
+    target.conflictByDeterministicReason[reason] = current;
+  }
+}
+
+function aggregateAudits(audits: FusionGoldAudit[]) {
+  const total = emptyAudit();
   for (const audit of audits) {
     total.knownGoldQuoteCount += audit.knownGoldQuoteCount;
     total.deterministicMatchedKnownQuoteCount += audit.deterministicMatchedKnownQuoteCount;
     total.missedDeterministicQuoteCount += audit.missedDeterministicQuoteCount;
-    for (const key of ["agreement", "providerFallback", "deterministicOnly"] as const) {
-      total[key].count += audit[key].count;
-      total[key].correct += audit[key].correct;
-      total[key].wrong += audit[key].wrong;
-      if ("unresolved" in total[key] && "unresolved" in audit[key]) total[key].unresolved += audit[key].unresolved;
-    }
+
+    total.agreement.count += audit.agreement.count;
+    total.agreement.correct += audit.agreement.correct;
+    total.agreement.wrong += audit.agreement.wrong;
+
+    total.providerFallback.count += audit.providerFallback.count;
+    total.providerFallback.correct += audit.providerFallback.correct;
+    total.providerFallback.wrong += audit.providerFallback.wrong;
+    total.providerFallback.unresolved += audit.providerFallback.unresolved;
+
+    total.deterministicOnly.count += audit.deterministicOnly.count;
+    total.deterministicOnly.correct += audit.deterministicOnly.correct;
+    total.deterministicOnly.wrong += audit.deterministicOnly.wrong;
+    total.deterministicOnly.unresolved += audit.deterministicOnly.unresolved;
+
     total.conflict.count += audit.conflict.count;
     total.conflict.bookNlpCorrectDeterministicWrong += audit.conflict.bookNlpCorrectDeterministicWrong;
     total.conflict.deterministicCorrectBookNlpWrong += audit.conflict.deterministicCorrectBookNlpWrong;
@@ -293,23 +313,11 @@ function aggregateFusionGoldAudits(audits: FusionGoldAudit[]): FusionGoldAudit {
     total.conflict.bookNlpUnresolved += audit.conflict.bookNlpUnresolved;
     total.conflict.deterministicUnresolved += audit.conflict.deterministicUnresolved;
     total.unresolved.count += audit.unresolved.count;
-    for (const [reason, values] of Object.entries(audit.conflictByDeterministicReason)) {
-      const current = total.conflictByDeterministicReason[reason] ?? {
-        count: 0,
-        bookNlpCorrect: 0,
-        deterministicCorrect: 0,
-        bothWrong: 0,
-      };
-      current.count += values.count;
-      current.bookNlpCorrect += values.bookNlpCorrect;
-      current.deterministicCorrect += values.deterministicCorrect;
-      current.bothWrong += values.bothWrong;
-      total.conflictByDeterministicReason[reason] = current;
-    }
+    mergeReasonAudits(total, audit);
   }
+
   total.conflictByDeterministicReason = Object.fromEntries(
-    Object.entries(total.conflictByDeterministicReason)
-      .sort(([, left], [, right]) => right.count - left.count),
+    Object.entries(total.conflictByDeterministicReason).sort((left, right) => right[1].count - left[1].count),
   );
   return total;
 }
@@ -350,16 +358,7 @@ async function main() {
       const evidence = normalizeBookNlpOutput({
         normalizedInputFingerprint,
         normalizedText: text,
-        sections: [{
-          stable_key: section.stable_key,
-          ordinal: section.ordinal,
-          section_kind: section.section_kind,
-          title: section.title,
-          source_locator: section.source_locator,
-          start_offset: section.start_offset,
-          end_offset: codePointLength(text),
-          normalized_text: text,
-        }],
+        sections: [{ ...section, end_offset: codePointLength(text), normalized_text: text }],
         provider: BOOKNLP_SMALL_PROVIDER,
         tokensTsv: booknlp.tokensTsv,
         entitiesTsv: booknlp.entitiesTsv,
@@ -368,29 +367,22 @@ async function main() {
       const converted = convertLitBankTsvDocument({ documentId, text, annotation: corefAnnotation });
       const identity = litBankGoldIdentityResult(converted.gold);
       const reference = convertLitBankQuotationReference({ documentId, text, annotation: quotationAnnotation });
-      const deterministicPrediction = predictDeterministicDialogue({
-        sections: [section],
-        normalizedInputFingerprint,
-        identity,
-      });
-      const bookNlpPrediction = bookNlpDialoguePrediction({
-        documentId,
-        evidence,
-        goldIdentity: converted.gold,
-      }).prediction;
+      const deterministicPrediction = predictDeterministicDialogue({ sections: [section], normalizedInputFingerprint, identity });
+      const bookNlpPrediction = bookNlpDialoguePrediction({ documentId, evidence, goldIdentity: converted.gold }).prediction;
       const combinedPrediction = predictCombinedSpeakerDialogue({
         sections: [section],
         normalizedInputFingerprint,
         identity,
         literaryEvidence: evidence,
       });
+
       completed.push({
         documentId,
         combined: evaluateDialogueAllowEmpty({ reference, prediction: combinedPrediction }),
         bookNlp: evaluateDialogueAllowEmpty({ reference, prediction: bookNlpPrediction }),
         deterministic: evaluateDialogueAllowEmpty({ reference, prediction: deterministicPrediction }),
         fusion: fusionCounts(combinedPrediction),
-        goldAudit: auditFusionAgainstKnownGold({
+        goldAudit: auditAgainstGold({
           reference,
           deterministic: deterministicPrediction,
           bookNlp: bookNlpPrediction,
@@ -403,7 +395,7 @@ async function main() {
     }
   }
 
-  const aggregateFusion = completed.reduce((total, row) => ({
+  const fusionCountsTotal = completed.reduce((total, row) => ({
     agreement: total.agreement + row.fusion.agreement,
     providerFallback: total.providerFallback + row.fusion.providerFallback,
     deterministicOnly: total.deterministicOnly + row.fusion.deterministicOnly,
@@ -414,7 +406,7 @@ async function main() {
   const combined = aggregateDialogueReports(completed.map((row) => row.combined));
   const bookNlp = aggregateDialogueReports(completed.map((row) => row.bookNlp));
   const deterministic = aggregateDialogueReports(completed.map((row) => row.deterministic));
-  const goldAudit = aggregateFusionGoldAudits(completed.map((row) => row.goldAudit));
+  const goldAudit = aggregateAudits(completed.map((row) => row.goldAudit));
   const semantic = {
     schemaVersion: "saga-combined-speaker-litbank-benchmark-v2",
     dataset: {
@@ -452,7 +444,7 @@ async function main() {
         unresolvedRate: combined.speakerUnresolvedRateOnMatchedQuotes - deterministic.speakerUnresolvedRateOnMatchedQuotes,
         crossCharacterContamination: combined.crossCharacterContaminationRateOnMatchedQuotes - deterministic.crossCharacterContaminationRateOnMatchedQuotes,
       },
-      fusionCounts: aggregateFusion,
+      fusionCounts: fusionCountsTotal,
       goldAudit,
     },
     failures,
