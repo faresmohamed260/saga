@@ -152,15 +152,25 @@ test("patient audit recognizes an actually grounded character candidate", () => 
   assert.equal(result.byRelation.dobj, 1);
 });
 
-test("patient audit exposes a linked character that the grounding policy failed to emit", () => {
+test("patient audit distinguishes same-character dedup from a true linked-character miss", () => {
   const mention = linkedMention("bob");
-  const result = auditPatientGrounding({
+  const dedupPrediction = prediction("different-evidence-id");
+  const dedup = auditPatientGrounding({
+    evidence: evidence(),
+    gold: gold([personGold("bob")]),
+    identity: identity([mention]),
+    prediction: dedupPrediction,
+  });
+  assert.equal(dedup.byCategory.same_character_grounded_other_mention, 1);
+  assert.equal(dedup.byCategory.linked_character_not_grounded, 0);
+
+  const missed = auditPatientGrounding({
     evidence: evidence(),
     gold: gold([personGold("bob")]),
     identity: identity([mention]),
     prediction: prediction(),
   });
-  assert.equal(result.byCategory.linked_character_not_grounded, 1);
+  assert.equal(missed.byCategory.linked_character_not_grounded, 1);
 });
 
 test("patient audit distinguishes ambiguous identities from structural-locator mismatch", () => {
@@ -237,7 +247,7 @@ test("patient audit separates gold non-person and provider-only entity evidence"
   assert.equal(providerOnly.providerNonPersonCategories.organization, 1);
 });
 
-test("patient audit distinguishes provider-only person evidence and no entity evidence", () => {
+test("patient audit distinguishes provider-only person evidence and profiles no-entity POS", () => {
   const providerPerson: LiteraryEntityEvidence = {
     evidenceId: "provider:person",
     surfaceText: "Bob",
@@ -264,6 +274,9 @@ test("patient audit distinguishes provider-only person evidence and no entity ev
     prediction: prediction(),
   });
   assert.equal(none.byCategory.no_entity_evidence, 1);
+  assert.deepEqual(none.noEntityPosTags, { PROPN: 1 });
+  assert.deepEqual(none.noEntityFinePosTags, { NNP: 1 });
+  assert.deepEqual(none.noEntityByRelationAndPos, { dobj: { PROPN: 1 } });
 });
 
 test("patient audit fails closed on missing syntax or fingerprint drift", () => {
