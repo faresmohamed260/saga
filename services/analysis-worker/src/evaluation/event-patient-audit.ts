@@ -23,6 +23,7 @@ export type PatientAuditCounts = {
   candidateTokenCount: number;
   byRelation: Record<string, number>;
   byCategory: Record<PatientAuditCategory, number>;
+  byRelationAndCategory: Record<string, Record<PatientAuditCategory, number>>;
   providerNonPersonCategories: Partial<Record<LiteraryEntityCategory, number>>;
 };
 
@@ -60,6 +61,46 @@ function emptyCategories(): Record<PatientAuditCategory, number> {
   };
 }
 
+function classifyCandidate(input: {
+  candidate: SyntaxTokenEvidence;
+  patientEvidence: ResolvedIdentityMention[];
+  identity: CharacterIdentityResult;
+  gold: GoldIdentityDocument;
+  evidence: LocalLiteraryEvidenceBundle;
+  providerNonPersonCategories: Partial<Record<LiteraryEntityCategory, number>>;
+}): PatientAuditCategory {
+  if (input.patientEvidence.some((mention) => covers(mention, input.candidate) && sameLocator(mention, input.candidate))) {
+    return "grounded_character";
+  }
+
+  const linkedCovering = input.identity.mentions.filter((mention) =>
+    mention.resolutionState === "linked" && Boolean(mention.characterKey) && covers(mention, input.candidate)
+  );
+  const linkedMatchingLocator = linkedCovering.filter((mention) => sameLocator(mention, input.candidate));
+  const characterKeys = new Set(linkedMatchingLocator.map((mention) => mention.characterKey!));
+  if (characterKeys.size === 1) return "linked_character_not_grounded";
+  if (characterKeys.size > 1) return "ambiguous_linked_character";
+  if (linkedCovering.length > 0) return "structural_locator_mismatch";
+
+  const goldCovering = input.gold.mentions.filter((mention) => covers(mention, input.candidate));
+  const goldPerson = goldCovering.filter((mention) => mention.entityType === "person");
+  if (goldPerson.some((mention) => Boolean(mention.goldCharacterId))) return "gold_linked_person_missing_identity";
+  if (goldPerson.length > 0) return "unresolved_person_gold";
+  if (goldCovering.some((mention) => mention.entityType === "non_person")) return "non_person_gold";
+
+  const providerCovering = input.evidence.entities.filter((entity) => covers(entity, input.candidate));
+  const providerNonPerson = providerCovering.filter((entity) => entity.category !== "person");
+  if (providerNonPerson.length > 0) {
+    for (const entity of providerNonPerson) {
+      input.providerNonPersonCategories[entity.category] =
+        (input.providerNonPersonCategories[entity.category] ?? 0) + 1;
+    }
+    return "provider_non_person";
+  }
+  if (providerCovering.some((entity) => entity.category === "person")) return "provider_person_only";
+  return "no_entity_evidence";
+}
+
 export function auditPatientGrounding(input: {
   evidence: LocalLiteraryEvidenceBundle;
   gold: GoldIdentityDocument;
@@ -87,6 +128,7 @@ export function auditPatientGrounding(input: {
   const identityByEvidence = new Map(input.identity.mentions.map((mention) => [mention.evidenceId, mention]));
   const byRelation: Record<string, number> = {};
   const byCategory = emptyCategories();
+  const byRelationAndCategory: Record<string, Record<PatientAuditCategory, number>> = {};
   const providerNonPersonCategories: Partial<Record<LiteraryEntityCategory, number>> = {};
   let candidateTokenCount = 0;
   let eventWithPatientCandidateCount = 0;
@@ -110,66 +152,32 @@ export function auditPatientGrounding(input: {
 
     for (const candidate of patientCandidates) {
       candidateTokenCount += 1;
-      byRelation[candidate.dependencyRelation] = (byRelation[candidate.dependencyRelation] ?? 0) + 1;
-
-      if (patientEvidence.some((mention) => covers(mention, candidate) && sameLocator(mention, candidate))) {
-        byCategory.grounded_character += 1;
-        continue;
-      }
-
-      const linkedCovering = input.identity.mentions.filter((mention) =>
-        mention.resolutionState === "linked" && Boolean(mention.characterKey) && covers(mention, candidate)
-      );
-      const linkedMatchingLocator = linkedCovering.filter((mention) => sameLocator(mention, candidate));
-      const characterKeys = new Set(linkedMatchingLocator.map((mention) => mention.characterKey!));
-      if (characterKeys.size === 1) {
-        byCategory.linked_character_not_grounded += 1;
-        continue;
-      }
-      if (characterKeys.size > 1) {
-        byCategory.ambiguous_linked_character += 1;
-        continue;
-      }
-      if (linkedCovering.length > 0) {
-        byCategory.structural_locator_mismatch += 1;
-        continue;
-      }
-
-      const goldCovering = input.gold.mentions.filter((mention) => covers(mention, candidate));
-      const goldPerson = goldCovering.filter((mention) => mention.entityType === "person");
-      if (goldPerson.some((mention) => Boolean(mention.goldCharacterId))) {
-        byCategory.gold_linked_person_missing_identity += 1;
-        continue;
-      }
-      if (goldPerson.length > 0) {
-        byCategory.unresolved_person_gold += 1;
-        continue;
-      }
-      if (goldCovering.some((mention) => mention.entityType === "non_person")) {
-        byCategory.non_person_gold += 1;
-        continue;
-      }
-
-      const providerCovering = input.evidence.entities.filter((entity) => covers(entity, candidate));
-      const providerNonPerson = providerCovering.filter((entity) => entity.category !== "person");
-      if (providerNonPerson.length > 0) {
-        byCategory.provider_non_person += 1;
-        for (const entity of providerNonPerson) {
-          providerNonPersonCategories[entity.category] = (providerNonPersonCategories[entity.category] ?? 0) + 1;
-        }
-        continue;
-      }
-      if (providerCovering.some((entity) => entity.category === "person")) {
-        byCategory.provider_person_only += 1;
-        continue;
-      }
-      byCategory.no_entity_evidence += 1;
+      const relation = candidate.dependencyRelation;
+      byRelation[relation] = (byRelation[relation] ?? 0) + 1;
+      const category = classifyCandidate({
+        candidate,
+        patientEvidence,
+        identity: input.identity,
+        gold: input.gold,
+        evidence: input.evidence,
+        providerNonPersonCategories,
+      });
+      byCategory[category] += 1;
+      const relationCategories = byRelationAndCategory[relation] ?? emptyCategories();
+      relationCategories[category] += 1;
+      byRelationAndCategory[relation] = relationCategories;
     }
   }
 
   const classified = Object.values(byCategory).reduce((sum, value) => sum + value, 0);
   if (classified !== candidateTokenCount) {
     throw new Error(`patient_audit_classification_mismatch:${classified}:${candidateTokenCount}`);
+  }
+  for (const [relation, count] of Object.entries(byRelation)) {
+    const relationClassified = Object.values(byRelationAndCategory[relation] ?? {}).reduce((sum, value) => sum + value, 0);
+    if (relationClassified !== count) {
+      throw new Error(`patient_audit_relation_classification_mismatch:${relation}:${relationClassified}:${count}`);
+    }
   }
 
   return {
@@ -178,6 +186,7 @@ export function auditPatientGrounding(input: {
     eventWithMultiplePatientCandidatesCount,
     byRelation,
     byCategory,
+    byRelationAndCategory,
     providerNonPersonCategories,
   };
 }
