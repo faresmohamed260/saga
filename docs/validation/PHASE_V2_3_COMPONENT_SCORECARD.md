@@ -307,6 +307,60 @@ Detailed records:
 - `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
 - `docs/experiments/GLINER_TYPED_ENTITY_EVENT_PARTICIPANTS.md`
 
+## Event semantic qualifier evidence
+
+Issue #233 adds a separate provider-neutral evidence layer over the validated event-trigger and dependency-syntax bundle. It emits only explicit source-anchored cues and leaves unsupported states `undetermined`.
+
+Exact measured scorer head:
+
+`6fe886f89a2f3dc9a3ba942077993928e7417fa6`
+
+The public diagnostic reused preserved BookNLP inference and completed:
+
+- `100 / 100` LitBank documents;
+- `0` failures;
+- typecheck pass;
+- **`168 / 168` worker tests pass**, up from `160 / 160` before this qualifier contract;
+- no new model inference.
+
+The trigger baseline is unchanged:
+
+- predicted triggers: `7,445`;
+- precision: `0.8002686367`;
+- recall: `0.7590775895`;
+- F1: `0.7791290702` = **`0.7791` rounded**;
+- trigger-count delta: `0`.
+
+Across the fixed trigger population:
+
+| Qualifier diagnostic | Count | Rate |
+| --- | ---: | ---: |
+| any explicit cue | **53** | **0.71%** |
+| explicit negation | **3** | **0.04%** |
+| modalized | **45** | **0.60%** |
+| explicit conditional cue | **5** | **0.07%** |
+| irrealis-cued | **50** | **0.67%** |
+| unmarked / undetermined | **7,392** | **99.29%** |
+
+Modal cue counts are `could 24`, `can 11`, `will 5`, `must 4`, `shall 1`. Conditional cues are `if 5`, `unless 0`. No category overlap appeared in the first public run.
+
+Report fingerprint:
+
+`051c172829a3864d4c9e295a6672d7fd31f6a9f5f7d5f6ba01109899a16ef803`
+
+Aggregate artifact:
+
+- ID `10321247725`;
+- digest `sha256:ea7e41f8282d2f46641af5ca54ca83c2f77f9e9ab4a265153f4c4d5e44d9507a`.
+
+Interpretation: the evidence contract works without another model call, but public coverage is deliberately **extremely sparse**. The `7,392` unmarked events are not thereby factual, positive or realis; they are simply undetermined by this first evidence policy. The `3` explicit negation hits are also too few to support a negation-recall claim.
+
+LitBank has event-trigger gold but no S.A.G.A.-style polarity/modality/realis gold. These are therefore **prevalence/coverage diagnostics, not semantic precision, recall, accuracy or factuality correctness**.
+
+Decision: **keep the qualifier evidence contract and strict `undetermined` default, but do not promote it to a complete factuality classifier.** Before broadening dependency scope, audit qualifier failure modes or obtain suitable semantic gold. No trigger, participant or production-adoption decision changes.
+
+Detailed record: `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`.
+
 ## BookNLP component repeatability / resources
 
 Exact benchmark implementation head:
@@ -415,6 +469,7 @@ Detailed record: `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`.
 - BookNLP model-weight license remains unverified;
 - BookNLP speaker/event models use LitBank-derived literary annotations, so LitBank is not an independent product-generalization test;
 - GLiNER's Apache-2.0 code/model licensing is compatible with further evaluation, but the current direct-role participant challenger lost the BookNLP public coverage baseline;
+- event semantic qualifier correctness/factuality remains unmeasured on suitable gold; the current public layer is prevalence evidence only;
 - no production speaker/event method is adopted;
 - event participant accuracy remains unmeasured on suitable gold;
 - scene quality remains unmeasured on the primary suite.

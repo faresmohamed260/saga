@@ -30,27 +30,32 @@ Durable decisions D-026 through D-030 require local-first, subscription-free tex
 
 At this branch handoff, merged `main` is:
 
-`4364778ca9551949dde38962ddc8be2e9334d907`
+`1856ee5f8c5e51e229c7777ff14192acfbb99945`
 
 Latest merged checkpoints:
 
 - PR #223 — patient-candidate failure-mode audit;
 - PR #225 — real BookNLP proof through the generic one-shot subprocess boundary;
 - PR #227 — persistent loaded BookNLP stdio runtime, completing issue #226;
-- PR #230 — provider-neutral typed non-character event-participant evidence and BookNLP public coverage diagnostic.
+- PR #230 — provider-neutral typed non-character event-participant evidence and BookNLP public coverage diagnostic;
+- PR #232 — GLiNER typed-entity challenger benchmark, rejecting GLiNER for the current direct world-entity participant slot.
 
-Current unmerged measured challenger:
+Current measured semantic-qualifier slice:
 
-- issue #231 / branch `v2/phase-3a-gliner-typed-entity-participants`;
-- exact measured head `25e51fe6ea88d18e4d9dfd9c32b2db75f2d34ba3`;
-- GLiNER Small v2.1 completed `100 / 100` pinned LitBank documents with `0` failures;
-- model-light qualification is **`160 / 160` tests passing**, up from `153 / 153` before the GLiNER evidence-source contract;
-- GLiNER direct typed non-character candidate coverage is only **`47 / 6,701` (`0.70%`)** versus BookNLP **`146 / 6,701` (`2.18%`)**;
-- GLiNER event gain is **`44 / 5,085` (`0.87%`)** versus BookNLP **`142 / 5,085` (`2.79%`)**;
-- trigger F1 remains `0.7791` rounded;
-- GLiNER inference measured `381.955 s`, `1,581.84 MiB` process peak RSS and `610,657,698` model bytes;
-- exact GLiNER code/model pins are Apache-2.0, removing the licensing uncertainty that still applies to BookNLP model weights;
-- decision: **do not adopt GLiNER for the current direct world-entity event-participant slot**. The licensing advantage does not overcome the public coverage loss or the missing private/correctness gates.
+- issue #233 / branch `v2/phase-3a-event-semantic-qualifiers`;
+- exact measured scorer head `6fe886f89a2f3dc9a3ba942077993928e7417fa6`;
+- `100 / 100` pinned LitBank documents completed with `0` failures;
+- typecheck passes and the analysis-worker regression floor is now **`168 / 168` tests passing**, up from `160 / 160` before this contract;
+- no new model inference was run; preserved BookNLP syntax/event evidence was reused;
+- trigger population remains exactly `7,445` and trigger P/R/F1 remains `0.8003 / 0.7591 / 0.7791` rounded;
+- only `53 / 7,445` events (`0.71%`) receive any explicit qualifier cue under the first strict policy;
+- explicit negation: `3` (`0.04%`);
+- modalized: `45` (`0.60%`);
+- explicit conditional cue: `5` (`0.07%`);
+- irrealis-cued: `50` (`0.67%`);
+- unmarked/undetermined: `7,392` (`99.29%`).
+
+Decision: **keep the source-grounded semantic qualifier evidence contract and its `undetermined` default, but do not treat this first policy as a complete factuality classifier.** Unmarked events are not factual/realis by default. Before widening scope, audit failure modes or obtain suitable semantic/factuality annotations; do not loosen dependency scope just to increase coverage.
 
 The persistent BookNLP runtime was measured twice on exact implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`. Across six real analyses it reproduced the exact validated one-shot evidence fingerprint and exact counts. Its model-light qualification is **145 / 145 tests passing** for that runtime slice.
 
@@ -175,7 +180,7 @@ BookNLP public diagnostic on the fixed role denominator:
 - clean typed non-character candidates: `146 / 6,701` (**`2.18%`**);
 - candidate events gaining typed evidence: `142 / 5,085` (**`2.79%`**).
 
-GLiNER issue #231, using the same BookNLP syntax/triggers and the same S.A.G.A. identity/event path but a separate typed-span provider:
+PR #232 measured GLiNER using the same BookNLP syntax/triggers and the same S.A.G.A. identity/event path but a separate typed-span provider:
 
 - clean typed non-character candidates: `47 / 6,701` (**`0.70%`**);
 - candidate events gaining typed evidence: `44 / 5,085` (**`0.87%`**);
@@ -190,6 +195,31 @@ Detailed evidence:
 
 - `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
 - `docs/experiments/GLINER_TYPED_ENTITY_EVENT_PARTICIPANTS.md`
+
+### Event semantic qualifiers
+
+Issue #233 adds a separate, deterministic evidence layer over validated trigger/dependency syntax. It records only explicit source-anchored cues and never turns missing evidence into a positive factuality claim.
+
+Public diagnostic on exact scorer head `6fe886f89a2f3dc9a3ba942077993928e7417fa6`:
+
+- `100 / 100` LitBank documents, `0` failures;
+- typecheck pass;
+- **`168 / 168` tests pass**, up from `160 / 160` before this contract;
+- no new model inference;
+- trigger count unchanged at `7,445`;
+- trigger P/R/F1 unchanged at `0.8003 / 0.7591 / 0.7791` rounded;
+- any explicit qualifier cue: `53` (`0.71%`);
+- negated: `3` (`0.04%`);
+- modalized: `45` (`0.60%`);
+- explicit conditional cue: `5` (`0.07%`);
+- irrealis-cued: `50` (`0.67%`);
+- unmarked/undetermined: `7,392` (`99.29%`).
+
+Modal evidence is dominated by `could` (`24`) and `can` (`11`), then `will` (`5`), `must` (`4`) and `shall` (`1`). Conditional evidence is `if` (`5`), with no `unless` hits under the strict first policy.
+
+Decision: **keep the qualifier evidence contract and strict `undetermined` default, but do not treat it as a complete event-factuality classifier.** The public coverage is intentionally narrow and correctness is unmeasured because LitBank has no S.A.G.A.-style polarity/modality/realis gold. Before widening dependency scope, audit failure modes or obtain suitable factuality annotations. No trigger, participant or production-adoption decision changes.
+
+Detailed evidence: `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`.
 
 ### BookNLP runtime transport
 
@@ -215,13 +245,14 @@ Detailed evidence:
 
 ## Current Execution Order
 
-1. Merge/close the measured GLiNER typed-entity challenger once exact-head repository gates are green; do not tune it post hoc on the same experiment.
-2. Return event work to **genuinely new narrative semantics**, with negation/modality/realis preferred over another provider swap for the same narrow six-label direct-role contract.
-3. If broader world entities such as artifacts/objects, factions/groups, creatures/species or other story-world classes are needed, introduce them through an explicit ontology contract and separate benchmark; never remap them silently into current labels.
-4. Keep new public/source-neutral event work diagnostic unless suitable gold supports correctness claims.
-5. When private EPUB access returns, create/score primary-suite scene/dialogue/event annotations and use those results for production decisions.
-6. Adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
-7. After first-pass event/entity evidence is stable, continue relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
+1. Merge/close the measured event semantic qualifier slice once exact-head repository gates are green.
+2. Before broadening negation/modality/realis rules, run a **semantic qualifier failure-mode audit** that explains why the strict public layer marks only `0.71%` of triggers, especially the `3` explicit negation hits. Categorize nearby known cue lemmas by dependency relationship to event triggers without changing policy.
+3. Keep the current `undetermined` default; never infer factual/realis from missing cues.
+4. If broader world entities such as artifacts/objects, factions/groups, creatures/species or other story-world classes are needed, introduce them through an explicit ontology contract and separate benchmark; never remap them silently into current labels.
+5. Keep public/source-neutral event work diagnostic unless suitable gold supports correctness claims.
+6. When private EPUB access returns, create/score primary-suite scene/dialogue/event annotations and use those results for production decisions.
+7. Adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
+8. After first-pass event/entity evidence is stable, continue relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
 
 ## Working Convention
 
