@@ -65,7 +65,7 @@ test("code-point helpers preserve non-ASCII and astral characters", () => {
   assert.equal(codePointSlice(text, 17, 22), "Alice");
 });
 
-test("BookNLP output becomes source-anchored identity, quote, and event evidence", () => {
+test("BookNLP output becomes source-anchored identity, quote, syntax, and event evidence", () => {
   const fingerprint = sha256Hex(text);
   const evidence = normalizeBookNlpOutput({
     normalizedInputFingerprint: fingerprint,
@@ -81,6 +81,7 @@ test("BookNLP output becomes source-anchored identity, quote, and event evidence
   assert.equal(evidence.entities.length, 4);
   assert.equal(evidence.quotes.length, 1);
   assert.equal(evidence.eventTriggers.length, 3);
+  assert.equal(evidence.syntaxTokens?.length, 16);
 
   const alice = evidence.identityEvidence.mentions.find((mention) => mention.surfaceText === "Alice");
   assert.ok(alice);
@@ -122,6 +123,29 @@ test("BookNLP output becomes source-anchored identity, quote, and event evidence
     },
   );
 
+  const syntaxAlice = evidence.syntaxTokens?.find((token) => token.tokenId === 4);
+  assert.ok(syntaxAlice);
+  assert.deepEqual(
+    {
+      surfaceText: syntaxAlice.surfaceText,
+      sentenceId: syntaxAlice.sentenceId,
+      tokenIdWithinSentence: syntaxAlice.tokenIdWithinSentence,
+      dependencyRelation: syntaxAlice.dependencyRelation,
+      syntacticHeadTokenId: syntaxAlice.syntacticHeadTokenId,
+    },
+    {
+      surfaceText: "Alice",
+      sentenceId: 1,
+      tokenIdWithinSentence: 1,
+      dependencyRelation: "nsubj",
+      syntacticHeadTokenId: 5,
+    },
+  );
+  const syntaxSaid = evidence.syntaxTokens?.find((token) => token.tokenId === 5);
+  assert.ok(syntaxSaid);
+  assert.equal(syntaxSaid.dependencyRelation, "ROOT");
+  assert.equal(syntaxSaid.syntacticHeadTokenId, 5);
+
   assert.deepEqual(
     evidence.eventTriggers.map((event) => [event.surfaceText, event.lemma, event.startOffset, event.endOffset]),
     [
@@ -130,6 +154,13 @@ test("BookNLP output becomes source-anchored identity, quote, and event evidence
       ["waved", "wave", 47, 52],
     ],
   );
+  for (const event of evidence.eventTriggers) {
+    const matchingSyntaxToken = evidence.syntaxTokens?.find((token) => token.tokenId === event.tokenId);
+    assert.ok(matchingSyntaxToken);
+    assert.equal(matchingSyntaxToken.surfaceText, event.surfaceText);
+    assert.equal(matchingSyntaxToken.sentenceId, event.sentenceId);
+    assert.equal(matchingSyntaxToken.syntacticHeadTokenId, event.syntacticHeadTokenId);
+  }
 
   const result = resolveCharacterIdentity({ normalizedText: text, evidence: evidence.identityEvidence });
   assert.deepEqual(result.characters.map((character) => character.canonicalName).sort(), ["Alice", "Bob", "Élodie"]);

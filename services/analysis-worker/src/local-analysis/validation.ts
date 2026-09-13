@@ -15,6 +15,7 @@ import type {
   LocalLiteraryAnalysisInput,
   LocalLiteraryEvidenceBundle,
   QuoteSpeakerEvidence,
+  SyntaxTokenEvidence,
 } from "./types.js";
 
 const mentionKinds = new Set<IdentityMentionKind>(["proper_name", "nominal", "pronoun"]);
@@ -214,15 +215,7 @@ function parseIdentityMention(value: unknown, context: ValidationContext): Ident
     boundaryQuality: row.boundaryQuality as IdentityBoundaryQuality,
     providerClusterId,
   };
-  validateSpan({
-    evidenceId,
-    startOffset,
-    endOffset,
-    expectedSurface: surfaceText,
-    structuralLocator,
-    label: "identity",
-    context,
-  });
+  validateSpan({ evidenceId, startOffset, endOffset, expectedSurface: surfaceText, structuralLocator, label: "identity", context });
   return mention;
 }
 
@@ -256,15 +249,7 @@ function parseEntity(value: unknown, context: ValidationContext): LiteraryEntity
     providerClusterId,
     boundaryQuality: row.boundaryQuality as IdentityBoundaryQuality,
   };
-  validateSpan({
-    evidenceId,
-    startOffset,
-    endOffset,
-    expectedSurface: surfaceText,
-    structuralLocator,
-    label: "entity",
-    context,
-  });
+  validateSpan({ evidenceId, startOffset, endOffset, expectedSurface: surfaceText, structuralLocator, label: "entity", context });
   return entity;
 }
 
@@ -277,15 +262,7 @@ function parseQuote(value: unknown, context: ValidationContext): QuoteSpeakerEvi
   const structuralLocator = row.structuralLocator === null
     ? null
     : requiredString(row.structuralLocator, `invalid_local_quote_locator:${evidenceId}`);
-  validateSpan({
-    evidenceId,
-    startOffset,
-    endOffset,
-    expectedSurface: quoteText,
-    structuralLocator,
-    label: "quote",
-    context,
-  });
+  validateSpan({ evidenceId, startOffset, endOffset, expectedSurface: quoteText, structuralLocator, label: "quote", context });
 
   const speakerSurfaceText = row.speakerSurfaceText === null
     ? null
@@ -312,10 +289,7 @@ function parseQuote(value: unknown, context: ValidationContext): QuoteSpeakerEvi
       context,
     });
   }
-  const speakerProviderClusterId = nullableString(
-    row.speakerProviderClusterId,
-    `invalid_local_quote_speaker_cluster:${evidenceId}`,
-  );
+  const speakerProviderClusterId = nullableString(row.speakerProviderClusterId, `invalid_local_quote_speaker_cluster:${evidenceId}`);
   return {
     evidenceId,
     quoteText,
@@ -343,15 +317,7 @@ function parseEvent(value: unknown, context: ValidationContext): EventTriggerEvi
   const tokenId = nonNegativeInteger(row.tokenId, `invalid_local_event_token_id:${evidenceId}`);
   const dependencyRelation = requiredString(row.dependencyRelation, `invalid_local_event_values:${evidenceId}`);
   const syntacticHeadTokenId = nonNegativeInteger(row.syntacticHeadTokenId, `invalid_local_event_head_id:${evidenceId}`);
-  validateSpan({
-    evidenceId,
-    startOffset,
-    endOffset,
-    expectedSurface: surfaceText,
-    structuralLocator,
-    label: "event",
-    context,
-  });
+  validateSpan({ evidenceId, startOffset, endOffset, expectedSurface: surfaceText, structuralLocator, label: "event", context });
   return {
     evidenceId,
     surfaceText,
@@ -366,9 +332,100 @@ function parseEvent(value: unknown, context: ValidationContext): EventTriggerEvi
   };
 }
 
+function parseSyntaxToken(value: unknown, context: ValidationContext): SyntaxTokenEvidence {
+  const row = record(value, "invalid_local_syntax_token_evidence");
+  const evidenceId = requiredString(row.evidenceId, "invalid_local_syntax_token_evidence_id");
+  const surfaceText = requiredString(row.surfaceText, `invalid_local_syntax_token_surface:${evidenceId}`);
+  const lemma = requiredString(row.lemma, `invalid_local_syntax_token_values:${evidenceId}`);
+  const startOffset = nonNegativeInteger(row.startOffset, `invalid_local_syntax_token_span:${evidenceId}`);
+  const endOffset = nonNegativeInteger(row.endOffset, `invalid_local_syntax_token_span:${evidenceId}`);
+  const structuralLocator = row.structuralLocator === null
+    ? null
+    : requiredString(row.structuralLocator, `invalid_local_syntax_token_locator:${evidenceId}`);
+  const paragraphId = nonNegativeInteger(row.paragraphId, `invalid_local_syntax_token_paragraph_id:${evidenceId}`);
+  const sentenceId = nonNegativeInteger(row.sentenceId, `invalid_local_syntax_token_sentence_id:${evidenceId}`);
+  const tokenIdWithinSentence = nonNegativeInteger(
+    row.tokenIdWithinSentence,
+    `invalid_local_syntax_token_sentence_token_id:${evidenceId}`,
+  );
+  const tokenId = nonNegativeInteger(row.tokenId, `invalid_local_syntax_token_id:${evidenceId}`);
+  const posTag = requiredString(row.posTag, `invalid_local_syntax_token_values:${evidenceId}`);
+  const finePosTag = requiredString(row.finePosTag, `invalid_local_syntax_token_values:${evidenceId}`);
+  const dependencyRelation = requiredString(row.dependencyRelation, `invalid_local_syntax_token_values:${evidenceId}`);
+  const syntacticHeadTokenId = nonNegativeInteger(
+    row.syntacticHeadTokenId,
+    `invalid_local_syntax_token_head_id:${evidenceId}`,
+  );
+  validateSpan({ evidenceId, startOffset, endOffset, expectedSurface: surfaceText, structuralLocator, label: "syntax_token", context });
+  return {
+    evidenceId,
+    surfaceText,
+    lemma,
+    startOffset,
+    endOffset,
+    structuralLocator,
+    paragraphId,
+    sentenceId,
+    tokenIdWithinSentence,
+    tokenId,
+    posTag,
+    finePosTag,
+    dependencyRelation,
+    syntacticHeadTokenId,
+  };
+}
+
 function parseArray(value: unknown, code: string) {
   if (!Array.isArray(value)) throw new LocalLiteraryEvidenceValidationError(code);
   return value;
+}
+
+function validateSyntaxGraph(syntaxTokens: SyntaxTokenEvidence[], eventTriggers: EventTriggerEvidence[]) {
+  const byTokenId = new Map<number, SyntaxTokenEvidence>();
+  const withinSentence = new Set<string>();
+  for (const token of syntaxTokens) {
+    if (byTokenId.has(token.tokenId)) {
+      throw new LocalLiteraryEvidenceValidationError(`duplicate_local_syntax_token_id:${token.tokenId}`);
+    }
+    byTokenId.set(token.tokenId, token);
+    const sentenceKey = `${token.sentenceId}:${token.tokenIdWithinSentence}`;
+    if (withinSentence.has(sentenceKey)) {
+      throw new LocalLiteraryEvidenceValidationError(`duplicate_local_syntax_sentence_token_id:${sentenceKey}`);
+    }
+    withinSentence.add(sentenceKey);
+  }
+
+  for (const token of syntaxTokens) {
+    const head = byTokenId.get(token.syntacticHeadTokenId);
+    if (!head) {
+      throw new LocalLiteraryEvidenceValidationError(
+        `local_syntax_token_missing_head:${token.evidenceId}:${token.syntacticHeadTokenId}`,
+      );
+    }
+    if (head.sentenceId !== token.sentenceId) {
+      throw new LocalLiteraryEvidenceValidationError(
+        `local_syntax_token_cross_sentence_head:${token.evidenceId}:${token.syntacticHeadTokenId}`,
+      );
+    }
+  }
+
+  for (const event of eventTriggers) {
+    const token = byTokenId.get(event.tokenId);
+    if (!token) {
+      throw new LocalLiteraryEvidenceValidationError(`local_event_missing_syntax_token:${event.evidenceId}`);
+    }
+    if (
+      token.surfaceText !== event.surfaceText ||
+      token.lemma !== event.lemma ||
+      token.startOffset !== event.startOffset ||
+      token.endOffset !== event.endOffset ||
+      token.sentenceId !== event.sentenceId ||
+      token.dependencyRelation !== event.dependencyRelation ||
+      token.syntacticHeadTokenId !== event.syntacticHeadTokenId
+    ) {
+      throw new LocalLiteraryEvidenceValidationError(`local_event_syntax_token_mismatch:${event.evidenceId}`);
+    }
+  }
 }
 
 export function validateLocalLiteraryEvidenceBundle(input: {
@@ -415,11 +472,18 @@ export function validateLocalLiteraryEvidenceBundle(input: {
     .map((value) => parseQuote(value, context));
   const eventTriggers = parseArray(row.eventTriggers, "invalid_local_event_triggers")
     .map((value) => parseEvent(value, context));
+  const syntaxTokens = row.syntaxTokens === undefined
+    ? undefined
+    : parseArray(row.syntaxTokens, "invalid_local_syntax_tokens").map((value) => parseSyntaxToken(value, context));
 
   uniqueEvidenceIds(identityMentions, "identity");
   uniqueEvidenceIds(entities, "entity");
   uniqueEvidenceIds(quotes, "quote");
   uniqueEvidenceIds(eventTriggers, "event");
+  if (syntaxTokens) {
+    uniqueEvidenceIds(syntaxTokens, "syntax_token");
+    validateSyntaxGraph(syntaxTokens, eventTriggers);
+  }
 
   const identityEvidence: NormalizedIdentityEvidence = {
     provider: identityProvider,
@@ -433,5 +497,6 @@ export function validateLocalLiteraryEvidenceBundle(input: {
     entities,
     quotes,
     eventTriggers,
+    ...(syntaxTokens ? { syntaxTokens } : {}),
   };
 }
