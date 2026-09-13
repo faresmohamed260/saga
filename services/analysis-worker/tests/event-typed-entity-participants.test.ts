@@ -199,10 +199,13 @@ function collect(input: {
   identity?: CharacterIdentityResult;
   prediction?: EventProviderResult;
 } = {}) {
+  const bundleInput: NonNullable<Parameters<typeof bundle>[0]> = {};
+  if (input.dependencyPath !== undefined) bundleInput.dependencyPath = input.dependencyPath;
+  if (input.entities !== undefined) bundleInput.entities = input.entities;
   return collectTypedEntityEventParticipantEvidence({
     normalizedInputFingerprint: fingerprint,
     identity: input.identity ?? identity(),
-    literaryEvidence: bundle({ dependencyPath: input.dependencyPath, entities: input.entities }),
+    literaryEvidence: bundle(bundleInput),
     eventPrediction: input.prediction ?? prediction(),
   });
 }
