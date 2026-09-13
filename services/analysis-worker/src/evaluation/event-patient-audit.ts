@@ -9,6 +9,7 @@ import type {
 
 export type PatientAuditCategory =
   | "grounded_character"
+  | "same_character_grounded_other_mention"
   | "linked_character_not_grounded"
   | "ambiguous_linked_character"
   | "structural_locator_mismatch"
@@ -25,6 +26,9 @@ export type PatientAuditCounts = {
   byCategory: Record<PatientAuditCategory, number>;
   byRelationAndCategory: Record<string, Record<PatientAuditCategory, number>>;
   providerNonPersonCategories: Partial<Record<LiteraryEntityCategory, number>>;
+  noEntityPosTags: Record<string, number>;
+  noEntityFinePosTags: Record<string, number>;
+  noEntityByRelationAndPos: Record<string, Record<string, number>>;
 };
 
 export type PatientAuditResult = PatientAuditCounts & {
@@ -49,6 +53,7 @@ function sameLocator(mention: ResolvedIdentityMention, token: SyntaxTokenEvidenc
 function emptyCategories(): Record<PatientAuditCategory, number> {
   return {
     grounded_character: 0,
+    same_character_grounded_other_mention: 0,
     linked_character_not_grounded: 0,
     ambiguous_linked_character: 0,
     structural_locator_mismatch: 0,
@@ -61,9 +66,14 @@ function emptyCategories(): Record<PatientAuditCategory, number> {
   };
 }
 
+function increment(target: Record<string, number>, key: string) {
+  target[key] = (target[key] ?? 0) + 1;
+}
+
 function classifyCandidate(input: {
   candidate: SyntaxTokenEvidence;
   patientEvidence: ResolvedIdentityMention[];
+  emittedPatientCharacterKeys: Set<string>;
   identity: CharacterIdentityResult;
   gold: GoldIdentityDocument;
   evidence: LocalLiteraryEvidenceBundle;
@@ -78,7 +88,12 @@ function classifyCandidate(input: {
   );
   const linkedMatchingLocator = linkedCovering.filter((mention) => sameLocator(mention, input.candidate));
   const characterKeys = new Set(linkedMatchingLocator.map((mention) => mention.characterKey!));
-  if (characterKeys.size === 1) return "linked_character_not_grounded";
+  if (characterKeys.size === 1) {
+    const [characterKey] = characterKeys;
+    return input.emittedPatientCharacterKeys.has(characterKey!)
+      ? "same_character_grounded_other_mention"
+      : "linked_character_not_grounded";
+  }
   if (characterKeys.size > 1) return "ambiguous_linked_character";
   if (linkedCovering.length > 0) return "structural_locator_mismatch";
 
@@ -130,6 +145,9 @@ export function auditPatientGrounding(input: {
   const byCategory = emptyCategories();
   const byRelationAndCategory: Record<string, Record<PatientAuditCategory, number>> = {};
   const providerNonPersonCategories: Partial<Record<LiteraryEntityCategory, number>> = {};
+  const noEntityPosTags: Record<string, number> = {};
+  const noEntityFinePosTags: Record<string, number> = {};
+  const noEntityByRelationAndPos: Record<string, Record<string, number>> = {};
   let candidateTokenCount = 0;
   let eventWithPatientCandidateCount = 0;
   let eventWithMultiplePatientCandidatesCount = 0;
@@ -145,18 +163,21 @@ export function auditPatientGrounding(input: {
 
     const event = eventBySpan.get(spanKey(trigger.startOffset, trigger.endOffset));
     if (!event) throw new Error(`patient_audit_missing_prediction_event:${trigger.evidenceId}`);
-    const patientEvidence = event.participants
-      .filter((participant) => participant.role === "patient" && participant.evidenceId)
+    const emittedPatients = event.participants.filter((participant) => participant.role === "patient");
+    const emittedPatientCharacterKeys = new Set(emittedPatients.map((participant) => participant.characterKey));
+    const patientEvidence = emittedPatients
+      .filter((participant) => participant.evidenceId)
       .map((participant) => identityByEvidence.get(participant.evidenceId!))
       .filter((mention): mention is ResolvedIdentityMention => Boolean(mention));
 
     for (const candidate of patientCandidates) {
       candidateTokenCount += 1;
       const relation = candidate.dependencyRelation;
-      byRelation[relation] = (byRelation[relation] ?? 0) + 1;
+      increment(byRelation, relation);
       const category = classifyCandidate({
         candidate,
         patientEvidence,
+        emittedPatientCharacterKeys,
         identity: input.identity,
         gold: input.gold,
         evidence: input.evidence,
@@ -166,6 +187,13 @@ export function auditPatientGrounding(input: {
       const relationCategories = byRelationAndCategory[relation] ?? emptyCategories();
       relationCategories[category] += 1;
       byRelationAndCategory[relation] = relationCategories;
+      if (category === "no_entity_evidence") {
+        increment(noEntityPosTags, candidate.posTag);
+        increment(noEntityFinePosTags, candidate.finePosTag);
+        const relationPos = noEntityByRelationAndPos[relation] ?? {};
+        increment(relationPos, candidate.posTag);
+        noEntityByRelationAndPos[relation] = relationPos;
+      }
     }
   }
 
@@ -179,6 +207,12 @@ export function auditPatientGrounding(input: {
       throw new Error(`patient_audit_relation_classification_mismatch:${relation}:${relationClassified}:${count}`);
     }
   }
+  const noEntityCount = byCategory.no_entity_evidence;
+  const posClassified = Object.values(noEntityPosTags).reduce((sum, value) => sum + value, 0);
+  const finePosClassified = Object.values(noEntityFinePosTags).reduce((sum, value) => sum + value, 0);
+  if (posClassified !== noEntityCount || finePosClassified !== noEntityCount) {
+    throw new Error(`patient_audit_no_entity_pos_mismatch:${noEntityCount}:${posClassified}:${finePosClassified}`);
+  }
 
   return {
     candidateTokenCount,
@@ -188,5 +222,8 @@ export function auditPatientGrounding(input: {
     byCategory,
     byRelationAndCategory,
     providerNonPersonCategories,
+    noEntityPosTags,
+    noEntityFinePosTags,
+    noEntityByRelationAndPos,
   };
 }
