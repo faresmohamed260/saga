@@ -1,0 +1,260 @@
+name: Phase 3B persistent loaded BookNLP runtime proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3b-booknlp-persistent-runtime
+    paths:
+      - ".github/workflows/v2-phase3-booknlp-persistent-runtime-proof.yml"
+      - "services/analysis-worker/benchmarks/prepare_booknlp_small_models.py"
+      - "services/analysis-worker/benchmarks/measure_process_tree.py"
+      - "services/analysis-worker/providers/booknlp_persistent_runner.py"
+      - "services/analysis-worker/src/evaluation/booknlp-persistent-runtime-proof-cli.ts"
+      - "services/analysis-worker/src/local-analysis/booknlp-persistent-provider.ts"
+      - "services/analysis-worker/src/local-analysis/booknlp-provider.ts"
+      - "services/analysis-worker/src/local-analysis/booknlp-output.ts"
+      - "services/analysis-worker/src/local-analysis/validation.ts"
+      - "services/analysis-worker/package.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-phase3-booknlp-persistent-runtime-proof
+  cancel-in-progress: true
+
+jobs:
+  persistent-runtime-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install pinned BookNLP compatibility environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install "click==8.1.7" "spacy==3.7.5" "transformers==4.43.4" "psutil==6.1.1"
+          python -m pip install --no-deps "git+https://github.com/Plazmius/booknlp.git@8875a1b616d764b7d13d1e30e9949cc21ca303c1"
+          python -m spacy download en_core_web_sm
+
+      - name: Prepare exact BookNLP and transformer artifacts before offline runtime
+        run: >-
+          python benchmarks/prepare_booknlp_small_models.py
+          --model-dir evaluation-artifacts/booknlp-model
+          --hf-home evaluation-artifacts/hf-home
+          --manifest-out evaluation-artifacts/booknlp-runtime-manifest.json
+
+      - name: Verify prepared runtime loads offline
+        shell: bash
+        env:
+          HF_HOME: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          TRANSFORMERS_CACHE: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          CUDA_VISIBLE_DEVICES: ""
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import gc
+          import os
+          import spacy
+          from transformers import BertModel, BertTokenizer
+
+          cache = os.environ["HF_HOME"]
+          for model_id in [
+              "google/bert_uncased_L-4_H-256_A-4",
+              "google/bert_uncased_L-2_H-256_A-4",
+              "google/bert_uncased_L-8_H-256_A-4",
+          ]:
+              tokenizer = BertTokenizer.from_pretrained(
+                  model_id,
+                  do_lower_case=False,
+                  do_basic_tokenize=False,
+                  cache_dir=cache,
+                  local_files_only=True,
+              )
+              model = BertModel.from_pretrained(model_id, cache_dir=cache, local_files_only=True)
+              print(f"offline_transformer_ok={model_id}:{type(tokenizer).__name__}:{type(model).__name__}")
+              del tokenizer, model
+              gc.collect()
+          nlp = spacy.load("en_core_web_sm", disable=["ner"])
+          print(f"offline_spacy_ok={nlp.meta.get('name')}:{nlp.meta.get('version')}")
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck persistent runtime proof
+        run: npm run typecheck
+
+      - name: Run model-light worker tests
+        run: npm test
+
+      - name: Measure persistent loaded runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHON_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
+          python benchmarks/measure_process_tree.py \
+            --metadata-out evaluation-artifacts/booknlp-persistent-resources.json \
+            --sample-interval-ms 50 \
+            -- \
+            npx tsx src/evaluation/booknlp-persistent-runtime-proof-cli.ts \
+              --litbank-root ../../external/litbank \
+              --model-dir evaluation-artifacts/booknlp-model \
+              --hf-home evaluation-artifacts/hf-home \
+              --runtime-manifest evaluation-artifacts/booknlp-runtime-manifest.json \
+              --runner-executable "$PYTHON_EXECUTABLE" \
+              --out evaluation-artifacts/booknlp-persistent-runtime-proof.json \
+              --repeats 3
+
+      - name: Prove malformed request recovery in the real persistent runner
+        shell: bash
+        env:
+          HF_HOME: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          TRANSFORMERS_CACHE: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          TOKENIZERS_PARALLELISM: "false"
+          CUDA_VISIBLE_DEVICES: ""
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          configuration = "f" * 64
+          model_path = str(Path("evaluation-artifacts/booknlp-model").resolve())
+          runner_path = str(Path("providers/booknlp_persistent_runner.py").resolve())
+          process = subprocess.Popen(
+              [
+                  sys.executable,
+                  runner_path,
+                  "--model-path",
+                  model_path,
+                  "--configuration-fingerprint",
+                  configuration,
+              ],
+              stdin=subprocess.PIPE,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.DEVNULL,
+              text=True,
+              bufsize=1,
+              env=os.environ.copy(),
+          )
+          assert process.stdin is not None and process.stdout is not None
+
+          process.stdin.write("{not-json}\n")
+          process.stdin.flush()
+          malformed = json.loads(process.stdout.readline())
+          assert malformed["kind"] == "error"
+          assert malformed["error"]["code"] == "booknlp_persistent_invalid_json"
+
+          health_request = {
+              "schemaVersion": "saga-booknlp-persistent-request-v1",
+              "protocolVersion": "saga-booknlp-persistent-runner-v1",
+              "kind": "health",
+              "requestId": "health-after-malformed",
+              "configurationFingerprint": configuration,
+          }
+          process.stdin.write(json.dumps(health_request) + "\n")
+          process.stdin.flush()
+          health = json.loads(process.stdout.readline())
+          assert health["kind"] == "health"
+          assert health["status"] == "ok"
+          assert health["booknlpVersion"] == "1.0.7"
+
+          shutdown_request = {
+              "schemaVersion": "saga-booknlp-persistent-request-v1",
+              "protocolVersion": "saga-booknlp-persistent-runner-v1",
+              "kind": "shutdown",
+              "requestId": "shutdown-after-malformed",
+              "configurationFingerprint": configuration,
+          }
+          process.stdin.write(json.dumps(shutdown_request) + "\n")
+          process.stdin.flush()
+          shutdown = json.loads(process.stdout.readline())
+          assert shutdown["kind"] == "shutdown"
+          process.stdin.close()
+          exit_code = process.wait(timeout=30)
+          assert exit_code == 0
+
+          probe = {
+              "schemaVersion": "saga-booknlp-persistent-protocol-probe-v1",
+              "malformedErrorCode": malformed["error"]["code"],
+              "healthAfterMalformed": health["status"],
+              "shutdownStatus": shutdown["status"],
+              "exitCode": exit_code,
+          }
+          out = Path("evaluation-artifacts/booknlp-persistent-protocol-probe.json")
+          out.write_text(json.dumps(probe, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(probe, indent=2))
+          PY
+
+      - name: Publish persistent runtime summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-persistent-runtime-proof.json", "utf8"));
+          const resources = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-persistent-resources.json", "utf8"));
+          const probe = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-persistent-protocol-probe.json", "utf8"));
+          console.log("## Phase 3B persistent loaded BookNLP runtime proof");
+          console.log("");
+          console.log(`- startup/health: ${report.runtime.healthWallClockSeconds.toFixed(3)} s`);
+          console.log(`- analyze passes: ${report.runtime.analyzePassSeconds.map((v) => v.toFixed(3)).join(" s, ")} s`);
+          console.log(`- median analyze: ${report.runtime.analyzeMedianWallClockSeconds.toFixed(3)} s`);
+          console.log(`- speedup vs one-shot 6.314 s run: ${report.runtime.speedupVsOneShotFirstRun.toFixed(2)}x`);
+          console.log(`- speedup vs one-shot 8.930 s run: ${report.runtime.speedupVsOneShotSecondRun.toFixed(2)}x`);
+          console.log(`- peak aggregate process-tree RSS: ${resources.peakProcessTreeRssMiB.toFixed(1)} MiB`);
+          console.log(`- semantic equality on all passes: ${report.semanticComparison.allPassesEqualValidatedOneShot}`);
+          console.log(`- malformed request recovery: ${probe.healthAfterMalformed}`);
+          console.log(`- prepared runtime footprint: ${(report.preparedRuntime.totalPreparedArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log("");
+          console.log("> Runtime challenger only. Existing BookNLP quality scores and production adoption blockers are unchanged.");
+          EOF
+
+      - name: Upload persistent runtime evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-booknlp-persistent-runtime-proof
+          path: |
+            services/analysis-worker/evaluation-artifacts/booknlp-persistent-runtime-proof.json
+            services/analysis-worker/evaluation-artifacts/booknlp-persistent-resources.json
+            services/analysis-worker/evaluation-artifacts/booknlp-persistent-protocol-probe.json
+            services/analysis-worker/evaluation-artifacts/booknlp-runtime-manifest.json
+          if-no-files-found: error
+          retention-days: 90
