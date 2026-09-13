@@ -268,12 +268,11 @@ function assertDocumentAccounting(audit: RelationshipCoverageAudit) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const corefDir = join(args.litbankRoot, "coref", "tsv");
-  const documentIds = (await readdir(corefDir))
-    .filter((name) => name.endsWith(".tsv"))
-    .map((name) => basename(name, ".tsv"))
+  const annotationNames = (await readdir(corefDir))
+    .filter((name) => name.endsWith(".ann"))
     .sort()
     .slice(0, args.limit ?? undefined);
-  if (documentIds.length === 0) throw new Error("no LitBank coreference annotations found");
+  if (annotationNames.length === 0) throw new Error("no LitBank coref/tsv annotations found");
 
   const completed: Array<{
     documentId: string;
@@ -287,11 +286,12 @@ async function main() {
   }> = [];
   const failures: Array<{ documentId: string; code: string; message: string }> = [];
 
-  for (const documentId of documentIds) {
+  for (const annotationName of annotationNames) {
+    const documentId = basename(annotationName, ".ann");
     try {
-      const [textRaw, corefTsv, booknlp] = await Promise.all([
+      const [textRaw, corefAnnotation, booknlp] = await Promise.all([
         readFile(join(corefDir, `${documentId}.txt`), "utf8"),
-        readFile(join(corefDir, `${documentId}.tsv`), "utf8"),
+        readFile(join(corefDir, annotationName), "utf8"),
         readBookNlpDocument(args.booknlpRoot, documentId),
       ]);
       const text = normalizeNewlines(textRaw);
@@ -306,7 +306,7 @@ async function main() {
         entitiesTsv: booknlp.entitiesTsv,
         quotesTsv: booknlp.quotesTsv,
       });
-      const gold = convertLitBankTsvDocument({ documentId, text, annotation: corefTsv }).gold;
+      const gold = convertLitBankTsvDocument({ documentId, text, annotation: corefAnnotation }).gold;
       const identity = alignSingleSectionOracleIdentity({
         identity: litBankGoldIdentityResult(gold),
         section,
@@ -344,7 +344,7 @@ async function main() {
       repository: "dbamman/litbank",
       commit: LITBANK_COMMIT,
       license: "CC BY 4.0",
-      attemptedDocumentCount: documentIds.length,
+      attemptedDocumentCount: annotationNames.length,
       completedDocumentCount: completed.length,
       failedDocumentCount: failures.length,
     },
