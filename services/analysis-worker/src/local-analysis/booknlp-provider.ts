@@ -6,6 +6,7 @@ export const BOOKNLP_EXPECTED_PACKAGE_VERSION = "1.0.7";
 export const BOOKNLP_MODEL = "small";
 export const BOOKNLP_PIPELINE = "entity,quote,event,coref";
 export const BOOKNLP_PROVIDER_PROCESS_VERSION = "saga-booknlp-provider-v1";
+export const BOOKNLP_PERSISTENT_RUNNER_PROTOCOL_VERSION = "saga-booknlp-persistent-runner-v1";
 export const BOOKNLP_SMALL_MODEL_FILES = [
   "entities_google_bert_uncased_L-4_H-256_A-4-v1.0.model",
   "coref_google_bert_uncased_L-2_H-256_A-4-v1.0.model",
@@ -33,6 +34,20 @@ export function bookNlpRuntimeConfigurationFingerprint(input: {
 }) {
   return sha256Hex(canonicalJson({
     baseConfigurationFingerprint: BOOKNLP_PROVIDER_BASE_CONFIGURATION_FINGERPRINT,
+    runnerExecutable: input.runnerExecutable,
+    runnerArgs: input.runnerArgs,
+    modelPath: input.modelPath,
+  }));
+}
+
+export function bookNlpPersistentRuntimeConfigurationFingerprint(input: {
+  runnerExecutable: string;
+  runnerArgs: string[];
+  modelPath: string;
+}) {
+  return sha256Hex(canonicalJson({
+    baseConfigurationFingerprint: BOOKNLP_PROVIDER_BASE_CONFIGURATION_FINGERPRINT,
+    transportProtocol: BOOKNLP_PERSISTENT_RUNNER_PROTOCOL_VERSION,
     runnerExecutable: input.runnerExecutable,
     runnerArgs: input.runnerArgs,
     modelPath: input.modelPath,

@@ -211,6 +211,28 @@ The preferred textual-analysis topology is an outbound-only local worker that cl
 
 **Consequence:** The home/local analysis host does not need a public inbound port. Worker downtime does not lose jobs because Postgres remains queue/run truth. The existing TypeScript `services/analysis-worker` stays the preferred orchestration owner unless measurements justify changing it.
 
+### D-031 — Modal Accounts Are Partitioned by Project
+
+**Status:** Accepted — owner decision 2026-09-13
+
+S.A.G.A. owns `modal-03` through `modal-41`. RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`.
+
+Credential presence is not authorization. S.A.G.A. Modal tooling must resolve credentials only after the checked-in project-ownership guard accepts the account label, and it must fail closed for RenderLab-owned labels even while a legacy omnibus secret still contains all 47 credentials. Historical mutation and live media-smoke workflows that target or consume RenderLab-owned workers are not part of active S.A.G.A. v2 and must not remain runnable ordinary control surfaces.
+
+**Consequence:** Future S.A.G.A. Modal media work must use only S.A.G.A.-owned accounts. Changing the partition requires an explicit owner decision reflected in both repositories. The strongest operational end state is secret-store least privilege so each repository physically contains only its own credentials; repository guards do not falsely claim that secret rotation/splitting is already complete. D-027 remains unchanged: Modal is reserved for media/image generation, not textual analysis.
+
+### D-032 — BookNLP Repeated Analysis Uses a Persistent Local Stdio Runtime
+
+**Status:** Accepted — measured Phase-3B decision 2026-09-13
+
+For BookNLP specifically, S.A.G.A. prefers one persistent loaded Python child process communicating over bounded local stdio when multiple analyses are performed. The generic one-process-per-request subprocess remains the simple correctness/reference implementation.
+
+Two independent heavyweight executions on exact head `2fa30b185cb037180f3e7762f2166067096e08c5` reproduced the exact validated one-shot provider-neutral evidence fingerprint across all six persistent analyze passes. Persistent median analyze latency measured `4.627 s` and `2.853 s`, versus measured one-shot analyses of `6.314 s` and `8.930 s`. Model-light qualification passed `145 / 145` tests. Peak process-tree RSS remained close to one-shot, so the decision is based on model reuse and repeated-request latency rather than a claimed material memory reduction.
+
+The persistent transport remains private/local: no shell, no HTTP listener, sanitized environment, bounded I/O/time, exact request/configuration/input binding, no silent retry of a crashed/timed-out request, deterministic cleanup, and the same S.A.G.A.-owned provider-neutral evidence validation.
+
+**Consequence:** When BookNLP evidence is invoked repeatedly, do not recreate the Python/model runtime for every request unless a debugging/reference path specifically needs the one-shot implementation. Do not introduce a BookNLP HTTP sidecar merely for persistence. This transport choice does **not** adopt BookNLP as a production analysis provider; quality, licensing and private modern-fiction qualification remain separate gates. Other local NLP providers still require their own runtime measurements before inheriting this transport decision.
+
 ## Still-Applicable General Principles From v1
 
 These principles remain useful across the rebuild even though their old implementation context is historical:
@@ -237,18 +259,8 @@ Resolve these only in the phase that needs them:
 
 - final S.A.G.A. brand palette/type pairing after visual concept review;
 - exact local NLP/provider winners after Phase-3 quality/resource benchmarks;
-- whether local NLP integration uses subprocesses or a loopback HTTP sidecar after measurement of operational simplicity;
+- transport/runtime selection for local NLP providers other than BookNLP after provider-specific measurement;
 - exact local structured-reasoning model/quantization after Phase-3 benchmark evidence;
 - whether embeddings materially improve candidate retrieval enough to justify a vector index;
 - GPU/provider strategy for future visual/audio generation;
 - whether each future B2 object workflow uses direct presigned browser transfer, server-mediated transfer or a hybrid.
-
-### D-031 — Modal Accounts Are Partitioned by Project
-
-**Status:** Accepted — owner decision 2026-09-13
-
-S.A.G.A. owns `modal-03` through `modal-41`. RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`.
-
-Credential presence is not authorization. S.A.G.A. Modal tooling must resolve credentials only after the checked-in project-ownership guard accepts the account label, and it must fail closed for RenderLab-owned labels even while a legacy omnibus secret still contains all 47 credentials. Historical mutation and live media-smoke workflows that target or consume RenderLab-owned workers are not part of active S.A.G.A. v2 and must not remain runnable ordinary control surfaces.
-
-**Consequence:** Future S.A.G.A. Modal media work must use only S.A.G.A.-owned accounts. Changing the partition requires an explicit owner decision reflected in both repositories. The strongest operational end state is secret-store least privilege so each repository physically contains only its own credentials; repository guards do not falsely claim that secret rotation/splitting is already complete. D-027 remains unchanged: Modal is reserved for media/image generation, not textual analysis.
