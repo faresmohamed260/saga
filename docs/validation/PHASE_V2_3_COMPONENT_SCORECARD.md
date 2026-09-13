@@ -168,60 +168,27 @@ PR #238 merged explicit relationship observations + an immutable source-order le
 
 Pinned predicates: `love`, `hate`, `trust`, `distrust`, `marry`, `divorce`, `befriend`, `betray`.
 
-Supported shapes:
+Foundation:
 
-- active: exactly one direct `nsubj` + exactly one direct `dobj`;
-- passive: exactly one direct `nsubjpass` + exactly one direct `agent -> pobj`.
-
-Both roles must ground through exactly one linked canonical identity with exact structural-locator agreement. Self-relations, reciprocity, conjunction inheritance, co-occurrence and shared-event inference are excluded.
-
-### Foundation
-
-- typecheck pass;
-- **`188 / 188` tests pass**, up from `177 / 177` because of +11 contract tests;
-- public denominator `196` predicate hits -> `48` supported binary syntax -> `23` two-character observations;
+- **`188 / 188` tests**, +11 contract tests over the previous floor;
+- `196` predicate hits -> `48` supported binary syntax -> `23` two-character observations;
 - observation yield `47.92%` of supported syntax / `11.73%` of hits;
 - active/passive observations `23 / 0`;
 - unique directed pairs / pair+predicate groups `20 / 20`;
-- repeated-support groups `1 / 20`, with `4` observations;
+- one repeated-support group with `4` observations;
 - qualified observations `6 / 23`; negated/modalized/conditional `4 / 3 / 0`.
 
-Report fingerprint `66b228428713aa6b0b59b0e36f3e50e759f533eed243e015e77c9e69e1061c78`.
+PR #240 failure-mode audit:
 
-### Relationship failure-mode audit — PR #240
+- **`195 / 195` tests**, +7 audit tests;
+- denominator preserved **`196 / 48 / 23`**;
+- unsupported syntax: no direct role `86`, active subject only `36`, active object only `18`, passive subject only `5`, passive agent only `1`, multiplicity `2` total;
+- grounding failures: object-no-character `19 / 25` (`76%`), self `2`, subject ambiguous `2`, subject-no-character `1`, object ambiguous `1`;
+- structural-locator mismatch **`0`**.
 
-Exact measured head `b738cb4296af2c9811d5cf18aac9aa8d44c9fe66`:
+Audit fingerprint `7e04a17d1cb5b9e0d48bc98d8a634b36e3e11ecbf5e81f9f3c54a90ec9ee69a1`; artifact ID `10325579385`.
 
-- `100 / 100` documents, `0` failures;
-- typecheck pass;
-- **`195 / 195` tests pass**, +7 audit tests;
-- no new model inference;
-- denominator preserved exactly **`196 / 48 / 23`**.
-
-Unsupported syntax among `148` misses:
-
-- no direct role shape `86` (`58.11%`);
-- active subject only `36` (`24.32%`);
-- active object only `18` (`12.16%`);
-- passive subject only `5`;
-- passive agent only `1`;
-- multiple active subjects/objects `1 / 1`;
-- exact accepted passive shapes `0`.
-
-Grounding failures among `25` supported candidates:
-
-- object has no linked character **`19` (`76%`)**;
-- self relation `2`;
-- subject ambiguous `2`;
-- subject no linked character `1`;
-- object ambiguous `1`;
-- all structural-locator mismatch classes **`0`**.
-
-Audit fingerprint `7e04a17d1cb5b9e0d48bc98d8a634b36e3e11ecbf5e81f9f3c54a90ec9ee69a1`; artifact ID `10325579385`, digest `sha256:5be3f8c48b931acbc3967c7261b0f17f318a840307ffa89d6be6a99774fccc5d`.
-
-Decision: **keep the strict relationship observation policy unchanged**. No high-volume, low-risk omission was found. Do not widen predicates, dependency traversal, conjunction inheritance, co-occurrence/shared-event inference or identity rules merely to increase coverage. Do not derive persistent state from repeated source-order observations.
-
-LitBank has no S.A.G.A.-style relationship/state gold, so these are coverage/failure-mode diagnostics, not semantic accuracy.
+Decision: **keep the strict relationship observation policy unchanged**. Do not derive persistent relationship state or widen coverage without semantic gold.
 
 Detailed records:
 
@@ -230,56 +197,104 @@ Detailed records:
 
 ## Narrative order / temporal-cue evidence
 
-Issue #241 introduces a provider-neutral timeline evidence layer while explicitly separating deterministic narrative/source order from story-world chronology.
+PR #242 establishes deterministic source order and unscoped temporal-cue evidence while keeping story-world chronology unresolved.
+
+Model-light qualification:
+
+- **`202 / 202` tests**, up from `195 / 195` by +7 timeline contract tests;
+- +7 is regression/contract coverage only.
+
+Corrected 100-document diagnostic, scorer head `602120e8423719672a4e66da9b28ce02744bf598`:
+
+- `100 / 100` documents, `0` failures;
+- no new inference;
+- event candidates preserved `7,445`;
+- trigger P/R/F1 preserved **`0.8003 / 0.7591 / 0.7791`**;
+- temporal cue tokens `871`;
+- events with >=1 same-sentence cue **`1,856 / 7,445` (`24.93%`)**;
+- cue-to-event attachments `2,272`;
+- event-bearing sentences with cue **`734 / 3,686` (`19.91%`)**;
+- multi-event sentences `1,888`;
+- resolved story-time statuses / relations / narrative-order violations **`0 / 0 / 0`**.
+
+Cue families: relative/sequence `613`, deictic `147`, interval/boundary `87`, relative-distance `21`, simultaneity `3`.
+
+Report fingerprint `a6590f9942f3df79cc1f122c6b97dce641495ce82e8dcbdc8bb04c8f9d217d6b`; artifact ID `10325862289`.
+
+Decision: **keep deterministic narrative order and unscoped same-sentence temporal-cue evidence; do not infer story-world chronology yet**. Cue availability is not chronology accuracy.
+
+Detailed record: `docs/experiments/NARRATIVE_TIMELINE_EVIDENCE.md`.
+
+## Character life-state change candidate evidence
+
+Issue #243 introduces the first provider-neutral state-change candidate contract while structurally forbidding persistent/current state application.
+
+Pinned first policy:
+
+- `die` -> exactly one grounded character `actor`;
+- `kill` -> exactly one grounded character `patient`;
+- emitted observation only: unverified `life_status -> dead` candidate;
+- preserve strict qualifier evidence and deterministic narrative sequence;
+- story-time status remains `unresolved`;
+- `stateApplications` must remain empty.
 
 ### Model-light qualification
 
 - typecheck pass;
-- **`202 / 202` tests pass**, up from `195 / 195` before the timeline contract;
-- +7 tests are contract/regression coverage only, not chronology-quality improvement.
+- **`210 / 210` tests pass**, up from `202 / 202` before the state-candidate contract;
+- +8 tests are contract/regression coverage only, **not** state-quality improvement.
 
-### Corrected 100-document diagnostic
+### 100-document public diagnostic
 
-Exact corrected scorer head `602120e8423719672a4e66da9b28ce02744bf598`; run `34784052351`, job `103796185890`:
+Exact scorer head `c29876a7cea3426996e4215d16a28faf1b302378`; run `34786059397`, job `103801639102`:
 
 - documents **`100 / 100`**, `0` failures;
-- no new model inference; preserved BookNLP output reused;
+- no new model inference; preserved BookNLP evidence reused;
 - event candidates preserved **`7,445`**;
-- trigger P/R/F1 preserved **`0.8003 / 0.7591 / 0.7791`**;
-- temporal cue tokens in event-bearing sentences **`871`**;
-- events with >=1 same-sentence cue **`1,856 / 7,445` (`24.93%`)**;
-- events with multiple cues `338`;
-- cue-to-event attachments `2,272`;
-- event-bearing sentences `3,686`;
-- event-bearing sentences with >=1 cue **`734 / 3,686` (`19.91%`)**;
-- multi-event sentences `1,888`;
-- multi-cue sentences `117`;
-- multi-event + cue sentences `483`;
-- resolved story-time statuses **`0`**;
-- emitted story-time relations **`0`**;
-- narrative-order violations **`0`**.
+- trigger P/R/F1 preserved **`0.8003 / 0.7591 / 0.7791`**.
 
-Cue families:
+Candidate funnel:
 
-| Family | Count |
-| --- | ---: |
-| relative / sequence | **613** |
-| deictic | **147** |
-| interval / boundary | **87** |
-| relative distance | **21** |
-| simultaneity | **3** |
+| Stage | Count | Yield |
+| --- | ---: | ---: |
+| `die` / `kill` trigger opportunities | **25** | `0.34%` of all events |
+| unique required grounded character target | **16** | **64.00%** of opportunities |
+| emitted life-state candidates | **16** | `0.21%` of all events |
 
-Most common cue lemmas: `then 249`, `before 158`, `now 139`, `after 135`, `soon 47`, `since 40`, `until 28`, `ago 21`, `later 21`, `during 19`.
+Opportunity split: `die 21`, `kill 4`.
 
-Report fingerprint `a6590f9942f3df79cc1f122c6b97dce641495ce82e8dcbdc8bb04c8f9d217d6b`.
+Candidate split: `die 13`, `kill 3`.
 
-Artifact ID `10325862289`, digest `sha256:0c6a36edd5241eb451593dfc4f4cef7af5aa04e6267678081c4c3a5fe92a3fc8`.
+Failures: missing required target `9`, multiple required targets `0`, target missing mention evidence `0`.
 
-Decision: **keep deterministic narrative order and unscoped same-sentence temporal-cue evidence; do not infer story-world chronology yet**. The cue statistics measure evidence availability, not semantic scope or chronology accuracy. `1,888` multi-event sentences make direct cue-to-edge conversion especially unsafe.
+Qualifier state among `16` candidates:
 
-No production timeline default is adopted. Require suitable temporal-relation gold/private annotations or another bounded measurable hypothesis before story-time before/after/simultaneous/flashback edges.
+- candidates with any strict qualifier cue **`0`**;
+- negated / modalized / irrealis-cued `0 / 0 / 0`;
+- all qualifier fields undetermined **`16`**.
 
-Detailed record: `docs/experiments/NARRATIVE_TIMELINE_EVIDENCE.md`.
+`undetermined` is **not affirmative realis evidence** and these candidates are not confirmed deaths.
+
+Repeated-source diagnostics within per-document canonical scope:
+
+- unique target characters `15`;
+- repeated target characters `1`;
+- repeated candidate excess `1`;
+- maximum candidates for one character `2`.
+
+Safety invariants:
+
+- non-unresolved story-time statuses **`0`**;
+- persistent/current state applications **`0`**;
+- source-order violations **`0`**.
+
+Report fingerprint `18aa7e3876ce79e1a3fb8f2d2a444ba8891da01b0de801403490c9aa5819630e`.
+
+Artifact ID `10327100174`, digest `sha256:dc05dc44607284b57b24b4ba938c8055830d244c93b6b5da9995e21495ee0e5a`.
+
+Decision: **keep the narrow candidate evidence contract; do not assert, apply or persist character life state**. The public opportunity set is sparse and LitBank has no state-transition, persistence, contradiction, resurrection or story-time validity gold. Do not expand the predicate set merely to increase coverage.
+
+Detailed record: `docs/experiments/CHARACTER_LIFE_STATE_EVIDENCE.md`.
 
 ## BookNLP component repeatability / resources
 
@@ -290,25 +305,18 @@ Two independent 100-document CPU runs produced the same semantic report fingerpr
 - model artifacts `160,398,571 bytes`;
 - each run `100 / 100` documents, `0` failures.
 
-The speaker/event/relationship/timeline policy scorers reuse preserved native BookNLP output rather than repeat heavyweight inference for deterministic policy changes.
+Deterministic policy scorers reuse preserved native BookNLP output instead of repeating heavyweight inference.
 
 ## Phase 3B BookNLP runtime boundary
 
-One-shot generic subprocess proof on `1023_bleak_house_brat` exactly reproduced preserved direct BookNLP evidence:
+One-shot generic subprocess proof exactly reproduced preserved direct BookNLP evidence. Persistent loaded stdio then reduced repeated-analysis latency while preserving exact semantic equality:
 
-- fingerprint `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
-- counts `230 / 230 / 5 / 20 / 2,319` identity mentions/entities/quotes/events/syntax;
-- analyze `6.314 s` and `8.930 s`;
-- peak process-tree RSS about `1.04 GiB`.
-
-Persistent loaded stdio:
-
-- median analyze `4.627 s` and `2.853 s` on independent attempts;
-- peak RSS `1007.1 MiB` and `1028.7 MiB`;
-- all six analyses exactly reproduce the one-shot fingerprint/counts;
+- one-shot analyze `6.314 s` / `8.930 s`;
+- persistent median analyze `4.627 s` / `2.853 s`;
+- peak process-tree RSS remains about `1 GiB`;
 - malformed-request recovery, offline load and controlled shutdown pass.
 
-Decision: **persistent local stdio is preferred for repeated BookNLP analysis; one-shot remains the correctness/reference path**. This transport choice changes no provider-quality/adoption decision.
+Decision: **persistent local stdio is preferred for repeated BookNLP analysis; one-shot remains the correctness/reference path**. This transport decision changes no quality/adoption decision.
 
 ## Adoption blockers still in force
 
@@ -318,6 +326,7 @@ Decision: **persistent local stdio is preferred for repeated BookNLP analysis; o
 - scene quality remains unmeasured on the primary suite;
 - event participant correctness remains unmeasured on suitable gold;
 - event qualifier correctness/factuality remains unmeasured on suitable gold;
-- relationship/state correctness and persistence remain unmeasured on suitable gold;
+- relationship correctness/persistence remains unmeasured on suitable gold;
+- state-transition correctness/persistence/contradiction handling remains unmeasured on suitable gold;
 - story-time/temporal-relation correctness and flashback identification remain unmeasured on suitable gold;
-- no production speaker/event/relationship-state/timeline method is adopted.
+- no production speaker/event/relationship/state/timeline method is adopted.
