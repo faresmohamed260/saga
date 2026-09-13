@@ -50,10 +50,13 @@ const fixtureVersion = valueAfter("--fixture-version") ?? DEFAULT_VERSION;
 const startupLog = valueAfter("--startup-log");
 const responseConfigurationOverride = valueAfter("--response-configuration-fingerprint");
 const crashOnceMarker = valueAfter("--crash-once-marker");
+const forbiddenEnv = valueAfter("--forbid-env");
+const delayMs = Number(valueAfter("--delay-ms") ?? "0");
 const structuredErrorFirstAnalyze = process.argv.includes("--structured-error-first-analyze");
 const omitQuotes = process.argv.includes("--omit-quotes");
 
 if (!configurationFingerprint) process.exit(2);
+if (forbiddenEnv && process.env[forbiddenEnv]) process.exit(19);
 if (startupLog) await appendFile(startupLog, `${process.pid}\n`, "utf8");
 
 let analyzeCount = 0;
@@ -82,6 +85,10 @@ async function shouldCrashOnce() {
     await writeFile(crashOnceMarker, "crashed\n", "utf8");
     return true;
   }
+}
+
+function delay() {
+  return delayMs > 0 ? new Promise((resolve) => setTimeout(resolve, delayMs)) : Promise.resolve();
 }
 
 let buffered = "";
@@ -129,7 +136,9 @@ process.stdin.on("data", async (chunk) => {
         status: "ok",
         booknlpVersion: fixtureVersion,
       }));
-      process.exit(0);
+      process.exitCode = 0;
+      process.stdin.pause();
+      return;
     }
 
     if (request.kind !== "analyze" || request.normalizedText !== FIXTURE_TEXT) {
@@ -147,6 +156,7 @@ process.stdin.on("data", async (chunk) => {
       }));
       continue;
     }
+    await delay();
 
     writeResponse(response(requestId, "analyze", {
       booknlpVersion: fixtureVersion,
