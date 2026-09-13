@@ -27,6 +27,7 @@
     "benchmark:character-relationships": "tsx src/evaluation/character-relationship-litbank-cli.ts",
     "benchmark:character-relationship-audit": "tsx src/evaluation/character-relationship-audit-litbank-cli.ts",
     "benchmark:narrative-timeline": "tsx src/evaluation/narrative-timeline-litbank-cli.ts",
+    "benchmark:character-life-state": "tsx src/evaluation/character-life-state-litbank-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
