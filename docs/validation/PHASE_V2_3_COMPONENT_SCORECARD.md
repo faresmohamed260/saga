@@ -119,7 +119,7 @@ Decision: **BookNLP is the strongest measured trigger challenger**. This does no
 
 ## Event participant grounding
 
-Issue #214's first direct dependency policy uses:
+Issue #214's merged direct dependency policy uses:
 
 - `nsubj` -> actor;
 - `dobj` -> patient;
@@ -144,9 +144,9 @@ The production grounding rule was not weakened. After benchmark-only locator ali
 - actor assignments: `3,432`;
 - patient assignments: `824`;
 - actor-opportunity events: `4,067`;
-- patient-opportunity events: `2,476`;
+- direct-object/passive-subject patient-candidate events: `2,476`;
 - actor opportunity grounding yield: **`83.75%`**;
-- patient opportunity grounding yield: **`33.20%`**.
+- direct patient-candidate grounding yield: **`33.20%`**.
 
 Corrected trigger P/R/F1 remained exactly `0.8003 / 0.7591 / 0.7791`.
 
@@ -154,11 +154,58 @@ Corrected report fingerprint:
 
 `d2392c11869bf42d92d244af3cc58b4b39d360257726f8c6dc27587ff08f2ba0`
 
-Important: these are **coverage/yield diagnostics, not participant precision/recall/accuracy**. LitBank's event layer does not provide S.A.G.A.-style actor/patient gold.
+### Patient-candidate failure-mode audit
 
-Decision: **direct dependency grounding is the current public participant-grounding challenger infrastructure, but no participant method is production-adopted**. The next measured task is a failure-category audit of the low patient grounding yield before enabling any broader relation policy.
+A scorer-only 100-document audit reused the exact preserved BookNLP output and completed with `100 / 100` documents, `0` failures, passing typecheck and **`139 / 139`** analysis-worker tests.
 
-Detailed record: `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`.
+Across `2,546` direct syntactic patient candidates in `2,476` events:
+
+- grounded character: `824` (`32.36%`);
+- same character already grounded through another mention: `4` (`0.16%`);
+- **true linked-character not grounded: `0`**;
+- ambiguous linked character: `17` (`0.67%`);
+- **structural-locator mismatch: `0`**;
+- **gold-linked person missing from oracle identity: `0`**;
+- unresolved person gold: `8` (`0.31%`);
+- non-person gold: `142` (`5.58%`);
+- provider non-person only: `15` (`0.59%`);
+- provider person only: `33` (`1.30%`);
+- no identity/entity evidence: `1,503` (`59.03%`).
+
+The relation mix explains the low aggregate candidate yield:
+
+- `dobj`: `2,304 / 2,546` candidates (`90.49%`), with `686` grounded characters (`29.77%`);
+- `nsubjpass`: `242 / 2,546` (`9.51%`), with `138` grounded characters (`57.02%`).
+
+Among the `1,503` candidates with no identity/entity evidence:
+
+- `NOUN`: `1,216` (`80.90%`);
+- `PRON`: `226` (`15.04%`);
+- `PROPN`: only `7` (`0.47%`).
+
+Audit report fingerprint:
+
+`c8f36fb6a0af333c70c038e7dbe42ef94d78c3d1daf5b41fae24d6e4d412a571`
+
+Artifact digest:
+
+`sha256:930dfb6844be99dad6fbdf4c8fd37382eadce56d3c232946bea978c8a727fc81`
+
+Important: these are **coverage/failure-mode diagnostics, not participant precision/recall/accuracy**. LitBank's event layer does not provide S.A.G.A.-style actor/patient gold.
+
+Progress/decision:
+
+- the audit found **no measured deterministic linked-character attachment bug** among direct patient candidates;
+- the low aggregate candidate yield is dominated by broad `dobj` semantics, not failed canonical identity attachment;
+- do **not** enable dative, conjunction inheritance or provider clusters merely to inflate coverage;
+- call this denominator **direct syntactic patient candidates/opportunities**, not an expectation that every object is a character patient.
+
+Decision: **direct dependency grounding remains the current public participant-grounding challenger infrastructure, but no participant method is production-adopted**. Next event work should add genuinely new semantic capability—non-character entity participants, negation/modality/realis—or wait for suitable private actor/patient gold rather than broadening attachment rules without evidence.
+
+Detailed records:
+
+- `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
+- `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
 
 ## BookNLP component repeatability / resources
 
@@ -180,7 +227,7 @@ Two independent CPU runs produced identical semantic report fingerprint:
 
 The semantic result is repeatable across these two runs; runtime is host-dependent.
 
-The speaker V2 and event-grounding policy scorers reuse the exact preserved native BookNLP output rather than repeating heavyweight inference for deterministic policy changes.
+The speaker V2, event-grounding and patient-audit policy scorers reuse the exact preserved native BookNLP output rather than repeating heavyweight inference for deterministic policy changes.
 
 ## Adoption blockers that still apply
 
