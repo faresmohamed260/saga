@@ -193,7 +193,6 @@ export class PersistentBookNlpEvidenceProvider implements LocalLiteraryEvidenceP
     return this.#enqueue(async () => {
       const request: PersistentRequest = {
         ...this.#baseRequest("analyze"),
-        kind: "analyze",
         normalizedInputFingerprint: input.normalizedInputFingerprint,
         normalizedText: input.normalizedText,
         bookId: BOOK_ID,
@@ -272,7 +271,7 @@ export class PersistentBookNlpEvidenceProvider implements LocalLiteraryEvidenceP
     }
   }
 
-  #baseRequest(kind: "health" | "analyze" | "shutdown") {
+  #baseRequest<K extends "health" | "analyze" | "shutdown">(kind: K) {
     return {
       schemaVersion: REQUEST_SCHEMA_VERSION,
       protocolVersion: BOOKNLP_PERSISTENT_RUNNER_PROTOCOL_VERSION,
@@ -397,8 +396,6 @@ export class PersistentBookNlpEvidenceProvider implements LocalLiteraryEvidenceP
       this.#pending = null;
       pending.resolve(payload);
       if (this.#stdoutBuffer.length > 0) {
-        // A provider response is exactly one JSON line per request. Any extra output
-        // is protocol drift and cannot be safely associated with a later request.
         this.#child?.kill("SIGKILL");
       }
       return;
