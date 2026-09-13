@@ -23,7 +23,7 @@ jobs:
           python-version: "3.11"
       - name: Install pinned Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Resolve project-relevant apps to roster labels
+      - name: Inspect non-secret app-list shape for fleet accounts
         shell: bash
         run: |
           python - <<'PY'
@@ -33,6 +33,7 @@ jobs:
           import subprocess
           from pathlib import Path
 
+          targets = {f"modal-{n:02d}" for n in range(42, 48)}
           raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "").strip()
           if not raw:
               raise SystemExit("SAGA_MODAL_TOKENS_JSON is not configured")
@@ -46,12 +47,15 @@ jobs:
               if not isinstance(row, dict):
                   continue
               label = str(row.get("label") or row.get("name") or row.get("account") or f"modal-{index:02d}").strip()
+              if label not in targets:
+                  continue
               token_id = str(row.get("token_id") or "").strip()
               token_secret = str(row.get("token_secret") or "").strip()
               combined = str(row.get("api_key") or row.get("token") or "").strip()
               if (not token_id or not token_secret) and "." in combined:
                   token_id, token_secret = combined.split(".", 1)
               if not token_id or not token_secret:
+                  findings.append({"label": label, "state": "missing-credential"})
                   continue
 
               env = dict(os.environ)
@@ -64,40 +68,23 @@ jobs:
                   capture_output=True,
                   timeout=60,
               )
-              if result.returncode != 0:
-                  findings.append({
-                      "label": label,
-                      "tokenFingerprint": hashlib.sha256(token_id.encode()).hexdigest()[:12],
-                      "state": "unavailable",
-                      "projectApps": [],
-                  })
-                  continue
-              try:
-                  apps = json.loads(result.stdout or "[]")
-              except json.JSONDecodeError:
-                  apps = []
-              names = []
-              if isinstance(apps, list):
-                  for app in apps:
-                      if not isinstance(app, dict):
-                          continue
-                      name = str(app.get("Name") or app.get("name") or app.get("App Name") or app.get("app_name") or "").strip()
-                      lowered = name.lower()
-                      if name and ("saga" in lowered or "renderlab" in lowered):
-                          names.append(name)
-              findings.append({
+              entry = {
                   "label": label,
                   "tokenFingerprint": hashlib.sha256(token_id.encode()).hexdigest()[:12],
-                  "state": "available",
-                  "projectApps": sorted(set(names)),
-              })
+                  "state": "available" if result.returncode == 0 else "unavailable",
+              }
+              if result.returncode == 0:
+                  try:
+                      entry["apps"] = json.loads(result.stdout or "[]")
+                  except json.JSONDecodeError:
+                      entry["apps"] = {"unparsed": (result.stdout or "")[:2000]}
+              findings.append(entry)
 
-          relevant = [row for row in findings if row["projectApps"]]
           Path("modal-project-ownership-audit.json").write_text(
-              json.dumps({"relevant": relevant, "rosterCount": len(findings)}, indent=2) + "\n",
+              json.dumps({"accounts": findings}, indent=2) + "\n",
               encoding="utf-8",
           )
-          print(json.dumps({"rosterCount": len(findings), "relevant": relevant}, sort_keys=True))
+          print(json.dumps({"accounts": [{"label": row.get("label"), "state": row.get("state"), "tokenFingerprint": row.get("tokenFingerprint")} for row in findings]}, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         with:
