@@ -6,6 +6,18 @@ import type { LiteraryEntityCategory, LiteraryEntityEvidence } from "./types.js"
 export const TYPED_ENTITY_EVIDENCE_SCHEMA = "saga-typed-entity-evidence-v1";
 export const GLINER_RAW_ENTITY_SCHEMA = "saga-gliner-raw-entity-output-v1";
 
+export type GlinerTypedEntityConfiguration = {
+  package: string;
+  packageVersion: string;
+  model: string;
+  modelRevision: string;
+  labels: readonly string[];
+  threshold: number;
+  windowCodePoints: number;
+  overlapCodePoints: number;
+  batchSize: number;
+};
+
 export const GLINER_TYPED_ENTITY_CONFIG = {
   package: "gliner",
   packageVersion: "0.2.24",
@@ -23,7 +35,7 @@ export const GLINER_TYPED_ENTITY_CONFIG = {
   windowCodePoints: 1400,
   overlapCodePoints: 180,
   batchSize: 12,
-} as const;
+} as const satisfies GlinerTypedEntityConfiguration;
 
 export const GLINER_TYPED_ENTITY_PROVIDER: IdentityProviderDescriptor = {
   name: "gliner_typed_entity",
@@ -50,7 +62,7 @@ export type GlinerRawDetection = {
 
 export type GlinerRawEntityOutput = {
   schemaVersion: typeof GLINER_RAW_ENTITY_SCHEMA;
-  configuration: typeof GLINER_TYPED_ENTITY_CONFIG;
+  configuration: GlinerTypedEntityConfiguration;
   normalizedInputFingerprint: string;
   detections: GlinerRawDetection[];
 };
