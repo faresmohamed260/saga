@@ -28,17 +28,31 @@ Durable decisions D-026 through D-030 require local-first, subscription-free tex
 
 ## Current Authoritative Checkpoint
 
-At this handoff, merged `main` is:
+At this branch handoff, merged `main` is:
 
-`7261d9c31adacdb80b7304f1e47808353f42e152`
+`4364778ca9551949dde38962ddc8be2e9334d907`
 
 Latest merged checkpoints:
 
 - PR #223 — patient-candidate failure-mode audit;
 - PR #225 — real BookNLP proof through the generic one-shot subprocess boundary;
-- PR #227 — persistent loaded BookNLP stdio runtime, completing issue #226.
+- PR #227 — persistent loaded BookNLP stdio runtime, completing issue #226;
+- PR #230 — provider-neutral typed non-character event-participant evidence and BookNLP public coverage diagnostic.
 
-The persistent runtime was measured twice on exact implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`. Across six real analyses it reproduced the exact validated one-shot evidence fingerprint and exact counts. Model-light qualification is **145 / 145 tests passing**, up from the prior `139 / 139` baseline.
+Current unmerged measured challenger:
+
+- issue #231 / branch `v2/phase-3a-gliner-typed-entity-participants`;
+- exact measured head `25e51fe6ea88d18e4d9dfd9c32b2db75f2d34ba3`;
+- GLiNER Small v2.1 completed `100 / 100` pinned LitBank documents with `0` failures;
+- model-light qualification is **`160 / 160` tests passing**, up from `153 / 153` before the GLiNER evidence-source contract;
+- GLiNER direct typed non-character candidate coverage is only **`47 / 6,701` (`0.70%`)** versus BookNLP **`146 / 6,701` (`2.18%`)**;
+- GLiNER event gain is **`44 / 5,085` (`0.87%`)** versus BookNLP **`142 / 5,085` (`2.79%`)**;
+- trigger F1 remains `0.7791` rounded;
+- GLiNER inference measured `381.955 s`, `1,581.84 MiB` process peak RSS and `610,657,698` model bytes;
+- exact GLiNER code/model pins are Apache-2.0, removing the licensing uncertainty that still applies to BookNLP model weights;
+- decision: **do not adopt GLiNER for the current direct world-entity event-participant slot**. The licensing advantage does not overcome the public coverage loss or the missing private/correctness gates.
+
+The persistent BookNLP runtime was measured twice on exact implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`. Across six real analyses it reproduced the exact validated one-shot evidence fingerprint and exact counts. Its model-light qualification is **145 / 145 tests passing** for that runtime slice.
 
 Persistent median analyze latency measured `4.627 s` and `2.853 s` on two independent hosted runners versus one-shot measurements of `6.314 s` and `8.930 s`. Peak process-tree RSS remained close to one-shot, so persistence is a latency/model-reuse improvement rather than a material memory reduction. Cold startup is not faster than one-shot health.
 
@@ -152,6 +166,31 @@ The patient audit then found **zero true linked-character grounding misses** amo
 
 These are coverage/failure-mode diagnostics, not participant correctness metrics. Do not broaden attachment rules merely to inflate coverage.
 
+### Typed non-character event participants
+
+PR #230 added a provider-neutral evidence layer for direct non-character actor/patient arguments while keeping canonical characters in the existing character-specific contract.
+
+BookNLP public diagnostic on the fixed role denominator:
+
+- clean typed non-character candidates: `146 / 6,701` (**`2.18%`**);
+- candidate events gaining typed evidence: `142 / 5,085` (**`2.79%`**).
+
+GLiNER issue #231, using the same BookNLP syntax/triggers and the same S.A.G.A. identity/event path but a separate typed-span provider:
+
+- clean typed non-character candidates: `47 / 6,701` (**`0.70%`**);
+- candidate events gaining typed evidence: `44 / 5,085` (**`0.87%`**);
+- relative coverage vs BookNLP: `0.322x` candidate / `0.310x` event;
+- trigger F1 unchanged at `0.7791` rounded;
+- `100 / 100` documents, `0` failures;
+- `160 / 160` model-light tests pass.
+
+Decision: **retain the provider-neutral evidence contract, reject GLiNER at this pinned configuration for the current direct-role slot, and do not weaken role or locator policy to make coverage larger.** BookNLP remains the stronger public coverage source for this narrow diagnostic but is still blocked from production by unverified model-weight licensing and the private-corpus gate.
+
+Detailed evidence:
+
+- `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
+- `docs/experiments/GLINER_TYPED_ENTITY_EVENT_PARTICIPANTS.md`
+
 ### BookNLP runtime transport
 
 The generic one-shot boundary is validated with exact semantic equality to preserved direct BookNLP evidence.
@@ -176,12 +215,13 @@ Detailed evidence:
 
 ## Current Execution Order
 
-1. Return Phase-3 work from runtime plumbing to **new narrative semantic capability**.
-2. For events, prefer genuinely new information—starting with explicit **non-character entity participants** and/or negation/modality/realis—rather than expanding character-attachment rules for higher coverage.
-3. Keep new public/source-neutral event work diagnostic unless suitable gold supports correctness claims.
-4. When private EPUB access returns, create/score primary-suite scene/dialogue/event annotations and use those results for production decisions.
-5. Adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
-6. After first-pass event/entity evidence is stable, continue relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
+1. Merge/close the measured GLiNER typed-entity challenger once exact-head repository gates are green; do not tune it post hoc on the same experiment.
+2. Return event work to **genuinely new narrative semantics**, with negation/modality/realis preferred over another provider swap for the same narrow six-label direct-role contract.
+3. If broader world entities such as artifacts/objects, factions/groups, creatures/species or other story-world classes are needed, introduce them through an explicit ontology contract and separate benchmark; never remap them silently into current labels.
+4. Keep new public/source-neutral event work diagnostic unless suitable gold supports correctness claims.
+5. When private EPUB access returns, create/score primary-suite scene/dialogue/event annotations and use those results for production decisions.
+6. Adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
+7. After first-pass event/entity evidence is stable, continue relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
 
 ## Working Convention
 

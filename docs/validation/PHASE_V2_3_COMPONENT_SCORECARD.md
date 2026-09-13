@@ -235,17 +235,77 @@ Artifact digest:
 
 `sha256:d228a6329ec4a8a41c421876750df1febde227bb3143b4ba45d17e4d92a57637`
 
-Interpretation: BookNLP's typed non-character evidence is source-grounded and structurally clean, but **too sparse to serve as S.A.G.A.'s world-entity participant solution**. Preserve the evidence layer, keep character grounding unchanged, and benchmark the planned GLiNER typed-entity challenger through the same role/source contract rather than weakening attachment rules.
+Interpretation: BookNLP's typed non-character evidence is source-grounded and structurally clean, but **too sparse to serve as S.A.G.A.'s world-entity participant solution**. Preserve the evidence layer and keep character grounding unchanged.
 
 These are coverage diagnostics only; LitBank does not supply non-character participant correctness gold.
 
-Decision: **direct dependency grounding remains the current public participant-grounding infrastructure; BookNLP typed non-character evidence is retained as sparse optional evidence, not a production-adopted participant method.** Next typed-entity work should measure GLiNER or another purpose-built typed span provider.
+### GLiNER typed-entity challenger
+
+Issue #231 tested a separate GLiNER-only typed-span source through the same role/source contract on exact head `25e51fe6ea88d18e4d9dfd9c32b2db75f2d34ba3`.
+
+The dedicated full-corpus workflow completed `100 / 100` documents with `0` failures, typecheck pass, and **`160 / 160`** model-light tests, up from the pre-GLiNER `153 / 153` floor. The test increase is contract/regression coverage only; it is not a model-quality gain.
+
+Pinned challenger:
+
+- GLiNER code commit: `cf9e5f7d9fb99158b592132a9ec7cbfabb43a9a0`;
+- package: `gliner==0.2.29`;
+- model: `urchade/gliner_small-v2.1`;
+- model revision: `f23104c107e3c57f5c7aa36d53a9667c67b4b866`;
+- code/model license: `Apache-2.0`;
+- threshold: `0.5`;
+- labels: person, location, facility, geopolitical entity, organization, vehicle.
+
+On the exact same `6,701` candidate tokens / `5,085` candidate events:
+
+| Metric | GLiNER | BookNLP typed-entity baseline |
+| --- | ---: | ---: |
+| clean typed non-character candidates | `47` (**0.70%**) | `146` (**2.18%**) |
+| events gaining typed evidence | `44` (**0.87%**) | `142` (**2.79%**) |
+| relative candidate coverage | **0.322x** | `1.000x` |
+| relative event gain | **0.310x** | `1.000x` |
+
+GLiNER loses `-1.48` percentage points of candidate coverage and `-1.93` percentage points of event-level gain versus BookNLP on this narrow direct-role diagnostic.
+
+The `47` GLiNER participant evidence items are:
+
+- location `18`;
+- vehicle `18`;
+- organization `7`;
+- facility `4`;
+- geopolitical `0`.
+
+This weak role overlap is not evidence that GLiNER detects few entities overall. Across the corpus it emitted `4,514` person, `1,008` location, `187` organization, `126` vehicle, `89` facility, and `31` geopolitical detections before event-role intersection.
+
+Runtime/resource evidence:
+
+- GLiNER inference wall clock: `381.955 s`;
+- process peak RSS: `1,581.84 MiB`;
+- model artifacts: `610,657,698 bytes`;
+- GPU/VRAM: none.
+
+Trigger F1 remains `0.7791290702` (`0.7791` rounded), so there is no trigger regression.
+
+Report fingerprint:
+
+`322b3e51561acf51a68bd6567170d5928abe62f2aed79d3d68cd4158ede2bfdd`
+
+Aggregate artifact:
+
+- ID `10320402913`;
+- digest `sha256:a20e650f02426bf99114e295cedaaea85cc660e756aac1209e11ff2b7da0ebfd`.
+
+Decision: **do not adopt GLiNER as the current direct world-entity event-participant provider at this pinned configuration.** BookNLP remains the stronger measured public coverage source for this narrow role contract, but BookNLP model-weight licensing remains unverified and therefore still blocks production adoption. GLiNER's Apache-2.0 licensing removes a licensing blocker, not the quality/private-corpus gates.
+
+Do not tune the threshold, broaden dependency roles, weaken structural matching, or silently map artifacts/objects/factions/creatures into current categories merely to improve this number. Any ontology expansion is a separate architecture and benchmark decision.
+
+Overall participant decision: **direct dependency grounding remains the current public participant-grounding infrastructure; BookNLP typed evidence is retained as sparse optional public evidence; GLiNER is rejected for the current direct-role typed-participant slot; no production participant method is adopted.**
 
 Detailed records:
 
 - `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
 - `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
 - `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
+- `docs/experiments/GLINER_TYPED_ENTITY_EVENT_PARTICIPANTS.md`
 
 ## BookNLP component repeatability / resources
 
@@ -354,6 +414,7 @@ Detailed record: `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`.
 - private modern-fiction EPUBs are unavailable to the current execution environment;
 - BookNLP model-weight license remains unverified;
 - BookNLP speaker/event models use LitBank-derived literary annotations, so LitBank is not an independent product-generalization test;
+- GLiNER's Apache-2.0 code/model licensing is compatible with further evaluation, but the current direct-role participant challenger lost the BookNLP public coverage baseline;
 - no production speaker/event method is adopted;
 - event participant accuracy remains unmeasured on suitable gold;
 - scene quality remains unmeasured on the primary suite.

@@ -1,0 +1,217 @@
+name: Phase 3 GLiNER typed entity event participant challenger
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-gliner-typed-entity-participants
+    paths:
+      - ".github/workflows/v2-phase3-gliner-typed-entity-participants.yml"
+      - "services/analysis-worker/benchmarks/run_gliner_typed_entities_litbank.py"
+      - "services/analysis-worker/src/local-analysis/typed-entity-evidence.ts"
+      - "services/analysis-worker/src/evaluation/event-typed-entity-source.ts"
+      - "services/analysis-worker/src/evaluation/event-gliner-typed-entity-litbank-cli.ts"
+      - "services/analysis-worker/src/evaluation/event-typed-entity-participants.ts"
+      - "services/analysis-worker/package.json"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-gliner-typed-entity-participants
+  cancel-in-progress: true
+
+jobs:
+  full-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved pinned BookNLP syntax and event outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install pinned GLiNER-only CPU environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.3.1"
+          python -m pip install \
+            "protobuf==5.29.6" \
+            "transformers==4.51.3" \
+            "huggingface_hub==0.36.2" \
+            "numpy==1.26.4" \
+            "packaging==24.2" \
+            "sentencepiece==0.2.0" \
+            "safetensors==0.5.3" \
+            "tqdm==4.70.1"
+          python -m pip install --no-deps "git+https://github.com/urchade/GLiNER.git@cf9e5f7d9fb99158b592132a9ec7cbfabb43a9a0"
+          python - <<'PY'
+          import importlib.metadata
+          expected = "0.2.29"
+          actual = importlib.metadata.version("gliner")
+          if actual != expected:
+              raise SystemExit(f"GLiNER version mismatch: expected {expected}, got {actual}")
+          for package in ["gliner", "torch", "transformers", "huggingface_hub", "numpy", "sentencepiece", "safetensors", "protobuf"]:
+              print(f"{package}={importlib.metadata.version(package)}")
+          PY
+
+      - name: Run real GLiNER-only inference on all pinned LitBank documents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evaluation-artifacts/gliner-typed-entity-raw
+          /usr/bin/time -v -o evaluation-artifacts/gliner-typed-entity-time.txt \
+            python benchmarks/run_gliner_typed_entities_litbank.py \
+              --litbank-root ../../external/litbank \
+              --output-root evaluation-artifacts/gliner-typed-entity-raw \
+              --metadata-out evaluation-artifacts/gliner-typed-entity-run-metadata.json
+
+      - name: Add workflow-observed peak RSS to runtime metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          metadata_path = Path("evaluation-artifacts/gliner-typed-entity-run-metadata.json")
+          time_text = Path("evaluation-artifacts/gliner-typed-entity-time.txt").read_text(encoding="utf-8")
+          match = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", time_text)
+          if not match:
+              raise SystemExit("maximum RSS missing from GNU time output")
+          metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          metadata["workflowObservedPeakResidentMemoryMb"] = int(match.group(1)) / 1024.0
+          metadata["workflowResourceMeasurement"] = "GNU time -v around the GLiNER runner; model inference executes in the measured runner process"
+          metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+          PY
+
+      - name: Verify complete GLiNER inference
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evaluation-artifacts/gliner-typed-entity-run-metadata.json").read_text(encoding="utf-8"))
+          attempted = report["attemptedDocumentCount"]
+          completed = report["completedDocumentCount"]
+          failed = report["failedDocumentCount"]
+          if (attempted, completed, failed) != (100, 100, 0):
+              raise SystemExit(f"incomplete GLiNER inference: {attempted}/{completed}/{failed}")
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck evaluator
+        run: npm run typecheck
+
+      - name: Run deterministic and model-light tests
+        run: npm test
+
+      - name: Score GLiNER typed event participant evidence
+        run: >-
+          npm run benchmark:event-gliner-typed-participants --
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --gliner-root evaluation-artifacts/gliner-typed-entity-raw
+          --out evaluation-artifacts/event-gliner-typed-entity-litbank.json
+
+      - name: Verify complete diagnostic and unchanged trigger floor
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/event-gliner-typed-entity-litbank.json", "utf8"));
+          if (report.dataset.attemptedDocumentCount !== 100 || report.dataset.completedDocumentCount !== 100 || report.dataset.failedDocumentCount !== 0) {
+            throw new Error(`incomplete diagnostic: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          }
+          const f1 = report.triggerEvaluation.triggerDetection.f1;
+          if (f1.toFixed(4) !== "0.7791") throw new Error(`event trigger F1 regressed: ${f1}`);
+          if (report.audit.candidateTokenCount !== 6701) throw new Error(`candidate-token denominator drifted: ${report.audit.candidateTokenCount}`);
+          if (report.audit.candidateEventCount !== 5085) throw new Error(`candidate-event denominator drifted: ${report.audit.candidateEventCount}`);
+          EOF
+
+      - name: Publish GLiNER typed entity challenger summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/event-gliner-typed-entity-litbank.json", "utf8"));
+          const runtime = JSON.parse(fs.readFileSync("evaluation-artifacts/gliner-typed-entity-run-metadata.json", "utf8"));
+          const a = report.audit;
+          const b = report.bookNlpBaseline;
+          console.log("## Phase 3 GLiNER typed world-entity event participant challenger");
+          console.log("");
+          console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- GLiNER package/model: ${runtime.configuration.package}@${runtime.configuration.packageVersion} / ${runtime.configuration.model}@${runtime.configuration.modelRevision}`);
+          console.log(`- GLiNER code/model license: ${runtime.candidateCode.license} / ${runtime.model.license}`);
+          console.log(`- direct actor/patient candidate tokens: ${a.candidateTokenCount}`);
+          console.log(`- clean GLiNER typed non-person evidence: ${a.typedNonPersonEvidenceCount} (${(a.typedNonPersonCandidateRate * 100).toFixed(2)}%)`);
+          console.log(`- BookNLP typed non-person baseline: ${b.typedTokenCount} (${(b.typedTokenRate * 100).toFixed(2)}%)`);
+          console.log(`- candidate coverage delta: ${(a.candidateRateAbsoluteDeltaVsBookNlp * 100).toFixed(2)} pp; multiplier ${a.candidateCoverageMultiplierVsBookNlp?.toFixed(2) ?? "n/a"}x`);
+          console.log(`- events gaining GLiNER typed evidence: ${a.eventWithTypedNonPersonCount}/${a.candidateEventCount} (${(a.eventGainRate * 100).toFixed(2)}%)`);
+          console.log(`- BookNLP event-gain baseline: ${b.typedEventCount}/${b.candidateEventCount} (${(b.typedEventRate * 100).toFixed(2)}%)`);
+          console.log(`- event coverage delta: ${(a.eventGainRateAbsoluteDeltaVsBookNlp * 100).toFixed(2)} pp; multiplier ${a.eventCoverageMultiplierVsBookNlp?.toFixed(2) ?? "n/a"}x`);
+          console.log("");
+          console.log("### GLiNER grounded evidence by category");
+          for (const [category, count] of Object.entries(a.typedByCategory).sort((left, right) => right[1] - left[1])) console.log(`- ${category}: ${count}`);
+          console.log("");
+          console.log(`- trigger P/R/F1: ${report.triggerEvaluation.triggerDetection.precision.toFixed(4)} / ${report.triggerEvaluation.triggerDetection.recall.toFixed(4)} / ${report.triggerEvaluation.triggerDetection.f1.toFixed(4)}`);
+          console.log(`- GLiNER inference wall clock: ${runtime.inferenceWallClockSeconds.toFixed(2)} s`);
+          console.log(`- model initialization: ${runtime.initializationSeconds.toFixed(2)} s; download: ${runtime.downloadSeconds.toFixed(2)} s`);
+          console.log(`- workflow-observed peak RSS: ${runtime.workflowObservedPeakResidentMemoryMb.toFixed(1)} MiB`);
+          console.log(`- model artifacts: ${(runtime.modelArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log("> Coverage/evidence diagnostic only. LitBank has no S.A.G.A.-style non-character participant gold; higher coverage does not authorize production adoption.");
+          EOF
+
+      - name: Remove raw span outputs before artifact upload
+        shell: bash
+        run: rm -rf evaluation-artifacts/gliner-typed-entity-raw
+
+      - name: Upload aggregate GLiNER challenger evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-gliner-typed-entity-participants-${{ github.sha }}
+          path: |
+            services/analysis-worker/evaluation-artifacts/gliner-typed-entity-run-metadata.json
+            services/analysis-worker/evaluation-artifacts/gliner-typed-entity-time.txt
+            services/analysis-worker/evaluation-artifacts/event-gliner-typed-entity-litbank.json
+          if-no-files-found: error
+          retention-days: 90
