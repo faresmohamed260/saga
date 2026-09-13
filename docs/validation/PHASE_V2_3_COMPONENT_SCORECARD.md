@@ -241,44 +241,73 @@ On pinned LitBank document `1023_bleak_house_brat` (`11,738` bytes / `2,319` syn
 - count equality: `true`;
 - identity mentions/entities/quotes/events/syntax: `230 / 230 / 5 / 20 / 2,319`.
 
-Second exact-head heavyweight run (`34759959737`):
+Measured one-shot runs:
 
-- `health()` wall clock: `2.847 s`;
-- one-shot generic `analyze()` wall clock: `8.930 s`;
-- whole proof process-tree wall clock: `12.678 s`;
-- peak aggregate process-tree RSS: `1040.5 MiB`;
-- typecheck: pass;
-- tests: `139 / 139` pass;
-- artifact ID: `10318109017`;
-- artifact digest: `sha256:dbb49b34a31e0a711052c72cc19b8bce6d628114dde96d1897b9daf9791fd8a2`.
+- run A: `health()` `2.578 s`, `analyze()` `6.314 s`, peak process-tree RSS `1037.2 MiB`;
+- run B (`34759959737`): `health()` `2.847 s`, `analyze()` `8.930 s`, peak process-tree RSS `1040.5 MiB`, typecheck pass, `139 / 139` tests pass.
 
-A first independent boundary run also produced the same semantic evidence fingerprint/counts with `health()` `2.578 s`, `analyze()` `6.314 s` and `1037.2 MiB` peak process-tree RSS.
+The complete prepared offline footprint is about `439 MiB`. The stable BookNLP task-model portion is `160,398,571 bytes`; transformer/spaCy cache bookkeeping can vary slightly between preparations.
 
-### Full offline runtime footprint
-
-The historical `160,398,571 byte` figure is still correct for BookNLP's three task-model files. The measured complete prepared offline footprint is larger:
-
-- BookNLP task weights: `160,398,571 bytes` (~`153.0 MiB`);
-- transformer cache: `284,705,427 bytes` (~`271.5 MiB`);
-- spaCy model: `15,242,123 bytes` (~`14.5 MiB`);
-- total prepared artifacts: `460,346,121 bytes` (~`439.0 MiB`).
-
-Whole cache-directory hashes varied across preparations because cache metadata/bookkeeping is mutable. They are not stable model identities. Pinned model IDs/revisions, package versions and immutable artifact/file digests remain the provenance anchors.
-
-### Warm loaded-runtime comparison
-
-One loaded BookNLP instance on the same document measured:
-
-- initialization: `1.229 s`;
-- warm processing: `4.505 s`, then `4.140 s`;
-- repeated output stable: `true`;
-- peak resident memory: `732.0 MiB`.
-
-On the same workflow run, one-shot generic `analyze()` was about `2.16x` the second warm process pass.
-
-Decision: **generic subprocess semantic transport is validated; one-shot process/model recreation overhead is material enough to justify a persistent loaded Python runtime challenger**. This is a runtime-architecture experiment decision only. It does not improve or promote BookNLP model quality.
+Decision from #224: **one-shot generic subprocess semantic transport is validated and remains the simple correctness/reference implementation**.
 
 Detailed record: `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
+
+### Persistent loaded BookNLP transport
+
+Issue #226 measured a persistent local Python child using bounded stdio on exact head:
+
+`2fa30b185cb037180f3e7762f2166067096e08c5`
+
+Normal model-light qualification increased from `139 / 139` to **`145 / 145`** tests with six new persistence lifecycle/failure checks and no regression.
+
+The heavyweight workflow run `34762397330` was executed twice on the exact same SHA.
+
+Attempt 1:
+
+- startup/health: `3.694 s`;
+- analyze passes: `4.977 / 4.627 / 4.368 s`;
+- median analyze: **`4.627 s`**;
+- speedup vs one-shot `6.314 s`: `1.36x`;
+- speedup vs one-shot `8.930 s`: `1.93x`;
+- peak aggregate process-tree RSS: `1007.1 MiB`;
+- artifact ID `10319696420`;
+- artifact digest `sha256:4d064dd228fa6d1ec8b812de3e7b42db778aec3d76671911154da46c78badbc8`.
+
+Attempt 2:
+
+- startup/health: `3.134 s`;
+- analyze passes: `3.039 / 2.745 / 2.853 s`;
+- median analyze: **`2.853 s`**;
+- speedup vs one-shot `6.314 s`: `2.21x`;
+- speedup vs one-shot `8.930 s`: `3.13x`;
+- peak aggregate process-tree RSS: `1028.7 MiB`;
+- artifact ID `10319368057`;
+- artifact digest `sha256:0e3462ed6a35ef758f1163f5cb78625df0086c40c37d9ab626ef37326e698456`.
+
+Across both attempts:
+
+- all **six** real persistent analyses reproduced exact evidence fingerprint `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
+- exact counts stayed `230 / 230 / 5 / 20 / 2,319`;
+- semantic comparison fingerprint stayed `4da56c28895486da135deea7023d0f7709eea264945a0136fec8366f8dcb1a8a`;
+- typecheck passed;
+- `145 / 145` tests passed;
+- malformed-request recovery passed;
+- controlled shutdown passed;
+- offline model loading passed.
+
+Interpretation:
+
+- repeated latency improves materially on both independent runners;
+- startup/health itself is not faster than the one-shot health measurement;
+- peak RSS is only slightly below one-shot and is **not** a material memory win;
+- the durable benefit is avoiding repeated model/runtime recreation;
+- whole cache size/hash is not a stable model identity because cache metadata is mutable.
+
+Decision: **persistent local stdio is the preferred BookNLP runtime transport for repeated analysis**. Keep the one-shot subprocess as the correctness/reference path. Do not add a BookNLP HTTP sidecar merely for model persistence.
+
+This transport choice changes **no model-quality/adoption result**.
+
+Detailed record: `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`.
 
 ## Adoption blockers that still apply
 
@@ -287,5 +316,4 @@ Detailed record: `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 - BookNLP speaker/event models use LitBank-derived literary annotations, so LitBank is not an independent product-generalization test;
 - no production speaker/event method is adopted;
 - event participant accuracy remains unmeasured on suitable gold;
-- scene quality remains unmeasured on the primary suite;
-- the persistent loaded Python runtime still needs a measured challenger implementation before transport selection can change.
+- scene quality remains unmeasured on the primary suite.
