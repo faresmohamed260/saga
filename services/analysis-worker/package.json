@@ -26,6 +26,7 @@
     "benchmark:event-semantic-qualifier-audit": "tsx src/evaluation/event-semantic-qualifier-audit-litbank-cli.ts",
     "benchmark:character-relationships": "tsx src/evaluation/character-relationship-litbank-cli.ts",
     "benchmark:character-relationship-audit": "tsx src/evaluation/character-relationship-audit-litbank-cli.ts",
+    "benchmark:narrative-timeline": "tsx src/evaluation/narrative-timeline-litbank-cli.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
