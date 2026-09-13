@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+OWNERSHIP_MANIFEST = ROOT / "config" / "modal-project-ownership.json"
+EXPECTED_SAGA_ACCOUNT_LABELS = tuple(f"modal-{number:02d}" for number in range(3, 42))
+
 CREDIT_WORDS = (
     "credit",
     "credits",
@@ -35,6 +38,24 @@ class Account:
     token_secret: str
 
 
+def saga_owned_account_labels() -> tuple[str, ...]:
+    payload = json.loads(OWNERSHIP_MANIFEST.read_text(encoding="utf-8"))
+    if payload.get("project") != "saga":
+        raise SystemExit("Modal ownership manifest is not owned by S.A.G.A.")
+    labels = tuple(str(label) for label in payload.get("ownedAccountLabels") or [])
+    if labels != EXPECTED_SAGA_ACCOUNT_LABELS:
+        raise SystemExit("S.A.G.A. Modal ownership manifest must contain exactly modal-03 through modal-41.")
+    reserved = set((payload.get("reservedForOtherProjects") or {}).get("renderlab") or [])
+    if reserved.intersection(labels):
+        raise SystemExit("Modal ownership manifest contains overlapping project accounts.")
+    return labels
+
+
+def assert_saga_owned_account(label: str) -> None:
+    if label not in saga_owned_account_labels():
+        raise SystemExit(f"Modal account {label!r} is not owned by S.A.G.A.; refusing credential export.")
+
+
 def load_accounts() -> list[Account]:
     raw = os.environ.get("SAGA_MODAL_TOKENS_JSON", "").strip()
     if not raw:
@@ -46,7 +67,7 @@ def load_accounts() -> list[Account]:
         rows = payload
     if not isinstance(rows, list):
         raise SystemExit("Modal roster must be a list")
-    accounts: list[Account] = []
+    accounts_by_label: dict[str, Account] = {}
     for index, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
             continue
@@ -56,19 +77,27 @@ def load_accounts() -> list[Account]:
         combined = str(row.get("api_key") or row.get("token") or "").strip()
         if (not token_id or not token_secret) and "." in combined:
             token_id, token_secret = combined.split(".", 1)
-        if token_id and token_secret:
-            accounts.append(Account(label, token_id, token_secret))
-    return accounts
+        if not token_id or not token_secret:
+            continue
+        if label in accounts_by_label:
+            raise SystemExit(f"Duplicate Modal account label in roster: {label}")
+        accounts_by_label[label] = Account(label, token_id, token_secret)
+
+    owned_labels = saga_owned_account_labels()
+    missing = [label for label in owned_labels if label not in accounts_by_label]
+    if missing:
+        raise SystemExit(f"S.A.G.A. Modal roster is missing owned accounts: {', '.join(missing)}")
+    return [accounts_by_label[label] for label in owned_labels]
 
 
 def env_for(account: Account, extra: dict[str, str] | None = None) -> dict[str, str]:
+    assert_saga_owned_account(account.label)
     env = dict(os.environ)
     env["MODAL_TOKEN_ID"] = account.token_id
     env["MODAL_TOKEN_SECRET"] = account.token_secret
     if extra:
         env.update({key: str(value) for key, value in extra.items()})
     return env
-
 
 def run(
     account: Account,

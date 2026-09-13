@@ -242,3 +242,13 @@ Resolve these only in the phase that needs them:
 - whether embeddings materially improve candidate retrieval enough to justify a vector index;
 - GPU/provider strategy for future visual/audio generation;
 - whether each future B2 object workflow uses direct presigned browser transfer, server-mediated transfer or a hybrid.
+
+### D-031 — Modal Accounts Are Partitioned by Project
+
+**Status:** Accepted — owner decision 2026-09-13
+
+S.A.G.A. owns `modal-03` through `modal-41`. RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`.
+
+Credential presence is not authorization. S.A.G.A. Modal tooling must resolve credentials only after the checked-in project-ownership guard accepts the account label, and it must fail closed for RenderLab-owned labels even while a legacy omnibus secret still contains all 47 credentials. Historical mutation and live media-smoke workflows that target or consume RenderLab-owned workers are not part of active S.A.G.A. v2 and must not remain runnable ordinary control surfaces.
+
+**Consequence:** Future S.A.G.A. Modal media work must use only S.A.G.A.-owned accounts. Changing the partition requires an explicit owner decision reflected in both repositories. The strongest operational end state is secret-store least privilege so each repository physically contains only its own credentials; repository guards do not falsely claim that secret rotation/splitting is already complete. D-027 remains unchanged: Modal is reserved for media/image generation, not textual analysis.

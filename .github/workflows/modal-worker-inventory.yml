@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 25
     env:
       SAGA_MODAL_TOKENS_JSON: ${{ secrets.SAGA_MODAL_TOKENS_JSON }}
-      EXPECTED_MODAL_ACCOUNTS: "47"
+      EXPECTED_MODAL_ACCOUNTS: "39"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
       - name: Install Modal CLI
         run: python -m pip install --upgrade "modal==1.4.2"
-      - name: Inventory every configured Modal account
+      - name: Inventory every S.A.G.A.-owned Modal account
         run: python scripts/modal_worker_fleet.py inventory --out modal-worker-inventory.json
       - name: Validate roster coverage and publish summary
         shell: bash
@@ -36,13 +36,13 @@ jobs:
           rows = payload.get('accounts') or []
           expected = int(os.environ.get('EXPECTED_MODAL_ACCOUNTS') or 0)
           if len(rows) != expected:
-              raise SystemExit(f'Expected {expected} Modal accounts, inventoried {len(rows)}')
+              raise SystemExit(f'Expected {expected} S.A.G.A.-owned Modal accounts, inventoried {len(rows)}')
           counts = {}
           for row in rows:
               state = str(row.get('state') or 'unknown')
               counts[state] = counts.get(state, 0) + 1
           lines = [
-              '## S.A.G.A. Modal account inventory', '',
+              '## S.A.G.A.-owned Modal account inventory', '',
               f'- Accounts inventoried: **{len(rows)}**',
               f"- Available: **{counts.get('available', 0)}**",
               f"- Credit exhausted: **{counts.get('credit_exhausted', 0)}**",
