@@ -26,6 +26,14 @@ assert payload.get("ownedAccountLabels") == EXPECTED_SAGA, "Saga must own exactl
 assert (payload.get("reservedForOtherProjects") or {}).get("renderlab") == RENDERLAB
 assert not set(EXPECTED_SAGA).intersection(RENDERLAB), "Modal project allocations overlap"
 
+decisions = (ROOT / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
+assert decisions.count("### D-031 — Modal Accounts Are Partitioned by Project") == 1, (
+    "Modal account isolation must be recorded exactly once as D-031"
+)
+assert "### D-028 — Modal Accounts Are Partitioned by Project" not in decisions, (
+    "Modal account isolation must not reuse the existing D-028 decision id"
+)
+
 fleet = (ROOT / "scripts" / "modal_worker_fleet.py").read_text(encoding="utf-8")
 assert "assert_saga_owned_account(account.label)" in fleet, "Credential export must assert Saga ownership"
 assert "OWNERSHIP_MANIFEST" in fleet, "Modal loader must use the checked-in ownership manifest"
