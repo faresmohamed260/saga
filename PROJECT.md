@@ -24,26 +24,20 @@ Authoritative Phase-3 documents:
 - `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
 - `docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`
 
-Durable owner decisions D-026 through D-030 require local-first, subscription-free text analysis; Modal media-only; a cost-aware evidence cascade; measurement-driven provider adoption; and local workers using the existing Supabase/B2 control plane.
+Durable owner decisions D-026 through D-030 require local-first, subscription-free text analysis; Modal media-only; a cost-aware evidence cascade; measurement-driven provider adoption; and local workers using the existing Supabase/B2 control plane. D-031 partitions Modal accounts by project and does not change the text-analysis prohibition.
 
 ## Current Authoritative Checkpoint
 
 At this handoff, merged `main` is:
 
-- `a3aba893f92e9e98e29d5e6f97e08672cc80637f`
-- PR #212 — repeatable public BookNLP quote/speaker/event component benchmark
+- `0d4210f1098d59483497fc70e0d790ab6208d6ad`
+- PR #221 — current public combined deterministic-quote + gated BookNLP-speaker V2 challenger
 
-Exact final PR #212 head:
+PR #221's exact qualified head was `2eacc38071688917b24981032193e17ef666245c`; Required Check Compatibility, S.A.G.A. v2 Analysis Worker CI, S.A.G.A. v2 LitBank Oracle Baseline and Backend Architecture CI all passed before merge.
 
-- `280a2132d78ba8312d38f2d1f74267160830cd74`
-- Required Check Compatibility — success
-- S.A.G.A. v2 Analysis Worker CI — success
-- S.A.G.A. v2 LitBank Oracle Baseline — success
-- Backend Architecture CI — success
+The active event-participant work is issue #214 on branch `v2/phase-3a-event-dependency-grounding`. Its corrected 100-document public diagnostic at head `9f1c34d1a9410a0dbb8458fce4a9bfaf598ff9b1` passed typecheck and `132 / 132` analysis-worker tests while reusing the exact preserved BookNLP inference artifact. See `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`.
 
-PR #210 / merge `9dfdd7e0c1234c021c9b2d2e5526a27b3d89bfe3` previously instantiated the BookNLP quote/speaker/event provider-specific subprocess adapter behind the generic local literary provider boundary.
-
-Always verify live GitHub state before continuing. This SHA is a handoff checkpoint, not a substitute for checking newer commits/PRs.
+Always verify live GitHub state before continuing. These SHAs are handoff checkpoints, not substitutes for checking newer commits/PRs.
 
 ## Product Goal
 
@@ -108,8 +102,6 @@ Scene annotation/evaluation infrastructure and structural/lexical floors are mer
 
 ### Quote detection
 
-PR #212 measured 100 pinned LitBank documents twice with identical semantic output:
-
 - deterministic quote P/R/F1: `0.8570 / 0.8555 / 0.8563`;
 - BookNLP quote P/R/F1: `0.7706 / 0.8640 / 0.8146`.
 
@@ -117,21 +109,52 @@ Decision: **retain deterministic quote boundaries as the current public-gold lea
 
 ### Speaker attribution
 
-With oracle LitBank identity used only to isolate attribution quality:
+Raw component floors with oracle LitBank identity:
 
 - BookNLP matched-known accuracy: `0.7830` vs deterministic `0.3265`;
 - BookNLP end-to-end recall: `0.6765` vs deterministic `0.2793`;
-- BookNLP contamination: `0.1889` vs deterministic `0.2921`;
-- BookNLP unresolved rate: `0.0282` vs deterministic `0.3815`.
+- BookNLP contamination: `0.1889` vs deterministic `0.2921`.
 
-Decision: BookNLP is a **strong restricted speaker challenger**, but `18.89%` contamination is too high for direct canonical use. Issue #213 / PR #215 measure a combined deterministic-quote + confidence-gated BookNLP-speaker policy.
+Merged combined V2 challenger from PR #221:
+
+- matched-known accuracy: `0.7007`;
+- resolved-speaker accuracy: `0.8040`;
+- end-to-end recall: `0.5994`;
+- contamination: `0.1709`;
+- unresolved rate: `0.1285`;
+- deterministic quote F1 preserved at `0.8563`.
+
+V2 improves end-to-end recall by `+0.1150` absolute over rejected V1 and keeps contamination `0.0180` absolute below raw BookNLP. It retains about `80.6%` of BookNLP's incremental recall gain over the deterministic floor.
+
+Decision: **combined V2 is the current public speaker challenger, not a production default**.
 
 ### Event triggers
 
 - BookNLP trigger P/R/F1: `0.8003 / 0.7591 / 0.7791`;
 - lexical Tier-0 P/R/F1: `0.4914 / 0.0585 / 0.1045`.
 
-BookNLP improves trigger F1 by about `+0.6746` absolute and is the strongest measured trigger challenger. This does **not** qualify participant grounding, negation/modality/realis, state, causality or canonical event acceptance. Issue #214 tracks dependency-aware participant grounding.
+BookNLP improves trigger F1 by about `+0.6746` absolute and remains the strongest measured trigger challenger.
+
+### Event participant grounding
+
+Issue #214's conservative direct dependency policy uses `nsubj`/`agent->pobj` for actors and `dobj`/`nsubjpass` for patients, then grounds only through already-linked S.A.G.A. identity spans with matching source locators. Dative, conjunction inheritance and provider cluster IDs are excluded.
+
+The first scorer correctly failed closed to zero coverage because the benchmark-only LitBank oracle locator did not match the provider structural-locator convention. That failed report remains preserved.
+
+After benchmark-only oracle locator alignment, the corrected 100-document scorer measured across `7,445` trigger predictions:
+
+- any grounded participant: `3,881` (`52.13%`);
+- actor: `3,406` (`45.75%`);
+- patient: `822` (`11.04%`);
+- actor + patient: `347` (`4.66%`);
+- actor opportunity grounding yield: `83.75%`;
+- patient opportunity grounding yield: `33.20%`.
+
+Trigger P/R/F1 remained exactly `0.8003 / 0.7591 / 0.7791`.
+
+These are coverage/yield diagnostics, **not participant correctness metrics**, because LitBank event annotations do not provide S.A.G.A.-style actor/patient gold.
+
+Decision: **direct dependency grounding is the current public participant-grounding challenger infrastructure, not a production event default**. The next experiment audits missing patient opportunities before broadening relation rules.
 
 ### Repeatability / resources
 
@@ -142,16 +165,17 @@ Two independent 100-document BookNLP component runs produced identical semantic 
 - run 1: `452.68 s`, `1123.8 MiB` peak RSS;
 - run 2: `293.66 s`, `1157.2 MiB` peak RSS;
 - model artifacts: `160,398,571 bytes`;
-- each run: `100 / 100` documents, `0` failures;
-- heavyweight validation: `111 / 111` analysis-worker tests passed on both attempts.
+- each run: `100 / 100` documents, `0` failures.
 
 BookNLP model-weight license remains **unverified** and blocks production adoption.
 
+Deterministic speaker/event policy scorers reuse the preserved native BookNLP output instead of rerunning the heavyweight model for every policy change.
+
 ## Phase 3B Runtime State
 
-PR #207 merged the generic `LocalLiteraryEvidenceProvider` subprocess execution/validation boundary. PR #210 added the BookNLP-specific process/runner adapter while normal CI remained model-light.
+PR #207 merged the generic `LocalLiteraryEvidenceProvider` subprocess execution/validation boundary. PR #210 added the BookNLP-specific process/runner adapter while normal CI remained model-light. PR #217 exposed validated provider-neutral syntax evidence required for dependency-aware event grounding.
 
-Important distinction: PR #212's real model benchmark used the dedicated benchmark harness; it did **not** execute the real model end-to-end through the generic subprocess boundary. That measured boundary proof remains open.
+Important distinction: the real 100-document BookNLP benchmarks use the dedicated benchmark harness. They do **not** yet prove the real model end-to-end through the generic subprocess protocol. That measured boundary proof remains open.
 
 Subprocess is also not permanently selected over loopback HTTP. Compare transports only after real startup/throughput measurements justify the comparison.
 
@@ -163,8 +187,8 @@ Do not replace the private suite with public-domain books. Continue source-neutr
 
 ## Current Execution Order
 
-1. qualify PR #215's combined deterministic-quote + gated BookNLP-speaker policy by measuring contamination versus recall on the same pinned LitBank benchmark;
-2. develop BookNLP-triggered dependency-aware event participant grounding under issue #214;
+1. qualify and merge issue #214's conservative dependency-aware event participant challenger after exact-head CI;
+2. audit the missing patient-grounding opportunities before enabling dative, conjunction inheritance, non-character entity grounding, or any broader attachment rule;
 3. execute a real BookNLP run through the generic subprocess boundary with exact preinstalled artifacts/caches; compare persistent loopback only if startup/runtime measurements justify it;
 4. when private EPUBs become reachable, create/score scene/dialogue/event annotations for the primary modern-fiction suite;
 5. adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing;

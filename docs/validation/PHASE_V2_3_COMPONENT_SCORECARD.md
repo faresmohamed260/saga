@@ -63,6 +63,8 @@ Decision: **retain deterministic quote boundaries as the current measured public
 
 Pinned LitBank, 100 documents, oracle LitBank identity used only to isolate attribution quality.
 
+### Component floors
+
 | Metric | BookNLP-small | Deterministic floor |
 | --- | ---: | ---: |
 | matched-known accuracy | **0.7830** | 0.3265 |
@@ -73,14 +75,30 @@ Pinned LitBank, 100 documents, oracle LitBank identity used only to isolate attr
 
 BookNLP attributed-speaker mention -> LitBank gold identity mapping coverage: `0.9419`.
 
-Progress:
+### Current combined challenger
 
-- matched-known accuracy gain: about `+0.4565` absolute;
-- end-to-end recall gain: about `+0.3972` absolute;
-- contamination reduction: about `-0.1032` absolute;
-- unresolved reduction: about `-0.3533` absolute.
+Merged PR #221 preserves S.A.G.A.'s deterministic quote boundaries and maps BookNLP attributed-speaker evidence only through exact already-resolved S.A.G.A. identity spans. Provider cluster IDs are never canonical.
 
-Decision: **BookNLP is the strongest measured speaker challenger, but `18.89%` contamination is too high for direct adoption**. Combined deterministic-quote + BookNLP-speaker confidence gating is tracked in #213.
+Its V2 conflict policy lets BookNLP win a deterministic disagreement only when the deterministic candidate came from a post-quote speech tag; pre-quote conflicts remain unresolved.
+
+| Metric | Combined V2 | Rejected V1 | Raw BookNLP |
+| --- | ---: | ---: | ---: |
+| matched-known accuracy | **0.7007** | 0.5662 | 0.7830 |
+| resolved-speaker accuracy | **0.8040** | 0.7946 | 0.8057 |
+| end-to-end recall | **0.5994** | 0.4844 | 0.6765 |
+| unresolved rate | 0.1285 | 0.2874 | **0.0282** |
+| cross-character contamination | 0.1709 | **0.1464** | 0.1889 |
+
+Progress versus rejected V1:
+
+- matched-known accuracy: `+0.1345`;
+- end-to-end recall: `+0.1150`;
+- unresolved rate: `-0.1589`;
+- contamination: `+0.0245`, but still `-0.0180` absolute below raw BookNLP.
+
+V2 retains about `80.6%` of BookNLP's incremental end-to-end recall gain over the deterministic floor, versus about `51.6%` for V1.
+
+Decision: **combined V2 is the current public speaker challenger, not a production default**. Private modern-fiction qualification and BookNLP model-weight licensing remain required.
 
 ## Event triggers
 
@@ -97,9 +115,50 @@ Progress:
 - precision gain: about `+0.3088` absolute;
 - recall gain: about `+0.7006` absolute.
 
-Decision: **BookNLP is the strongest measured trigger challenger**. This does not qualify participant grounding, negation, modality, realis, causal structure or canonical event acceptance.
+Decision: **BookNLP is the strongest measured trigger challenger**. This does not qualify negation, modality, realis, causal structure or canonical event acceptance.
 
-Dependency-aware participant grounding is tracked in #214.
+## Event participant grounding
+
+Issue #214's first direct dependency policy uses:
+
+- `nsubj` -> actor;
+- `dobj` -> patient;
+- `nsubjpass` -> patient;
+- `agent -> pobj` -> actor;
+- exact already-resolved S.A.G.A. identity span/structural-locator grounding;
+- no dative expansion;
+- no conjunction inheritance;
+- no provider cluster IDs as canonical identity.
+
+A first 100-document diagnostic initially produced zero grounded participants because the **benchmark-only LitBank oracle identity locator** did not use the provider's canonical `${stable_key}:${source_locator}` representation. That failed report is preserved with fingerprint:
+
+`8c5adb349913ae54a65d3002209d7930833b66640a92f33d0557c301486e24f6`
+
+The production grounding rule was not weakened. After benchmark-only locator alignment, the corrected scorer on the exact same preserved BookNLP inference measured:
+
+- triggers: `7,445`;
+- events with any grounded participant: `3,881` (`52.13%`);
+- events with actor: `3,406` (`45.75%`);
+- events with patient: `822` (`11.04%`);
+- events with actor + patient: `347` (`4.66%`);
+- actor assignments: `3,432`;
+- patient assignments: `824`;
+- actor-opportunity events: `4,067`;
+- patient-opportunity events: `2,476`;
+- actor opportunity grounding yield: **`83.75%`**;
+- patient opportunity grounding yield: **`33.20%`**.
+
+Corrected trigger P/R/F1 remained exactly `0.8003 / 0.7591 / 0.7791`.
+
+Corrected report fingerprint:
+
+`d2392c11869bf42d92d244af3cc58b4b39d360257726f8c6dc27587ff08f2ba0`
+
+Important: these are **coverage/yield diagnostics, not participant precision/recall/accuracy**. LitBank's event layer does not provide S.A.G.A.-style actor/patient gold.
+
+Decision: **direct dependency grounding is the current public participant-grounding challenger infrastructure, but no participant method is production-adopted**. The next measured task is a failure-category audit of the low patient grounding yield before enabling any broader relation policy.
+
+Detailed record: `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`.
 
 ## BookNLP component repeatability / resources
 
@@ -121,12 +180,14 @@ Two independent CPU runs produced identical semantic report fingerprint:
 
 The semantic result is repeatable across these two runs; runtime is host-dependent.
 
+The speaker V2 and event-grounding policy scorers reuse the exact preserved native BookNLP output rather than repeating heavyweight inference for deterministic policy changes.
+
 ## Adoption blockers that still apply
 
 - private modern-fiction EPUBs are unavailable to the current execution environment;
 - BookNLP model-weight license remains unverified;
 - BookNLP speaker/event models use LitBank-derived literary annotations, so LitBank is not an independent product-generalization test;
 - no production speaker/event method is adopted;
-- event participant grounding remains unmeasured on suitable gold;
+- event participant accuracy remains unmeasured on suitable gold;
 - scene quality remains unmeasured on the primary suite;
-- real BookNLP execution through the new generic subprocess boundary still needs a measured end-to-end run separate from the direct benchmark harness.
+- real BookNLP execution through the generic subprocess boundary still needs a measured end-to-end run separate from the direct benchmark harness.
