@@ -1,21 +1,17 @@
 # S.A.G.A. Project
 
-S.A.G.A. is being rebuilt as a web-first storytelling-intelligence platform. The active architecture is the S.A.G.A. v2 rebuild; pre-v2 runtime material is historical/reference only unless a current v2 decision deliberately re-adopts an idea behind a v2-owned contract.
+S.A.G.A. is being rebuilt as a web-first storytelling-intelligence platform. The active architecture is S.A.G.A. v2; pre-v2 runtime material is historical/reference only unless a current v2 decision explicitly re-adopts an idea behind a v2-owned contract.
 
-This file is the short source-of-truth handoff for current work. For detailed Phase-3 evidence, read `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`.
+This file is the short source-of-truth handoff. For detailed Phase-3 state and measured component evidence, read:
+
+- `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
+- `docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`
 
 ## Current Status
 
 **Phase 1 — Closed-Demo Main Site, Accounts & Invitations: COMPLETE.**
 
 **Phase 2 — Story Intake & Character Identity Foundation: REPOSITORY FOUNDATION COMPLETE; ORIGINAL HOSTED-PROVIDER PATH SUPERSEDED.**
-
-- 2A Product/Data Foundation — COMPLETE
-- 2B Source Storage & Deterministic Ingestion — COMPLETE
-- 2C Character Identity Engine — COMPLETE
-- 2D Repository/CI Qualification — COMPLETE
-- Phase-2 hosted Supabase migrations — APPLIED AND VERIFIED 2026-09-12
-- experimental Modal/xCoRe text-analysis proof — SUPERSEDED by the owner’s local-first analysis decision
 
 **Phase 3 — Local-First Narrative Analysis Rebaseline: ACTIVE.**
 
@@ -26,51 +22,42 @@ Authoritative Phase-3 documents:
 - `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
 - `docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`
 - `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
+- `docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`
 
 Durable owner decisions D-026 through D-030 require local-first, subscription-free text analysis; Modal media-only; a cost-aware evidence cascade; measurement-driven provider adoption; and local workers using the existing Supabase/B2 control plane.
 
 ## Current Authoritative Checkpoint
 
-At the time of this handoff, merged `main` is:
+At this handoff, merged `main` is:
 
-- `c1dfa9f9e57545a7a3565b21e779f2514abacd04`
-- PR #207 — merged the first provider-neutral local literary-NLP subprocess execution/validation boundary after exact-head qualification
+- `a3aba893f92e9e98e29d5e6f97e08672cc80637f`
+- PR #212 — repeatable public BookNLP quote/speaker/event component benchmark
 
-Exact qualified PR head:
+Exact final PR #212 head:
 
-- `551f22dd318740695a3e1922e56d79fcdcf09ecf`
+- `280a2132d78ba8312d38f2d1f74267160830cd74`
 - Required Check Compatibility — success
-- SAGA v2 Analysis Worker CI — success
+- S.A.G.A. v2 Analysis Worker CI — success
+- S.A.G.A. v2 LitBank Oracle Baseline — success
 - Backend Architecture CI — success
+
+PR #210 / merge `9dfdd7e0c1234c021c9b2d2e5526a27b3d89bfe3` previously instantiated the BookNLP quote/speaker/event provider-specific subprocess adapter behind the generic local literary provider boundary.
 
 Always verify live GitHub state before continuing. This SHA is a handoff checkpoint, not a substitute for checking newer commits/PRs.
 
 ## Product Goal
 
-S.A.G.A. is not a book summarizer. Its analysis runtime should reverse-engineer a novel or series into an evidence-linked narrative model covering:
-
-- source/book/chapter/scene structure;
-- canonical characters, aliases and mentions;
-- dialogue and speaker attribution;
-- locations, organizations, objects, creatures, factions and other entities;
-- atomic events and grounded participants;
-- relationships and changing state;
-- narrative order plus story-world chronology and flashbacks;
-- causal links, motivations and consequences;
-- arcs, tension, conflict, themes and summaries;
-- later canon-aware retrieval, visualization, media and generation.
+S.A.G.A. is not a book summarizer. Its analysis runtime should reverse-engineer a novel or series into an evidence-linked narrative model covering source/chapter/scene structure, canonical identities and mentions, dialogue/speakers, entities/locations/factions, atomic events and participants, relationships/state, chronology/flashbacks, causality, arcs/tension/themes, and later canon-aware retrieval/visualization/media/generation.
 
 Keep three layers distinct:
 
 1. **source layer** — immutable text/structure and exact evidence spans;
-2. **resolved layer** — identities, references, speakers and other confidence-gated interpretation;
+2. **resolved layer** — identities, references, speakers and confidence-gated interpretation;
 3. **derived intelligence layer** — events, relationships, state, timeline, causality and higher narrative models.
 
 Do not rewrite source text when later evidence changes interpretation.
 
 ## Locked Analysis Strategy
-
-The default textual-analysis topology is:
 
 ```text
 apps/web
@@ -92,7 +79,7 @@ Tier 0 deterministic structure/rules
   -> Tier 3 small local generative reasoning over bounded evidence packets only
 ```
 
-Do not repeatedly pass an entire raw novel through a large LLM merely because a context window permits it. Provider/model output is evidence; deterministic S.A.G.A. policy owns canonical IDs, admission/merge decisions, provenance and accepted/uncertain/rejected state.
+Provider/model output is evidence. Deterministic S.A.G.A. policy owns canonical IDs, merge/admission decisions, accepted/uncertain/rejected state, provenance and persistence.
 
 ## Primary Evaluation Policy
 
@@ -101,129 +88,90 @@ Primary product qualification corpus:
 - *Harry Potter and the Philosopher's Stone*;
 - *The Cruel Prince*;
 - *Caraval*;
-- ACOTAR series, with *A Court of Frost and Starlight* retained as the historical regression anchor.
+- ACOTAR series, with *A Court of Frost and Starlight* as the historical regression anchor.
 
-LitBank remains **secondary public/gold regression evidence** for reproducible metrics and component isolation. It cannot by itself promote a provider into production. If LitBank and the private modern-fiction suite disagree, the private suite governs the product decision and the discrepancy must be documented.
+LitBank is **secondary public/gold regression evidence** for reproducible metrics and component isolation. It cannot by itself promote a provider into production. BookNLP's speaker/event models use LitBank-derived annotations, making private modern-fiction qualification especially important.
 
-Copyrighted novel text/EPUB bytes remain private and outside Git. Repository benchmark artifacts contain only metadata, fingerprints, non-reconstructive labels/diagnostics and expectations.
+Copyrighted novel text/EPUB bytes remain private and outside Git.
 
-## Phase 3A Results So Far
+## Phase 3 Measured Component State
 
-### Character/entity evidence
+### Character identity
 
-BookNLP-small is **rejected for primary character identity**. Two independent 100-document public-regression runs produced the same semantic output, but identity quality was poor: canonical precision about `0.4613`, recall `0.6030`, incorrect merges `0.1934`, fragmentation `0.4607`, linked-mention precision `0.2158`. Its speaker/event/syntax roles remain separate candidates.
+BookNLP-small is **rejected for primary identity**. Repeatable 100-document LitBank evidence includes canonical precision `0.4613`, recall `0.6030`, incorrect-merge rate `0.1934`, fragmentation `0.4607`, and linked-mention precision `0.2158`.
 
-A five-document GLiNER-small-v2.1 + F-Coref public smoke produced useful component evidence but the fully real combined stack is **not adoption-ready**. Do not select or reject individual component roles solely from LitBank; the private suite remains the production gate.
+The deterministic attachment-first resolver remains S.A.G.A.'s policy foundation, but private-suite production qualification is still blocked by source availability.
 
-PR #192 / merge `d6c1a144d0c4b4ad82e7229c583cb22682249f07` restored provider-neutral modern-fiction identity regressions such as Harry/Harry Potter, Dumbledore/Professor Dumbledore, Az/Azriel, Cardan/Prince Cardan, supporting-character leakage and fantasy location/group/species contamination.
+### Scenes
 
-### Whole-book benchmark foundation
+Scene annotation/evaluation infrastructure and structural/lexical floors are merged. **No scene method is adopted.** Primary-suite annotations remain unavailable.
 
-PR #191 / merge `88133be6a7d20cfe02fba26f06e0dd636001fbd0` added a provider-neutral whole-book harness recording source SHA-256, provider/model/revision/license, runtime, RAM/VRAM, output size and semantic fingerprints without storing novel text.
+### Quote detection
 
-### Scene benchmark foundation
+PR #212 measured 100 pinned LitBank documents twice with identical semantic output:
 
-PR #193 / merge `201af2638b4df22aa2734b0cac934fa12b8e3e5e` merged the recovered historical breadth reference, scene annotation workspace, exact and relaxed `±1 paragraph` evaluation, structural/lexical scene floors, and deterministic regression tests.
+- deterministic quote P/R/F1: `0.8570 / 0.8555 / 0.8563`;
+- BookNLP quote P/R/F1: `0.7706 / 0.8640 / 0.8146`.
 
-Pre-merge review fixed an undercounting greedy tolerant matcher and fail-open partial annotation finalization. Exact head `a3fc13dc81c6fe8f30c218c84e6a81943b7ebfb7` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
+Decision: **retain deterministic quote boundaries as the current public-gold leader**.
 
-**No scene-segmentation method is adopted yet.** Production selection remains blocked on measured primary-suite annotations.
+### Speaker attribution
 
-### Dialogue/speaker benchmark foundation
+With oracle LitBank identity used only to isolate attribution quality:
 
-PR #201 / merge `d029e465bc37d738debd1ebc8d5d831ab9249661` merged provider-neutral exact quote/speaker evaluation plus a conservative deterministic speech-verb + already-resolved-character floor. Exact head `acf0b4cd5759901bb7a0aa65c802c4957413f9c9` passed all four then-active gates.
+- BookNLP matched-known accuracy: `0.7830` vs deterministic `0.3265`;
+- BookNLP end-to-end recall: `0.6765` vs deterministic `0.2793`;
+- BookNLP contamination: `0.1889` vs deterministic `0.2921`;
+- BookNLP unresolved rate: `0.0282` vs deterministic `0.3815`.
 
-The Tier-0 baseline intentionally remains unresolved where evidence is weak. Pronoun attribution, paragraph-spanning/nested dialogue, dependency-aware attribution and BookNLP speaker evidence remain measured challengers.
+Decision: BookNLP is a **strong restricted speaker challenger**, but `18.89%` contamination is too high for direct canonical use. Issue #213 / PR #215 measure a combined deterministic-quote + confidence-gated BookNLP-speaker policy.
 
-**No dialogue/speaker method is adopted yet.** Private-suite qualification is still required.
+### Event triggers
 
-### Event candidate / participant benchmark foundation
+- BookNLP trigger P/R/F1: `0.8003 / 0.7591 / 0.7791`;
+- lexical Tier-0 P/R/F1: `0.4914 / 0.0585 / 0.1045`.
 
-PR #204 / merge `0b638058f355c9e0610b7d13b9364948e4aa003f` merged provider-neutral exact event-trigger/participant evaluation plus a dependency-free lexical event floor. Exact head `6a8b39b2d1e4461a420e2ecb0122cba1fb7fbbc2` passed Analysis Worker CI, LitBank Oracle Baseline, Backend Architecture CI and Required Check Compatibility.
+BookNLP improves trigger F1 by about `+0.6746` absolute and is the strongest measured trigger challenger. This does **not** qualify participant grounding, negation/modality/realis, state, causality or canonical event acceptance. Issue #214 tracks dependency-aware participant grounding.
 
-The event evaluator records trigger precision/recall/F1, participant precision/recall/F1, duplicate and unsupported rates, exact Unicode source anchors and deterministic fingerprints. The lexical floor uses bounded already-resolved-character attachment and does not cross sentence-ending punctuation.
+### Repeatability / resources
 
-The floor is deliberately **not** the final dependency/verb solution. POS/dependency-aware extraction, BookNLP event evidence, stronger participant grounding, non-character participants, negation/modality/realis and combined candidate stabilization remain open.
+Two independent 100-document BookNLP component runs produced identical semantic fingerprint:
 
-**No event method is adopted yet.** Private-suite qualification is still required.
+`e0ec94d8d1f678f98057a29117d365926a3253a4a6d5e6e0f7c96e36cab3bef9`
 
-## Phase 3B Local Runtime Foundation
+- run 1: `452.68 s`, `1123.8 MiB` peak RSS;
+- run 2: `293.66 s`, `1157.2 MiB` peak RSS;
+- model artifacts: `160,398,571 bytes`;
+- each run: `100 / 100` documents, `0` failures;
+- heavyweight validation: `111 / 111` analysis-worker tests passed on both attempts.
 
-PR #207 / merge `c1dfa9f9e57545a7a3565b21e779f2514abacd04` merged the first generic local literary-NLP execution boundary.
+BookNLP model-weight license remains **unverified** and blocks production adoption.
 
-Merged behavior:
+## Phase 3B Runtime State
 
-- `LocalLiteraryEvidenceProvider` provider-neutral interface and health contract;
-- `saga-local-literary-subprocess-v1` one-request-per-process JSON protocol;
-- `health`, `analyze` and structured `error` responses;
-- `shell: false` process launch;
-- bounded stdin/stdout/stderr and execution timeout;
-- explicit retryable versus terminal provider error classification;
-- provider/configuration/normalized-input fingerprint matching;
-- exact Unicode code-point source-span validation for identity, entity, quote/speaker and event evidence;
-- structural-locator containment checks and duplicate evidence-ID rejection;
-- fail-closed malformed/partial payload parsing;
-- source code-point indexing built once per returned result to avoid repeated full-book rescans;
-- sanitized child-process environment so Supabase/B2/arbitrary SAGA worker secrets are not inherited ambiently;
-- model-light adversarial fixture tests only; no heavyweight model download in normal CI;
-- protocol/security/operational contract in `docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`.
+PR #207 merged the generic `LocalLiteraryEvidenceProvider` subprocess execution/validation boundary. PR #210 added the BookNLP-specific process/runner adapter while normal CI remained model-light.
 
-Review before merge hardened malformed response descriptors so they surface as explicit terminal provider errors rather than escaping as an unrelated validation exception.
+Important distinction: PR #212's real model benchmark used the dedicated benchmark harness; it did **not** execute the real model end-to-end through the generic subprocess boundary. That measured boundary proof remains open.
 
-**This does not adopt subprocess as the permanent transport winner.** The repository still permits a loopback sidecar and should compare operational/runtime behavior after a real provider is exercised. It also does not create durable narrative-analysis jobs, promote BookNLP, or satisfy product quality.
+Subprocess is also not permanently selected over loopback HTTP. Compare transports only after real startup/throughput measurements justify the comparison.
 
 ## Private EPUB Availability
 
-The actual user-owned primary-suite EPUB binaries remain unavailable to the current execution environment.
+The actual user-owned primary-suite EPUB binaries remain unavailable to the current execution environment. Historical paths remain under `B:/Documents/PyCharm/graduationProject/uploads/...`.
 
-A File Library recheck on 2026-09-12 found historical notes/scripts and paths but not the EPUB binaries. Remote Desktop Commander also returned no connected devices. Historical paths remain under `B:/Documents/PyCharm/graduationProject/uploads/...`.
-
-Do not replace the primary suite with public-domain novels because of this source-availability blocker. Continue source-neutral benchmark/runtime infrastructure where useful, then run the real books when lawful EPUB access returns.
-
-## Recovered Historical Breadth Baseline
-
-The old graduation prototype processed the complete *The Cruel Prince* and reported 111,351 words, 35 chapters, 135 scenes, 53 unique characters, 55 locations, 24 key causal events, average tension 5.49/10 and reported climax chapter 16. These are coverage/reference observations, not gold targets.
-
-## Existing Phase-2 Foundations To Preserve
-
-- Phase 2A — member-owned projects/sources, forced RLS, durable lease-based jobs, immutable runs and private product surfaces.
-- Phase 2B — provider-neutral B2 source contracts, upload verification, hashing, deterministic TXT/EPUB normalization, separate v2 worker.
-- Phase 2C — provider-neutral identity evidence, precision-first canonical admission, unresolved/quarantine policy, deterministic stabilization and immutable character/alias/mention evidence.
-- Phase 2D — repository qualification, LitBank oracle-policy ceiling/reference and job lifecycle hardening.
-
-## Hosted Resources / Boundaries
-
-- **Supabase:** dedicated project `scmeqnpmhomzcwecjdtu`, region `eu-central-1`; five repository-qualified Phase-2 migrations applied and verified 2026-09-12.
-- **Backblaze B2:** private bucket `saga-v2-faresmohamed260-1207062480`, region `us-east-005`; master credentials bootstrap-only, runtime must use scoped non-master keys.
-- **Modal:** image/media only. Do not revive the old hosted text-analysis proof as the production path.
-- **Vercel:** project `saga`, root `apps/web`; automatic Git-triggered deployments disabled. Any Preview or Production deployment requires fresh explicit owner approval after stating reason, deployment type and exact SHA.
+Do not replace the private suite with public-domain books. Continue source-neutral benchmark/runtime work, then run the real product gate when lawful EPUB access returns.
 
 ## Current Execution Order
 
-1. verify live `main`, PR/issue state and repository governance before every new implementation slice;
-2. keep identity/scene/dialogue/event benchmark contracts provider-neutral and do not treat Tier-0 floors as product-qualified methods;
-3. use the merged local provider boundary to instantiate a **real, explicit experiment wrapper** for a local literary-NLP challenger without adding model downloads to normal CI;
-4. prefer reusing the existing BookNLP TSV normalization for BookNLP speaker/event evidence rather than creating a second provider-specific evidence schema;
-5. record provider executable/model/revision/license/configuration fingerprints and runtime/resource measurements; do not wire a candidate into durable application jobs before benchmark evidence justifies it;
-6. compare one-shot subprocess versus persistent loopback operation only after real startup/runtime measurements make that comparison meaningful;
-7. when private EPUBs become reachable, create scene/dialogue/event annotation workspaces for Harry Potter, The Cruel Prince, Caraval and ACOFAS and score merged floors/challengers;
-8. adopt no scene, speaker, identity or event provider without primary-suite evidence, repeatability, resource cost, failure-mode review and production-compatible licensing;
-9. after measured first-pass evidence stacks exist, continue with locations/entities, tension, relationships/state, timeline and causality;
-10. use measured Phase-3 evidence to specify the later Event / State / Timeline Narrative Graph contract.
+1. qualify PR #215's combined deterministic-quote + gated BookNLP-speaker policy by measuring contamination versus recall on the same pinned LitBank benchmark;
+2. develop BookNLP-triggered dependency-aware event participant grounding under issue #214;
+3. execute a real BookNLP run through the generic subprocess boundary with exact preinstalled artifacts/caches; compare persistent loopback only if startup/runtime measurements justify it;
+4. when private EPUBs become reachable, create/score scene/dialogue/event annotations for the primary modern-fiction suite;
+5. adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing;
+6. after measured first-pass evidence stacks exist, continue locations/entities, relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.
 
 ## Working Convention
 
-Every substantial session starts from:
-
-1. `AGENTS.md`
-2. `PROJECT.md`
-3. `docs/README.md`
-4. `docs/DECISIONS.md`
-5. `docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`
-6. `docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`
-7. `docs/v2/ANALYSIS_ARCHITECTURE_2026.md`
-8. `docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`
-9. `docs/validation/PHASE_V2_3A_CURRENT_STATE_2026-09-12.md`
-10. relevant experiment docs such as `docs/experiments/SCENE_SEGMENTATION_BENCHMARK.md`, `docs/experiments/DIALOGUE_SPEAKER_BENCHMARK.md`, and `docs/experiments/EVENT_CANDIDATE_BENCHMARK.md`
+Every substantial session starts from `AGENTS.md`, this file, `docs/README.md`, `docs/DECISIONS.md`, the Phase-3 contracts, analysis/provider architecture docs, the current-state validation record, component scorecard, and relevant experiment docs.
 
 GitHub is authoritative. Chat history is secondary context only.
