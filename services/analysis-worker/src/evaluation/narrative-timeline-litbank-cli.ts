@@ -89,7 +89,8 @@ function documentTimelineAudit(timeline: NarrativeTimelineEvidenceResult) {
   for (const cue of timeline.temporalCues) {
     familyCounts[cue.family] += 1;
     lemmaCounts[cue.lemma] = (lemmaCounts[cue.lemma] ?? 0) + 1;
-    increment(cueSentenceCounts as unknown as Record<string, number>, sentenceKey(cue.structuralLocator, cue.sentenceId));
+    const key = sentenceKey(cue.structuralLocator, cue.sentenceId);
+    cueSentenceCounts.set(key, (cueSentenceCounts.get(key) ?? 0) + 1);
   }
 
   for (let index = 0; index < timeline.entries.length; index += 1) {
