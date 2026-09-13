@@ -299,10 +299,12 @@ test("relationship evidence fails closed on fingerprint and syntax drift", () =>
     literaryEvidence: evidence([alice, loves, bob]),
   }), /relationship_identity_input_fingerprint_mismatch/u);
 
+  const missingSyntax = evidence([alice, loves, bob]);
+  delete missingSyntax.syntaxTokens;
   assert.throws(() => deriveCharacterRelationshipEvidence({
     normalizedInputFingerprint: fingerprint,
     identity: identity(mentions),
-    literaryEvidence: { ...evidence([alice, loves, bob]), syntaxTokens: undefined },
+    literaryEvidence: missingSyntax,
   }), /relationship_syntax_evidence_missing/u);
 
   assert.throws(() => derive([{ ...alice, syntacticHeadTokenId: 99 }, loves, bob], mentions), /relationship_missing_syntax_head/u);
