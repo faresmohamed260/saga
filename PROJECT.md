@@ -30,12 +30,12 @@ Durable owner decisions D-026 through D-030 require local-first, subscription-fr
 
 At this handoff, merged `main` is:
 
-- `0d4210f1098d59483497fc70e0d790ab6208d6ad`
-- PR #221 — current public combined deterministic-quote + gated BookNLP-speaker V2 challenger
+- `a3396e5cc829008a4bed2af87186726a3e201123`
+- PR #222 — merged dependency-aware event participant-grounding challenger infrastructure
 
-PR #221's exact qualified head was `2eacc38071688917b24981032193e17ef666245c`; Required Check Compatibility, S.A.G.A. v2 Analysis Worker CI, S.A.G.A. v2 LitBank Oracle Baseline and Backend Architecture CI all passed before merge.
+PR #222 exact qualified head was `1878167b6344dee34f435831169ac88003d2b3e0`; Required Check Compatibility, S.A.G.A. v2 Analysis Worker CI, S.A.G.A. v2 LitBank Oracle Baseline and Backend Architecture CI all passed before merge.
 
-The active event-participant work is issue #214 on branch `v2/phase-3a-event-dependency-grounding`. Its corrected 100-document public diagnostic at head `9f1c34d1a9410a0dbb8458fce4a9bfaf598ff9b1` passed typecheck and `132 / 132` analysis-worker tests while reusing the exact preserved BookNLP inference artifact. See `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`.
+The follow-up patient-candidate failure-mode audit is on branch `v2/phase-3a-event-patient-audit`. Its exact measured scorer head `dc71151491e8fafb8f92f3fad98921bdb57d1c2d` reused the same preserved BookNLP inference, completed `100 / 100` LitBank documents with zero failures, passed typecheck and `139 / 139` analysis-worker tests, and produced report fingerprint `c8f36fb6a0af333c70c038e7dbe42ef94d78c3d1daf5b41fae24d6e4d412a571`.
 
 Always verify live GitHub state before continuing. These SHAs are handoff checkpoints, not substitutes for checking newer commits/PRs.
 
@@ -137,24 +137,39 @@ BookNLP improves trigger F1 by about `+0.6746` absolute and remains the stronges
 
 ### Event participant grounding
 
-Issue #214's conservative direct dependency policy uses `nsubj`/`agent->pobj` for actors and `dobj`/`nsubjpass` for patients, then grounds only through already-linked S.A.G.A. identity spans with matching source locators. Dative, conjunction inheritance and provider cluster IDs are excluded.
+PR #222 merged issue #214's conservative direct dependency policy: `nsubj`/`agent->pobj` for actors and `dobj`/`nsubjpass` for patients, grounded only through already-linked S.A.G.A. identity spans with matching source locators. Dative, conjunction inheritance and provider cluster IDs remain excluded.
 
-The first scorer correctly failed closed to zero coverage because the benchmark-only LitBank oracle locator did not match the provider structural-locator convention. That failed report remains preserved.
-
-After benchmark-only oracle locator alignment, the corrected 100-document scorer measured across `7,445` trigger predictions:
+The corrected 100-document scorer measured across `7,445` trigger predictions:
 
 - any grounded participant: `3,881` (`52.13%`);
 - actor: `3,406` (`45.75%`);
 - patient: `822` (`11.04%`);
 - actor + patient: `347` (`4.66%`);
 - actor opportunity grounding yield: `83.75%`;
-- patient opportunity grounding yield: `33.20%`.
+- direct syntactic patient-candidate grounding yield: `33.20%`.
 
 Trigger P/R/F1 remained exactly `0.8003 / 0.7591 / 0.7791`.
 
-These are coverage/yield diagnostics, **not participant correctness metrics**, because LitBank event annotations do not provide S.A.G.A.-style actor/patient gold.
+The follow-up patient audit explains the low direct-patient candidate yield rather than treating it as an attachment bug. Across `2,546` direct `dobj`/`nsubjpass` candidates:
 
-Decision: **direct dependency grounding is the current public participant-grounding challenger infrastructure, not a production event default**. The next experiment audits missing patient opportunities before broadening relation rules.
+- grounded character: `824` (`32.36%`);
+- same-character duplicate already grounded through another mention: `4`;
+- **true linked-character grounding misses: `0`**;
+- structural-locator mismatches: `0`;
+- gold-linked people missing from oracle identity: `0`;
+- ambiguous linked characters: `17`;
+- no identity/entity evidence: `1,503` (`59.03%`).
+
+Of the no-entity bucket, `1,216 / 1,503` (`80.90%`) are `NOUN`, `226` (`15.04%`) are `PRON`, and only `7` (`0.47%`) are `PROPN`. `dobj` dominates the candidate denominator (`2,304 / 2,546`, `90.49%`) and grounds as a character only `29.77%` of the time, while `nsubjpass` grounds `57.02%`.
+
+These are coverage/failure-mode diagnostics, **not participant correctness metrics**, because LitBank event annotations do not provide S.A.G.A.-style actor/patient gold.
+
+Decision: **keep the strict character-grounding policy unchanged**. Do not enable dative, conjunction inheritance or provider clusters merely to inflate coverage. Direct dependency grounding remains the current public participant-grounding challenger infrastructure, not a production event default.
+
+Detailed evidence:
+
+- `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
+- `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
 
 ### Repeatability / resources
 
@@ -187,9 +202,9 @@ Do not replace the private suite with public-domain books. Continue source-neutr
 
 ## Current Execution Order
 
-1. qualify and merge issue #214's conservative dependency-aware event participant challenger after exact-head CI;
-2. audit the missing patient-grounding opportunities before enabling dative, conjunction inheritance, non-character entity grounding, or any broader attachment rule;
-3. execute a real BookNLP run through the generic subprocess boundary with exact preinstalled artifacts/caches; compare persistent loopback only if startup/runtime measurements justify it;
+1. qualify and merge the event patient failure-mode audit so the strict grounding decision and denominator semantics are durable;
+2. execute a real BookNLP run through the generic subprocess boundary with exact preinstalled artifacts/caches; compare persistent loopback only if startup/runtime measurements justify it;
+3. for event semantics, prefer genuinely new capability—non-character entity participants and negation/modality/realis—over attachment-rule expansion that merely raises coverage;
 4. when private EPUBs become reachable, create/score scene/dialogue/event annotations for the primary modern-fiction suite;
 5. adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing;
 6. after measured first-pass evidence stacks exist, continue locations/entities, relationships/state, timeline, causality, tension/arcs/themes, then specify the Event / State / Timeline Narrative Graph.

@@ -1,0 +1,118 @@
+name: Phase 3 event patient failure audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-event-patient-audit
+    paths:
+      - ".github/workflows/v2-phase3-event-patient-audit.yml"
+      - "services/analysis-worker/src/evaluation/event-patient-audit.ts"
+      - "services/analysis-worker/src/evaluation/event-patient-audit-litbank-cli.ts"
+      - "services/analysis-worker/tests/event-patient-audit.test.ts"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-event-patient-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved pinned BookNLP native outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck patient audit
+        run: npm run typecheck
+
+      - name: Run deterministic and model-light tests
+        run: npm test
+
+      - name: Audit patient failures without rerunning BookNLP
+        run: >-
+          npx tsx src/evaluation/event-patient-audit-litbank-cli.ts
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --out evaluation-artifacts/event-patient-audit-litbank.json
+
+      - name: Publish patient failure summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/event-patient-audit-litbank.json", "utf8"));
+          const a = report.audit;
+          console.log("## Phase 3 event patient failure audit");
+          console.log("");
+          console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- Reused BookNLP inference from run: ${report.sourceEvidence.sourceRunId}`);
+          console.log(`- patient candidate tokens: ${a.candidateTokenCount}`);
+          console.log(`- events with patient candidate: ${a.eventWithPatientCandidateCount}`);
+          console.log(`- events with multiple patient candidates: ${a.eventWithMultiplePatientCandidatesCount}`);
+          console.log("");
+          console.log("### Candidate categories");
+          for (const [category, count] of Object.entries(a.byCategory)) {
+            console.log(`- ${category}: ${count} (${(a.categoryRates[category] * 100).toFixed(2)}%)`);
+          }
+          console.log("");
+          console.log("### Relation counts");
+          for (const [relation, count] of Object.entries(a.byRelation)) {
+            console.log(`- ${relation}: ${count} (${(a.relationRates[relation] * 100).toFixed(2)}%)`);
+          }
+          console.log("");
+          console.log("### No-entity candidate POS");
+          for (const [tag, count] of Object.entries(a.noEntityPosTags).sort((left, right) => right[1] - left[1])) {
+            console.log(`- ${tag}: ${count} (${(a.noEntityPosRates[tag] * 100).toFixed(2)}% of no-entity candidates)`);
+          }
+          console.log("");
+          console.log("### Provider non-person categories");
+          for (const [category, count] of Object.entries(a.providerNonPersonCategories)) console.log(`- ${category}: ${count}`);
+          console.log("");
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log("> This audit classifies coverage gaps only; LitBank does not supply S.A.G.A.-style participant gold, so these are not participant precision/recall/accuracy metrics.");
+          EOF
+
+      - name: Upload patient audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-event-patient-audit
+          path: services/analysis-worker/evaluation-artifacts/event-patient-audit-litbank.json
+          if-no-files-found: error
+          retention-days: 90
