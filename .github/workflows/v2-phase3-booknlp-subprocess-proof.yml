@@ -9,6 +9,7 @@ on:
       - ".github/workflows/v2-phase3-booknlp-subprocess-proof.yml"
       - "services/analysis-worker/benchmarks/prepare_booknlp_small_models.py"
       - "services/analysis-worker/benchmarks/measure_process_tree.py"
+      - "services/analysis-worker/benchmarks/measure_booknlp_warm_runtime.py"
       - "services/analysis-worker/providers/booknlp_runner.py"
       - "services/analysis-worker/src/evaluation/booknlp-subprocess-proof-cli.ts"
       - "services/analysis-worker/src/local-analysis/booknlp-*.ts"
@@ -122,6 +123,22 @@ jobs:
           print(f"offline_spacy_ok={nlp.meta.get('name')}:{nlp.meta.get('version')}")
           PY
 
+      - name: Measure one initialized BookNLP instance across repeated processing
+        env:
+          HF_HOME: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          TRANSFORMERS_CACHE: ${{ github.workspace }}/services/analysis-worker/evaluation-artifacts/hf-home
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          CUDA_VISIBLE_DEVICES: ""
+        run: >-
+          python benchmarks/measure_booknlp_warm_runtime.py
+          --input ../../external/litbank/coref/tsv/1023_bleak_house_brat.txt
+          --document-id 1023_bleak_house_brat
+          --model-dir evaluation-artifacts/booknlp-model
+          --output-root evaluation-artifacts/booknlp-warm-output
+          --metadata-out evaluation-artifacts/booknlp-warm-runtime.json
+          --repeats 2
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -163,6 +180,7 @@ jobs:
           const fs = require("fs");
           const report = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-subprocess-proof.json", "utf8"));
           const resources = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-subprocess-resources.json", "utf8"));
+          const warm = JSON.parse(fs.readFileSync("evaluation-artifacts/booknlp-warm-runtime.json", "utf8"));
           const c = report.directComparison;
           const p = report.preparedRuntime;
           console.log("## Phase 3B real BookNLP subprocess proof");
@@ -174,6 +192,14 @@ jobs:
           console.log(`- analyze wall clock: ${report.runtime.analyzeWallClockSeconds.toFixed(3)} s`);
           console.log(`- whole proof wall clock: ${resources.wallClockSeconds.toFixed(3)} s`);
           console.log(`- peak aggregate process-tree RSS: ${resources.peakProcessTreeRssMiB.toFixed(1)} MiB`);
+          console.log("");
+          console.log("### Warm-runtime decomposition");
+          console.log(`- BookNLP initialization: ${warm.initializationSeconds.toFixed(3)} s`);
+          for (const row of warm.repetitions) console.log(`- warm process repeat ${row.repeat}: ${row.wallClockSeconds.toFixed(3)} s`);
+          console.log(`- repeated output stable: ${warm.warmOutputStable}`);
+          console.log(`- direct warm-process peak RSS: ${warm.peakResidentMemoryMiB.toFixed(1)} MiB`);
+          console.log("");
+          console.log("### Prepared offline footprint");
           console.log(`- BookNLP model artifacts: ${(p.booknlpArtifactBytes / 1024 / 1024).toFixed(1)} MiB`);
           console.log(`- transformer cache: ${(p.transformerCache.bytes / 1024 / 1024).toFixed(1)} MiB`);
           console.log(`- spaCy model: ${(p.spacyModel.bytes / 1024 / 1024).toFixed(1)} MiB`);
@@ -200,5 +226,6 @@ jobs:
             services/analysis-worker/evaluation-artifacts/booknlp-subprocess-proof.json
             services/analysis-worker/evaluation-artifacts/booknlp-subprocess-resources.json
             services/analysis-worker/evaluation-artifacts/booknlp-runtime-manifest.json
+            services/analysis-worker/evaluation-artifacts/booknlp-warm-runtime.json
           if-no-files-found: error
           retention-days: 90
