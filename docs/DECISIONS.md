@@ -243,7 +243,7 @@ Resolve these only in the phase that needs them:
 - GPU/provider strategy for future visual/audio generation;
 - whether each future B2 object workflow uses direct presigned browser transfer, server-mediated transfer or a hybrid.
 
-### D-028 — Modal Accounts Are Partitioned by Project
+### D-031 — Modal Accounts Are Partitioned by Project
 
 **Status:** Accepted — owner decision 2026-09-13
 
