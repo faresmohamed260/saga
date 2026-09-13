@@ -2,15 +2,13 @@
 
 Status: **ACTIVE — PUBLIC/SECONDARY EVIDENCE ONLY UNLESS NOTED**
 
-This scorecard exists so later sessions can see the strongest current measured evidence for each narrative-analysis component without reconstructing it from experiment logs.
-
-It is not a production-adoption ledger. The private modern-fiction suite remains the product promotion gate.
+This is the compact measured ledger for Phase-3 narrative-analysis components. It is **not** a production-adoption ledger. The private modern-fiction suite remains the product promotion gate.
 
 ## Character identity
 
 ### BookNLP-small
 
-Pinned LitBank, 100 documents, two repeatable runs.
+Pinned LitBank, 100 documents, repeatable.
 
 - canonical precision: `0.4613`
 - canonical recall: `0.6030`
@@ -24,38 +22,26 @@ Decision: **rejected for primary character identity**.
 
 ### S.A.G.A. deterministic attachment-first resolver
 
-Primary-fiction regression assertions exist and historical 5-document LitBank subset measurements remain useful diagnostic evidence, but the private full-book product gate is still blocked by source availability.
+Primary-fiction regression assertions exist, but the private whole-book product gate is blocked by source availability.
 
 Decision: **current deterministic policy foundation, not yet production-qualified by the Phase-3 private suite**.
 
 ## Scene segmentation
 
-Measured public/private-quality comparison is not yet available because the primary-suite scene annotations remain blocked by source availability.
+Available infrastructure includes exact and ±1-paragraph boundary metrics, one-to-one tolerant matching, structural/lexical floors and fail-closed annotation finalization.
 
-Available infrastructure:
-
-- exact boundary metric;
-- relaxed ±1 paragraph metric;
-- optimal one-to-one tolerant matching;
-- structural floor;
-- lexical floor;
-- annotation workspace/finalization checks.
-
-Decision: **no scene method adopted**.
+Decision: **no scene method adopted**. Primary-suite scene annotations remain unavailable.
 
 ## Dialogue / quote detection
 
-Pinned LitBank, 100 documents, repeatable BookNLP result.
+Pinned LitBank, 100 documents.
 
 | Candidate | Precision | Recall | F1 |
 | --- | ---: | ---: | ---: |
 | S.A.G.A. deterministic quote detector | **0.8570** | 0.8555 | **0.8563** |
 | BookNLP-small | 0.7706 | **0.8640** | 0.8146 |
 
-Progress:
-
-- deterministic detector leads BookNLP by `+0.0416` absolute F1;
-- BookNLP adds only about `+0.0085` recall while losing about `-0.0864` precision.
+Deterministic quote detection leads BookNLP by `+0.0416` absolute F1.
 
 Decision: **retain deterministic quote boundaries as the current measured public-gold leader**.
 
@@ -73,13 +59,7 @@ Pinned LitBank, 100 documents, oracle LitBank identity used only to isolate attr
 | unresolved rate | **0.0282** | 0.3815 |
 | cross-character contamination | **0.1889** | 0.2921 |
 
-BookNLP attributed-speaker mention -> LitBank gold identity mapping coverage: `0.9419`.
-
-### Current combined challenger
-
-Merged PR #221 preserves S.A.G.A.'s deterministic quote boundaries and maps BookNLP attributed-speaker evidence only through exact already-resolved S.A.G.A. identity spans. Provider cluster IDs are never canonical.
-
-Its V2 conflict policy lets BookNLP win a deterministic disagreement only when the deterministic candidate came from a post-quote speech tag; pre-quote conflicts remain unresolved.
+### Current combined challenger — PR #221
 
 | Metric | Combined V2 | Rejected V1 | Raw BookNLP |
 | --- | ---: | ---: | ---: |
@@ -89,16 +69,9 @@ Its V2 conflict policy lets BookNLP win a deterministic disagreement only when t
 | unresolved rate | 0.1285 | 0.2874 | **0.0282** |
 | cross-character contamination | 0.1709 | **0.1464** | 0.1889 |
 
-Progress versus rejected V1:
+V2 retains about `80.6%` of BookNLP's incremental end-to-end recall gain over the deterministic floor while keeping contamination `0.0180` absolute below raw BookNLP.
 
-- matched-known accuracy: `+0.1345`;
-- end-to-end recall: `+0.1150`;
-- unresolved rate: `-0.1589`;
-- contamination: `+0.0245`, but still `-0.0180` absolute below raw BookNLP.
-
-V2 retains about `80.6%` of BookNLP's incremental end-to-end recall gain over the deterministic floor, versus about `51.6%` for V1.
-
-Decision: **combined V2 is the current public speaker challenger, not a production default**. Private modern-fiction qualification and BookNLP model-weight licensing remain required.
+Decision: **combined V2 is the current public speaker challenger, not a production default**.
 
 ## Event triggers
 
@@ -109,265 +82,211 @@ Pinned LitBank, 100 documents.
 | BookNLP-small | **0.8003** | **0.7591** | **0.7791** |
 | lexical Tier-0 | 0.4914 | 0.0585 | 0.1045 |
 
-Progress:
+BookNLP gains about `+0.6746` absolute trigger F1.
 
-- event-trigger F1 gain: about `+0.6746` absolute;
-- precision gain: about `+0.3088` absolute;
-- recall gain: about `+0.7006` absolute.
-
-Decision: **BookNLP is the strongest measured trigger challenger**. This does not qualify negation, modality, realis, causal structure or canonical event acceptance.
+Decision: **BookNLP is the strongest measured public trigger challenger**. This does not adopt canonical events or qualify factuality/causality.
 
 ## Event participant grounding
 
-Issue #214's merged direct dependency policy uses:
+Merged direct dependency character policy:
 
 - `nsubj` -> actor;
 - `dobj` -> patient;
 - `nsubjpass` -> patient;
 - `agent -> pobj` -> actor;
-- exact already-resolved S.A.G.A. identity span/structural-locator grounding;
-- no dative expansion;
-- no conjunction inheritance;
-- no provider cluster IDs as canonical identity.
+- exact linked S.A.G.A. identity / structural-locator grounding;
+- no dative, conjunction inheritance or provider-cluster canonicals.
 
-A first 100-document diagnostic initially produced zero grounded participants because the **benchmark-only LitBank oracle identity locator** did not use the provider's canonical `${stable_key}:${source_locator}` representation. That failed report is preserved with fingerprint:
+Corrected 100-document public diagnostic across `7,445` BookNLP triggers:
 
-`8c5adb349913ae54a65d3002209d7930833b66640a92f33d0557c301486e24f6`
-
-The production grounding rule was not weakened. After benchmark-only locator alignment, the corrected scorer on the exact same preserved BookNLP inference measured:
-
-- triggers: `7,445`;
-- events with any grounded participant: `3,881` (`52.13%`);
+- any grounded participant: `3,881` (`52.13%`);
 - events with actor: `3,406` (`45.75%`);
 - events with patient: `822` (`11.04%`);
-- events with actor + patient: `347` (`4.66%`);
-- actor assignments: `3,432`;
-- patient assignments: `824`;
-- actor-opportunity events: `4,067`;
-- direct-object/passive-subject patient-candidate events: `2,476`;
-- actor opportunity grounding yield: **`83.75%`**;
-- direct patient-candidate grounding yield: **`33.20%`**.
-
-Corrected trigger P/R/F1 remained exactly `0.8003 / 0.7591 / 0.7791`.
+- actor-opportunity grounding yield: **`83.75%`**;
+- direct patient-candidate grounding yield: **`33.20%`**;
+- trigger P/R/F1 unchanged at `0.8003 / 0.7591 / 0.7791`.
 
 Corrected report fingerprint:
 
 `d2392c11869bf42d92d244af3cc58b4b39d360257726f8c6dc27587ff08f2ba0`
 
-### Patient-candidate failure-mode audit
+### Patient-candidate audit
 
-A scorer-only 100-document audit reused the exact preserved BookNLP output and completed with `100 / 100` documents, `0` failures, passing typecheck and **`139 / 139`** analysis-worker tests.
-
-Across `2,546` direct syntactic patient candidates in `2,476` events:
+Across `2,546` direct syntactic patient candidates:
 
 - grounded character: `824` (`32.36%`);
-- same character already grounded through another mention: `4` (`0.16%`);
+- same character already grounded through another mention: `4`;
 - **true linked-character not grounded: `0`**;
-- ambiguous linked character: `17` (`0.67%`);
+- ambiguous linked character: `17`;
 - **structural-locator mismatch: `0`**;
 - **gold-linked person missing from identity: `0`**;
-- unresolved person gold: `8` (`0.31%`);
-- non-person gold: `142` (`5.58%`);
-- provider non-person only: `15` (`0.59%`);
-- provider person only: `33` (`1.30%`);
 - no identity/entity evidence: `1,503` (`59.03%`).
 
-The relation mix explains the low aggregate candidate yield:
+The no-evidence bucket is `80.90% NOUN`, `15.04% PRON`, and only `0.47% PROPN`.
 
-- `dobj`: `2,304 / 2,546` candidates (`90.49%`), with `686` grounded characters (`29.77%`);
-- `nsubjpass`: `242 / 2,546` (`9.51%`), with `138` grounded characters (`57.02%`).
+Decision: **keep strict character grounding unchanged**. Low patient yield is dominated by broad `dobj` semantics, not a measured identity-attachment bug. These remain coverage/failure-mode diagnostics, not participant accuracy.
 
-Among the `1,503` candidates with no identity/entity evidence:
+Detailed records:
 
-- `NOUN`: `1,216` (`80.90%`);
-- `PRON`: `226` (`15.04%`);
-- `PROPN`: only `7` (`0.47%`).
+- `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
+- `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
 
-Audit report fingerprint:
+## Typed non-character event participants
 
-`c8f36fb6a0af333c70c038e7dbe42ef94d78c3d1daf5b41fae24d6e4d412a571`
+### BookNLP public evidence — PR #230
 
-Artifact digest:
-
-`sha256:930dfb6844be99dad6fbdf4c8fd37382eadce56d3c232946bea978c8a727fc81`
-
-Important: these are **coverage/failure-mode diagnostics, not participant precision/recall/accuracy**. LitBank's event layer does not provide S.A.G.A.-style actor/patient gold.
-
-Progress/decision:
-
-- the audit found **no measured deterministic linked-character attachment bug** among direct patient candidates;
-- the low aggregate candidate yield is dominated by broad `dobj` semantics, not failed canonical identity attachment;
-- do **not** enable dative, conjunction inheritance or provider clusters merely to inflate coverage;
-- call this denominator **direct syntactic patient candidates/opportunities**, not an expectation that every object is a character patient.
-
-### Typed non-character participant evidence
-
-Issue #229 adds a separate evidence layer for direct actor/patient arguments that are **not already grounded to a canonical character**. The layer does not place non-character entities into the character-specific `characterKey` contract and does not create canonical world-entity IDs.
-
-A scorer-only 100-document diagnostic reused the same preserved BookNLP inference and completed `100 / 100` documents with `0` failures, passing typecheck and **`153 / 153`** worker tests, up from the previous `145 / 145` model-light floor.
-
-Across `6,701` direct actor/patient candidate tokens in `5,085` candidate events:
+Across `6,701` direct actor/patient candidates in `5,085` candidate events:
 
 - already grounded canonical character: `4,265` (`63.65%`);
 - clean typed non-character evidence: **`146` (`2.18%`)**;
-- ambiguous typed non-character: `4` (`0.06%`);
-- malformed typed non-character: `0`;
-- structural-locator mismatch: `0`;
-- provider person only: `140` (`2.09%`);
-- no provider entity evidence: **`2,146` (`32.03%`)**;
-- events gaining at least one typed non-character evidence item: **`142 / 5,085` (`2.79%`)**.
+- events gaining typed evidence: **`142 / 5,085` (`2.79%`)**;
+- no provider entity evidence: `2,146` (`32.03%`).
 
-Typed evidence is narrow:
+Typed evidence: facility `90`, vehicle `32`, location `17`, geopolitical `6`, organization `1`.
 
-- facility `90`;
-- vehicle `32`;
-- location `17`;
-- geopolitical `6`;
-- organization `1`.
+### GLiNER Small v2.1 challenger — PR #232
 
-The trigger benchmark is unchanged at `0.8003 / 0.7591 / 0.7791`; the scorer's full-precision F1 is `0.7791290702`, so the tiny difference from the stored four-decimal `0.7791` is rounding only.
+Same denominator:
 
-Report fingerprint:
-
-`bcd749129620eab5ac9f4271520e3727587a8b0f768ee4860870bdac90561b30`
-
-Artifact digest:
-
-`sha256:d228a6329ec4a8a41c421876750df1febde227bb3143b4ba45d17e4d92a57637`
-
-Interpretation: BookNLP's typed non-character evidence is source-grounded and structurally clean, but **too sparse to serve as S.A.G.A.'s world-entity participant solution**. Preserve the evidence layer and keep character grounding unchanged.
-
-These are coverage diagnostics only; LitBank does not supply non-character participant correctness gold.
-
-### GLiNER typed-entity challenger
-
-Issue #231 tested a separate GLiNER-only typed-span source through the same role/source contract on exact head `25e51fe6ea88d18e4d9dfd9c32b2db75f2d34ba3`.
-
-The dedicated full-corpus workflow completed `100 / 100` documents with `0` failures, typecheck pass, and **`160 / 160`** model-light tests, up from the pre-GLiNER `153 / 153` floor. The test increase is contract/regression coverage only; it is not a model-quality gain.
-
-Pinned challenger:
-
-- GLiNER code commit: `cf9e5f7d9fb99158b592132a9ec7cbfabb43a9a0`;
-- package: `gliner==0.2.29`;
-- model: `urchade/gliner_small-v2.1`;
-- model revision: `f23104c107e3c57f5c7aa36d53a9667c67b4b866`;
-- code/model license: `Apache-2.0`;
-- threshold: `0.5`;
-- labels: person, location, facility, geopolitical entity, organization, vehicle.
-
-On the exact same `6,701` candidate tokens / `5,085` candidate events:
-
-| Metric | GLiNER | BookNLP typed-entity baseline |
+| Metric | GLiNER | BookNLP typed baseline |
 | --- | ---: | ---: |
 | clean typed non-character candidates | `47` (**0.70%**) | `146` (**2.18%**) |
 | events gaining typed evidence | `44` (**0.87%**) | `142` (**2.79%**) |
 | relative candidate coverage | **0.322x** | `1.000x` |
 | relative event gain | **0.310x** | `1.000x` |
 
-GLiNER loses `-1.48` percentage points of candidate coverage and `-1.93` percentage points of event-level gain versus BookNLP on this narrow direct-role diagnostic.
+GLiNER resources: `381.955 s`, peak RSS `1,581.84 MiB`, model artifacts `610,657,698 bytes`, no GPU.
 
-The `47` GLiNER participant evidence items are:
-
-- location `18`;
-- vehicle `18`;
-- organization `7`;
-- facility `4`;
-- geopolitical `0`.
-
-This weak role overlap is not evidence that GLiNER detects few entities overall. Across the corpus it emitted `4,514` person, `1,008` location, `187` organization, `126` vehicle, `89` facility, and `31` geopolitical detections before event-role intersection.
-
-Runtime/resource evidence:
-
-- GLiNER inference wall clock: `381.955 s`;
-- process peak RSS: `1,581.84 MiB`;
-- model artifacts: `610,657,698 bytes`;
-- GPU/VRAM: none.
-
-Trigger F1 remains `0.7791290702` (`0.7791` rounded), so there is no trigger regression.
-
-Report fingerprint:
-
-`322b3e51561acf51a68bd6567170d5928abe62f2aed79d3d68cd4158ede2bfdd`
-
-Aggregate artifact:
-
-- ID `10320402913`;
-- digest `sha256:a20e650f02426bf99114e295cedaaea85cc660e756aac1209e11ff2b7da0ebfd`.
-
-Decision: **do not adopt GLiNER as the current direct world-entity event-participant provider at this pinned configuration.** BookNLP remains the stronger measured public coverage source for this narrow role contract, but BookNLP model-weight licensing remains unverified and therefore still blocks production adoption. GLiNER's Apache-2.0 licensing removes a licensing blocker, not the quality/private-corpus gates.
-
-Do not tune the threshold, broaden dependency roles, weaken structural matching, or silently map artifacts/objects/factions/creatures into current categories merely to improve this number. Any ontology expansion is a separate architecture and benchmark decision.
-
-Overall participant decision: **direct dependency grounding remains the current public participant-grounding infrastructure; BookNLP typed evidence is retained as sparse optional public evidence; GLiNER is rejected for the current direct-role typed-participant slot; no production participant method is adopted.**
+Decision: **reject GLiNER at this pinned configuration for the direct-role typed-participant slot**. Keep the provider-neutral contract; do not weaken role/locator policy to inflate coverage.
 
 Detailed records:
 
-- `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
-- `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
 - `docs/experiments/BOOKNLP_EVENT_TYPED_ENTITY_PARTICIPANTS.md`
 - `docs/experiments/GLINER_TYPED_ENTITY_EVENT_PARTICIPANTS.md`
 
 ## Event semantic qualifier evidence
 
-Issue #233 adds a separate provider-neutral evidence layer over the validated event-trigger and dependency-syntax bundle. It emits only explicit source-anchored cues and leaves unsupported states `undetermined`.
+PR #234 added source-grounded qualifier evidence over validated triggers/syntax.
 
-Exact measured scorer head:
+100-document public diagnostic:
 
-`6fe886f89a2f3dc9a3ba942077993928e7417fa6`
-
-The public diagnostic reused preserved BookNLP inference and completed:
-
-- `100 / 100` LitBank documents;
-- `0` failures;
-- typecheck pass;
-- **`168 / 168` worker tests pass**, up from `160 / 160` before this qualifier contract;
-- no new model inference.
-
-The trigger baseline is unchanged:
-
-- predicted triggers: `7,445`;
-- precision: `0.8002686367`;
-- recall: `0.7590775895`;
-- F1: `0.7791290702` = **`0.7791` rounded**;
-- trigger-count delta: `0`.
-
-Across the fixed trigger population:
-
-| Qualifier diagnostic | Count | Rate |
-| --- | ---: | ---: |
-| any explicit cue | **53** | **0.71%** |
-| explicit negation | **3** | **0.04%** |
-| modalized | **45** | **0.60%** |
-| explicit conditional cue | **5** | **0.07%** |
-| irrealis-cued | **50** | **0.67%** |
-| unmarked / undetermined | **7,392** | **99.29%** |
-
-Modal cue counts are `could 24`, `can 11`, `will 5`, `must 4`, `shall 1`. Conditional cues are `if 5`, `unless 0`. No category overlap appeared in the first public run.
+- tests: `168 / 168`;
+- trigger count: `7,445`;
+- trigger P/R/F1 unchanged at `0.8003 / 0.7591 / 0.7791`;
+- any explicit cue: `53` (`0.71%`);
+- negated: `3`;
+- modalized: `45`;
+- conditional: `5`;
+- irrealis-cued: `50`;
+- unmarked/undetermined: `7,392`.
 
 Report fingerprint:
 
 `051c172829a3864d4c9e295a6672d7fd31f6a9f5f7d5f6ba01109899a16ef803`
 
-Aggregate artifact:
+### Qualifier structural coverage audit — PR #236
 
-- ID `10321247725`;
-- digest `sha256:ea7e41f8282d2f46641af5ca54ca83c2f77f9e9ab4a265153f4c4d5e44d9507a`.
+- tests: `177 / 177`;
+- unique candidate cue tokens: `4,261`;
+- cues in event-bearing sentences: `1,528`;
+- strict captures: `53 / 1,528` (`3.47%`);
+- deeper descendants: `961` (`62.89%`);
+- other connected same-sentence: `354` (`23.17%`);
+- siblings/shared head: `149` (`9.75%`);
+- direct-child nonqualifying: `9`;
+- parent/ancestor: `2`.
 
-Interpretation: the evidence contract works without another model call, but public coverage is deliberately **extremely sparse**. The `7,392` unmarked events are not thereby factual, positive or realis; they are simply undetermined by this first evidence policy. The `3` explicit negation hits are also too few to support a negation-recall claim.
+Only `11 / 1,528` associated cues are uncaptured one-hop cases. Negation similarly has only `3 / 566` strict captures while `334` are deeper descendants.
 
-LitBank has event-trigger gold but no S.A.G.A.-style polarity/modality/realis gold. These are therefore **prevalence/coverage diagnostics, not semantic precision, recall, accuracy or factuality correctness**.
+Decision: **keep the strict qualifier contract and `undetermined` default unchanged**. Do not widen from generic graph proximity without semantic-scope correctness evidence.
 
-Decision: **keep the qualifier evidence contract and strict `undetermined` default, but do not promote it to a complete factuality classifier.** Before broadening dependency scope, audit qualifier failure modes or obtain suitable semantic gold. No trigger, participant or production-adoption decision changes.
+Detailed records:
 
-Detailed record: `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`.
+- `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`
+- `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIER_AUDIT.md`
+
+## Character relationship / source-order state evidence
+
+Issue #237 / PR #238 add an explicit relationship-observation contract and immutable source-order evidence ledger. Persistent relationship state and narrative-time interpretation remain separate future layers.
+
+Pinned first-policy predicates:
+
+`love`, `hate`, `trust`, `distrust`, `marry`, `divorce`, `befriend`, `betray`.
+
+Supported shapes:
+
+- active: exactly one direct `nsubj` + exactly one direct `dobj`;
+- passive: exactly one direct `nsubjpass` + exactly one direct `agent -> pobj`.
+
+Both roles must ground through exactly one linked canonical identity with exact structural-locator agreement. Self-relations, reciprocal inference, conjunction inheritance, co-occurrence inference and shared-event inference are excluded. Direct negation/modal/conditional cues remain attached.
+
+### Model-light qualification
+
+Clean implementation baseline `9d13b9acd5f968b36aae23ed6ba83a62808a92df`:
+
+- typecheck: pass;
+- **`188 / 188` tests pass**, up from `177 / 177` before the contract;
+- +11 tests are regression/contract coverage, not relationship-quality improvement.
+
+### 100-document public coverage diagnostic
+
+Exact measured scorer head:
+
+`bab1b898ba8aeb23fff5d9be1820b368910ee82d`
+
+Run `34782059516`, job `103790751005`:
+
+- documents: `100 / 100`, `0` failures;
+- typecheck pass;
+- `188 / 188` tests pass;
+- no new model inference; preserved BookNLP syntax reused.
+
+Coverage funnel:
+
+| Stage | Count | Yield |
+| --- | ---: | ---: |
+| pinned predicate-token hits | **196** | — |
+| exact supported binary syntax | **48** | **24.49%** of hits |
+| two-character grounded observations | **23** | **47.92%** of supported syntax |
+| observations vs all predicate hits | **23** | **11.73%** |
+
+Candidate hits: `love 95`, `marry 54`, `trust 20`, `hate 20`, `distrust 5`, `betray 2`, `divorce 0`, `befriend 0`.
+
+Grounded observations: `love 16`, `marry 5`, `trust 2`; all others `0`.
+
+Source-order support:
+
+- observations: `23`;
+- unique directed pairs: `20`;
+- unique pair+predicate groups: `20`;
+- repeated-support groups: `1 / 20` (`5.00%`);
+- repeated group support: `4` observations.
+
+Qualification:
+
+- qualified observations: `6 / 23` (`26.09%`);
+- negated: `4` (`17.39%`);
+- modalized: `3` (`13.04%`);
+- conditional: `0`.
+
+Report fingerprint:
+
+`66b228428713aa6b0b59b0e36f3e50e759f533eed243e015e77c9e69e1061c78`
+
+Artifact:
+
+- ID `10325625680`;
+- digest `sha256:efce6db6204928799b2e8b8feefa03d45632a54491252cdf11ba8fdddbd3e73b`.
+
+Decision: **keep the explicit observation + source-order ledger foundation, but do not call it a general relationship extractor and do not derive persistent state from it.** LitBank has no S.A.G.A.-style relationship/state gold, so these are coverage/yield diagnostics only. No production relationship/state default is adopted.
+
+Next measured question: explain the `148 / 196` predicate hits outside the exact binary syntax and the `25 / 48` exact syntax candidates that do not ground to two canonical characters before considering any expansion.
+
+Detailed record: `docs/experiments/CHARACTER_RELATIONSHIP_STATE_EVIDENCE.md`.
 
 ## BookNLP component repeatability / resources
 
-Exact benchmark implementation head:
-
-`f013f23f11d2883e8ef1f2e70f9e181e8556df08`
-
-Two independent CPU runs produced identical semantic report fingerprint:
+Two independent 100-document CPU runs produced the exact same semantic report fingerprint:
 
 `e0ec94d8d1f678f98057a29117d365926a3253a4a6d5e6e0f7c96e36cab3bef9`
 
@@ -376,100 +295,41 @@ Two independent CPU runs produced identical semantic report fingerprint:
 - run 1 peak RSS: `1123.8 MiB`
 - run 2 peak RSS: `1157.2 MiB`
 - BookNLP task-model artifacts: `160,398,571 bytes`
-- each run: `100 / 100` documents completed, `0` failed
-- heavyweight validation: `111 / 111` tests passed on both attempts
+- each run: `100 / 100` documents, `0` failures
 
-The semantic result is repeatable across these two runs; runtime is host-dependent.
+The speaker/event/relationship policy scorers reuse preserved native BookNLP output rather than repeating heavyweight inference for deterministic policy changes.
 
-The speaker V2, event-grounding and patient-audit policy scorers reuse the exact preserved native BookNLP output rather than repeating heavyweight inference for deterministic policy changes.
+## Phase 3B BookNLP runtime boundary
 
-## Phase 3B real BookNLP runtime boundary
+One-shot generic subprocess proof on pinned LitBank document `1023_bleak_house_brat` produced exact semantic equality with preserved direct BookNLP evidence:
 
-Issue #224 measured the real pinned BookNLP-small model through `saga-local-literary-subprocess-v1`, separate from the direct benchmark harness.
+- fingerprint `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
+- counts `230 / 230 / 5 / 20 / 2,319` identity mentions/entities/quotes/events/syntax;
+- analyze `6.314 s` and `8.930 s` on two runs;
+- peak process-tree RSS about `1.04 GiB`.
 
-On pinned LitBank document `1023_bleak_house_brat` (`11,738` bytes / `2,319` syntax tokens):
+Persistent loaded stdio, exact implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`:
 
-- direct evidence fingerprint: `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
-- generic subprocess evidence fingerprint: the **same** value;
-- semantic evidence equality: `true`;
-- count equality: `true`;
-- identity mentions/entities/quotes/events/syntax: `230 / 230 / 5 / 20 / 2,319`.
+- attempt 1 median analyze `4.627 s`, peak RSS `1007.1 MiB`;
+- attempt 2 median analyze `2.853 s`, peak RSS `1028.7 MiB`;
+- all six analyses exactly reproduce the one-shot fingerprint/counts;
+- `145 / 145` tests pass;
+- malformed-request recovery, offline load and controlled shutdown pass.
 
-Measured one-shot runs:
+Decision: **persistent local stdio is preferred for repeated BookNLP analysis; one-shot remains the correctness/reference path.** The gain is latency/model reuse, not material memory reduction. This transport choice changes no provider-quality/adoption decision.
 
-- run A: `health()` `2.578 s`, `analyze()` `6.314 s`, peak process-tree RSS `1037.2 MiB`;
-- run B (`34759959737`): `health()` `2.847 s`, `analyze()` `8.930 s`, peak process-tree RSS `1040.5 MiB`, typecheck pass, `139 / 139` tests pass.
+Detailed records:
 
-The complete prepared offline footprint is about `439 MiB`. The stable BookNLP task-model portion is `160,398,571 bytes`; transformer/spaCy cache bookkeeping can vary slightly between preparations.
+- `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`
+- `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`
 
-Decision from #224: **one-shot generic subprocess semantic transport is validated and remains the simple correctness/reference implementation**.
-
-Detailed record: `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
-
-### Persistent loaded BookNLP transport
-
-Issue #226 measured a persistent local Python child using bounded stdio on exact head:
-
-`2fa30b185cb037180f3e7762f2166067096e08c5`
-
-Normal model-light qualification increased from `139 / 139` to **`145 / 145`** tests with six new persistence lifecycle/failure checks and no regression.
-
-The heavyweight workflow run `34762397330` was executed twice on the exact same SHA.
-
-Attempt 1:
-
-- startup/health: `3.694 s`;
-- analyze passes: `4.977 / 4.627 / 4.368 s`;
-- median analyze: **`4.627 s`**;
-- speedup vs one-shot `6.314 s`: `1.36x`;
-- speedup vs one-shot `8.930 s`: `1.93x`;
-- peak aggregate process-tree RSS: `1007.1 MiB`;
-- artifact ID `10319696420`;
-- artifact digest `sha256:4d064dd228fa6d1ec8b812de3e7b42db778aec3d76671911154da46c78badbc8`.
-
-Attempt 2:
-
-- startup/health: `3.134 s`;
-- analyze passes: `3.039 / 2.745 / 2.853 s`;
-- median analyze: **`2.853 s`**;
-- speedup vs one-shot `6.314 s`: `2.21x`;
-- speedup vs one-shot `8.930 s`: `3.13x`;
-- peak aggregate process-tree RSS: `1028.7 MiB`;
-- artifact ID `10319368057`;
-- artifact digest `sha256:0e3462ed6a35ef758f1163f5cb78625df0086c40c37d9ab626ef37326e698456`.
-
-Across both attempts:
-
-- all **six** real persistent analyses reproduced exact evidence fingerprint `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
-- exact counts stayed `230 / 230 / 5 / 20 / 2,319`;
-- semantic comparison fingerprint stayed `4da56c28895486da135deea7023d0f7709eea264945a0136fec8366f8dcb1a8a`;
-- typecheck passed;
-- `145 / 145` tests passed;
-- malformed-request recovery passed;
-- controlled shutdown passed;
-- offline model loading passed.
-
-Interpretation:
-
-- repeated latency improves materially on both independent runners;
-- startup/health itself is not faster than the one-shot health measurement;
-- peak RSS is only slightly below one-shot and is **not** a material memory win;
-- the durable benefit is avoiding repeated model/runtime recreation;
-- whole cache size/hash is not a stable model identity because cache metadata is mutable.
-
-Decision: **persistent local stdio is the preferred BookNLP runtime transport for repeated analysis**. Keep the one-shot subprocess as the correctness/reference path. Do not add a BookNLP HTTP sidecar merely for model persistence.
-
-This transport choice changes **no model-quality/adoption result**.
-
-Detailed record: `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`.
-
-## Adoption blockers that still apply
+## Adoption blockers still in force
 
 - private modern-fiction EPUBs are unavailable to the current execution environment;
 - BookNLP model-weight license remains unverified;
-- BookNLP speaker/event models use LitBank-derived literary annotations, so LitBank is not an independent product-generalization test;
-- GLiNER's Apache-2.0 code/model licensing is compatible with further evaluation, but the current direct-role participant challenger lost the BookNLP public coverage baseline;
-- event semantic qualifier correctness/factuality remains unmeasured on suitable gold; the current public layer is prevalence evidence only;
-- no production speaker/event method is adopted;
-- event participant accuracy remains unmeasured on suitable gold;
-- scene quality remains unmeasured on the primary suite.
+- BookNLP speaker/event models use LitBank-derived annotations, so LitBank is not an independent product-generalization test;
+- scene quality remains unmeasured on the primary suite;
+- event participant correctness remains unmeasured on suitable gold;
+- event qualifier correctness/factuality remains unmeasured on suitable gold;
+- relationship/state correctness, persistence and narrative-time validity remain unmeasured on suitable gold;
+- no production speaker/event/relationship-state method is adopted.
