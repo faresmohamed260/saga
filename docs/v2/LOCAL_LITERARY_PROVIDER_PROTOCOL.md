@@ -1,10 +1,10 @@
 # Local Literary NLP Subprocess Protocol
 
-Status: **EXPERIMENTAL PHASE-3B EXECUTION BOUNDARY**
+Status: **ACTIVE PHASE-3B LOCAL EXECUTION BOUNDARY**
 
-This document defines the first v2-owned local-process boundary for literary NLP providers. It exists so the TypeScript analysis worker/evaluation stack can invoke local Python or other local model processes without making provider SDKs, model IDs, transport details, or Python package types part of S.A.G.A. application truth.
+This document defines the v2-owned local-process boundary for literary NLP providers. It exists so the TypeScript analysis worker/evaluation stack can invoke local Python or other local model processes without making provider SDKs, model IDs, transport details, or Python package types part of S.A.G.A. application truth.
 
-It does **not** adopt subprocess execution as the permanent winner over a loopback HTTP sidecar. The repository will compare operational simplicity after real local providers are exercised.
+The one-shot generic subprocess remains the simplest correctness/reference implementation. Phase-3B measurement now also establishes a persistent local stdio lifecycle as the preferred runtime transport specifically for BookNLP when repeated analysis is required. Other providers still require their own measurement before transport selection.
 
 ## Ownership
 
@@ -20,7 +20,7 @@ S.A.G.A. owns:
 
 A local provider owns only model-specific inference and conversion into the returned provider-neutral evidence bundle.
 
-## Protocol v1
+## Protocol v1 — one-shot generic subprocess
 
 Protocol identifier:
 
@@ -35,7 +35,7 @@ Each request launches one subprocess with `shell: false`.
 - non-zero exit: treated as a provider process crash/failure;
 - request, stdout, stderr and execution time are bounded by the TypeScript caller.
 
-The one-process-per-request lifecycle is intentionally simple for the first measured boundary. It may be replaced by a persistent loopback service if model startup cost or operational measurements justify it.
+The one-process-per-request lifecycle remains useful as a low-complexity correctness/reference implementation and for providers whose startup cost is negligible.
 
 ## Requests
 
@@ -94,6 +94,35 @@ A protocol-compliant provider may return `kind = error` with:
 
 This is preferred to crashing when the provider can classify the failure itself.
 
+## Persistent BookNLP stdio lifecycle
+
+Phase-3B issue #226 adds a second lifecycle specifically for BookNLP:
+
+`SAGA BookNLP persistent runner v1` / `saga-booknlp-persistent-runner-v1`
+
+The transport remains a private local child process with `shell: false`; it does **not** open a TCP/HTTP listener.
+
+The TypeScript caller starts one pinned Python BookNLP process and sends sequential line-delimited JSON requests over stdin/stdout. The Python process keeps the BookNLP model/runtime loaded between requests.
+
+Persistent requests use a dedicated request schema and configuration fingerprint so evidence provenance cannot silently collapse the persistent and one-shot execution modes.
+
+Required properties:
+
+- unique request ID for every request;
+- exact configuration and normalized-input binding;
+- serialized requests — one in flight per child;
+- bounded stdin/stdout/stderr/time at the TypeScript caller;
+- offline model/cache environment;
+- no ambient S.A.G.A. secrets inherited by the child;
+- structured provider errors may leave the process alive;
+- timeout/crash/EOF fails the current request explicitly and does **not** silently retry it;
+- a later caller operation may start a fresh child after a crash;
+- deterministic shutdown;
+- child cleanup occurs even if shutdown-response validation itself fails;
+- provider-neutral output still passes the same S.A.G.A. source/evidence validator as one-shot execution.
+
+The one-shot path remains the generic correctness reference. Persistent BookNLP stdio is the preferred repeated-analysis transport because two exact-head real-model runs preserved identical semantics while materially reducing analyze latency.
+
 ## Source and evidence validation
 
 The TypeScript boundary fails closed unless returned evidence satisfies all current invariants:
@@ -125,9 +154,11 @@ The caller does not inherit the worker environment wholesale. Only a small runti
 
 Provider-specific environment values may be supplied deliberately by the caller. They are an explicit configuration surface, not ambient inheritance.
 
-The subprocess is launched without a shell. Executable/arguments/environment values containing NUL are rejected.
+Subprocesses are launched without a shell. Executable/arguments/environment values containing NUL are rejected.
 
 Model inference is expected to work without network access after model artifacts are installed. Provider wrappers should use their ecosystem's offline flags/cache configuration where needed. This protocol is not itself a network sandbox.
+
+Persistent local transports must not introduce an inbound/public listener merely to preserve model lifetime when a child-process protocol is sufficient.
 
 ## Failure classification
 
@@ -147,47 +178,81 @@ Examples of retryable failures:
 - abnormal provider exit where the process could not return a structured classification;
 - a protocol `error` response explicitly marked retryable.
 
+For the persistent lifecycle, a crashed or timed-out request is never automatically replayed by the transport. The failed request is surfaced to the durable worker, which owns retry policy. A subsequent operation may recreate the provider child.
+
 Downstream durable-job retry policy is still owned by the S.A.G.A. worker/database layer. This boundary only classifies provider failures for callers to consume.
 
 ## CI policy
 
-Normal CI must remain model-light. The subprocess contract is tested with a tiny Node fixture process that exercises:
+Normal CI must remain model-light. The subprocess contracts are tested with tiny fixture processes that exercise:
 
-- health/analyze round trips;
+- one-shot health/analyze round trips;
+- persistent child reuse;
+- exact one-shot/persistent semantic equality on fixture evidence;
 - secret stripping;
 - protocol/provider/fingerprint mismatch;
 - exact source-span validation;
 - optional syntax graph/head/event consistency validation;
 - timeout and I/O limits;
 - process crash/spawn failure;
-- provider-reported retryable versus terminal errors.
+- structured error survival;
+- provider-reported retryable versus terminal errors;
+- deterministic shutdown/cleanup.
 
-No BookNLP, GLiNER, F-Coref, Qwen, GPU runtime, paid API, or Modal textual workload is downloaded/run by these tests.
+No BookNLP, GLiNER, F-Coref, Qwen, GPU runtime, paid API, or Modal textual workload is downloaded/run by normal merge tests.
 
-## Measured real-provider proof
+Current model-light suite after persistent lifecycle coverage: **`145 / 145` tests pass**, up from `139 / 139` before the six persistence lifecycle/failure tests.
 
-Issue #224 exercised the real pinned BookNLP-small runtime through the complete generic boundary rather than the dedicated benchmark harness. Detailed evidence is in `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
+## Measured real-provider proof — one-shot
+
+Issue #224 exercised the real pinned BookNLP-small runtime through the complete generic one-shot boundary. Detailed evidence is in `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 
 On pinned LitBank document `1023_bleak_house_brat` (`11,738` bytes; `2,319` syntax tokens), direct preserved BookNLP native output and generic subprocess execution produced the **same provider-neutral evidence fingerprint**:
 
 `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`
 
-Counts matched exactly: `230` identity mentions, `230` entities, `5` quotes, `20` event triggers and `2,319` syntax tokens. Typecheck and `139 / 139` analysis-worker tests passed on the measured heavyweight run.
+Counts matched exactly: `230` identity mentions, `230` entities, `5` quotes, `20` event triggers and `2,319` syntax tokens.
 
-The second exact-head run measured:
+Measured one-shot runs included:
 
-- `health()`: `2.847 s`;
-- one-shot generic `analyze()`: `8.930 s`;
-- whole measured process tree: `12.678 s`;
-- peak aggregate process-tree RSS: `1040.5 MiB`.
+- `health()` `2.578 s`, `analyze()` `6.314 s`, peak process-tree RSS `1037.2 MiB`;
+- `health()` `2.847 s`, `analyze()` `8.930 s`, peak process-tree RSS `1040.5 MiB`.
 
-The complete prepared offline runtime footprint was `460,346,121 bytes` (~`439 MiB`): `160,398,571` bytes of BookNLP task weights, `284,705,427` bytes of transformer cache, and `15,242,123` bytes of spaCy model files.
+The complete prepared offline runtime footprint measured about `439 MiB`: `160,398,571` bytes of immutable BookNLP task weights plus transformer cache and spaCy model files.
 
-A comparison using one loaded BookNLP instance measured `1.229 s` initialization and repeated processing in `4.505 s` then `4.140 s`, with identical native output fingerprints and `732.0 MiB` peak RSS. On that run, one-shot generic `analyze()` was about `2.16x` the second warm process pass.
+## Measured real-provider proof — persistent BookNLP
 
-Decision: the one-process-per-request subprocess protocol remains the validated correctness baseline, but measured overhead is material enough to justify a **persistent loaded Python provider/runtime challenger**. Keeping only an outer Node process alive would not address the measured model-runtime recreation. Any persistent challenger must remain localhost/private-only and preserve the same S.A.G.A.-owned request/evidence/fingerprint/security semantics.
+Issue #226 / `docs/experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md` measured the persistent loaded Python challenger twice on exact head:
 
-Whole cache-directory hashes are not stable model identities because ecosystem caches contain mutable bookkeeping. Provenance should rely on pinned model IDs/revisions, package versions and immutable artifact/file digests where available.
+`2fa30b185cb037180f3e7762f2166067096e08c5`
+
+Both heavyweight runs passed typecheck, `145 / 145` tests, offline runtime loading, malformed-request recovery and clean shutdown.
+
+All **six** persistent real-model analyze passes reproduced the exact validated one-shot evidence fingerprint and exact evidence counts.
+
+Attempt 1:
+
+- startup/health `3.694 s`;
+- analyze `4.977 / 4.627 / 4.368 s`;
+- median analyze **`4.627 s`**;
+- peak aggregate process-tree RSS `1007.1 MiB`;
+- artifact ID `10319696420`;
+- artifact digest `sha256:4d064dd228fa6d1ec8b812de3e7b42db778aec3d76671911154da46c78badbc8`.
+
+Attempt 2:
+
+- startup/health `3.134 s`;
+- analyze `3.039 / 2.745 / 2.853 s`;
+- median analyze **`2.853 s`**;
+- peak aggregate process-tree RSS `1028.7 MiB`;
+- artifact ID `10319368057`;
+- artifact digest `sha256:0e3462ed6a35ef758f1163f5cb78625df0086c40c37d9ab626ef37326e698456`.
+
+Compared with one-shot `6.314–8.930 s`, persistent median analyze latency improved materially on both independent runs. Peak RSS changed only slightly, so persistence is a **latency/model-reuse win, not a material memory win**. Cold startup/health was not faster than one-shot health.
+
+Whole cache-directory hashes/sizes vary slightly because ecosystem caches contain mutable bookkeeping. Provenance should rely on pinned model IDs/revisions, package versions and immutable artifact/file digests where available.
+
+Decision: **persistent local stdio is the preferred BookNLP runtime transport for repeated S.A.G.A. analysis.** The generic one-shot subprocess remains the correctness/reference implementation. No BookNLP quality result changes.
 
 ## Adoption boundary
 
@@ -195,7 +260,7 @@ This Phase-3B boundary implements and validates local evidence transport only.
 
 It does **not**:
 
-- promote BookNLP or any other provider;
+- promote BookNLP or any other provider into production;
 - make dependency relations canonical participants/events;
 - create a new durable application analysis job/table;
 - replace the current TypeScript orchestration owner;
@@ -203,6 +268,6 @@ It does **not**:
 - authorize a Vercel deployment;
 - authorize paid inference or Modal text analysis.
 
-The syntax extension specifically enables the measured #214 dependency-aware event-grounding challenger. Participant attachment must still resolve through S.A.G.A.-owned identity/entity evidence and must be benchmarked separately from trigger detection.
+The syntax extension specifically enables the measured dependency-aware event-grounding challenger. Participant attachment must still resolve through S.A.G.A.-owned identity/entity evidence and must be benchmarked separately from trigger detection.
 
-A persistent loaded local provider is now a justified Phase-3B runtime challenger because the real BookNLP measurement found material one-shot overhead. It remains an experiment until measured against the validated subprocess baseline for semantic equality, failure isolation, resource use and operational complexity.
+For BookNLP, transport selection is now resolved: use the persistent local stdio lifecycle when repeated analysis is needed, while retaining the one-shot path as the simple validation/reference implementation. Provider/model adoption remains independently gated by quality, licensing, private-corpus generalization, resource cost and failure review.
