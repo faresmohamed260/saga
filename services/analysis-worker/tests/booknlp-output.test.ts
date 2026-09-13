@@ -155,11 +155,11 @@ test("BookNLP output becomes source-anchored identity, quote, syntax, and event 
     ],
   );
   for (const event of evidence.eventTriggers) {
-    const syntax = evidence.syntaxTokens?.find((token) => token.tokenId === event.tokenId);
-    assert.ok(syntax);
-    assert.equal(syntax.surfaceText, event.surfaceText);
-    assert.equal(syntax.sentenceId, event.sentenceId);
-    assert.equal(syntax.syntacticHeadTokenId, event.syntacticHeadTokenId);
+    const matchingSyntaxToken = evidence.syntaxTokens?.find((token) => token.tokenId === event.tokenId);
+    assert.ok(matchingSyntaxToken);
+    assert.equal(matchingSyntaxToken.surfaceText, event.surfaceText);
+    assert.equal(matchingSyntaxToken.sentenceId, event.sentenceId);
+    assert.equal(matchingSyntaxToken.syntacticHeadTokenId, event.syntacticHeadTokenId);
   }
 
   const result = resolveCharacterIdentity({ normalizedText: text, evidence: evidence.identityEvidence });
