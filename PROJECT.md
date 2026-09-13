@@ -26,11 +26,11 @@ Durable decisions D-026 through D-030 require local-first, subscription-free tex
 
 ## Current Authoritative Checkpoint
 
-Merged `main` at the start of the active relationship failure-audit branch is:
+Merged `main` at the start of the active timeline-evidence branch is:
 
-`8dca05e4f4289d9452e8278554ef719b5c6a30f8`
+`0546284e00fabd614af06c0e5910cd4634b0a93b`
 
-That is PR #238, which merged the first explicit character relationship-observation + immutable source-order ledger foundation after exact-head merge gates passed.
+That is PR #240, which merged the relationship failure-mode audit and closed the public relationship coverage-tuning loop without broadening extraction policy.
 
 Latest merged Phase-3 checkpoints include:
 
@@ -43,15 +43,17 @@ Latest merged Phase-3 checkpoints include:
 - PR #232 — GLiNER typed-entity challenger benchmark, rejected for the current direct-role slot;
 - PR #234 — source-grounded event semantic qualifier evidence;
 - PR #236 — qualifier structural coverage audit; broad graph propagation rejected;
-- PR #238 — explicit character relationship observations + source-order evidence ledger.
+- PR #238 — explicit character relationship observations + immutable source-order ledger;
+- PR #240 — relationship failure-mode audit; strict relationship policy retained.
 
 Current unmerged measured work:
 
-- issue #239;
-- branch `v2/phase-3a-character-relationship-failure-audit`;
-- exact measured audit head `b738cb4296af2c9811d5cf18aac9aa8d44c9fe66`;
-- dedicated run `34783109777`, job `103793595218`;
-- documentation continues on top of the measured head without changing relationship extraction policy.
+- issue #241;
+- branch `v2/phase-3a-narrative-timeline-evidence`;
+- exact corrected scorer head `602120e8423719672a4e66da9b28ce02744bf598`;
+- dedicated run `34784052351`, job `103796185890`;
+- report fingerprint `a6590f9942f3df79cc1f122c6b97dce641495ce82e8dcbdc8bb04c8f9d217d6b`;
+- documentation continues on top of the measured head without changing timeline policy.
 
 ## Product Goal
 
@@ -151,17 +153,15 @@ BookNLP improves trigger F1 by about `+0.6746` absolute and remains the stronges
 
 ### Event participant grounding
 
-The conservative dependency policy uses direct `nsubj` / `agent->pobj` actors and direct `dobj` / `nsubjpass` patients, grounded only through already-linked S.A.G.A. identity spans with matching structural locators. Dative, conjunction inheritance and provider cluster IDs remain excluded.
-
-Across `7,445` trigger predictions:
+Across `7,445` trigger predictions, strict direct dependency grounding yields:
 
 - any grounded participant: `52.13%`;
-- actor-opportunity grounding yield: `83.75%`;
-- direct syntactic patient-candidate grounding yield: `33.20%`.
+- actor-opportunity grounding: `83.75%`;
+- direct syntactic patient-candidate grounding: `33.20%`.
 
-The patient audit found **zero true linked-character grounding misses** among `2,546` direct syntactic patient candidates. Low patient yield is dominated by broad direct-object semantics, not a measured identity-attachment defect.
+The patient audit found **zero true linked-character grounding misses** among `2,546` direct patient candidates. Low patient yield is dominated by broad direct-object semantics, not a measured identity-attachment defect.
 
-These are coverage/failure-mode diagnostics, not participant correctness metrics.
+Decision: keep direct grounding strict; these are coverage/failure-mode diagnostics, not participant correctness metrics.
 
 ### Typed non-character event participants
 
@@ -170,115 +170,79 @@ BookNLP public diagnostic on the fixed direct-role denominator:
 - clean typed non-character candidates: `146 / 6,701` (`2.18%`);
 - candidate events gaining typed evidence: `142 / 5,085` (`2.79%`).
 
-GLiNER PR #232 on the same denominator:
+GLiNER PR #232 on the same denominator produced only `47 / 6,701` (`0.70%`) clean candidates and `44 / 5,085` (`0.87%`) event gain.
 
-- clean typed non-character candidates: `47 / 6,701` (`0.70%`);
-- candidate events gaining typed evidence: `44 / 5,085` (`0.87%`);
-- relative coverage vs BookNLP: `0.322x` candidate / `0.310x` event.
-
-Decision: **retain the provider-neutral evidence contract, reject GLiNER at this pinned configuration for the current direct-role slot, and do not weaken role/locator policy to inflate coverage.**
+Decision: **retain the provider-neutral evidence contract; reject the pinned GLiNER configuration for this slot.**
 
 ### Event semantic qualifiers
 
-PR #234 added a source-grounded qualifier evidence layer. On the fixed `7,445` trigger population:
+PR #234 added strict source-grounded qualifier evidence. On `7,445` triggers:
 
 - any explicit cue: `53` (`0.71%`);
 - negated: `3`;
 - modalized: `45`;
 - conditional: `5`;
-- irrealis-cued: `50`;
-- unmarked/undetermined: `7,392`.
+- irrealis-cued: `50`.
 
-PR #236 audited `4,261` known cue tokens. `1,528` occur in event-bearing sentences, but only `53` match the strict policy. Most uncaptured cues are farther graph relationships: `961` deeper descendants, `354` other connected same-sentence relationships and `149` siblings/shared-head. Only `11` associated cues are uncaptured one-hop cases.
+PR #236 audited wider graph proximity and found most uncaptured cues much farther away; only `11` associated cues were uncaptured one-hop cases.
 
-Decision: **keep the strict qualifier contract and `undetermined` default unchanged.** Do not widen scope from generic graph proximity without semantic-scope correctness evidence.
+Decision: **keep the strict qualifier contract and `undetermined` default unchanged.**
 
-Detailed records:
+### Character relationship / source-order evidence
 
-- `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIERS.md`
-- `docs/experiments/BOOKNLP_EVENT_SEMANTIC_QUALIFIER_AUDIT.md`
+PR #238 introduced exact explicit relationship observations for pinned predicates `love`, `hate`, `trust`, `distrust`, `marry`, `divorce`, `befriend`, `betray`, with exact active/passive binary syntax and canonical-character grounding.
 
-### Character relationship / source-order state evidence
+Foundation 100-document diagnostic:
 
-PR #238 merged the first explicit relationship-observation contract. Relationship evidence remains separate from persistent state and later narrative-time interpretation.
+- predicate hits: `196`;
+- supported binary syntax: `48` (`24.49%`);
+- grounded distinct-character observations: `23` (`47.92%` of supported syntax; `11.73%` of hits).
 
-Pinned first-policy predicates:
+PR #240 audited the drop-off with **`195 / 195` tests** and preserved `196 / 48 / 23` exactly. Among `148` unsupported hits, `86` have no direct role shape, `36` active-subject-only, `18` active-object-only. Among `25` grounding failures, `19` are object-no-linked-character and all structural-locator mismatch classes are `0`.
 
-`love`, `hate`, `trust`, `distrust`, `marry`, `divorce`, `befriend`, `betray`.
-
-Only exact active `nsubj + dobj` or passive `nsubjpass + agent->pobj` shapes are eligible, and both roles must ground to exactly one canonical character. No reciprocal inference, conjunction inheritance, co-occurrence inference, event-co-participation inference, persistence or story-time claim is made. Direct negation/modal/conditional cues remain attached.
-
-Foundation model-light qualification:
-
-- typecheck pass;
-- **`188 / 188` tests pass**, up from `177 / 177` before this contract;
-- +11 is test/contract coverage only, not semantic quality.
-
-Foundation 100-document public diagnostic:
-
-- attempted/completed/failed: `100 / 100 / 0`;
-- pinned predicate hits: `196`;
-- exact supported binary syntax: `48` (`24.49%`);
-- two-character grounded observations: `23` (`47.92%` of supported syntax; `11.73%` of all hits);
-- active/passive observations: `23 / 0`;
-- unique directed pairs / pair+predicate groups: `20 / 20`;
-- repeated-support groups: `1` (`5.00%`), with `4` observations;
-- qualified observations: `6 / 23` (`26.09%`);
-- negated/modalized/conditional: `4 / 3 / 0`.
-
-Foundation report fingerprint:
-
-`66b228428713aa6b0b59b0e36f3e50e759f533eed243e015e77c9e69e1061c78`
-
-Issue #239 then audited the exact drop-off without changing policy. Exact measured head `b738cb4296af2c9811d5cf18aac9aa8d44c9fe66` completed `100 / 100` LitBank documents with `0` failures, typecheck pass, and **`195 / 195` tests pass**, up from `188 / 188` solely because of seven audit tests. No new model inference ran.
-
-The audit preserved **`196 / 48 / 23`** exactly.
-
-Syntax failures among the `148` unsupported hits:
-
-- no direct role shape: `86` (`58.11%` of unsupported);
-- active subject only: `36` (`24.32%`);
-- active object only: `18` (`12.16%`);
-- passive subject only: `5`;
-- passive agent only: `1`;
-- multiple active subjects / objects: `1 / 1`;
-- exact accepted passive shapes: `0`;
-- mixed active/passive, locator-style parser defects and other unsupported classes: `0`.
-
-Grounding failures among the `25` supported candidates that do not become observations:
-
-- object has no linked character: **`19` (`76%`)**;
-- self relation: `2`;
-- subject ambiguous: `2`;
-- subject has no linked character: `1`;
-- object ambiguous: `1`;
-- all structural-locator mismatch categories: **`0`**.
-
-Role grounding is asymmetric: subjects are grounded in `45 / 48`, objects in `28 / 48`. The `20` no-character argument positions split `PRON 10 / NOUN 10`; fine POS is `NN 9`, `PRP 5`, `WP 3`, `NNS 2`, `DT 1`.
-
-Predicate-specific supported/grounded counts:
-
-- `love`: `29 -> 16`, with `12` object-no-character;
-- `marry`: `9 -> 5`;
-- `hate`: `6 -> 0`, **all six object-no-character**;
-- `trust`: `3 -> 2`, one self relation;
-- `betray`: `1 -> 0`, object-no-character.
-
-Audit report fingerprint:
-
-`7e04a17d1cb5b9e0d48bc98d8a634b36e3e11ecbf5e81f9f3c54a90ec9ee69a1`
-
-Audit artifact:
-
-- ID `10325579385`;
-- digest `sha256:5be3f8c48b931acbc3967c7261b0f17f318a840307ffa89d6be6a99774fccc5d`.
-
-Decision: **keep the explicit observation + immutable source-order ledger and strict first-pass extraction policy unchanged.** The audit found no high-volume low-risk omission: syntax misses are mostly absent/one-sided direct structure, and grounding misses are mostly object-side non-character/unlinked arguments. Strict structural-locator matching causes zero measured failures. Do not widen predicates, dependency traversal, conjunction inheritance, co-occurrence/shared-event inference or identity rules merely to inflate coverage. No persistent relationship state and no production relationship default are adopted.
+Decision: **keep the strict relationship observation policy unchanged and stop public coverage tuning without semantic relationship gold.** No persistent relationship state or production relationship default is adopted.
 
 Detailed records:
 
 - `docs/experiments/CHARACTER_RELATIONSHIP_STATE_EVIDENCE.md`
 - `docs/experiments/CHARACTER_RELATIONSHIP_FAILURE_AUDIT.md`
+
+### Narrative order / temporal-cue evidence
+
+Issue #241 adds the first provider-neutral timeline evidence contract. It deliberately separates deterministic narrative/source order from story-world chronology.
+
+Contract/test qualification:
+
+- typecheck pass;
+- **`202 / 202` tests pass**, up from `195 / 195` before this contract;
+- +7 is test/contract coverage only, not chronology-quality improvement.
+
+Corrected 100-document diagnostic on head `602120e8423719672a4e66da9b28ce02744bf598`:
+
+- attempted/completed/failed: `100 / 100 / 0`;
+- no new model inference; preserved BookNLP output reused;
+- event candidates preserved: **`7,445`**;
+- trigger P/R/F1 preserved: **`0.8003 / 0.7591 / 0.7791`**;
+- temporal cue tokens in event-bearing sentences: **`871`**;
+- events with >=1 same-sentence cue: **`1,856 / 7,445` (`24.93%`)**;
+- event-bearing sentences with >=1 cue: **`734 / 3,686` (`19.91%`)**;
+- multi-event sentences: `1,888`;
+- cue-to-event attachments: `2,272`;
+- resolved story-time statuses: **`0`**;
+- emitted story-time relations: **`0`**;
+- narrative-order violations: **`0`**.
+
+Cue families are relative/sequence `613`, deictic `147`, interval/boundary `87`, relative-distance `21`, simultaneity `3`. Most common lemmas are `then 249`, `before 158`, `now 139`, `after 135`.
+
+Report fingerprint:
+
+`a6590f9942f3df79cc1f122c6b97dce641495ce82e8dcbdc8bb04c8f9d217d6b`
+
+Artifact ID `10325862289`, digest `sha256:0c6a36edd5241eb451593dfc4f4cef7af5aa04e6267678081c4c3a5fe92a3fc8`.
+
+Decision: **keep deterministic narrative order plus unscoped temporal-cue evidence, but do not infer story-world chronology yet.** Same-sentence cue presence is evidence availability, not semantic scope or temporal-relation accuracy. The `1,888` multi-event sentences make naïve cue-to-edge conversion especially unsafe. No production timeline default is adopted.
+
+Detailed record: `docs/experiments/NARRATIVE_TIMELINE_EVIDENCE.md`.
 
 ### BookNLP runtime transport
 
@@ -296,14 +260,14 @@ Decision: **persistent local stdio is preferred for repeated BookNLP execution; 
 
 ## Current Execution Order
 
-1. Finish issue #239 documentation and exact-head integration gates; merge the audit only if all required suites are green. Do not change relationship extraction policy in this slice.
-2. After #239, **stop the public relationship coverage-tuning loop** unless suitable semantic relationship gold becomes available. The structural audit found no broad safe omission.
-3. Move to a genuinely new source-neutral narrative capability. Prefer a bounded **explicit state-delta evidence foundation** before chronology/timeline: represent source-anchored state-change observations separately from persistent world state and story-time interpretation.
-4. If state-delta evidence cannot be defined safely from current evidence without semantic overclaiming, move instead to a provider-neutral chronology/timeline representation contract that stores source order, explicit temporal cues and unresolved ordering without inventing story-time chronology.
+1. Finish issue #241 documentation and exact-head integration gates; merge only if all required suites are green.
+2. Keep the v1 timeline boundary strict: narrative/source order is deterministic; temporal cues are unscoped evidence; story-time relations remain unresolved.
+3. Do not add before/after/simultaneous/flashback edges from cue presence alone. Require suitable temporal-relation gold/private annotations or another bounded measurable hypothesis first.
+4. After #241, revisit an **explicit state-delta evidence foundation** only if it can be source-grounded without silently claiming persistence or story-time validity. Otherwise build annotation/evaluation infrastructure for temporal relations before new chronology inference.
 5. Keep new public/source-neutral work diagnostic unless suitable gold supports correctness claims.
-6. When private EPUB access returns, create/score primary-suite scene/dialogue/event/relationship/state annotations for Harry Potter, The Cruel Prince, Caraval and ACOFAS and use those results for product decisions.
+6. When private EPUB access returns, create/score primary-suite scene/dialogue/event/relationship/state/timeline annotations for Harry Potter, The Cruel Prince, Caraval and ACOFAS and use those results for product decisions.
 7. Adopt no identity, scene, speaker, event, relationship/state or chronology default without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing.
-8. Continue causality, tension/arcs/themes only after state/timeline evidence contracts are stable, then specify the Event / State / Timeline Narrative Graph from those evidence layers.
+8. Continue causality, tension/arcs/themes only after state/timeline evidence contracts are stable, then specify the Event / State / Timeline Narrative Graph.
 
 ## Working Convention
 
