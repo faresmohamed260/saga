@@ -36,18 +36,24 @@ Authoritative Phase-3 material:
 
 ## Latest Phase 3 Progress
 
-Important merged checkpoints:
+Important merged checkpoints include:
 
-- PR #191 / `88133be6a7d20cfe02fba26f06e0dd636001fbd0` — whole-book benchmark + private modern-fiction suite;
-- PR #192 / `d6c1a144d0c4b4ad82e7229c583cb22682249f07` — primary-fiction identity regressions;
-- PR #193 / `201af2638b4df22aa2734b0cac934fa12b8e3e5e` — scene benchmark foundation;
-- PR #201 / `d029e465bc37d738debd1ebc8d5d831ab9249661` — dialogue/speaker benchmark foundation;
-- PR #204 / `0b638058f355c9e0610b7d13b9364948e4aa003f` — event trigger/participant benchmark foundation;
-- PR #207 / `c1dfa9f9e57545a7a3565b21e779f2514abacd04` — generic local literary-NLP subprocess boundary;
-- PR #210 / `9dfdd7e0c1234c021c9b2d2e5526a27b3d89bfe3` — BookNLP quote/speaker/event provider adapter behind that boundary;
-- PR #212 / `a3aba893f92e9e98e29d5e6f97e08672cc80637f` — repeatable 100-document public BookNLP component benchmark.
+- PR #191 — whole-book benchmark + private modern-fiction suite;
+- PR #192 — primary-fiction identity regressions;
+- PR #193 — scene benchmark foundation;
+- PR #201 — dialogue/speaker benchmark foundation;
+- PR #204 — event trigger/participant benchmark foundation;
+- PR #207 — generic local literary-NLP subprocess boundary;
+- PR #210 — BookNLP quote/speaker/event provider adapter behind that boundary;
+- PR #212 — repeatable 100-document public BookNLP component benchmark;
+- PR #217 — provider-neutral syntax evidence;
+- PR #221 — combined deterministic-quote + BookNLP speaker V2 challenger;
+- PR #222 — dependency-aware event participant-grounding challenger;
+- PR #223 — patient-candidate failure-mode audit proving zero measured linked-character attachment misses among direct patient candidates.
 
-PR #212 final head `280a2132d78ba8312d38f2d1f74267160830cd74` passed Required Check Compatibility, Analysis Worker CI, LitBank Oracle Baseline and Backend Architecture CI.
+Current merged `main` checkpoint: `161f84143cd14158aa72242beb46c669bf068de5`.
+
+Issue #224 now has successful heavyweight evidence proving the real pinned BookNLP-small runtime through the generic subprocess boundary. The measured runtime head is `dfa58d7e505eaebbd56605cfb97e879d1d1136cb`; its second proof run `34759959737` passed typecheck and `139 / 139` tests and preserved exact provider-neutral semantic evidence.
 
 ## Component Benchmark Snapshot
 
@@ -68,35 +74,38 @@ Current direction: deterministic quote boundaries remain preferred.
 
 ### Speaker attribution
 
-With oracle LitBank identity used only to isolate attribution quality:
+Current combined V2 public challenger:
 
-- BookNLP matched-known accuracy `0.7830` vs deterministic `0.3265`;
-- end-to-end recall `0.6765` vs `0.2793`;
-- contamination `0.1889` vs `0.2921`;
-- unresolved rate `0.0282` vs `0.3815`.
+- matched-known accuracy `0.7007`;
+- resolved accuracy `0.8040`;
+- end-to-end recall `0.5994`;
+- unresolved rate `0.1285`;
+- contamination `0.1709`.
 
-BookNLP is a strong speaker challenger but is **not adopted**. Issue #213 / PR #215 test a combined deterministic-quote + confidence-gated BookNLP-speaker policy intended to reduce contamination without surrendering the recall gain.
+It preserves deterministic quote F1 `0.8563` and is not a production default.
 
-### Event triggers
+### Event triggers / participants
 
-- BookNLP P/R/F1 `0.8003 / 0.7591 / 0.7791`;
+- BookNLP trigger P/R/F1 `0.8003 / 0.7591 / 0.7791`;
 - lexical Tier-0 P/R/F1 `0.4914 / 0.0585 / 0.1045`.
 
-BookNLP improves trigger F1 by about `+0.6746`. Participant grounding is not scored by this LitBank layer and remains open under issue #214.
+The conservative direct dependency-grounding policy remains the current public participant-grounding challenger. The patient audit found `0` true linked-character grounding misses among `2,546` direct syntactic patient candidates; broad `dobj` semantics, common nouns and pronouns dominate the low patient-opportunity yield. This is coverage/failure-mode evidence, not participant accuracy gold.
 
-### Repeatability / resources
+### Real runtime boundary
 
-Two independent 100-document CPU runs produced identical semantic fingerprint:
+Issue #224 measured one real BookNLP document through `saga-local-literary-subprocess-v1`:
 
-`e0ec94d8d1f678f98057a29117d365926a3253a4a6d5e6e0f7c96e36cab3bef9`
+- direct/subprocess evidence fingerprint equality: exact;
+- evidence counts: `230` identities, `230` entities, `5` quotes, `20` event triggers, `2,319` syntax tokens;
+- one-shot generic `health()` `2.847 s`;
+- one-shot generic `analyze()` `8.930 s`;
+- peak process-tree RSS `1040.5 MiB`;
+- complete prepared offline artifact footprint `460,346,121 bytes` (~`439 MiB`);
+- one loaded BookNLP instance initialized in `1.229 s` and processed repeated calls in `4.505 s` / `4.140 s`, with identical outputs and `732.0 MiB` peak RSS.
 
-- run 1: `452.68 s`, `1123.8 MiB` peak RSS;
-- run 2: `293.66 s`, `1157.2 MiB` peak RSS;
-- model artifacts: `160,398,571 bytes`;
-- `100 / 100` documents, zero failures on both runs;
-- `111 / 111` analysis-worker tests passed on both heavyweight attempts.
+Decision: generic subprocess semantic transport is validated; one-shot recreation overhead is material enough to justify a persistent **loaded Python** runtime challenger. This is a runtime decision, not a BookNLP quality promotion.
 
-BookNLP model-weight licensing remains unverified and blocks production adoption.
+Detailed evidence: `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 
 ## Benchmark / Experiment Docs
 
@@ -106,14 +115,17 @@ BookNLP model-weight licensing remains unverified and blocks production adoption
 - `experiments/EVENT_CANDIDATE_BENCHMARK.md`
 - `experiments/BOOKNLP_QUOTE_EVENT_CHALLENGER.md`
 - `experiments/BOOKNLP_COMPONENT_BENCHMARK.md`
+- `experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
+- `experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
+- `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`
 
 ## Phase 3B Local Provider Boundary
 
 `v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md` is the active execution-boundary contract.
 
-PR #207 provides the generic provider interface, versioned health/analyze/error protocol, no-shell bounded process execution, fingerprint validation, exact Unicode/source evidence checks and sanitized child environment. PR #210 adds a BookNLP-specific process/runner adapter while normal CI stays model-light.
+PR #207 provides the generic provider interface, versioned health/analyze/error protocol, no-shell bounded process execution, fingerprint validation, exact Unicode/source evidence checks and sanitized child environment. PR #210 adds a BookNLP-specific process/runner adapter while normal CI stays model-light. PR #217 adds validated provider-neutral syntax evidence.
 
-Important distinction: PR #212's real 100-document benchmark used the dedicated benchmark harness. A real BookNLP run **through the generic subprocess boundary** remains a separate open measurement. Subprocess also remains an experimental transport baseline; persistent loopback HTTP can be compared if startup/runtime evidence warrants it.
+Issue #224 proves that the real BookNLP runtime survives that complete generic boundary with exact semantic equality. The one-process-per-request lifecycle remains the validated correctness baseline, but measured one-shot overhead now justifies comparing a persistent loaded Python local runtime.
 
 ## Primary Fiction Evaluation
 
@@ -143,6 +155,8 @@ Owner decisions D-026 through D-030 require:
 - outbound-only local workers using existing Supabase/B2 boundaries;
 - provider output treated as evidence while S.A.G.A. owns canonical product truth.
 
+D-031 additionally requires all S.A.G.A. Modal work to fail closed to project-owned accounts `modal-03` through `modal-41`; this does not change the text-analysis prohibition.
+
 ```text
 Tier 0 deterministic structure/rules
   -> Tier 1 lightweight local NLP
@@ -164,9 +178,9 @@ Do not add new v2 analysis behavior to historical pre-v2 runtime packages.
 
 ## Immediate Continuation
 
-1. measure PR #215's combined speaker policy against the same pinned 100-document component gold;
-2. implement/measure dependency-aware event participant grounding under #214;
-3. execute real BookNLP through the generic subprocess boundary with preinstalled exact artifacts/caches;
+1. qualify and merge issue #224's real BookNLP generic-subprocess runtime proof;
+2. implement/measure a persistent loaded Python BookNLP runtime challenger against the one-shot baseline while preserving exact S.A.G.A. protocol/evidence/security semantics;
+3. move event work toward new semantic capability such as non-character entity participants and negation/modality/realis rather than attachment-rule expansion;
 4. when private EPUB access returns, score primary-suite scenes/dialogue/events and use those results for production decisions;
 5. preserve every rejection and negative benchmark instead of patching around it.
 
@@ -174,7 +188,7 @@ Do not add new v2 analysis behavior to historical pre-v2 runtime packages.
 
 - **Supabase:** existing v2 durable queue/control plane remains authoritative.
 - **Backblaze B2:** source bytes remain behind scoped runtime credentials.
-- **Modal:** image/media only.
+- **Modal:** image/media only; S.A.G.A.-owned labels are `modal-03` through `modal-41`.
 - **Vercel:** manual-only; Preview/Production requires fresh explicit owner approval stating reason, deployment type and exact SHA.
 
 ## Documentation Maintenance

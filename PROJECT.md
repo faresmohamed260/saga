@@ -30,14 +30,22 @@ Durable owner decisions D-026 through D-030 require local-first, subscription-fr
 
 At this handoff, merged `main` is:
 
-- `a3396e5cc829008a4bed2af87186726a3e201123`
-- PR #222 — merged dependency-aware event participant-grounding challenger infrastructure
+- `161f84143cd14158aa72242beb46c669bf068de5`
+- PR #223 — merged direct event patient-candidate failure-mode audit; issue #214 is complete.
 
-PR #222 exact qualified head was `1878167b6344dee34f435831169ac88003d2b3e0`; Required Check Compatibility, S.A.G.A. v2 Analysis Worker CI, S.A.G.A. v2 LitBank Oracle Baseline and Backend Architecture CI all passed before merge.
+The audit reused the preserved BookNLP inference, completed `100 / 100` LitBank documents with zero failures, passed typecheck and `139 / 139` analysis-worker tests, and found **zero true linked-character grounding misses** among `2,546` direct syntactic patient candidates. The strict participant-grounding policy remains unchanged.
 
-The follow-up patient-candidate failure-mode audit is on branch `v2/phase-3a-event-patient-audit`. Its exact measured scorer head `dc71151491e8fafb8f92f3fad98921bdb57d1c2d` reused the same preserved BookNLP inference, completed `100 / 100` LitBank documents with zero failures, passed typecheck and `139 / 139` analysis-worker tests, and produced report fingerprint `c8f36fb6a0af333c70c038e7dbe42ef94d78c3d1daf5b41fae24d6e4d412a571`.
+Phase-3B issue #224 now has a successful real BookNLP proof through the generic `saga-local-literary-subprocess-v1` boundary. Exact measured runtime head:
 
-Always verify live GitHub state before continuing. These SHAs are handoff checkpoints, not substitutes for checking newer commits/PRs.
+- `dfa58d7e505eaebbd56605cfb97e879d1d1136cb`
+- heavyweight run `34759959737` — success
+- typecheck — pass
+- analysis-worker tests — `139 / 139` pass
+- direct vs subprocess provider-neutral evidence fingerprint — exact equality
+- artifact ID `10318109017`
+- artifact digest `sha256:dbb49b34a31e0a711052c72cc19b8bce6d628114dde96d1897b9daf9791fd8a2`
+
+The runtime-proof branch is `v2/phase-3b-booknlp-subprocess-proof`. Its documentation commits may be newer than the measured runtime SHA; always verify live branch/PR state before continuing.
 
 ## Product Goal
 
@@ -150,7 +158,7 @@ The corrected 100-document scorer measured across `7,445` trigger predictions:
 
 Trigger P/R/F1 remained exactly `0.8003 / 0.7591 / 0.7791`.
 
-The follow-up patient audit explains the low direct-patient candidate yield rather than treating it as an attachment bug. Across `2,546` direct `dobj`/`nsubjpass` candidates:
+The merged patient audit explains the low direct-patient candidate yield rather than treating it as an attachment bug. Across `2,546` direct `dobj`/`nsubjpass` candidates:
 
 - grounded character: `824` (`32.36%`);
 - same-character duplicate already grounded through another mention: `4`;
@@ -160,16 +168,11 @@ The follow-up patient audit explains the low direct-patient candidate yield rath
 - ambiguous linked characters: `17`;
 - no identity/entity evidence: `1,503` (`59.03%`).
 
-Of the no-entity bucket, `1,216 / 1,503` (`80.90%`) are `NOUN`, `226` (`15.04%`) are `PRON`, and only `7` (`0.47%`) are `PROPN`. `dobj` dominates the candidate denominator (`2,304 / 2,546`, `90.49%`) and grounds as a character only `29.77%` of the time, while `nsubjpass` grounds `57.02%`.
+Of the no-entity bucket, `1,216 / 1,503` (`80.90%`) are `NOUN`, `226` (`15.04%`) are `PRON`, and only `7` (`0.47%`) are `PROPN`.
 
 These are coverage/failure-mode diagnostics, **not participant correctness metrics**, because LitBank event annotations do not provide S.A.G.A.-style actor/patient gold.
 
-Decision: **keep the strict character-grounding policy unchanged**. Do not enable dative, conjunction inheritance or provider clusters merely to inflate coverage. Direct dependency grounding remains the current public participant-grounding challenger infrastructure, not a production event default.
-
-Detailed evidence:
-
-- `docs/experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
-- `docs/experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
+Decision: **keep the strict character-grounding policy unchanged**. Direct dependency grounding remains the current public participant-grounding challenger infrastructure, not a production event default.
 
 ### Repeatability / resources
 
@@ -179,20 +182,28 @@ Two independent 100-document BookNLP component runs produced identical semantic 
 
 - run 1: `452.68 s`, `1123.8 MiB` peak RSS;
 - run 2: `293.66 s`, `1157.2 MiB` peak RSS;
-- model artifacts: `160,398,571 bytes`;
+- BookNLP task-model artifacts: `160,398,571 bytes`;
 - each run: `100 / 100` documents, `0` failures.
 
 BookNLP model-weight license remains **unverified** and blocks production adoption.
 
-Deterministic speaker/event policy scorers reuse the preserved native BookNLP output instead of rerunning the heavyweight model for every policy change.
+### Real generic provider runtime proof
 
-## Phase 3B Runtime State
+Issue #224 now proves the real pinned BookNLP runtime through the generic subprocess boundary on one pinned LitBank document.
 
-PR #207 merged the generic `LocalLiteraryEvidenceProvider` subprocess execution/validation boundary. PR #210 added the BookNLP-specific process/runner adapter while normal CI remained model-light. PR #217 exposed validated provider-neutral syntax evidence required for dependency-aware event grounding.
+- direct and subprocess evidence fingerprint: `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add` — exact equality;
+- evidence counts: `230` identities, `230` entities, `5` quotes, `20` event triggers, `2,319` syntax tokens;
+- one-shot `health()`: `2.847 s`;
+- one-shot `analyze()`: `8.930 s`;
+- peak aggregate process-tree RSS: `1040.5 MiB`;
+- full prepared offline footprint: `460,346,121 bytes` (~`439 MiB`), not merely the `160,398,571` bytes of task weights;
+- warm loaded BookNLP initialization: `1.229 s`;
+- warm repeated processing: `4.505 s` then `4.140 s` with identical native output;
+- warm process peak RSS: `732.0 MiB`.
 
-Important distinction: the real 100-document BookNLP benchmarks use the dedicated benchmark harness. They do **not** yet prove the real model end-to-end through the generic subprocess protocol. That measured boundary proof remains open.
+Decision: **the generic subprocess boundary is validated for real BookNLP semantic transport, and measured one-shot recreation overhead is material enough to justify a persistent loaded Python runtime challenger**. This changes the runtime experiment plan, not the BookNLP quality/adoption decision.
 
-Subprocess is also not permanently selected over loopback HTTP. Compare transports only after real startup/throughput measurements justify the comparison.
+Detailed evidence: `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 
 ## Private EPUB Availability
 
@@ -202,8 +213,8 @@ Do not replace the private suite with public-domain books. Continue source-neutr
 
 ## Current Execution Order
 
-1. qualify and merge the event patient failure-mode audit so the strict grounding decision and denominator semantics are durable;
-2. execute a real BookNLP run through the generic subprocess boundary with exact preinstalled artifacts/caches; compare persistent loopback only if startup/runtime measurements justify it;
+1. qualify and merge issue #224's real BookNLP generic-subprocess runtime proof;
+2. measure a persistent **loaded Python** BookNLP provider/runtime challenger against the validated one-shot baseline, preserving the same provider-neutral evidence and failure/security contracts;
 3. for event semantics, prefer genuinely new capability—non-character entity participants and negation/modality/realis—over attachment-rule expansion that merely raises coverage;
 4. when private EPUBs become reachable, create/score scene/dialogue/event annotations for the primary modern-fiction suite;
 5. adopt no identity, scene, speaker or event method without primary-suite evidence, repeatability, resource/failure review and production-compatible licensing;

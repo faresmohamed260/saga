@@ -164,6 +164,31 @@ Normal CI must remain model-light. The subprocess contract is tested with a tiny
 
 No BookNLP, GLiNER, F-Coref, Qwen, GPU runtime, paid API, or Modal textual workload is downloaded/run by these tests.
 
+## Measured real-provider proof
+
+Issue #224 exercised the real pinned BookNLP-small runtime through the complete generic boundary rather than the dedicated benchmark harness. Detailed evidence is in `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
+
+On pinned LitBank document `1023_bleak_house_brat` (`11,738` bytes; `2,319` syntax tokens), direct preserved BookNLP native output and generic subprocess execution produced the **same provider-neutral evidence fingerprint**:
+
+`8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`
+
+Counts matched exactly: `230` identity mentions, `230` entities, `5` quotes, `20` event triggers and `2,319` syntax tokens. Typecheck and `139 / 139` analysis-worker tests passed on the measured heavyweight run.
+
+The second exact-head run measured:
+
+- `health()`: `2.847 s`;
+- one-shot generic `analyze()`: `8.930 s`;
+- whole measured process tree: `12.678 s`;
+- peak aggregate process-tree RSS: `1040.5 MiB`.
+
+The complete prepared offline runtime footprint was `460,346,121 bytes` (~`439 MiB`): `160,398,571` bytes of BookNLP task weights, `284,705,427` bytes of transformer cache, and `15,242,123` bytes of spaCy model files.
+
+A comparison using one loaded BookNLP instance measured `1.229 s` initialization and repeated processing in `4.505 s` then `4.140 s`, with identical native output fingerprints and `732.0 MiB` peak RSS. On that run, one-shot generic `analyze()` was about `2.16x` the second warm process pass.
+
+Decision: the one-process-per-request subprocess protocol remains the validated correctness baseline, but measured overhead is material enough to justify a **persistent loaded Python provider/runtime challenger**. Keeping only an outer Node process alive would not address the measured model-runtime recreation. Any persistent challenger must remain localhost/private-only and preserve the same S.A.G.A.-owned request/evidence/fingerprint/security semantics.
+
+Whole cache-directory hashes are not stable model identities because ecosystem caches contain mutable bookkeeping. Provenance should rely on pinned model IDs/revisions, package versions and immutable artifact/file digests where available.
+
 ## Adoption boundary
 
 This Phase-3B boundary implements and validates local evidence transport only.
@@ -180,4 +205,4 @@ It does **not**:
 
 The syntax extension specifically enables the measured #214 dependency-aware event-grounding challenger. Participant attachment must still resolve through S.A.G.A.-owned identity/entity evidence and must be benchmarked separately from trigger detection.
 
-A persistent loopback sidecar may still be compared against one-shot subprocess execution if real startup/resource measurements justify it.
+A persistent loaded local provider is now a justified Phase-3B runtime challenger because the real BookNLP measurement found material one-shot overhead. It remains an experiment until measured against the validated subprocess baseline for semantic equality, failure isolation, resource use and operational complexity.

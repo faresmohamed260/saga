@@ -221,13 +221,64 @@ Two independent CPU runs produced identical semantic report fingerprint:
 - run 2 wall clock: `293.66 s`
 - run 1 peak RSS: `1123.8 MiB`
 - run 2 peak RSS: `1157.2 MiB`
-- model artifacts: `160,398,571 bytes`
+- BookNLP task-model artifacts: `160,398,571 bytes`
 - each run: `100 / 100` documents completed, `0` failed
 - heavyweight validation: `111 / 111` tests passed on both attempts
 
 The semantic result is repeatable across these two runs; runtime is host-dependent.
 
 The speaker V2, event-grounding and patient-audit policy scorers reuse the exact preserved native BookNLP output rather than repeating heavyweight inference for deterministic policy changes.
+
+## Phase 3B real BookNLP runtime boundary
+
+Issue #224 measured the real pinned BookNLP-small model through `saga-local-literary-subprocess-v1`, separate from the direct benchmark harness.
+
+On pinned LitBank document `1023_bleak_house_brat` (`11,738` bytes / `2,319` syntax tokens):
+
+- direct evidence fingerprint: `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
+- generic subprocess evidence fingerprint: the **same** value;
+- semantic evidence equality: `true`;
+- count equality: `true`;
+- identity mentions/entities/quotes/events/syntax: `230 / 230 / 5 / 20 / 2,319`.
+
+Second exact-head heavyweight run (`34759959737`):
+
+- `health()` wall clock: `2.847 s`;
+- one-shot generic `analyze()` wall clock: `8.930 s`;
+- whole proof process-tree wall clock: `12.678 s`;
+- peak aggregate process-tree RSS: `1040.5 MiB`;
+- typecheck: pass;
+- tests: `139 / 139` pass;
+- artifact ID: `10318109017`;
+- artifact digest: `sha256:dbb49b34a31e0a711052c72cc19b8bce6d628114dde96d1897b9daf9791fd8a2`.
+
+A first independent boundary run also produced the same semantic evidence fingerprint/counts with `health()` `2.578 s`, `analyze()` `6.314 s` and `1037.2 MiB` peak process-tree RSS.
+
+### Full offline runtime footprint
+
+The historical `160,398,571 byte` figure is still correct for BookNLP's three task-model files. The measured complete prepared offline footprint is larger:
+
+- BookNLP task weights: `160,398,571 bytes` (~`153.0 MiB`);
+- transformer cache: `284,705,427 bytes` (~`271.5 MiB`);
+- spaCy model: `15,242,123 bytes` (~`14.5 MiB`);
+- total prepared artifacts: `460,346,121 bytes` (~`439.0 MiB`).
+
+Whole cache-directory hashes varied across preparations because cache metadata/bookkeeping is mutable. They are not stable model identities. Pinned model IDs/revisions, package versions and immutable artifact/file digests remain the provenance anchors.
+
+### Warm loaded-runtime comparison
+
+One loaded BookNLP instance on the same document measured:
+
+- initialization: `1.229 s`;
+- warm processing: `4.505 s`, then `4.140 s`;
+- repeated output stable: `true`;
+- peak resident memory: `732.0 MiB`.
+
+On the same workflow run, one-shot generic `analyze()` was about `2.16x` the second warm process pass.
+
+Decision: **generic subprocess semantic transport is validated; one-shot process/model recreation overhead is material enough to justify a persistent loaded Python runtime challenger**. This is a runtime-architecture experiment decision only. It does not improve or promote BookNLP model quality.
+
+Detailed record: `docs/experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 
 ## Adoption blockers that still apply
 
@@ -237,4 +288,4 @@ The speaker V2, event-grounding and patient-audit policy scorers reuse the exact
 - no production speaker/event method is adopted;
 - event participant accuracy remains unmeasured on suitable gold;
 - scene quality remains unmeasured on the primary suite;
-- real BookNLP execution through the generic subprocess boundary still needs a measured end-to-end run separate from the direct benchmark harness.
+- the persistent loaded Python runtime still needs a measured challenger implementation before transport selection can change.
