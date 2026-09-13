@@ -236,28 +236,29 @@ export class PersistentBookNlpEvidenceProvider implements LocalLiteraryEvidenceP
     if (this.#closePromise) return this.#closePromise;
     this.#closing = true;
     this.#closePromise = this.#enqueue(async () => {
-      if (!this.#child) {
+      const child = this.#child;
+      if (!child) {
         this.#closed = true;
         return;
       }
-      const request = this.#baseRequest("shutdown");
-      const response = this.#validateCommon(await this.#request(request), request.requestId);
-      if (response.kind === "error") validErrorResponse(response);
-      if (
-        response.kind !== "shutdown" ||
-        response.status !== "ok" ||
-        response.booknlpVersion !== BOOKNLP_EXPECTED_PACKAGE_VERSION
-      ) {
-        throw new LocalLiteraryProviderError("booknlp_persistent_invalid_shutdown_response", false);
-      }
-      const child = this.#child;
-      this.#closed = true;
-      if (child) {
+      try {
+        const request = this.#baseRequest("shutdown");
+        const response = this.#validateCommon(await this.#request(request), request.requestId);
+        if (response.kind === "error") validErrorResponse(response);
+        if (
+          response.kind !== "shutdown" ||
+          response.status !== "ok" ||
+          response.booknlpVersion !== BOOKNLP_EXPECTED_PACKAGE_VERSION
+        ) {
+          throw new LocalLiteraryProviderError("booknlp_persistent_invalid_shutdown_response", false);
+        }
+      } finally {
+        this.#closed = true;
         child.stdin.end();
         if (!child.killed) child.kill("SIGTERM");
+        if (this.#child === child) this.#child = null;
+        this.#stdoutBuffer = Buffer.alloc(0);
       }
-      this.#child = null;
-      this.#stdoutBuffer = Buffer.alloc(0);
     }).finally(() => {
       this.#closed = true;
       this.#closing = false;
@@ -395,9 +396,7 @@ export class PersistentBookNlpEvidenceProvider implements LocalLiteraryEvidenceP
       clearTimeout(pending.timer);
       this.#pending = null;
       pending.resolve(payload);
-      if (this.#stdoutBuffer.length > 0) {
-        this.#child?.kill("SIGKILL");
-      }
+      if (this.#stdoutBuffer.length > 0) this.#child?.kill("SIGKILL");
       return;
     }
   }
