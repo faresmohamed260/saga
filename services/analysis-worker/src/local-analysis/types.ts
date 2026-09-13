@@ -34,6 +34,23 @@ export type QuoteSpeakerEvidence = {
   speakerProviderClusterId: string | null;
 };
 
+export type SyntaxTokenEvidence = {
+  evidenceId: string;
+  surfaceText: string;
+  lemma: string;
+  startOffset: number;
+  endOffset: number;
+  structuralLocator: string | null;
+  paragraphId: number;
+  sentenceId: number;
+  tokenIdWithinSentence: number;
+  tokenId: number;
+  posTag: string;
+  finePosTag: string;
+  dependencyRelation: string;
+  syntacticHeadTokenId: number;
+};
+
 export type EventTriggerEvidence = {
   evidenceId: string;
   surfaceText: string;
@@ -54,6 +71,11 @@ export type LocalLiteraryEvidenceBundle = {
   entities: LiteraryEntityEvidence[];
   quotes: QuoteSpeakerEvidence[];
   eventTriggers: EventTriggerEvidence[];
+  /**
+   * Optional provider-neutral sentence syntax evidence. Existing providers may omit it;
+   * providers that expose a dependency graph must satisfy strict source/head validation.
+   */
+  syntaxTokens?: SyntaxTokenEvidence[];
 };
 
 export type LocalLiteraryAnalysisInput = {
