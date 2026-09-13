@@ -49,11 +49,15 @@ Important merged checkpoints include:
 - PR #217 — provider-neutral syntax evidence;
 - PR #221 — combined deterministic-quote + BookNLP speaker V2 challenger;
 - PR #222 — dependency-aware event participant-grounding challenger;
-- PR #223 — patient-candidate failure-mode audit proving zero measured linked-character attachment misses among direct patient candidates.
+- PR #223 — patient-candidate failure-mode audit proving zero measured linked-character attachment misses among direct patient candidates;
+- PR #225 — real pinned BookNLP proof through the generic one-shot subprocess boundary;
+- PR #227 — persistent loaded BookNLP stdio runtime and repeatability proof.
 
-Current merged `main` checkpoint: `161f84143cd14158aa72242beb46c669bf068de5`.
+Current merged `main` checkpoint:
 
-Issue #224 now has successful heavyweight evidence proving the real pinned BookNLP-small runtime through the generic subprocess boundary. The measured runtime head is `dfa58d7e505eaebbd56605cfb97e879d1d1136cb`; its second proof run `34759959737` passed typecheck and `139 / 139` tests and preserved exact provider-neutral semantic evidence.
+`7261d9c31adacdb80b7304f1e47808353f42e152`
+
+Issue #226 is complete. D-032 records the measured transport decision: persistent local stdio is preferred when S.A.G.A. performs repeated BookNLP analysis; one-shot subprocess execution remains the simple correctness/reference path. This is a runtime decision only, not a BookNLP quality promotion.
 
 ## Component Benchmark Snapshot
 
@@ -93,19 +97,24 @@ The conservative direct dependency-grounding policy remains the current public p
 
 ### Real runtime boundary
 
-Issue #224 measured one real BookNLP document through `saga-local-literary-subprocess-v1`:
+The one-shot generic subprocess path was first validated with exact semantic equality to direct BookNLP evidence. The persistent challenger then reused a loaded local Python runtime over private stdio.
 
-- direct/subprocess evidence fingerprint equality: exact;
-- evidence counts: `230` identities, `230` entities, `5` quotes, `20` event triggers, `2,319` syntax tokens;
-- one-shot generic `health()` `2.847 s`;
-- one-shot generic `analyze()` `8.930 s`;
-- peak process-tree RSS `1040.5 MiB`;
-- complete prepared offline artifact footprint `460,346,121 bytes` (~`439 MiB`);
-- one loaded BookNLP instance initialized in `1.229 s` and processed repeated calls in `4.505 s` / `4.140 s`, with identical outputs and `732.0 MiB` peak RSS.
+Exact persistent implementation head `2fa30b185cb037180f3e7762f2166067096e08c5`, two independent heavyweight runs:
 
-Decision: generic subprocess semantic transport is validated; one-shot recreation overhead is material enough to justify a persistent **loaded Python** runtime challenger. This is a runtime decision, not a BookNLP quality promotion.
+- median analyze `4.627 s` and `2.853 s`;
+- one-shot analyze baselines `6.314 s` and `8.930 s`;
+- peak process-tree RSS `1007.1 MiB` / `1028.7 MiB` vs one-shot `1040.5 MiB`;
+- all six persistent passes reproduced exact evidence fingerprint `8be0f789a80ecf47c0b902b51e0492c17ef016023c3e215df6a4d57ff3e27add`;
+- exact evidence counts remained `230` identities, `230` entities, `5` quotes, `20` event triggers, `2,319` syntax tokens;
+- typecheck and **145 / 145** tests passed;
+- malformed-request recovery, offline model loading and clean shutdown passed.
 
-Detailed evidence: `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
+Decision: **persistent local stdio is preferred for repeated BookNLP analysis**. RSS improvement is small; the measured benefit is repeated latency/model reuse. Cold startup is not faster than one-shot health.
+
+Detailed evidence:
+
+- `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`
+- `experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`
 
 ## Benchmark / Experiment Docs
 
@@ -118,6 +127,7 @@ Detailed evidence: `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 - `experiments/BOOKNLP_EVENT_DEPENDENCY_GROUNDING.md`
 - `experiments/BOOKNLP_EVENT_PATIENT_AUDIT.md`
 - `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`
+- `experiments/BOOKNLP_PERSISTENT_RUNTIME_PROOF.md`
 
 ## Phase 3B Local Provider Boundary
 
@@ -125,7 +135,9 @@ Detailed evidence: `experiments/BOOKNLP_SUBPROCESS_RUNTIME_PROOF.md`.
 
 PR #207 provides the generic provider interface, versioned health/analyze/error protocol, no-shell bounded process execution, fingerprint validation, exact Unicode/source evidence checks and sanitized child environment. PR #210 adds a BookNLP-specific process/runner adapter while normal CI stays model-light. PR #217 adds validated provider-neutral syntax evidence.
 
-Issue #224 proves that the real BookNLP runtime survives that complete generic boundary with exact semantic equality. The one-process-per-request lifecycle remains the validated correctness baseline, but measured one-shot overhead now justifies comparing a persistent loaded Python local runtime.
+PR #225 proves that real BookNLP survives the complete generic one-shot boundary with exact semantic equality. PR #227 proves that keeping the Python BookNLP runtime loaded behind bounded local stdio preserves the same evidence/failure/security semantics while materially lowering repeated analyze latency. D-032 therefore selects persistent stdio specifically for repeated BookNLP use.
+
+Other local NLP providers still require their own measurements before inheriting this transport choice.
 
 ## Primary Fiction Evaluation
 
@@ -155,7 +167,7 @@ Owner decisions D-026 through D-030 require:
 - outbound-only local workers using existing Supabase/B2 boundaries;
 - provider output treated as evidence while S.A.G.A. owns canonical product truth.
 
-D-031 additionally requires all S.A.G.A. Modal work to fail closed to project-owned accounts `modal-03` through `modal-41`; this does not change the text-analysis prohibition.
+D-031 additionally requires all S.A.G.A. Modal work to fail closed to project-owned accounts `modal-03` through `modal-41`; this does not change the text-analysis prohibition. D-032 resolves the BookNLP repeated-runtime choice to persistent local stdio.
 
 ```text
 Tier 0 deterministic structure/rules
@@ -170,7 +182,7 @@ Tier 0 deterministic structure/rules
 - `../services/analysis-worker/` — active local analysis worker/control plane
 - `../services/analysis-worker/src/ingestion/` — deterministic normalization
 - `../services/analysis-worker/src/identity/` — provider-neutral identity evidence/resolution
-- `../services/analysis-worker/src/local-analysis/` — local literary provider boundary + BookNLP normalization
+- `../services/analysis-worker/src/local-analysis/` — local literary provider boundary + BookNLP normalization/runtime
 - `../services/analysis-worker/src/evaluation/` — identity/whole-book/scene/dialogue/event benchmark contracts
 - `../services/analysis-worker/tests/` — deterministic/model-light regressions
 
@@ -178,9 +190,9 @@ Do not add new v2 analysis behavior to historical pre-v2 runtime packages.
 
 ## Immediate Continuation
 
-1. qualify and merge issue #224's real BookNLP generic-subprocess runtime proof;
-2. implement/measure a persistent loaded Python BookNLP runtime challenger against the one-shot baseline while preserving exact S.A.G.A. protocol/evidence/security semantics;
-3. move event work toward new semantic capability such as non-character entity participants and negation/modality/realis rather than attachment-rule expansion;
+1. move Phase-3 work back from runtime plumbing to **new semantic capability**;
+2. for events, prioritize explicit non-character entity participants and/or negation/modality/realis rather than widening character attachment rules for coverage;
+3. keep public/source-neutral event work diagnostic unless suitable gold supports correctness claims;
 4. when private EPUB access returns, score primary-suite scenes/dialogue/events and use those results for production decisions;
 5. preserve every rejection and negative benchmark instead of patching around it.
 
