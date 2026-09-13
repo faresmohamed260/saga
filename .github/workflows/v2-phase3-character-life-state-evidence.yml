@@ -1,0 +1,145 @@
+name: Phase 3 character life-state candidate diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2/phase-3a-character-life-state-evidence
+    paths:
+      - ".github/workflows/v2-phase3-character-life-state-evidence.yml"
+      - "services/analysis-worker/package.json"
+      - "services/analysis-worker/src/evaluation/character-life-state-evidence.ts"
+      - "services/analysis-worker/src/evaluation/character-life-state-litbank-cli.ts"
+      - "services/analysis-worker/tests/character-life-state-evidence.test.ts"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: saga-phase3-character-life-state-evidence
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analysis-worker
+
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Reuse preserved pinned BookNLP outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: saga-phase3-booknlp-native-output-f77af8bcab488fd1069e9c6e8ed4970842c78692
+          path: services/analysis-worker/evaluation-artifacts/booknlp-output
+          github-token: ${{ github.token }}
+          repository: faresmohamed260/saga
+          run-id: 34727310506
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/analysis-worker/package.json
+
+      - name: Install worker dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck state evidence
+        run: npm run typecheck
+
+      - name: Run deterministic and model-light tests
+        run: npm test
+
+      - name: Measure character life-state candidate evidence
+        run: >-
+          npm run benchmark:character-life-state --
+          --litbank-root ../../external/litbank
+          --booknlp-root evaluation-artifacts/booknlp-output
+          --out evaluation-artifacts/character-life-state-litbank.json
+
+      - name: Verify complete diagnostic and safety invariants
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/character-life-state-litbank.json", "utf8"));
+          const d = report.dataset;
+          const e = report.eventBaseline;
+          const s = report.lifeState;
+          if (d.attemptedDocumentCount !== 100 || d.completedDocumentCount !== 100 || d.failedDocumentCount !== 0) {
+            throw new Error(`incomplete life-state diagnostic: ${d.attemptedDocumentCount}/${d.completedDocumentCount}/${d.failedDocumentCount}`);
+          }
+          if (e.predictedEventCount !== 7445 || s.eventCandidateCount !== 7445) {
+            throw new Error(`event denominator drift: ${e.predictedEventCount}/${s.eventCandidateCount}`);
+          }
+          if (e.triggerDetection.precision.toFixed(4) !== "0.8003" || e.triggerDetection.recall.toFixed(4) !== "0.7591" || e.triggerDetection.f1.toFixed(4) !== "0.7791") {
+            throw new Error(`trigger benchmark drift: ${e.triggerDetection.precision}/${e.triggerDetection.recall}/${e.triggerDetection.f1}`);
+          }
+          if (s.uniqueRequiredTargetCount + s.missingRequiredTargetCount + s.multipleRequiredTargetCount + s.targetMissingMentionEvidenceCount !== s.opportunityCount) {
+            throw new Error("life-state opportunity accounting mismatch");
+          }
+          if (s.candidateCount !== s.uniqueRequiredTargetCount) throw new Error("life-state candidate accounting mismatch");
+          if (s.storyTimeNonUnresolvedCount !== 0) throw new Error("story-time status leaked into life-state candidates");
+          if (s.stateApplicationCount !== 0) throw new Error("persistent/current state application leaked into v1");
+          if (s.sourceOrderViolationCount !== 0) throw new Error(`source-order violation: ${s.sourceOrderViolationCount}`);
+          if (report.scope.newModelInference !== false || report.scope.eventExtractionChanged !== false) throw new Error("life-state diagnostic changed inference/event extraction");
+          if (report.scope.stateCorrectnessScored !== false || report.scope.storyTimeValidityClaimed !== false) throw new Error("life-state diagnostic overclaims correctness/time validity");
+          if (report.scope.persistentStateApplied !== false || report.scope.productionAdoptionClaimed !== false || report.scope.rawSourceTextEmitted !== false) throw new Error("life-state state/adoption/source policy violation");
+          EOF
+
+      - name: Publish life-state evidence summary
+        shell: bash
+        run: |
+          node <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("fs");
+          const report = JSON.parse(fs.readFileSync("evaluation-artifacts/character-life-state-litbank.json", "utf8"));
+          const e = report.eventBaseline;
+          const s = report.lifeState;
+          const pct = (n, d) => d === 0 ? "0.00" : (100 * n / d).toFixed(2);
+          console.log("## Phase 3 character life-state candidate evidence diagnostic");
+          console.log("");
+          console.log(`- LitBank attempted/completed/failed: ${report.dataset.attemptedDocumentCount}/${report.dataset.completedDocumentCount}/${report.dataset.failedDocumentCount}`);
+          console.log(`- event candidates preserved: ${s.eventCandidateCount}`);
+          console.log(`- trigger P/R/F1: ${e.triggerDetection.precision.toFixed(4)} / ${e.triggerDetection.recall.toFixed(4)} / ${e.triggerDetection.f1.toFixed(4)}`);
+          console.log(`- die/kill trigger opportunities: ${s.opportunityCount} (${pct(s.opportunityCount, s.eventCandidateCount)}% of event candidates)`);
+          console.log(`- uniquely grounded required targets / candidates: ${s.uniqueRequiredTargetCount}/${s.candidateCount} (${pct(s.candidateCount, s.opportunityCount)}% of opportunities)`);
+          console.log(`- missing / multiple / missing-evidence target failures: ${s.missingRequiredTargetCount}/${s.multipleRequiredTargetCount}/${s.targetMissingMentionEvidenceCount}`);
+          console.log(`- candidates with any strict qualifier cue: ${s.candidateWithAnyQualifierCount}/${s.candidateCount} (${pct(s.candidateWithAnyQualifierCount, s.candidateCount)}%)`);
+          console.log(`- negated / modalized / irrealis-cued: ${s.candidateNegatedCount}/${s.candidateModalizedCount}/${s.candidateIrrealisCuedCount}`);
+          console.log(`- unique target characters / repeated target characters: ${s.uniqueTargetCharacterCount}/${s.repeatedTargetCharacterCount}`);
+          console.log(`- repeated candidate excess / max candidates for one character within a document: ${s.repeatedCandidateExcessCount}/${s.maxCandidatesPerCharacter}`);
+          console.log(`- non-unresolved story-time statuses / state applications / source-order violations: ${s.storyTimeNonUnresolvedCount}/${s.stateApplicationCount}/${s.sourceOrderViolationCount}`);
+          console.log("");
+          console.log("### Opportunities by predicate");
+          for (const [predicate, count] of Object.entries(s.opportunityByPredicate).sort()) console.log(`- ${predicate}: ${count}`);
+          console.log("");
+          console.log("### Candidates by predicate");
+          for (const [predicate, count] of Object.entries(s.candidateByPredicate).sort()) console.log(`- ${predicate}: ${count}`);
+          console.log("");
+          console.log(`- report fingerprint: \`${report.reportFingerprint}\``);
+          console.log("");
+          console.log("> Coverage/failure-mode evidence only. A candidate life-status change is not an asserted death and is never applied to persistent/current state in this v1 contract.");
+          EOF
+
+      - name: Upload aggregate life-state diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-phase3-character-life-state-evidence-${{ github.sha }}
+          path: services/analysis-worker/evaluation-artifacts/character-life-state-litbank.json
+          if-no-files-found: error
+          retention-days: 90
