@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/saga-logo.svg" alt="S.A.G.A. logo" width="280" />
-</p>
-
 <h1 align="center">S.A.G.A.</h1>
 
 <p align="center">
