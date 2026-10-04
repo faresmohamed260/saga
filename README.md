@@ -23,7 +23,7 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-8A2BE2" />
 </p>
 
-> **Project state:** S.A.G.A. v2 is an active, web-first rebuild. Phase 1 is complete, the Phase 2 repository foundation is complete, and Phase 3 local-first narrative analysis is active. Historical v1 runtime material is retained as evidence and reference, not treated as current v2 implementation.
+> **Project state:** S.A.G.A. has a production-domain, invite-only closed-beta surface, but the current v2 product is still in progress and is **not operational end to end**. Required application APIs and additional qualification testing remain incomplete. Phase 1 is complete, the Phase 2 repository foundation is complete, and Phase 3 local-first narrative analysis is active. Historical v1 runtime material is retained as evidence and reference, not treated as current v2 implementation.
 
 ## The problem
 
