@@ -1,93 +1,172 @@
-# S.A.G.A.
+<h1 align="center">S.A.G.A.</h1>
 
-[![Backend Architecture CI](https://github.com/faresmohamed260/saga/actions/workflows/backend-ci.yml/badge.svg?branch=main)](https://github.com/faresmohamed260/saga/actions/workflows/backend-ci.yml)
-[![Dashboard Pro CI](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml/badge.svg?branch=main)](https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml)
+<p align="center">
+  <strong>Story Analysis, Generation, and Archives</strong><br />
+  Evidence-linked narrative intelligence for books and series.
+</p>
 
-S.A.G.A. analyzes source books into evidence-backed canon, generates grounded stories and visual assets, synthesizes audited audiobooks, and packages release artifacts. The active implementation is a contract-driven collection of reusable runtimes rather than a monolithic application.
+<p align="center">
+  <a href="PROJECT.md">Current status</a>
+  · <a href="docs/README.md">Documentation</a>
+  · <a href="docs/v2/ANALYSIS_ARCHITECTURE_2026.md">Analysis architecture</a>
+  · <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/faresmohamed260/saga/actions/workflows/backend-ci.yml"><img alt="Backend Architecture CI" src="https://github.com/faresmohamed260/saga/actions/workflows/backend-ci.yml/badge.svg?branch=main" /></a>
+  <a href="https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml"><img alt="Dashboard Pro CI" src="https://github.com/faresmohamed260/saga/actions/workflows/dashboard-pro-ci.yml/badge.svg?branch=main" /></a>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" />
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-8A2BE2" />
+</p>
+
+> **Project state:** S.A.G.A. has a production-domain, invite-only closed-beta surface, but the current v2 product is still in progress and is **not operational end to end**. Required application APIs and additional qualification testing remain incomplete. Phase 1 is complete, the Phase 2 repository foundation is complete, and Phase 3 local-first narrative analysis is active. Historical v1 runtime material is retained as evidence and reference, not treated as current v2 implementation.
+
+## The problem
+
+Books are not flat text. A useful narrative system must understand who a character is across aliases and mentions, who spoke each line, what happened, where and when it happened, how relationships and states changed, and which source passage supports every claim.
+
+S.A.G.A. reverse-engineers novels and series into an evidence-linked narrative model for analysis, retrieval, timelines, visualization, and later canon-aware generation.
+
+## Product goal
+
+~~~mermaid
+flowchart LR
+    A["TXT / EPUB source"] --> B["Structure + mentions"]
+    B --> C["Characters + dialogue"]
+    C --> D["Scenes + atomic events"]
+    D --> E["Relationships + state"]
+    E --> F["Timeline + causality"]
+    F --> G["Retrieval · visualization · generation"]
+~~~
+
+Every derived claim should preserve source evidence, provenance, uncertainty, and the distinction between a candidate observation and accepted canon.
+
+## Current v2 capabilities
+
+### Application foundation
+
+- Web-first closed-demo product with invite-only access.
+- Supabase-owned identity and S.A.G.A.-owned product admission.
+- Private source ingestion, normalized text/section persistence, and owner-scoped access.
+- Durable jobs, leases, immutable runs, provenance, and evidence review surfaces.
+- Provider-neutral storage and analysis boundaries.
+- Backblaze B2 for private binary/source objects and Supabase/Postgres for structured state.
+
+### Local-first analysis foundation
+
+- Deterministic TXT/EPUB ingestion with normalized Unicode offsets and fingerprints.
+- Precision-first character identity policy with unresolved/quarantined evidence preserved.
+- Public LitBank evaluation harnesses and reproducible component fingerprints.
+- Deterministic quote detection currently leading the measured public comparison at **0.8563 F1**.
+- BookNLP event-trigger challenger measured at **0.7791 F1**, without premature production adoption.
+- Strict event participant, semantic qualifier, relationship-observation, narrative-order, temporal-cue, and life-state-candidate contracts.
+- Persistent local BookNLP stdio transport measured faster than one-shot execution with exact semantic equality.
+- Model-light CI plus dedicated whole-book/local qualification paths.
+
+Measured challengers are not silently promoted to defaults. See [PROJECT.md](PROJECT.md) and the [component scorecard](docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md) for current evidence and decisions.
+
+## Analysis strategy
+
+S.A.G.A. uses a cost-aware evidence cascade:
+
+1. **Deterministic structure and rules**
+2. **Lightweight local literary NLP**
+3. **Specialized local models for unresolved ambiguity**
+4. **Small local generative reasoning over bounded evidence packets**
+
+The required text-analysis path uses no paid AI subscription or API. Modal is reserved for image/media generation. Full novels and multi-book series—not short demo chunks—are the target workload.
 
 ## Architecture
 
-The active source tree has four primary surfaces:
+~~~mermaid
+flowchart TB
+    WEB["Next.js web application"]
+    SUPA["Supabase: Auth, Postgres, durable jobs"]
+    WORKER["Local analysis worker: outbound-only"]
+    NLP["Python NLP sidecars and optional local inference"]
+    B2["Backblaze B2: private source and object storage"]
+    MEDIA["Media generation boundary: Modal when approved"]
 
-- `packages/`: independent runtime packages for agents, reasoning, retrieval, persistence, execution, identity, media generation, observability, lineage, qualification, and deployment.
-- `integrations/`: provider implementations for ComfyUI, Kokoro TTS, and XCore LitBank on Modal.
-- `apps/dashboard_api/`: stateless FastAPI control and query surface.
-- `apps/dashboard_pro/`: React operator dashboard.
+    WEB --> SUPA
+    SUPA <--> WORKER
+    WORKER --> NLP
+    WORKER <--> B2
+    WORKER --> MEDIA
+    MEDIA --> SUPA
+~~~
 
-Supabase Postgres, pgvector, and object storage are persistence providers behind `packages/persistence_runtime`. LangGraph execution is owned by `packages/agent_runtime`. Provider credentials remain in persistence or deployment secret stores and are injected into runtimes; they are not committed to source control.
+The browser never talks directly to a local model. Supabase owns durable queue truth, so an offline worker can reconnect and resume. Provider output remains evidence; deterministic S.A.G.A. policy owns identifiers, validation, persistence, and state transitions.
 
-The historical implementation is inert reference material under `backup/reference/`. Active code is prohibited from importing it by an automated architecture-boundary test.
+## Technology
 
-## Pipeline
+- **Backend and analysis:** Python 3.10+, FastAPI, SQLAlchemy, Alembic, LangGraph, pytest
+- **Web:** Next.js/React application under apps/web
+- **Persistence:** Supabase PostgreSQL with owner/RLS boundaries
+- **Object storage:** Backblaze B2 behind a provider-neutral contract
+- **Retrieval and graph options:** pgvector and Neo4j where current contracts adopt them
+- **NLP evaluation:** deterministic analyzers, BookNLP experiments, LitBank/public corpora, private modern-fiction qualification
+- **Media:** separately governed ComfyUI/Modal generation integrations
 
-The production orchestration path covers:
+## Development method
 
-1. source ingestion and analysis foundation
-2. Modal XCore LitBank identity resolution
-3. canon extraction
-4. character and world modeling
-5. generation planning
-6. narrative generation and semantic support
-7. visual generation and image QA
-8. audiobook synthesis and transcription QA
-9. EPUB, manifest, lineage, and qualification reporting
+S.A.G.A. is contract-first, measurement-driven, and remote-first.
 
-See `docs/system_agent_roadmap.md` and `docs/production_qualification.md` for current implementation and qualification status.
+- The immediate phase contract is merged before substantial implementation.
+- State is labeled precisely: proposed, experimental, implemented, validated, or historical.
+- Algorithms and providers are adopted through quality/resource evidence, not because a demo runs.
+- Normal CI stays deterministic and model-light.
+- Full-book and heavyweight benchmarks run through dedicated qualification paths.
+- Architecture, data ownership, storage, authorization, retry behavior, and validation are explicit for every capability.
+- Documentation is updated from verified reality before a phase closes.
 
-## Development
+## Development setup
 
-Python dependencies are locked with `uv`:
+Create an isolated Python environment and install the package with development dependencies:
 
-```powershell
-uv sync --frozen --extra dev
-uv run pytest -q
-```
+~~~bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+pytest
+~~~
 
-Dashboard development:
+Large NLP models and full-book corpora are intentionally not part of the default CI path. Follow the active phase and experiment documents before running model-backed qualification.
 
-```powershell
-cd apps\dashboard_pro
-npm ci
-npm test -- --run
-npm run build
-```
+## Repository map
 
-Run the API after configuring the Supabase environment:
+| Path | Purpose |
+| --- | --- |
+| apps/web | Current web application |
+| services/analysis-worker | Durable analysis orchestration and local-worker control plane |
+| packages | Reusable runtime and domain packages |
+| integrations | Bounded provider implementations |
+| migrations / supabase | Database evolution and hosted schema assets |
+| tests | Active v2 contract and behavior tests |
+| docs/v2 | Current v2 architecture |
+| docs/phases | Execution contracts and amendments |
+| docs/experiments | Reproducible measurements and adoption evidence |
+| backup/reference | Isolated historical implementation; non-authoritative |
 
-```powershell
-uv run saga-runtime-api
-```
+## Documentation
 
-## Production
+Read in this order before substantial work:
 
-Production topology and operations are defined under `deploy/production/` and documented in `docs/deployment_operations.md`. API, workers, scheduler, observability, frontend, migrations, and telemetry collector are separate processes.
+1. [AI development instructions](AGENTS.md)
+2. [Current project handoff](PROJECT.md)
+3. [Documentation index](docs/README.md)
+4. [Durable decisions](docs/DECISIONS.md)
+5. [Active Phase 3 contract](docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md)
+6. [Primary evaluation corpus](docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md)
+7. [2026 analysis architecture](docs/v2/ANALYSIS_ARCHITECTURE_2026.md)
+8. [Local literary provider protocol](docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md)
 
-```powershell
-$env:SAGA_ENV_FILE = ".env"
-docker compose -f deploy\production\compose.yaml config
-docker compose -f deploy\production\compose.yaml up -d
-```
+## Roadmap
 
-Container bases and the OpenTelemetry collector are pinned by digest. CI publishes runtime and dashboard images from `main`, refuses existing version tags, creates provenance attestations, and stores a release manifest containing the commit and image digests. Production promotion additionally fails closed unless the deployment manifest has clean committed source provenance.
+The current priority is to complete a trustworthy local-first evidence stack for characters, dialogue, scenes, events, relationships, state, and time. Later phases can build causal/motivational graphs, arcs, summaries, canon-aware retrieval, visualization, and generation on that measured foundation.
 
-## Repository Layout
+No proposed layer is described as shipped until its v2 contract is implemented and validated.
 
-- `apps/`: API and dashboard application surfaces
-- `backup/reference/`: isolated, non-importable historical implementation
-- `deploy/production/`: production container topology
-- `docs/`: active architecture and operations documentation
-- `integrations/`: external provider implementations
-- `migrations/`: Alembic-owned PostgreSQL migrations
-- `packages/`: reusable runtime packages
-- `scripts/`: bounded runtime and validation entrypoints
-- `supabase/`: Supabase project schema assets
-- `tests/`: active architecture and behavior tests
+## License
 
-## Operational References
-
-- `docs/deployment_operations.md`: build, rollout, rollback, backup, and recovery
-- `docs/runtime_secrets.md`: provider credential ownership
-- `docs/storage_architecture.md`: persistence contracts and provider boundaries
-- `docs/production_orchestration_runtime.md`: end-to-end orchestration
-- `docs/production_qualification.md`: accepted real-book qualification evidence
-- `docs/architecture_hardening_audit.md`: architecture integrity audit
+S.A.G.A. is licensed under the [MIT License](LICENSE).
