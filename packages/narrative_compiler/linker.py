@@ -33,7 +33,13 @@ class ExactSurfaceCharacterLinker:
     stage_name = "character-linker-exact-surface"
     stage_version = "v3.0.0"
 
-    def link(self, *, source: NormalizedSource, mentions: Sequence[Mention]) -> LinkerResult:
+    def link(
+        self,
+        *,
+        source: NormalizedSource,
+        mentions: Sequence[Mention],
+        upstream_fingerprints: Sequence[str] = (),
+    ) -> LinkerResult:
         character_mentions = [m for m in mentions if m.entity_type is EntityType.CHARACTER]
         groups: dict[str, list[Mention]] = defaultdict(list)
         unresolved: list[Mention] = []
@@ -74,7 +80,7 @@ class ExactSurfaceCharacterLinker:
             stage_name=self.stage_name,
             stage_version=self.stage_version,
             config=config,
-            upstream_fingerprints=(),
+            upstream_fingerprints=upstream_fingerprints,
         )
         return LinkerResult(
             run=StageRunDescriptor(

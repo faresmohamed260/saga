@@ -72,4 +72,10 @@ class LinkerResult:
 
 @runtime_checkable
 class GlobalCharacterLinker(Protocol):
-    def link(self, *, source: NormalizedSource, mentions: Sequence[Mention]) -> LinkerResult: ...
+    def link(
+        self,
+        *,
+        source: NormalizedSource,
+        mentions: Sequence[Mention],
+        upstream_fingerprints: Sequence[str] = (),
+    ) -> LinkerResult: ...
