@@ -1,0 +1,101 @@
+name: V3 GLiNER2.5 LitBank Experiment
+
+on:
+  push:
+    branches:
+      - v3/qualification-gliner25-litbank
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v3-gliner25-litbank
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/v3-qualification.txt
+
+      - name: Install CPU Torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install pinned V3 qualification dependencies
+        run: python -m pip install -r requirements/v3-qualification.txt
+
+      - name: Run oracle-mention exact-surface isolation baseline
+        run: >-
+          python -m scripts.run_v3_litbank_identity_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-oracle-exact.json
+          --mode oracle-exact
+          --limit 100
+          --device cpu
+
+      - name: Run pinned GLiNER2.5 semantic lexer + exact-surface linker
+        run: >-
+          python -m scripts.run_v3_litbank_identity_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-gliner25-exact.json
+          --mode gliner25-exact
+          --limit 100
+          --device cpu
+          --threshold 0.5
+          --model-cache .cache/huggingface
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          print("## S.A.G.A. V3.0 public identity experiment")
+          print()
+          for name in ("v3-oracle-exact", "v3-gliner25-exact"):
+              report = json.loads(Path(f"evaluation-artifacts/{name}.json").read_text())
+              m = report["aggregate"]["metrics"]
+              r = report["resources"]
+              print(f"### {name}")
+              print(f"- Documents: {report['dataset']['documentCount']}")
+              print(f"- Canonical precision: {m['canonical_precision']:.4f}")
+              print(f"- Canonical recall: {m['canonical_recall']:.4f}")
+              print(f"- Incorrect merge rate: {m['incorrect_merge_rate']:.4f}")
+              print(f"- Fragmentation rate: {m['fragmentation_rate']:.4f}")
+              print(f"- Linked mention precision: {m['linked_mention_precision']:.4f}")
+              print(f"- Linked mention recall: {m['linked_mention_recall']:.4f}")
+              print(f"- Cluster purity: {m['cluster_purity']:.4f}")
+              print(f"- Wall time: {r['wall_seconds']:.2f}s")
+              if r['peak_process_tree_rss_bytes'] is not None:
+                  print(f"- Peak process-tree RSS: {r['peak_process_tree_rss_bytes'] / 1024**2:.2f} MiB")
+              model = report.get("model")
+              if model:
+                  print(f"- Model revision: `{model['revision']}`")
+                  print(f"- Model artifact SHA-256: `{model['artifact']['aggregate_sha256']}`")
+              print()
+          PY
+
+      - name: Upload experiment reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-gliner25-litbank-${{ github.sha }}
+          path: evaluation-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 90
