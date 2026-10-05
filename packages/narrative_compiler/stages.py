@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence, runtime_checkable
 
 from .ir import Entity, Mention, ModelDescriptor, StageRunDescriptor
@@ -28,6 +29,11 @@ class IdentityCandidate:
     mention_id: str
     candidate_entity_id: str
     features: Mapping[str, float]
+
+    def __post_init__(self) -> None:
+        if not self.mention_id or not self.candidate_entity_id:
+            raise ValueError("identity candidate IDs are required")
+        object.__setattr__(self, "features", MappingProxyType(dict(self.features)))
 
 
 @dataclass(frozen=True, slots=True)

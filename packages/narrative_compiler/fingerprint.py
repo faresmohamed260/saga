@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from enum import Enum
 import hashlib
 import json
@@ -10,8 +10,10 @@ from typing import Any, Mapping, Sequence
 
 
 def _canonicalize(value: Any) -> Any:
-    if is_dataclass(value):
-        return _canonicalize(asdict(value))
+    if is_dataclass(value) and not isinstance(value, type):
+        # Avoid dataclasses.asdict(): it deep-copies values and cannot safely
+        # traverse immutable MappingProxyType fields used by Narrative IR.
+        return {field.name: _canonicalize(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):

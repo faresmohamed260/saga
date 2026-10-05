@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Mapping
 
 from .fingerprint import stable_id
@@ -95,6 +96,9 @@ class Mention:
             raise ValueError("mention_id and text are required")
         if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
             raise ValueError("confidence must be between 0 and 1")
+        # Frozen dataclasses do not recursively freeze mutable mappings. Normalize
+        # once here so canonical IR cannot be mutated through a retained dict.
+        object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
 
     @classmethod
     def create(
@@ -129,7 +133,7 @@ class Mention:
             ),
             confidence=confidence,
             acceptance=acceptance,
-            attributes=dict(attributes or {}),
+            attributes=attributes or {},
         )
 
 

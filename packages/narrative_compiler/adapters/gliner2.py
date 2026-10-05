@@ -34,6 +34,7 @@ class GLiNER25SemanticLexer:
         *,
         model_id: str = GLINER25_BASE_V1.model_id,
         revision: str = GLINER25_BASE_V1.revision,
+        model_path: str | None = None,
         threshold: float = 0.5,
         chunk_size: int = 384,
         chunk_overlap: int = 64,
@@ -49,6 +50,7 @@ class GLiNER25SemanticLexer:
             raise ValueError("invalid long-document chunk configuration")
         self.model_id = model_id
         self.revision = revision
+        self.model_path = model_path
         self.threshold = threshold
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -71,13 +73,13 @@ class GLiNER25SemanticLexer:
                 from gliner2 import AutoExtractor
             except ImportError as exc:  # pragma: no cover - heavyweight optional path
                 raise RuntimeError(
-                    "GLiNER2 qualification dependency is intentionally outside normal CI; install `gliner2[local]==2.0.0` in the dedicated qualification environment"
+                    "GLiNER2 qualification dependency is intentionally outside normal CI; install the dedicated qualification requirements"
                 ) from exc
-            self._model = AutoExtractor.from_pretrained(
-                self.model_id,
-                revision=self.revision,
-                map_location=self.device,
-            )
+            load_target = self.model_path or self.model_id
+            load_kwargs = {"map_location": self.device}
+            if self.model_path is None:
+                load_kwargs["revision"] = self.revision
+            self._model = AutoExtractor.from_pretrained(load_target, **load_kwargs)
         return self._model
 
     def analyze(self, source: NormalizedSource) -> LexerResult:
