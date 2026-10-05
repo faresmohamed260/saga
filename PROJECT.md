@@ -1,88 +1,122 @@
 # S.A.G.A. Project Status
 
-S.A.G.A. is being rebuilt as a web-first narrative-intelligence platform. The active architecture is **S.A.G.A. v2**. Pre-v2 runtime material is historical/reference-only unless a current v2 decision explicitly re-adopts an idea behind a v2-owned contract.
+S.A.G.A. is being rebuilt as a web-first narrative-intelligence platform. The **accepted target textual-analysis architecture is now S.A.G.A. v3: the Narrative Compiler**. The existing v2 runtime remains the operational/baseline implementation until individual v3 capabilities pass shadow qualification and are explicitly promoted.
 
-This file is the **current project handoff**. It owns high-level phase and capability status. It intentionally avoids duplicating volatile branch heads, run IDs, and commit checkpoints unless they are needed to explain an active decision; Git history remains definitive for merge state.
-
-For detailed architecture, evaluation, and evidence, use the documentation index in [`docs/README.md`](docs/README.md).
+This file is the current project handoff. Git history remains authoritative for exact merge/commit state. Use [`docs/README.md`](docs/README.md) for the documentation map.
 
 ## Current status
 
 - **Phase 1 — Closed-demo main site, accounts, and invitations: COMPLETE.**
-- **Phase 2 — Story intake and character-identity foundation: REPOSITORY FOUNDATION COMPLETE; ORIGINAL HOSTED TEXT-PROVIDER DIRECTION SUPERSEDED.**
-- **Phase 3 — Local-first narrative-analysis rebaseline: ACTIVE.**
+- **Phase 2 — Story intake and character-identity foundation: REPOSITORY FOUNDATION COMPLETE.**
+- **Phase v2.3 — Local-first narrative-analysis baseline: FROZEN AS COMPARISON/OPERATIONAL BASELINE.**
+- **Phase V3.0 — Narrative Compiler Foundation: ACTIVE ON MERGE.**
 
-The complete v2 product is **not operational end to end yet**. The application/control-plane foundation and multiple narrative-evidence contracts are implemented, but additional analysis qualification and later narrative-intelligence layers remain incomplete.
+The application/control-plane foundation remains in place. V3.0 is an analysis-engine reboot, not a product/auth/storage rewrite.
 
-## Current architecture direction
+## Why v3
 
-The locked required text-analysis path is local-first and subscription-free:
+The v2 work established strong engineering invariants and useful measurements, but it also exposed the limits of treating book understanding primarily as a cascade of third-party literary-NLP providers plus rules.
 
-```text
-apps/web
-  -> Supabase durable analysis jobs
-      -> local S.A.G.A. analysis worker
-          -> B2 private source bytes
-          -> deterministic orchestration / evidence bookkeeping
-          -> local literary-NLP provider(s)
-          -> optional bounded local structured reasoning
-          -> structured evidence/results back to Supabase
-```
-
-For each analysis stage, prefer:
+V3 keeps the proven infrastructure and evidence discipline while replacing the semantic center with a local typed compiler:
 
 ```text
-Tier 0 deterministic structure/rules
-  -> Tier 1 lightweight local NLP
-  -> Tier 2 specialized local model for unresolved ambiguity
-  -> Tier 3 bounded local generative reasoning over evidence packets
+SOURCE COMPILER
+      -> SEMANTIC LEXER
+      -> GLOBAL LINKERS
+      -> NARRATIVE IR
+      -> SPECIALIST REASONERS
+      -> GLOBAL CONSTRAINT SOLVERS
+      -> CANONICAL NARRATIVE IR
+      -> graph / retrieval / generation projections
 ```
 
-Provider/model output is **evidence**, not product truth. Deterministic S.A.G.A. policy owns canonical IDs, merge/admission decisions, accepted/uncertain/rejected state, provenance, and persistence.
+The governing rule is:
 
-## Latest merged Phase 3 milestone
+> Models produce evidence. S.A.G.A. owns identity, consistency, provenance and canon.
 
-PR **#244 — Phase 3A: add character life-state candidate evidence** is merged.
+## V3.0 implementation scope
 
-It added the first provider-neutral character state-change **candidate** contract while preserving the existing safety boundary:
+The first phase is deliberately narrow:
 
-- `die` -> exactly one grounded character actor;
-- `kill` -> exactly one grounded character patient;
-- emitted observation is only an unverified `life_status -> dead` candidate;
-- qualifiers and source/narrative position remain evidence;
-- story time remains unresolved;
-- persistent/current state applications remain structurally empty.
+```text
+SOURCE COMPILER
+      -> SEMANTIC LEXER
+      -> GLOBAL CHARACTER LINKER
+      -> NARRATIVE IR
+      -> V2/V3 BENCHMARK REPORT
+```
 
-Qualification for that milestone preserved the event baseline and passed the model-light contract suite at **210 / 210 tests**. The public diagnostic emitted 16 narrow life-state candidates from 7,445 event candidates; no state-correctness or production-adoption claim was made from that coverage result.
+The execution contract is [`docs/phases/PHASE_V3_0_NARRATIVE_COMPILER_FOUNDATION.md`](docs/phases/PHASE_V3_0_NARRATIVE_COMPILER_FOUNDATION.md).
 
-Detailed record: [`docs/experiments/CHARACTER_LIFE_STATE_EVIDENCE.md`](docs/experiments/CHARACTER_LIFE_STATE_EVIDENCE.md).
+V3.0 will establish:
 
-## Product goal
+- a Python-native compiler package for semantic analysis;
+- typed Narrative IR models;
+- deterministic source/config/model/stage fingerprints;
+- an adapter over the existing normalized source representation;
+- a model-independent semantic-lexer contract;
+- a first GLiNER2-class lexer challenger;
+- book-global identity candidate generation/scoring/resolution contracts;
+- a first Ettin-class learned scorer challenger if qualification/license checks remain acceptable;
+- a frozen-v2 adapter;
+- one comparable v2-v3 benchmark report.
 
-S.A.G.A. is not a book summarizer. Its analysis runtime should reverse-engineer a novel or series into an evidence-linked narrative model covering:
+V3 remains shadow-only during this phase. Production reads/writes continue to use the existing path until a later explicit migration decision.
 
-- source / book / chapter / scene structure;
-- canonical character identities and mentions;
-- dialogue and speakers;
-- entities, locations, and factions;
-- atomic events and participants;
-- relationships and character-state evidence;
-- narrative order, temporal cues, and eventually story-world chronology;
-- later causality, arcs, tension, themes, retrieval, visualization, media, and grounded generation.
+## Foundations preserved from v2
 
-Keep three layers distinct:
+The reboot preserves:
 
-1. **Source layer** — immutable text/structure and exact evidence spans.
-2. **Resolved layer** — identities, references, speakers, and confidence-gated interpretation.
-3. **Derived intelligence layer** — events, relationships, state, timeline, causality, and higher narrative models.
+- deterministic TXT/EPUB ingestion and normalized source fingerprints;
+- immutable source bytes and exact evidence offsets;
+- chapter/section/source structure;
+- deterministic quote boundaries while they remain the measured leader;
+- Supabase durable jobs, leases and analysis runs;
+- B2 object-storage boundaries;
+- auth/RLS/application control-plane contracts;
+- immutable provenance and explicit uncertainty;
+- precision-first canonicalization;
+- existing public/private evaluation assets;
+- the principle that unresolved evidence is safer than an unsupported canonical assertion.
 
-Later evidence may change interpretation; it must not rewrite source text.
+## Canonical data direction
 
-## Current measured component state
+The v3 Narrative IR is the semantic source of truth. Canonical semantic state belongs in PostgreSQL/Supabase once production persistence is introduced. Neo4j, visualization graphs, search indexes and generation-oriented structures are derived/rebuildable projections rather than independent truth authorities.
 
-### Character identity
+The IR explicitly separates:
 
-BookNLP-small remains **rejected for primary identity**. Repeatable 100-document LitBank evidence includes:
+- `Mention` from `Entity`;
+- `EventMention` from `Event`;
+- `Observation` from accepted `Fact`;
+- attribute observations from persistent traits;
+- relationship observations from relationship state;
+- narrative/source order from story-world time;
+- temporal order from causality.
+
+See [`docs/v3/NARRATIVE_IR.md`](docs/v3/NARRATIVE_IR.md) and [`docs/v3/ONTOLOGY.md`](docs/v3/ONTOLOGY.md).
+
+## Required deployment/cost constraints
+
+- Required textual analysis remains local-first and subscription-free.
+- Paid AI APIs, hosted GPU subscriptions and per-token SaaS are not required dependencies.
+- Modal remains reserved for governed image/media workloads, not required text analysis.
+- Normal CI remains deterministic and model-light.
+- Heavy model/full-book runs use dedicated local/manual qualification paths.
+- Private copyrighted fiction must not enter Git or public CI/log artifacts.
+
+## Frozen v2 baseline
+
+The comparison branch is:
+
+`archive/v2-analysis-baseline-2026-10-05`
+
+Frozen baseline commit:
+
+`e9d24d54d351f9bf7c1cfa582a01db819efdb2fe`
+
+Important measured public baseline values include:
+
+### Character identity — BookNLP-small
 
 - canonical precision `0.4613`;
 - canonical recall `0.6030`;
@@ -92,128 +126,69 @@ BookNLP-small remains **rejected for primary identity**. Repeatable 100-document
 - linked-mention recall `0.1161`;
 - cluster purity `0.8667`.
 
-The precision-first deterministic attachment/resolution policy remains the foundation. Protected modern-fiction qualification remains part of the product gate.
-
-### Scenes
-
-Scene annotation/evaluation infrastructure exists, but **no scene method is production-adopted**. Primary-suite annotations remain a qualification dependency.
+BookNLP-small remains rejected as primary canonical identity truth.
 
 ### Quote detection
 
-Public LitBank comparison:
-
-- deterministic quote P/R/F1: `0.8570 / 0.8555 / 0.8563`;
+- S.A.G.A. deterministic quote P/R/F1: `0.8570 / 0.8555 / 0.8563`;
 - BookNLP quote P/R/F1: `0.7706 / 0.8640 / 0.8146`.
 
-Decision: **retain deterministic quote boundaries as the current measured leader among S.A.G.A.'s evaluated public candidates**.
-
-### Speaker attribution
-
-Raw BookNLP with oracle LitBank identity measured:
-
-- matched-known `0.7830`;
-- resolved `0.8057`;
-- end-to-end recall `0.6765`;
-- unresolved `0.0282`;
-- contamination `0.1889`.
-
-Combined V2 measured:
-
-- matched-known `0.7007`;
-- resolved `0.8040`;
-- end-to-end recall `0.5994`;
-- unresolved `0.1285`;
-- contamination `0.1709`;
-- deterministic quote F1 preserved at `0.8563`.
-
-Decision: **combined V2 remains an evaluated public challenger, not a production default**.
+The deterministic quote detector remains preserved.
 
 ### Event triggers
 
-- BookNLP trigger P/R/F1: `0.8003 / 0.7591 / 0.7791`;
+- BookNLP P/R/F1: `0.8003 / 0.7591 / 0.7791`;
 - lexical Tier-0 P/R/F1: `0.4914 / 0.0585 / 0.1045`.
 
-BookNLP remains the strongest measured public trigger challenger without automatic production adoption.
+BookNLP remains a measured event-trigger baseline/challenger, not an automatic v3 dependency.
 
-### Event participants
+Detailed measured state remains in [`docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`](docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md).
 
-Across `7,445` trigger predictions:
+## Evaluation policy
 
-- any grounded participant: `52.13%`;
-- actor-opportunity grounding: `83.75%`;
-- direct patient-candidate grounding: `33.20%`.
+Primary product qualification targets representative protected modern-fiction material. Copyrighted text/EPUB bytes remain private and outside Git.
 
-The direct-patient audit found zero measured true linked-character grounding misses among `2,546` direct patient candidates and zero structural-locator mismatch. These are failure-mode/coverage diagnostics, **not participant correctness metrics**.
+Public corpora such as LitBank remain reproducible secondary evidence. They do not by themselves promote a model into production, especially when a provider was trained on related annotations.
 
-### Event semantic qualifiers
+The preferred v3 product metric is **supported coverage at >=97% precision** where suitable gold exists. Raw recall alone is not an adoption target.
 
-Strict qualifier evidence remains conservative. On the pinned public trigger set it captured explicit negation/modality/conditional/irrealis cues without treating missing cues as affirmative truth.
-
-Decision: keep the strict qualifier contract and `undetermined` default.
-
-### Character relationships
-
-The current contract preserves explicit, source-grounded relationship observations only. It does **not** derive persistent relationship state from sparse public evidence.
-
-Decision: keep the strict observation policy and avoid broad graph propagation without semantic gold.
-
-### Narrative order and temporal cues
-
-The current foundation preserves deterministic narrative/source order and unscoped temporal-cue evidence.
-
-Decision: **do not infer story-world chronology yet**. Temporal cues are evidence; story-time relations remain unresolved until suitable evaluation can measure them.
-
-### Character life-state candidates
-
-Merged PR #244 adds the first deliberately narrow state-change candidate contract.
-
-Decision: **keep candidate evidence; do not assert, apply, or persist current character life state**.
-
-## Primary evaluation policy
-
-Primary product qualification targets protected modern-fiction material representing the intended workload, including multi-book series. Copyrighted novel text/EPUB bytes remain private and outside Git.
-
-LitBank is **secondary public/gold regression evidence** for reproducibility, component isolation, and public comparisons. It cannot by itself promote a provider or evidence policy into production—especially where provider models were trained on LitBank-derived annotations.
-
-Public benchmark claims in the README and docs therefore describe **S.A.G.A.'s measured candidate comparisons**, not broad state-of-the-art claims.
+Every candidate comparison should include quality plus wall time, peak RAM, peak VRAM when applicable, model/checkpoint revision, license, reproducibility and operational complexity.
 
 ## Current non-capabilities
 
-The following are intentionally not represented as shipped:
+The following must not be represented as shipped merely because v3 schemas or design documents exist:
 
-- complete end-to-end v2 product operation;
-- production-adopted scene segmentation;
-- story-world chronology / flashback resolution;
-- persistent/current character state from candidate evidence;
-- persistent relationship state from sparse observations;
+- production v3 identity/entity analysis;
+- production v3 scene segmentation;
+- production v3 speaker attribution;
+- production event/event-coreference compilation;
+- persistent character/world state;
+- story-world chronology and flashback resolution;
 - causal/motivational graph inference;
-- completed arc/tension/theme models;
-- final canon-aware retrieval and grounded-generation layers.
+- completed arcs/tension/themes;
+- final canon-aware retrieval or grounded generation from v3 IR.
 
-## Development and qualification rules
+## Immediate next action
 
-- Required textual analysis must not depend on a paid AI API/subscription.
-- Modal is reserved for governed image/media generation, not required text analysis.
-- Normal CI remains deterministic and model-light.
-- Heavyweight/provider experiments run through dedicated qualification paths.
-- Provider output remains evidence behind S.A.G.A.-owned validation and state policy.
-- Full-book resource accounting is part of provider selection.
-- Private copyrighted fiction must not leak into Git, logs, or public artifacts.
-- Experimental components are not silently promoted to defaults.
-- Documentation must distinguish implemented, evaluated, active, planned, and historical state.
+After the V3.0 phase contract and durable decisions are merged to `main`:
+
+1. create the isolated Python narrative-compiler package;
+2. implement the V3.0 Narrative IR subset and deterministic fingerprints;
+3. adapt the existing normalized source representation;
+4. implement model-independent lexer/linker interfaces with model-light tests;
+5. integrate the first qualified GLiNER2-class and Ettin-class challengers behind optional heavyweight paths;
+6. produce the first v2-v3 identity/entity comparison.
 
 ## Read next
 
-Use these sources by purpose:
-
 1. [`AGENTS.md`](AGENTS.md) — repository/AI development instructions.
 2. [`docs/README.md`](docs/README.md) — documentation map.
-3. [`docs/DECISIONS.md`](docs/DECISIONS.md) — durable architectural and product decisions.
-4. [`docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md`](docs/phases/PHASE_V2_3_LOCAL_FIRST_NARRATIVE_ANALYSIS.md) — active Phase 3 contract.
-5. [`docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md`](docs/phases/PHASE_V2_3_PRIMARY_EVALUATION_CORPUS.md) — evaluation policy.
-6. [`docs/v2/ANALYSIS_ARCHITECTURE_2026.md`](docs/v2/ANALYSIS_ARCHITECTURE_2026.md) — analysis architecture.
-7. [`docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md`](docs/v2/LOCAL_LITERARY_PROVIDER_PROTOCOL.md) — local provider boundary.
-8. [`docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`](docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md) — detailed measured component state.
-9. [`docs/experiments/`](docs/experiments/) — reproducible experiment records.
+3. [`docs/DECISIONS.md`](docs/DECISIONS.md) — durable decisions.
+4. [`docs/phases/PHASE_V3_0_NARRATIVE_COMPILER_FOUNDATION.md`](docs/phases/PHASE_V3_0_NARRATIVE_COMPILER_FOUNDATION.md) — active V3.0 contract.
+5. [`docs/v3/README.md`](docs/v3/README.md) — reboot package entry point.
+6. [`docs/v3/ARCHITECTURE.md`](docs/v3/ARCHITECTURE.md) — target architecture.
+7. [`docs/v3/NARRATIVE_IR.md`](docs/v3/NARRATIVE_IR.md) — semantic intermediate representation.
+8. [`docs/v3/EVALUATION.md`](docs/v3/EVALUATION.md) — comparison/promotion policy.
+9. [`docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md`](docs/validation/PHASE_V2_3_COMPONENT_SCORECARD.md) — frozen baseline evidence.
 
-Git history is authoritative for exact merge/commit state. This handoff owns the high-level project state and should be updated when that state changes materially.
+Git history owns exact merge state; this handoff owns the high-level active direction.
