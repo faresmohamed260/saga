@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from ..ir import Entity, Mention, ModelDescriptor
+from ..model_manifest import ETTIN_RERANKER_68M_V1
 from ..source import NormalizedSource
 from ..stages import IdentityCandidate, IdentityScore
 
@@ -18,8 +19,8 @@ class EttinRerankerIdentityScorer:
     def __init__(
         self,
         *,
-        model_id: str = "cross-encoder/ettin-reranker-68m-v1",
-        revision: str,
+        model_id: str = ETTIN_RERANKER_68M_V1.model_id,
+        revision: str = ETTIN_RERANKER_68M_V1.revision,
         context_chars: int = 360,
         model: Any | None = None,
     ) -> None:
@@ -38,7 +39,7 @@ class EttinRerankerIdentityScorer:
             model_id=self.model_id,
             revision=self.revision,
             adapter="sentence_transformers.CrossEncoder",
-            license_id="apache-2.0",
+            license_id=ETTIN_RERANKER_68M_V1.license_id if self.model_id == ETTIN_RERANKER_68M_V1.model_id else None,
         )
 
     def _load_model(self) -> Any:
@@ -47,7 +48,7 @@ class EttinRerankerIdentityScorer:
                 from sentence_transformers import CrossEncoder
             except ImportError as exc:  # pragma: no cover - heavyweight optional path
                 raise RuntimeError(
-                    "Ettin qualification is optional; install `sentence-transformers` in the qualification environment"
+                    "Ettin qualification is optional; install the `v3-linker` extra in the qualification environment"
                 ) from exc
             self._model = CrossEncoder(
                 self.model_id,

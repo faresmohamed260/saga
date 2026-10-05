@@ -37,6 +37,17 @@ nlp = [
 graph = [
   "neo4j",
 ]
+v3-lexer = [
+  "gliner2[local]==2.0.0",
+]
+v3-linker = [
+  "sentence-transformers==6.1.0",
+]
+v3-models = [
+  "gliner2[local]==2.0.0",
+  "sentence-transformers==6.1.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 namespaces = true

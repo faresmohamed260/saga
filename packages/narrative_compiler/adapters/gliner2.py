@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from ..fingerprint import artifact_fingerprint, config_fingerprint
 from ..ir import EntityType, Mention, ModelDescriptor, SourceSpan, StageRunDescriptor
+from ..model_manifest import GLINER25_BASE_V1
 from ..source import NormalizedSource
 from ..stages import LexerResult
 
@@ -31,8 +32,8 @@ class GLiNER25SemanticLexer:
     def __init__(
         self,
         *,
-        model_id: str = "fastino/gliner2.5-base-v1",
-        revision: str,
+        model_id: str = GLINER25_BASE_V1.model_id,
+        revision: str = GLINER25_BASE_V1.revision,
         threshold: float = 0.5,
         chunk_size: int = 384,
         chunk_overlap: int = 64,
@@ -61,7 +62,7 @@ class GLiNER25SemanticLexer:
             model_id=self.model_id,
             revision=self.revision,
             adapter="gliner2.AutoExtractor",
-            license_id="apache-2.0",
+            license_id=GLINER25_BASE_V1.license_id if self.model_id == GLINER25_BASE_V1.model_id else None,
         )
 
     def _load_model(self) -> Any:
@@ -70,9 +71,8 @@ class GLiNER25SemanticLexer:
                 from gliner2 import AutoExtractor
             except ImportError as exc:  # pragma: no cover - heavyweight optional path
                 raise RuntimeError(
-                    "GLiNER2 local inference is optional; install `gliner2[local]` in the qualification environment"
+                    "GLiNER2 local inference is optional; install the `v3-lexer` extra in the qualification environment"
                 ) from exc
-            # AutoExtractor forwards Hugging Face loading kwargs to the checkpoint loader.
             self._model = AutoExtractor.from_pretrained(
                 self.model_id,
                 revision=self.revision,
@@ -152,5 +152,14 @@ class GLiNER25SemanticLexer:
                 artifact_fingerprint=artifact,
                 model=self.descriptor,
             ),
-            mentions=tuple(sorted(mentions.values(), key=lambda item: (item.evidence.span.start_offset, item.evidence.span.end_offset, item.entity_type.value))),
+            mentions=tuple(
+                sorted(
+                    mentions.values(),
+                    key=lambda item: (
+                        item.evidence.span.start_offset,
+                        item.evidence.span.end_offset,
+                        item.entity_type.value,
+                    ),
+                )
+            ),
         )
