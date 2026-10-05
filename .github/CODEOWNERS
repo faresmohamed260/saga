@@ -1,6 +1,9 @@
 # Default owner for repository-wide review.
 * @faresmohamed260
 
-# Frontend ownership.
+# Current v2 web application.
+/apps/web/ @faresmohamed260
+
+# Retained Dashboard Pro surface.
 /apps/dashboard_pro/ @AmmarYasser72 @faresmohamed260
 /docs/dashboard_pro.md @AmmarYasser72 @faresmohamed260
