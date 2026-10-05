@@ -8,10 +8,12 @@ This ledger is a release gate, not legal advice. Repository/package and model-we
 
 | Candidate | Exact revision / package pin | Intended role | Observed license | Production posture |
 |---|---|---|---|---|
-| `fastino/gliner2.5-base-v1` | model `ca906247640776a07753514055be9726f9080ead`; `gliner2[local]==2.0.0` | semantic lexer | Apache-2.0 model + Apache-2.0 library | eligible challenger; **not adopted** |
-| `cross-encoder/ettin-reranker-68m-v1` | model `d166fa88ddde3c42bc3ee92f7df476d941c8204a`; `sentence-transformers==6.1.0` | identity candidate scorer experiment | Apache-2.0 model; Sentence Transformers package used through its standard local API | eligible challenger; **not adopted** |
+| `fastino/gliner2.5-base-v1` | model `ca906247640776a07753514055be9726f9080ead`; qualification package `gliner2[local]==2.0.0` | semantic lexer | Apache-2.0 model + Apache-2.0 library | eligible challenger; **not adopted** |
+| `cross-encoder/ettin-reranker-68m-v1` | model `d166fa88ddde3c42bc3ee92f7df476d941c8204a`; qualification package `sentence-transformers==6.1.0` | identity candidate scorer experiment | Apache-2.0 model; Sentence Transformers standard local API | eligible challenger; **not adopted** |
 
-The exact pins above are mirrored in `packages/narrative_compiler/model_manifest.py`. The model adapters load those revisions rather than unpinned Hugging Face `main`.
+The exact model pins above are mirrored in `packages/narrative_compiler/model_manifest.py`. The model adapters load those revisions rather than unpinned Hugging Face `main`.
+
+The heavyweight qualification packages are intentionally **not** added to the normal project dependency lock in V3.0 foundation work. Normal CI remains model-light; dedicated/manual qualification environments install the audited package versions explicitly. A separate heavy-model lock/profile can be introduced later once the candidate stack earns continued use.
 
 Important qualification caveat: the public Ettin checkpoint is trained as a text reranker/relevance scorer, **not literary coreference**. Its score is experimental evidence only. It must not become a merge probability or production identity policy without S.A.G.A.-owned calibration/quality evidence.
 
@@ -32,7 +34,7 @@ GLiNER2.5 is likewise a local semantic-lexer candidate, not a book-global identi
 2. A permissive model does not imply all training/evaluation datasets can be redistributed.
 3. Private copyrighted books used for qualification must never be committed as training/evaluation text.
 4. Research-only models can establish quality ceilings without becoming production dependencies.
-5. Normal/model-light CI must not install the `v3-lexer`, `v3-linker`, or `v3-models` extras.
+5. Normal/model-light CI must not install heavyweight V3.0 challenger packages or download their weights.
 6. Every production-promoted model requires:
    - source URL/repository;
    - exact revision/hash;

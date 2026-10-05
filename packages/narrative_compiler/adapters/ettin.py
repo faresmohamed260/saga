@@ -48,7 +48,7 @@ class EttinRerankerIdentityScorer:
                 from sentence_transformers import CrossEncoder
             except ImportError as exc:  # pragma: no cover - heavyweight optional path
                 raise RuntimeError(
-                    "Ettin qualification is optional; install the `v3-linker` extra in the qualification environment"
+                    "Ettin qualification dependency is intentionally outside normal CI; install `sentence-transformers==6.1.0` in the dedicated qualification environment"
                 ) from exc
             self._model = CrossEncoder(
                 self.model_id,

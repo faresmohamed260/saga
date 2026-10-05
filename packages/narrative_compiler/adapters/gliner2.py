@@ -71,7 +71,7 @@ class GLiNER25SemanticLexer:
                 from gliner2 import AutoExtractor
             except ImportError as exc:  # pragma: no cover - heavyweight optional path
                 raise RuntimeError(
-                    "GLiNER2 local inference is optional; install the `v3-lexer` extra in the qualification environment"
+                    "GLiNER2 qualification dependency is intentionally outside normal CI; install `gliner2[local]==2.0.0` in the dedicated qualification environment"
                 ) from exc
             self._model = AutoExtractor.from_pretrained(
                 self.model_id,
