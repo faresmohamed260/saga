@@ -41,17 +41,32 @@ def _metrics(report: Mapping[str, Any], *, label: str) -> Mapping[str, Any]:
     return metrics
 
 
+def _document_count(dataset: Mapping[str, Any], *, label: str) -> int:
+    if dataset.get("documentCount") is not None:
+        return int(dataset["documentCount"])
+    if dataset.get("completedDocumentCount") is not None:
+        failed = int(dataset.get("failedDocumentCount", 0))
+        if failed != 0:
+            raise ValueError(f"{label} report contains {failed} failed documents; comparison would change the denominator")
+        return int(dataset["completedDocumentCount"])
+    raise ValueError(f"{label} dataset does not expose a comparable document count")
+
+
 def _assert_comparable(v2: Mapping[str, Any], v3: Mapping[str, Any]) -> None:
     v2_dataset = v2.get("dataset")
     v3_dataset = v3.get("dataset")
     if not isinstance(v2_dataset, Mapping) or not isinstance(v3_dataset, Mapping):
         raise ValueError("both reports must identify their dataset")
-    for field in ("repository", "commit", "annotationLayer", "documentCount"):
+    for field in ("repository", "commit", "annotationLayer"):
         if v2_dataset.get(field) != v3_dataset.get(field):
             raise ValueError(
                 f"reports are not directly comparable: dataset {field} differs "
                 f"({v2_dataset.get(field)!r} != {v3_dataset.get(field)!r})"
             )
+    old_count = _document_count(v2_dataset, label="v2")
+    new_count = _document_count(v3_dataset, label="v3")
+    if old_count != new_count:
+        raise ValueError(f"reports are not directly comparable: document count differs ({old_count} != {new_count})")
 
 
 def main() -> None:
