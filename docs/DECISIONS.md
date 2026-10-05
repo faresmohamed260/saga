@@ -1,8 +1,8 @@
 # S.A.G.A. Durable Decisions
 
-This file records cross-cutting decisions future sessions must not silently reinterpret.
+This file records cross-cutting decisions future sessions must not silently reinterpret. Git history preserves the full decision evolution; this file owns the currently applicable decision set.
 
-## Active v2 Decisions
+## Active v3 Decisions
 
 ### D-001 — Repository Is the Persistent Source of Truth
 
@@ -12,255 +12,225 @@ Current repository code and authoritative documentation define S.A.G.A. state. C
 
 **Consequence:** Durable architecture, phase state, validation evidence and blockers must be recorded in GitHub.
 
-### D-011 — S.A.G.A. v2 Is a Fresh Rebuild
+### D-033 — Narrative Compiler Is the Accepted Target Analysis Architecture
 
-**Status:** Accepted — owner decision 2026-09-11
+**Status:** Accepted — owner decision 2026-10-06
 
-S.A.G.A. keeps its product goals/intended capabilities but abandons the previous implementation architecture as the active system.
+S.A.G.A. v3 replaces the v2 provider/evidence cascade as the accepted long-term textual-analysis architecture.
 
-The pre-v2 Python/nine-stage system is historical/reference material. v2 is not required to preserve its runtime package boundaries, deployment topology, persistence abstractions, qualification control plane, provider routing or orchestration design.
+The v3 engine is a local typed compiler:
 
-**Consequence:** Reuse requirements, algorithms, evaluations, schemas, prompts and lessons selectively; do not bulk-port v1 code or treat v1 compatibility as a default requirement.
+```text
+source compiler
+  -> semantic lexer
+  -> global linkers
+  -> Narrative IR
+  -> specialist reasoners
+  -> global constraint solvers
+  -> canonical Narrative IR
+  -> derived projections
+```
 
-### D-012 — v2 Is Web-First
+Models produce evidence; S.A.G.A. owns identity, global consistency, acceptance state, provenance and canon.
+
+The existing v2 runtime is not deleted or rewritten in place. It remains the operational and measured comparison baseline until v3 capabilities pass shadow qualification and are explicitly promoted.
+
+**Consequence:** New semantic implementation work must target the v3 Narrative IR/stage contracts rather than extending BookNLP/provider-specific structures as the permanent architecture. External model outputs are adapters into S.A.G.A.-owned contracts, not architectural truth.
+
+### D-034 — Narrative IR/Postgres Own Canonical Semantic State; Graphs Are Projections
+
+**Status:** Accepted — owner decision 2026-10-06
+
+S.A.G.A. v3 defines a typed Narrative IR that distinguishes source spans, mentions, entities, event mentions/events, observations/facts, state deltas, temporal constraints and other semantic objects.
+
+When v3 production persistence is introduced, canonical semantic state belongs in PostgreSQL/Supabase under S.A.G.A.-owned schemas and provenance rules. Neo4j, vector indexes, visualization graphs and generation-oriented structures are derived/rebuildable projections.
+
+**Consequence:** No graph database or model-provider identity is allowed to become an independent source of canon. A derived projection must be rebuildable from canonical source/IR state.
+
+### D-035 — V3 Semantic Inference Is Python-Native; Existing Durable Control Plane Remains
+
+**Status:** Accepted — owner decision 2026-10-06
+
+The v3 semantic compiler is implemented as an isolated Python-native package/runtime because the target NLP/encoder/model ecosystem is Python-native and because semantic model scheduling should be owned in one long-lived compiler process.
+
+Supabase remains durable queue/run truth. The existing application/auth/B2/control-plane boundaries remain in place. The current TypeScript analysis worker may supervise/invoke the compiler during migration, but semantic stage logic, Narrative IR and model orchestration belong in the Python compiler rather than being split into provider-shaped TypeScript adapters.
+
+**Consequence:** V3.0 does not authorize replacement of Supabase jobs, B2, web/auth infrastructure, or production read paths. The compiler begins in shadow/benchmark mode.
+
+### D-036 — V3 Uses Typed Static Dataflow, Not Agentic Control, for Book Compilation
+
+**Status:** Accepted — owner decision 2026-10-06
+
+The core book-analysis runtime is a typed dependency DAG with content-addressed artifacts, deterministic invalidation/caching, explicit stage versions and bounded learned components. An LLM/agent does not decide which mandatory compiler pass runs next.
+
+Agentic orchestration remains appropriate for later interactive workflows, generation, research, or user-directed tool use, but not as the source of truth for deterministic compilation order.
+
+**Consequence:** Compiler-stage dependencies and invalidation rules must be explicit and testable. LangGraph or another agent framework must not become foundational to the required analysis path merely for orchestration convenience.
+
+### D-037 — V3 Adoption Optimizes Supported Coverage at High Precision
+
+**Status:** Accepted — owner decision 2026-10-06
+
+For semantic/canonical decisions, S.A.G.A. prefers unresolved output over unsafe assertions. The principal v3 product target is supported coverage at **>=97% precision** where suitable gold exists, together with task-specific false-merge/fragmentation/contamination metrics and resource measurements.
+
+**Consequence:** A system does not win by maximizing recall while contaminating canon. Qualification must report unresolved rate and useful coverage alongside precision, recall, runtime, RAM/VRAM, model revision, license and provenance completeness.
+
+## Earlier v2 Decisions That Remain Applicable Unless Explicitly Superseded
+
+### D-011 — S.A.G.A. v2 Was a Fresh Rebuild
+
+**Status:** Historical but still informative
+
+The pre-v2 Python/nine-stage runtime is historical/reference material rather than an implementation compatibility requirement. V3 likewise reuses requirements, evaluations and proven invariants selectively rather than bulk-porting old package boundaries.
+
+### D-012 — Product Surface Is Web-First
 
 **Status:** Accepted
 
-The main application is built first as a web product using:
+The main user-facing product remains Next.js/React/TypeScript on the web with Supabase application state/auth and dedicated object storage. The v3 semantic-engine reboot does not reverse this product decision.
 
-- Next.js + React + TypeScript;
-- Vercel deployment target;
-- Supabase Postgres/Auth/Realtime;
-- Cloudflare DNS/CDN/security where useful;
-- dedicated object storage behind a S.A.G.A.-owned interface.
-
-The active product surface is `apps/web/`.
-
-**Consequence:** User-facing domain workflows, application state, auth, jobs and storage contracts are designed before the new agentic AI runtime.
-
-### D-013 — Agentic AI Follows the Web/Application Foundation
+### D-013 — AI Runtime Operates Behind Application-Owned Contracts
 
 **Status:** Accepted
 
-The new agentic AI subsystem is intentionally deferred until the web frontend/backend, application data model, storage, authentication, job lifecycle and deployment contracts are stable enough to consume.
+AI/analysis systems operate behind the application data, auth, job and storage boundaries rather than becoming the top-level product architecture.
 
-**Consequence:** Phase 0/1 must not recreate the old pipeline as top-level product architecture. Future agents operate behind application-owned contracts and write structured application state/artifacts.
-
-### D-014 — Backblaze B2 Is the v2 Object Store
+### D-014 — Backblaze B2 Is the Object Store
 
 **Status:** Accepted
 
-S.A.G.A. v2 will not use the existing shared Cloudflare R2 allocation. Backblaze B2 is selected for dedicated S.A.G.A. object storage for the hobby/demo deployment.
-
-Supabase owns structured relational application state. B2 owns source files, generated media, exports and other large binary/object payloads.
-
-**Consequence:** Do not make new S.A.G.A. storage depend on RenderLab/Fares Uniform R2 resources. Keep the object-store boundary replaceable.
+Supabase owns relational application state; B2 owns source files, generated media, exports and other large objects for the hobby/demo deployment.
 
 ### D-015 — Object Storage Is Provider-Neutral at the Domain Boundary
 
 **Status:** Accepted
 
-Feature/domain code depends on a S.A.G.A.-owned storage interface rather than directly on B2/AWS SDK clients. The B2 runtime implementation may use Backblaze's S3-compatible API once a scoped application key exists.
-
-**Consequence:** Vendor details remain in the server storage infrastructure boundary. Switching to another S3-compatible store should not require rewriting domain features.
+Feature/domain code depends on a S.A.G.A.-owned storage interface rather than directly on B2-specific clients.
 
 ### D-016 — B2 Master Key Is Bootstrap-Only
 
 **Status:** Accepted
 
-Repository secrets `SAGA_B2_KEY_ID` and `SAGA_B2_MASTER_APPLICATION_KEY` are available for bounded Backblaze account/bootstrap operations. Their values must never be printed or committed.
+Master credentials are not normal web runtime credentials and must never be printed or committed. Normal runtime access uses scoped credentials and explicit storage boundaries.
 
-Backblaze master application keys are not S3-compatible, so they are not the normal web runtime credential.
-
-**Consequence:** GitHub Actions may use the master key for bounded bucket administration/smoke tests. Normal web storage later uses a bucket-scoped application key and explicit S3 endpoint configuration.
-
-### D-017 — RenderLab Is a Read-Only Engineering/UI Reference, Not a Shared Product
-
-**Status:** Accepted — strengthened by owner instruction 2026-09-11
-
-`faresmohamed260/renderlab` is a separate product. S.A.G.A. may inspect its current repository documentation for proven setup/process/architecture/UI governance conventions.
-
-Permitted reference categories include repository-first continuity, progressive phase contracts, frontend/server/infrastructure ownership, maintained primitives, responsive/accessibility/reduced-motion rules, closed-beta invitation/access concepts and remote CI/render validation.
-
-**Consequence:** S.A.G.A. work must not modify RenderLab. Do not copy RenderLab product code, visual identity, page composition, routes, database/schema names, product data, Supabase/R2 credentials, storage resources or deployments. An adopted principle becomes authoritative only after it is translated into a S.A.G.A.-owned contract/implementation.
-
-### D-018 — Progressive v2 Phases Are Contract-First
+### D-017 — RenderLab Is Read-Only Reference Material
 
 **Status:** Accepted
 
-Fully specify only the immediate v2 phase and keep later phases at roadmap level until predecessor evidence is stable.
+RenderLab is a separate product. S.A.G.A. may borrow proven engineering principles only after translating them into S.A.G.A.-owned contracts. It must not share product code, product state, credentials, deployments or identity.
 
-For substantial phases, the execution-ready contract/governance update is merged to `main` before production implementation begins.
+### D-018 — Substantial Phases Are Contract-First
 
-**Consequence:** Planning detail is not implementation evidence; a merged contract does not authorize deployment or paid/live provider execution.
+**Status:** Accepted
 
-### D-019 — S.A.G.A. v2 Is a Closed Invite-Only Demo
+For substantial phases, an execution-ready contract/governance update is merged to `main` before production implementation begins.
 
-**Status:** Accepted — owner decision 2026-09-11
+**Consequence:** Planning is not implementation evidence. A merged contract does not by itself authorize deployment, paid services or promotion of experimental models.
 
-The v2 application is not a public self-service SaaS. There is no ordinary public create-account flow.
+### D-019 — Product Is a Closed Invite-Only Demo
 
-A public landing/brand surface may exist, but application access requires an invited account.
+**Status:** Accepted
 
-**Consequence:** Access begins from an admin-created email invitation. Sign-in, invite confirmation, password setup/recovery and account management are designed for a bounded demo population rather than open registration.
+There is no ordinary public self-service signup. Product access begins through invited accounts.
 
 ### D-020 — Supabase Auth Owns Identity; S.A.G.A. Owns Product Access
 
 **Status:** Accepted
 
-Supabase Auth is the identity/session authority. S.A.G.A. owns product admission/authorization in S.A.G.A.-specific relational records.
+Authorization uses verified Supabase identity plus S.A.G.A.-owned role/status, not browser-supplied IDs, unsigned metadata or invitation text.
 
-The initial account model uses a verified Auth user ID plus S.A.G.A.-owned role/status. Invitations begin from normalized email and become account access only after verified invitation/session identity is established.
-
-**Consequence:** Never authorize from browser-supplied IDs, `user_metadata`, unsigned role claims or invitation query text. Private application authorization uses fresh server verification of the current Auth identity plus active S.A.G.A. access state. Admin operations require fresh active-admin authorization.
-
-### D-021 — Invitation Secrets Are Auth-Provider Concerns, Not Application Records
+### D-021 — Invitation Secrets Are Auth-Provider Concerns
 
 **Status:** Accepted
 
-S.A.G.A. invitation records track product intent/state but do not persist reusable raw invite tokens/secrets.
-
-**Consequence:** Application tables cannot become a parallel credential/token store. Invitation acceptance must fail closed if verified Auth identity/email does not match an eligible S.A.G.A. invitation.
+Application tables track invitation intent/state but do not become a reusable token/credential store.
 
 ### D-022 — Hosted Email Delivery Is an Explicit Operational Gate
 
 **Status:** Accepted
 
-Email invitations/recovery are part of the product requirement, but hosted email configuration cannot be considered solved by application code alone.
+Invitation/recovery code does not imply verified email deliverability. Operational configuration must be validated separately.
 
-**Consequence:** CI may validate code/contract without sending real email. Documentation must distinguish implemented invitation mechanics from verified email deliverability.
-
-### D-023 — S.A.G.A. UI Uses Maintained Mechanics but Owns Its Visual System
+### D-023 — S.A.G.A. Owns Its Visual System
 
 **Status:** Accepted
 
-Conventional interactive primitives should come from maintained accessible sources when suitable; S.A.G.A. owns tokens, hierarchy, composition and product-specific behavior.
-
-The primary UX principle is **Narrative first, complexity on demand**.
-
-**Consequence:** Establish S.A.G.A.-specific tokens/primitives and feature components; avoid generic admin-dashboard composition. Motion is purposeful and every animated interaction has a reduced-motion equivalent.
+Maintained accessible primitives may provide mechanics, but S.A.G.A. owns tokens, composition, hierarchy and product-specific behavior. The UX principle remains **Narrative first, complexity on demand**.
 
 ### D-024 — Server Components and Server-Owned Truth Are the Default
 
 **Status:** Accepted
 
-Next.js Server Components own route composition/server data by default. Client Components are limited to browser interaction that actually needs local state.
-
-**Consequence:** Browser code never receives service-role/Auth Admin/object-storage master credentials. Privileged decisions are made in server-owned services/routes after fresh identity verification.
+Privileged decisions remain server-owned. Browser code never receives service-role/Auth Admin/object-storage master credentials.
 
 ### D-025 — Vercel Deployments Are Manual and Owner-Authorized
 
-**Status:** Accepted — owner decision 2026-09-11
+**Status:** Accepted
 
-S.A.G.A. does not automatically deploy Git pushes, branches, pull requests, or merges to Vercel.
-
-A Vercel Preview or Production deployment requires explicit owner approval for that specific deployment after the proposed environment, exact Git ref/SHA, and reason for deployment are stated.
-
-**Consequence:** Implementation/merge authorization does not imply deployment authorization. See `docs/operations/VERCEL_DEPLOYMENT_POLICY.md`.
+Implementation or merge authorization does not imply deployment authorization. Each Preview/Production deployment requires explicit owner approval for the stated environment/ref/reason.
 
 ### D-026 — Textual Book Analysis Is Local-First and Subscription-Free
 
-**Status:** Accepted — owner decision 2026-09-12
+**Status:** Accepted — strengthened by v3
 
-The required S.A.G.A. book-analysis path must be able to run without paid AI APIs, per-token inference services, hosted GPU subscriptions, or recurring model subscriptions.
+The required analysis path must run without paid AI APIs, per-token inference services, hosted GPU subscriptions or recurring model subscriptions. Local deterministic code, open-source/open-weight models and consumer CPU/GPU compute are the default.
 
-The default target is a S.A.G.A.-controlled local analysis host using deterministic code, classical NLP, permissively licensed open-source models, and selective local inference. CPU execution is preferred when adequate; a consumer GPU may accelerate tasks that materially benefit from it.
+### D-027 — Modal Is Reserved for Image/Media Generation
 
-**Consequence:** Paid hosted AI may be compared experimentally in the future, but it is not a required dependency unless the owner explicitly reverses this decision. Provider convenience is not sufficient justification for adding recurring analysis cost.
+**Status:** Accepted
 
-### D-027 — Modal Is Reserved for Image/Media Generation, Not Textual Analysis
+Modal is not a required textual-analysis dependency. Textual character/entity/coreference/dialogue/event/state/timeline/causality processing remains local-first.
 
-**Status:** Accepted — owner decision 2026-09-12
+### D-028 — Spend Compute Only Where Semantic Ambiguity Requires It
 
-Modal remains part of S.A.G.A.'s media/image-generation toolbox but is removed from the active textual book-analysis architecture.
+**Status:** Accepted, architectural form superseded by D-033/D-036
 
-The 2026-09-12 xCoRe/worker Modal hosted-proof work is experimental evidence only. It must not be merged or documented as the permanent textual-analysis runtime.
+The v2 phrasing was a cost-aware evidence cascade. V3 retains the underlying principle—deterministic/cheap broad passes and selective expensive reasoning—but implements it as typed compiler stages rather than a provider cascade.
 
-**Consequence:** Character/entity/coreference, dialogue, event, relationship, timeline, state, causality and higher narrative analysis must not require Modal. Future Modal use for textual analysis requires a new explicit owner decision.
+### D-029 — Models Are Adopted by Product Quality and Resource Measurements
 
-### D-028 — Narrative Analysis Uses a Cost-Aware Evidence Cascade
+**Status:** Accepted
 
-**Status:** Accepted — owner decision 2026-09-12
+A model is not adopted because it is fashionable or wins an external leaderboard. S.A.G.A. records task quality, contamination/false positives, wall time, RAM, VRAM, artifact size, license, determinism and operational complexity through product-owned benchmarks.
 
-For each analysis capability S.A.G.A. should use the cheapest method that safely removes uncertainty before escalating:
+Non-commercial research checkpoints may be comparative references but cannot silently enter the production dependency set.
 
-1. deterministic structure/rules;
-2. lightweight local NLP;
-3. specialized local models for unresolved cases;
-4. small local generative reasoning only for bounded evidence packets that still require judgment.
+### D-030 — Local Analysis Uses the Existing Durable Cloud Control Plane
 
-Provider/model output is evidence. Deterministic S.A.G.A. code owns canonical IDs, admission/merge policy, source provenance, persistence, state transitions and validation.
+**Status:** Accepted, refined by D-035
 
-**Consequence:** Do not repeatedly prompt a full novel through a large language model merely because a model has a long context window. Build reusable evidence layers, narrow candidate sets, and escalate only the residue that requires semantic judgment.
-
-### D-029 — Analysis Providers Are Adopted by Product Quality and Resource Measurements
-
-**Status:** Accepted — owner decision 2026-09-12
-
-A model/provider is not adopted because it is fashionable, scores well on one benchmark, or was used by v1. S.A.G.A. benchmarks candidates through the same product-owned interfaces and records both quality and whole-book resource cost.
-
-Minimum comparison evidence includes task quality, contamination/false-positive behavior, wall-clock time, peak RAM, peak VRAM when applicable, model/download size, license, determinism/reproducibility and operational complexity.
-
-**Consequence:** Prefer the smaller/faster candidate when downstream product quality is close enough. Non-commercial research weights such as LitBank xCoRe/Maverick checkpoints remain comparative research by default, not unnoticed production dependencies.
-
-### D-030 — Local Analysis Workers Use the Existing Durable Cloud Control Plane
-
-**Status:** Accepted — owner decision 2026-09-12
-
-The preferred textual-analysis topology is an outbound-only local worker that claims durable jobs from the existing Supabase control plane, reads source objects through the existing B2 boundary, invokes local NLP/model sidecars over loopback/private networking, and commits structured evidence/results back through S.A.G.A.-owned contracts.
-
-**Consequence:** The home/local analysis host does not need a public inbound port. Worker downtime does not lose jobs because Postgres remains queue/run truth. The existing TypeScript `services/analysis-worker` stays the preferred orchestration owner unless measurements justify changing it.
+The analysis host remains outbound-oriented: Supabase owns durable job/run truth and B2 remains the source-object boundary. D-035 moves semantic compiler/model logic into the Python-native v3 engine while preserving this control plane.
 
 ### D-031 — Modal Accounts Are Partitioned by Project
 
-**Status:** Accepted — owner decision 2026-09-13
+**Status:** Accepted
 
-S.A.G.A. owns `modal-03` through `modal-41`. RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`.
+S.A.G.A. owns `modal-03` through `modal-41`; RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`. Credential presence is not authorization. This remains relevant to media/image workflows and does not weaken D-027.
 
-Credential presence is not authorization. S.A.G.A. Modal tooling must resolve credentials only after the checked-in project-ownership guard accepts the account label, and it must fail closed for RenderLab-owned labels even while a legacy omnibus secret still contains all 47 credentials. Historical mutation and live media-smoke workflows that target or consume RenderLab-owned workers are not part of active S.A.G.A. v2 and must not remain runnable ordinary control surfaces.
+### D-032 — BookNLP Repeated Analysis Uses Persistent Local Stdio
 
-**Consequence:** Future S.A.G.A. Modal media work must use only S.A.G.A.-owned accounts. Changing the partition requires an explicit owner decision reflected in both repositories. The strongest operational end state is secret-store least privilege so each repository physically contains only its own credentials; repository guards do not falsely claim that secret rotation/splitting is already complete. D-027 remains unchanged: Modal is reserved for media/image generation, not textual analysis.
+**Status:** Accepted for the frozen v2/BookNLP baseline only
 
-### D-032 — BookNLP Repeated Analysis Uses a Persistent Local Stdio Runtime
+Measured v2 work showed persistent loaded BookNLP stdio preserves validated semantic output while reducing repeated-request latency relative to one-shot process startup.
 
-**Status:** Accepted — measured Phase-3B decision 2026-09-13
+**Consequence:** Preserve this behavior when reproducing the v2 baseline. It does not make BookNLP a v3 architectural dependency and does not imply other v3 models should use the same transport without measurement.
 
-For BookNLP specifically, S.A.G.A. prefers one persistent loaded Python child process communicating over bounded local stdio when multiple analyses are performed. The generic one-process-per-request subprocess remains the simple correctness/reference implementation.
+## V3.0 Model/Implementation Decisions Still Open
 
-Two independent heavyweight executions on exact head `2fa30b185cb037180f3e7762f2166067096e08c5` reproduced the exact validated one-shot provider-neutral evidence fingerprint across all six persistent analyze passes. Persistent median analyze latency measured `4.627 s` and `2.853 s`, versus measured one-shot analyses of `6.314 s` and `8.930 s`. Model-light qualification passed `145 / 145` tests. Peak process-tree RSS remained close to one-shot, so the decision is based on model reuse and repeated-request latency rather than a claimed material memory reduction.
+Resolve these through [`phases/PHASE_V3_0_NARRATIVE_COMPILER_FOUNDATION.md`](phases/PHASE_V3_0_NARRATIVE_COMPILER_FOUNDATION.md) and measured evidence rather than assumption:
 
-The persistent transport remains private/local: no shell, no HTTP listener, sanitized environment, bounded I/O/time, exact request/configuration/input binding, no silent retry of a crashed/timed-out request, deterministic cleanup, and the same S.A.G.A.-owned provider-neutral evidence validation.
-
-**Consequence:** When BookNLP evidence is invoked repeatedly, do not recreate the Python/model runtime for every request unless a debugging/reference path specifically needs the one-shot implementation. Do not introduce a BookNLP HTTP sidecar merely for persistence. This transport choice does **not** adopt BookNLP as a production analysis provider; quality, licensing and private modern-fiction qualification remain separate gates. Other local NLP providers still require their own runtime measurements before inheriting this transport decision.
-
-## Still-Applicable General Principles From v1
-
-These principles remain useful across the rebuild even though their old implementation context is historical:
-
-- research is evidence, not implementation state;
-- analysis-derived canon should become durable application state before generation relies on it;
-- qualification/evaluation claims must be tied to reproducible source/configuration;
-- cross-project cleanup/reuse requires explicit ownership evidence;
-- deterministic code should own schemas, validation, identifiers, state transitions, authorization and orchestration invariants.
+- exact GLiNER2-class package/checkpoint/revision adopted for lexer qualification;
+- exact Ettin-class checkpoint/scoring formulation for identity qualification;
+- whether learned embeddings materially improve identity candidate generation beyond lexical/context features;
+- threshold/calibration policy needed to meet the >=97% supported-precision target;
+- exact physical Postgres indexes/cardinality choices after V3.0 measurements;
+- whether the TypeScript worker invokes the compiler by bounded stdio/process protocol or another private local transport after runtime measurement;
+- which semantic stage should follow identity/entity V3.0 based on measured failure modes.
 
 ## Historical v1 Decisions
 
-Earlier D-002 through D-010 described the pre-v2 contract-driven Python architecture, nine-stage runtime, Studio retirement and v1 qualification/recovery boundaries. They remain **historical evidence about v1**, not active v2 constraints except where an active decision above deliberately preserves a principle.
-
-The clean v1 boundary immediately before the rebuild is:
+D-002 through D-010 described the pre-v2 runtime and remain historical evidence only. The clean v1 boundary immediately before the v2 rebuild was:
 
 `b689e17bf2b70ea6c2ade0c3795bb85bb048d57b`
 
-Do not reactivate the v1 Phase-0 qualification/R2 repair path unless the owner explicitly reverses the v2 rebuild decision.
-
-## Open v2 Decisions
-
-Resolve these only in the phase that needs them:
-
-- final S.A.G.A. brand palette/type pairing after visual concept review;
-- exact local NLP/provider winners after Phase-3 quality/resource benchmarks;
-- transport/runtime selection for local NLP providers other than BookNLP after provider-specific measurement;
-- exact local structured-reasoning model/quantization after Phase-3 benchmark evidence;
-- whether embeddings materially improve candidate retrieval enough to justify a vector index;
-- GPU/provider strategy for future visual/audio generation;
-- whether each future B2 object workflow uses direct presigned browser transfer, server-mediated transfer or a hybrid.
+Do not reactivate the v1 runtime as the active architecture unless the owner explicitly makes a new decision.
