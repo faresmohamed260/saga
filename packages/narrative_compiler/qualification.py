@@ -5,11 +5,14 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass
 import hashlib
+from importlib import metadata
 import os
 from pathlib import Path
+import platform
+import sys
 import threading
 import time
-from typing import Any
+from typing import Any, Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +34,48 @@ class ResourceUsage:
     cuda_peak_reserved_bytes: int | None
 
 
+def package_versions(names: Sequence[str]) -> dict[str, str | None]:
+    result: dict[str, str | None] = {}
+    for name in names:
+        try:
+            result[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            result[name] = None
+    return result
+
+
+def runtime_environment() -> dict[str, Any]:
+    environment: dict[str, Any] = {
+        "python": sys.version.split()[0],
+        "implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "packages": package_versions(
+            (
+                "gliner2",
+                "sentence-transformers",
+                "transformers",
+                "huggingface-hub",
+                "torch",
+                "tokenizers",
+                "psutil",
+            )
+        ),
+    }
+    try:
+        import torch
+
+        environment["torchCudaAvailable"] = bool(torch.cuda.is_available())
+        environment["torchCudaVersion"] = getattr(torch.version, "cuda", None)
+        if torch.cuda.is_available():
+            environment["cudaDeviceName"] = torch.cuda.get_device_name()
+            environment["cudaDeviceCount"] = int(torch.cuda.device_count())
+    except ImportError:
+        environment["torchCudaAvailable"] = False
+        environment["torchCudaVersion"] = None
+    return environment
+
+
 def _sha256_file(path: Path) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
@@ -50,7 +95,10 @@ def digest_snapshot(*, model_id: str, revision: str, snapshot_path: str | Path) 
         raise ValueError(f"model snapshot directory does not exist: {root}")
 
     rows: list[tuple[str, str, int]] = []
-    for path in sorted((path for path in root.rglob("*") if path.is_file()), key=lambda item: item.relative_to(root).as_posix()):
+    for path in sorted(
+        (path for path in root.rglob("*") if path.is_file()),
+        key=lambda item: item.relative_to(root).as_posix(),
+    ):
         relative = path.relative_to(root).as_posix()
         sha256, size = _sha256_file(path)
         rows.append((relative, sha256, size))
@@ -160,15 +208,16 @@ class ResourceMonitor(AbstractContextManager["ResourceMonitor"]):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self._stopped = time.perf_counter()
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=max(1.0, self.sample_interval_seconds * 4))
         self._sample()
         if self._torch is not None and self._torch.cuda.is_available():
+            # Include asynchronous GPU completion in wall-clock measurement.
             self._torch.cuda.synchronize()
             self._cuda_peak_allocated = int(self._torch.cuda.max_memory_allocated())
             self._cuda_peak_reserved = int(self._torch.cuda.max_memory_reserved())
+        self._stopped = time.perf_counter()
         return None
 
     @property

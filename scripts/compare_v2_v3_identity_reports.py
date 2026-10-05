@@ -31,24 +31,27 @@ def _load(path: Path) -> Mapping[str, Any]:
     return value
 
 
-def _v2_metrics(report: Mapping[str, Any]) -> Mapping[str, Any]:
+def _metrics(report: Mapping[str, Any], *, label: str) -> Mapping[str, Any]:
     aggregate = report.get("aggregate")
     if not isinstance(aggregate, Mapping):
-        raise ValueError("v2 report missing aggregate")
+        raise ValueError(f"{label} report missing aggregate")
     metrics = aggregate.get("metrics")
     if not isinstance(metrics, Mapping):
-        raise ValueError("v2 report missing aggregate.metrics")
+        raise ValueError(f"{label} report missing aggregate.metrics")
     return metrics
 
 
-def _v3_metrics(report: Mapping[str, Any]) -> Mapping[str, Any]:
-    aggregate = report.get("aggregate")
-    if not isinstance(aggregate, Mapping):
-        raise ValueError("v3 report missing aggregate")
-    metrics = aggregate.get("metrics")
-    if not isinstance(metrics, Mapping):
-        raise ValueError("v3 report missing aggregate.metrics")
-    return metrics
+def _assert_comparable(v2: Mapping[str, Any], v3: Mapping[str, Any]) -> None:
+    v2_dataset = v2.get("dataset")
+    v3_dataset = v3.get("dataset")
+    if not isinstance(v2_dataset, Mapping) or not isinstance(v3_dataset, Mapping):
+        raise ValueError("both reports must identify their dataset")
+    for field in ("repository", "commit", "annotationLayer", "documentCount"):
+        if v2_dataset.get(field) != v3_dataset.get(field):
+            raise ValueError(
+                f"reports are not directly comparable: dataset {field} differs "
+                f"({v2_dataset.get(field)!r} != {v3_dataset.get(field)!r})"
+            )
 
 
 def main() -> None:
@@ -60,21 +63,26 @@ def main() -> None:
 
     v2 = _load(args.v2)
     v3 = _load(args.v3)
-    v2_metrics = _v2_metrics(v2)
-    v3_metrics = _v3_metrics(v3)
+    _assert_comparable(v2, v3)
+    v2_metrics = _metrics(v2, label="v2")
+    v3_metrics = _metrics(v3, label="v3")
     rows = {}
     for v2_key, v3_key in _V2_TO_V3.items():
-        old = float(v2_metrics.get(v2_key, 0.0))
-        new = float(v3_metrics.get(v3_key, 0.0))
+        if v2_key not in v2_metrics or v3_key not in v3_metrics:
+            raise ValueError(f"missing comparison metric: {v2_key} / {v3_key}")
+        old = float(v2_metrics[v2_key])
+        new = float(v3_metrics[v3_key])
         rows[v3_key] = {"v2": old, "v3": new, "delta": new - old}
 
     output = {
         "schemaVersion": "saga-v2-v3-identity-comparison-v1",
+        "dataset": v3.get("dataset"),
         "v2SchemaVersion": v2.get("schemaVersion"),
         "v3SchemaVersion": v3.get("schemaVersion"),
         "metrics": rows,
         "v3Resources": v3.get("resources"),
         "v3Model": v3.get("model"),
+        "v3Environment": v3.get("environment"),
     }
     rendered = json.dumps(output, indent=2, sort_keys=True) + "\n"
     if args.out is not None:

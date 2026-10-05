@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 import json
-import os
 from pathlib import Path
 import time
 
@@ -31,7 +30,11 @@ from packages.narrative_compiler.compiler import NarrativeCompilerV30
 from packages.narrative_compiler.linker import ExactSurfaceCharacterLinker
 from packages.narrative_compiler.litbank import LITBANK_COMMIT, convert_litbank_tsv_document, oracle_person_mentions
 from packages.narrative_compiler.model_manifest import GLINER25_BASE_V1
-from packages.narrative_compiler.qualification import ResourceMonitor, download_and_digest_model
+from packages.narrative_compiler.qualification import (
+    ResourceMonitor,
+    download_and_digest_model,
+    runtime_environment,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,6 +83,7 @@ def main() -> None:
 
     per_document = []
     reports = []
+    environment = runtime_environment()
     with ResourceMonitor(sample_interval_seconds=args.sample_interval) as resources:
         for annotation_path in annotation_paths:
             document_id = annotation_path.stem
@@ -125,6 +129,7 @@ def main() -> None:
             "annotationLayer": "coref/tsv",
             "documentCount": len(per_document),
         },
+        "environment": environment,
         "model": None if model_artifact is None else {
             **asdict(GLINER25_BASE_V1),
             "artifact": asdict(model_artifact),
