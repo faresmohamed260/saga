@@ -37,6 +37,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recent-k", type=int, default=4)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--model-cache", type=Path, default=Path(".cache/huggingface"))
+    parser.add_argument("--ettin-context-chars", type=int, default=360)
+    parser.add_argument("--ettin-entity-contexts", type=int, default=3)
+    parser.add_argument("--ettin-batch-size", type=int, default=16)
     return parser.parse_args()
 
 
@@ -64,6 +67,12 @@ def main() -> None:
         raise ValueError("--limit must be between 1 and 100")
     if args.top_k < 1:
         raise ValueError("--top-k must be >= 1")
+    if args.ettin_context_chars < 32:
+        raise ValueError("--ettin-context-chars must be >= 32")
+    if args.ettin_entity_contexts < 1:
+        raise ValueError("--ettin-entity-contexts must be >= 1")
+    if args.ettin_batch_size < 1:
+        raise ValueError("--ettin-batch-size must be >= 1")
 
     documents = load_documents(args.root, args.limit)
     if args.candidate_mode == "lexical":
@@ -83,6 +92,7 @@ def main() -> None:
         }
 
     scorer = None
+    scorer_config = None
     model_record = None
     if args.scorer == "ettin":
         artifact = download_and_digest_model(
@@ -90,9 +100,17 @@ def main() -> None:
             revision=ETTIN_RERANKER_68M_V1.revision,
             cache_dir=args.model_cache,
         )
+        scorer_config = {
+            "contextChars": args.ettin_context_chars,
+            "entityContexts": args.ettin_entity_contexts,
+            "batchSize": args.ettin_batch_size,
+        }
         scorer = EttinRerankerIdentityScorer(
             model_path=artifact.snapshot_path,
             device=args.device,
+            context_chars=args.ettin_context_chars,
+            entity_contexts=args.ettin_entity_contexts,
+            batch_size=args.ettin_batch_size,
         )
         model_record = {
             "modelId": ETTIN_RERANKER_68M_V1.model_id,
@@ -136,6 +154,7 @@ def main() -> None:
         },
         "candidateGenerator": candidate_config,
         "scorer": args.scorer,
+        "scorerConfig": scorer_config,
         "model": model_record,
         "environment": runtime_environment(),
         "resources": monitor.as_dict(),
