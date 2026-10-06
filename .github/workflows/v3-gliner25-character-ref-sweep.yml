@@ -1,0 +1,62 @@
+name: V3 GLiNER2.5 Character Reference Sweep
+
+on:
+  push:
+    branches:
+      - v3/qualification-gliner25-character-refs
+
+permissions:
+  contents: read
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/v3-gliner-qualification.txt
+      - name: Install CPU Torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install GLiNER qualification environment
+        run: python -m pip install -r requirements/v3-gliner-qualification.txt
+      - name: Sweep leading character-reference labels
+        run: >-
+          python -m scripts.run_v3_gliner_threshold_sweep
+          --root external/litbank
+          --out evaluation-artifacts/character-reference-thresholds-10.json
+          --limit 10
+          --thresholds "0.3,0.5,0.65,0.75,0.85"
+          --character-labels "character name,character description,character pronoun"
+          --device cpu
+          --model-cache .cache/huggingface
+      - name: Publish result
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evaluation-artifacts/character-reference-thresholds-10.json").read_text())
+          print("## GLiNER2.5 leading character-reference labels — 10 LitBank documents")
+          print()
+          print("| Threshold | Precision | Recall | F1 | Proper | Nominal | Pronoun | Seconds |")
+          print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+          for row in report["results"]:
+              m = row["aggregate"]["metrics"]
+              print(f"| {row['threshold']:.2f} | {m['precision']:.4f} | {m['recall']:.4f} | {m['f1']:.4f} | {m['proper_name_recall']:.4f} | {m['nominal_recall']:.4f} | {m['pronoun_recall']:.4f} | {row['runtimeSeconds']:.1f} |")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-gliner25-character-ref-sweep-${{ github.sha }}
+          path: evaluation-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 90
