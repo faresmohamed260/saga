@@ -1,0 +1,80 @@
+name: V3 Nominal Boundary Geometry Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-boundary-geometry
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned syntax challenger
+        shell: bash
+        run: |
+          python -m pip install "spacy==3.8.16"
+          python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+
+      - name: Profile boundary mismatch geometry
+        run: >-
+          python -m scripts.profile_v3_nominal_boundary_geometry
+          --root external/litbank
+          --out evaluation-artifacts/v3-nominal-boundary-geometry.json
+          --limit 100
+          --model en_core_web_sm
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-nominal-boundary-geometry.json").read_text())
+          c = r["counts"]
+          print("## V3 nominal boundary mismatch geometry")
+          print()
+          print(f"- Gold person nominals: {c['goldPersonNominals']}")
+          print(f"- Exact noun-chunk matches: {c['exactNounChunkMatches']}")
+          print(f"- Exact misses: {c['exactNounChunkMisses']}")
+          print(f"- Token-aligned misses: {c['tokenAlignedMisses']}")
+          print()
+          print("### Relation to nearest noun chunk")
+          for key, value in r["relationToNearestChunk"].items():
+              print(f"- {key}: {value}")
+          print()
+          print("### Symmetric boundary-shift coverage among token-aligned misses")
+          for radius, row in r["boundedShiftCoverageAmongTokenAlignedMisses"].items():
+              print(f"- ±{radius} tokens: {row['rate']:.4f} ({row['count']})")
+          print()
+          print("### Top boundary delta pairs")
+          for pair, count in r["topDeltaPairs"][:15]:
+              print(f"- {pair}: {count}")
+          PY
+
+      - name: Upload profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-nominal-boundary-geometry-${{ github.sha }}
+          path: evaluation-artifacts/v3-nominal-boundary-geometry.json
+          if-no-files-found: error
+          retention-days: 90
