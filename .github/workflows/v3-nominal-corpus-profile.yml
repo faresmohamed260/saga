@@ -1,0 +1,70 @@
+name: V3 LitBank Nominal Corpus Profile
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-corpus-profile
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+
+      - name: Install model-light environment
+        run: uv sync --frozen --extra dev
+
+      - name: Profile all LitBank person nominals
+        run: >-
+          uv run python -m scripts.profile_v3_litbank_nominals
+          --root external/litbank
+          --out evaluation-artifacts/v3-litbank-nominal-profile.json
+          --limit 100
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-litbank-nominal-profile.json").read_text())
+          s = r["shape"]
+          print("## V3 LitBank person-nominal profile")
+          print()
+          print(f"- Person nominal mentions: {r['personNominalCount']}")
+          print(f"- Single-token rate: {s['singleTokenRate']:.4f}")
+          print(f"- Possessive-start rate: {s['possessiveStartedRate']:.4f}")
+          print(f"- Determiner-start rate: {s['determinerStartedRate']:.4f}")
+          print(f"- Initial-capital rate: {s['initialCapitalRate']:.4f}")
+          print()
+          print("### Top heads")
+          for token, count in r["topHeads"][:20]:
+              print(f"- `{token}`: {count}")
+          PY
+
+      - name: Upload profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-litbank-nominal-profile-${{ github.sha }}
+          path: evaluation-artifacts/v3-litbank-nominal-profile.json
+          if-no-files-found: error
+          retention-days: 90
