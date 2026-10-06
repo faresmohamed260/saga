@@ -1,6 +1,6 @@
 # 2026-10-06 — V3 Identity Retrieval and GLiNER2.5 Qualification
 
-Status: **MEASURED — hybrid retrieval supported; GLiNER2.5 supported only as a character-seed lexer challenger; no canonical merge policy adopted**
+Status: **MEASURED — hybrid retrieval supported; GLiNER2.5 supported as a character-seed lexer challenger; Ettin rejected as a universal reranker; no canonical merge policy adopted**
 
 This record preserves the first V3.0 public measurements that separate three different questions which must not be conflated:
 
@@ -143,16 +143,14 @@ Artifact:
 
 Direct-lexer conclusion:
 
-- GLiNER2.5 is **not a complete literary mention detector** in this configuration.
-- It behaves primarily as a **proper-name / explicit entity seeder**.
-- Pronoun recall is effectively zero; nominal recall is very low.
+- With the single label `person`, GLiNER2.5 behaves primarily as a **proper-name / explicit entity seeder**.
+- Pronoun recall is effectively zero and nominal recall is very low under that label design.
 - Raising the threshold improves precision substantially while preserving a still-useful fraction of proper-name recall.
+- A follow-up label-prompt experiment is required before concluding that GLiNER2.5 itself cannot recover nominal/pronominal references; the current result is specific to the measured label configuration.
 
-Therefore the current supported architecture is:
+The current supported architecture remains:
 
-`GLiNER / explicit entity seeding` → `separate pronoun + nominal mention detection` → `hybrid lexical + discourse candidate retrieval` → `learned or deterministic ranking` → `conservative merge / abstain policy`
-
-GLiNER should not be asked to solve pronoun or nominal coreference by itself.
+`explicit entity seeding` → `mention/reference detection` → `hybrid lexical + discourse candidate retrieval` → `mention-kind-aware ranking` → `conservative merge / abstain policy`
 
 ## Comparison with frozen BookNLP-small identity candidate
 
@@ -179,9 +177,81 @@ Model pin:
 - package: `sentence-transformers==6.1.0`
 - role: identity-score challenger
 
-A separate 10-document CPU probe is measuring whether this generic relevance reranker improves ordering of the hybrid top-8 candidate set. The adapter batches candidate pairs and its score is treated only as experimental ranking evidence, not a calibrated coreference probability.
+The original broad-context 10-document CPU probe proved too slow to be a useful first decision surface. A bounded compact-context probe therefore measured the model on two LitBank documents using:
 
-**Status at this record revision: probe still running; no adoption claim.**
+- hybrid top-4 candidates (`lexical_k=2`, `recent_k=2`)
+- target context radius: `128` characters
+- one representative prior entity context
+- cross-encoder batch size: `8`
+- CPU only
+
+Workflow run: `37471995815`
+
+Artifact:
+
+- ID: `11416579306`
+- digest: `sha256:ef9d9487da82ed76b1ece76c0d7cd851825ce655c1184d97c635321794d298c3`
+- qualification head: `b8d3da637aea2f9a33c34f0958333bb3ba34dc98`
+
+Overall:
+
+- eligible mentions: `215`
+- candidate pairs scored: `472`
+- candidate retrieval: `0.9256`
+- candidate-order top-1: `0.6279`
+- candidate-order MRR: `0.7682`
+- Ettin top-1 end-to-end: `0.5721`
+- Ettin MRR end-to-end: `0.7326`
+- Ettin top-1 conditional on true candidate being available: `0.6181`
+- Ettin MRR conditional: `0.7915`
+- wall time: `56.51 s`
+- peak process-tree RSS: about `949 MiB`
+
+### By mention kind
+
+**Pronouns (`123` eligible)**
+
+- candidate top-1: `0.6992`
+- candidate MRR: `0.8184`
+- Ettin top-1 end-to-end: **`0.7236`**
+- Ettin MRR end-to-end: **`0.8415`**
+- Ettin conditional top-1: `0.7542`
+- Ettin conditional MRR: `0.8771`
+
+Result: **positive challenger signal**. Ettin improved both top-1 and MRR for pronouns on this bounded sample.
+
+**Nominals (`29` eligible)**
+
+- candidate top-1: `0.4138`
+- candidate MRR: `0.5287`
+- Ettin top-1 end-to-end: `0.4138`
+- Ettin MRR end-to-end: `0.5345`
+- Ettin conditional top-1: `0.6316`
+- Ettin conditional MRR: `0.8158`
+
+Result: **mixed / insufficient evidence**. Top-1 was unchanged and MRR improved slightly; the sample is too small for adoption.
+
+**Repeat proper names (`63` eligible)**
+
+- candidate top-1: `0.5873`
+- candidate MRR: `0.7804`
+- Ettin top-1 end-to-end: **`0.3492`**
+- Ettin MRR end-to-end: **`0.6111`**
+- Ettin conditional top-1: `0.3548`
+- Ettin conditional MRR: `0.6210`
+
+Result: **strong negative evidence**. The generic relevance reranker substantially damaged proper-name ordering.
+
+### Ettin conclusion
+
+Ettin is **rejected as a universal identity reranker** in the measured configuration. The result supports a mention-kind-aware ranking policy instead:
+
+- repeat proper names / aliases: deterministic lexical or alias-first ordering should remain authoritative unless a future challenger beats it;
+- pronouns: Ettin remains a credible reranking challenger and deserves a larger isolated benchmark;
+- nominals: unresolved; gather more evidence before routing to Ettin;
+- no Ettin score is a merge probability or merge threshold.
+
+The throughput result also matters: `472` candidate pairs over `215` mentions took `56.51 s` on the hosted CPU runner even with compact context. Any eventual production use should batch across targets and/or use GPU inference rather than treating this CPU path as acceptable latency.
 
 ## Current V3 decision
 
@@ -189,14 +259,18 @@ Supported now:
 
 - keep the model-independent identity scoring/candidate contracts;
 - keep hybrid lexical + discourse-recency top-k retrieval as the leading measured candidate generator;
-- keep GLiNER2.5 as an explicit-character/entity seeding challenger;
+- keep GLiNER2.5 as an explicit-character/entity seeding challenger while label design is calibrated separately;
+- make identity ranking **mention-kind-aware**, rather than applying one learned scorer to every mention;
+- keep deterministic lexical/alias evidence ahead of Ettin for repeat proper names;
+- continue Ettin qualification only for pronouns and, separately, nominals;
 - keep heavy model dependencies outside normal CI;
 - keep merge thresholds and production identity policy unset until ranking + abstention evidence exists.
 
 Not supported now:
 
 - lexical-only retrieval for general coreference;
-- GLiNER2.5 as a one-model solution for proper names + nominals + pronouns;
+- GLiNER2.5 as a one-model solution for proper names + nominals + pronouns based on the current `person` label experiment;
 - exact-surface linking as a production linker;
+- Ettin as a universal identity reranker;
 - any learned reranker score being interpreted directly as merge probability;
 - any canonical merge threshold chosen from these experiments alone.
