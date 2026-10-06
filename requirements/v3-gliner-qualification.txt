@@ -1,6 +1,9 @@
 # Dedicated/manual V3.0 GLiNER2.5 qualification environment.
-# Kept separate from Ettin because current GLiNER2 local inference requires
-# transformers <5, while Sentence Transformers 6.x requires transformers 5.x.
+# GLiNER2 local inference currently requires Transformers <5. The DeBERTa-v3
+# tokenizer fallback also requires SentencePiece + protobuf when the checkpoint's
+# fast-tokenizer config cannot be loaded directly.
 gliner2[local]==2.0.0
-transformers>=4.38,<5
+transformers==4.57.6
+sentencepiece==0.2.1
+protobuf==6.33.0
 psutil==7.2.2
