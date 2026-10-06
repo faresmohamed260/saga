@@ -3,6 +3,7 @@ from packages.narrative_compiler.adapters.v2 import adapt_v2_identity_result
 from packages.narrative_compiler.candidates import LexicalIdentityCandidateGenerator
 from packages.narrative_compiler.ir import AcceptanceState, Entity, EntityType, Mention, SourceSpan
 from packages.narrative_compiler.source import NormalizedSource
+from packages.narrative_compiler.stages import IdentityScoringContext
 
 
 def normalized_source():
@@ -108,6 +109,7 @@ def test_lexical_candidate_generator_ranks_exact_alias_first():
     candidates = LexicalIdentityCandidateGenerator(top_k=2).generate(
         mention=mention,
         existing_entities=[other, exact],
+        context=IdentityScoringContext(source=source, mentions=()),
     )
     assert candidates[0].candidate_entity_id == "ent-rhys"
     assert candidates[0].features["exact_surface"] == 1.0
