@@ -1,9 +1,11 @@
 """Oracle-history identity retrieval/reranking benchmark for V3.0.
 
-This benchmark deliberately isolates two pre-merge questions:
+This benchmark deliberately isolates three pre-merge questions:
 
 1. can candidate generation retrieve the already-established gold character?
-2. when that candidate is available, can an optional scorer rank it highly?
+2. when a learned scorer is invoked, can it rank that candidate highly?
+3. does a mention-kind routing policy improve final candidate ordering while
+   preserving deterministic candidate order for mention kinds it does not score?
 
 Gold history is used only to maintain the prior entity clusters. The target
 mention's gold ID is never exposed to candidate generation or scoring.
@@ -18,7 +20,13 @@ from .benchmark import GoldIdentityDocument, GoldIdentityMention
 from .fingerprint import stable_id
 from .ir import AcceptanceState, Entity, EntityType, Mention, SourceSpan
 from .source import NormalizedSource
-from .stages import IdentityCandidateGenerator, IdentityScore, IdentityScorer, IdentityScoringContext
+from .stages import (
+    IdentityCandidateGenerator,
+    IdentityRankingPolicy,
+    IdentityScore,
+    IdentityScorer,
+    IdentityScoringContext,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +45,11 @@ class IdentityRankingCounts:
     scorer_hit_at_3: int = 0
     scorer_hit_at_5: int = 0
     scorer_reciprocal_rank_sum: float = 0.0
+    policy_true_candidate_available: int = 0
+    policy_hit_at_1: int = 0
+    policy_hit_at_3: int = 0
+    policy_hit_at_5: int = 0
+    policy_reciprocal_rank_sum: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +67,12 @@ class IdentityRankingMetrics:
     scorer_mrr_end_to_end: float
     scorer_top1_conditional: float
     scorer_mrr_conditional: float
+    policy_top1_end_to_end: float
+    policy_recall_at_3_end_to_end: float
+    policy_recall_at_5_end_to_end: float
+    policy_mrr_end_to_end: float
+    policy_top1_conditional: float
+    policy_mrr_conditional: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +103,11 @@ class _Accumulator:
     scorer_hit_at_3: int = 0
     scorer_hit_at_5: int = 0
     scorer_reciprocal_rank_sum: float = 0.0
+    policy_true_candidate_available: int = 0
+    policy_hit_at_1: int = 0
+    policy_hit_at_3: int = 0
+    policy_hit_at_5: int = 0
+    policy_reciprocal_rank_sum: float = 0.0
 
     def observe(
         self,
@@ -92,6 +116,7 @@ class _Accumulator:
         candidate_count: int,
         scorer_rank: int | None,
         scorer_ran: bool,
+        policy_rank: int | None,
     ) -> None:
         self.eligible_mentions += 1
         if candidate_count:
@@ -117,6 +142,15 @@ class _Accumulator:
                 self.scorer_hit_at_3 += 1
             if scorer_rank <= 5:
                 self.scorer_hit_at_5 += 1
+        if policy_rank is not None:
+            self.policy_true_candidate_available += 1
+            self.policy_reciprocal_rank_sum += 1.0 / policy_rank
+            if policy_rank <= 1:
+                self.policy_hit_at_1 += 1
+            if policy_rank <= 3:
+                self.policy_hit_at_3 += 1
+            if policy_rank <= 5:
+                self.policy_hit_at_5 += 1
 
     def freeze(self) -> IdentityRankingCounts:
         return IdentityRankingCounts(**{field.name: getattr(self, field.name) for field in fields(IdentityRankingCounts)})
@@ -128,7 +162,8 @@ def _ratio(numerator: int | float, denominator: int | float) -> float:
 
 def ranking_metrics_from_counts(counts: IdentityRankingCounts) -> IdentityRankingMetrics:
     eligible = counts.eligible_mentions
-    available = counts.scorer_true_candidate_available
+    scorer_available = counts.scorer_true_candidate_available
+    policy_available = counts.policy_true_candidate_available
     return IdentityRankingMetrics(
         candidate_nonempty_rate=_ratio(counts.nonempty_candidate_sets, eligible),
         candidate_retrieval_rate=_ratio(counts.true_candidate_retrieved, eligible),
@@ -141,8 +176,14 @@ def ranking_metrics_from_counts(counts: IdentityRankingCounts) -> IdentityRankin
         scorer_recall_at_3_end_to_end=_ratio(counts.scorer_hit_at_3, eligible),
         scorer_recall_at_5_end_to_end=_ratio(counts.scorer_hit_at_5, eligible),
         scorer_mrr_end_to_end=_ratio(counts.scorer_reciprocal_rank_sum, eligible),
-        scorer_top1_conditional=_ratio(counts.scorer_hit_at_1, available),
-        scorer_mrr_conditional=_ratio(counts.scorer_reciprocal_rank_sum, available),
+        scorer_top1_conditional=_ratio(counts.scorer_hit_at_1, scorer_available),
+        scorer_mrr_conditional=_ratio(counts.scorer_reciprocal_rank_sum, scorer_available),
+        policy_top1_end_to_end=_ratio(counts.policy_hit_at_1, eligible),
+        policy_recall_at_3_end_to_end=_ratio(counts.policy_hit_at_3, eligible),
+        policy_recall_at_5_end_to_end=_ratio(counts.policy_hit_at_5, eligible),
+        policy_mrr_end_to_end=_ratio(counts.policy_reciprocal_rank_sum, eligible),
+        policy_top1_conditional=_ratio(counts.policy_hit_at_1, policy_available),
+        policy_mrr_conditional=_ratio(counts.policy_reciprocal_rank_sum, policy_available),
     )
 
 
@@ -193,9 +234,7 @@ def _validate_scores(
     expected = {(mention.mention_id, entity_id) for entity_id in candidate_entity_ids}
     observed = {(score.mention_id, score.candidate_entity_id) for score in scores}
     if len(scores) != len(candidate_entity_ids) or observed != expected:
-        raise ValueError(
-            "identity scorer must return exactly one score for every requested candidate"
-        )
+        raise ValueError("identity scorer must return exactly one score for every requested candidate")
 
 
 def _score_candidates(
@@ -240,15 +279,22 @@ def evaluate_oracle_history_ranking(
     gold: GoldIdentityDocument,
     candidate_generator: IdentityCandidateGenerator,
     scorer: IdentityScorer | None = None,
+    ranking_policy: IdentityRankingPolicy | None = None,
 ) -> IdentityRankingReport:
     """Evaluate retrieval/reranking with oracle-correct history up to each target.
 
     A character becomes eligible only after its first proper-name seed has
     appeared. Pre-seed pronouns/nominals are not retroactively injected into the
-    entity. After each eligible target is scored, gold history updates the entity
-    so later cases measure ranking rather than cascading merge errors.
+    entity. After each eligible target is evaluated, gold history updates the
+    entity so later cases measure ranking rather than cascading merge errors.
+
+    When a scorer is present, ``ranking_policy`` controls which mention kinds may
+    invoke it. Other mention kinds preserve the deterministic candidate order.
+    Policy metrics always describe this final routed ordering; scorer metrics
+    describe only the cases where the learned scorer actually executed.
     """
 
+    policy = ranking_policy or IdentityRankingPolicy()
     seeded_entities: dict[str, Entity] = {}
     prior_mentions: list[Mention] = []
     overall = _Accumulator()
@@ -302,7 +348,7 @@ def evaluate_oracle_history_ranking(
         candidate_rank = _candidate_rank(candidate_ids, entity.entity_id)
 
         scorer_rank: int | None = None
-        scorer_ran = scorer is not None and bool(candidates)
+        scorer_ran = scorer is not None and bool(candidates) and policy.should_score(target)
         if scorer_ran and scorer is not None:
             scored = _score_candidates(
                 scorer=scorer,
@@ -317,11 +363,13 @@ def evaluate_oracle_history_ranking(
                 entity.entity_id,
             )
 
+        policy_rank = scorer_rank if scorer_ran else candidate_rank
         kwargs = {
             "candidate_rank": candidate_rank,
             "candidate_count": len(candidates),
             "scorer_rank": scorer_rank,
             "scorer_ran": scorer_ran,
+            "policy_rank": policy_rank,
         }
         overall.observe(**kwargs)
         by_kind.setdefault(gold_mention.mention_kind, _Accumulator()).observe(**kwargs)
