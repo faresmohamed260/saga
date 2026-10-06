@@ -1,0 +1,82 @@
+name: V3 Lightweight Nominal Classifier Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-lightweight-classifier
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned qualification environment
+        run: |
+          python -m pip install "spacy==3.8.16" "nltk==3.10.3" "scikit-learn==1.9.1"
+          python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+          python -m nltk.downloader -d "$RUNNER_TEMP/nltk_data" wordnet
+          echo "NLTK_DATA=$RUNNER_TEMP/nltk_data" >> "$GITHUB_ENV"
+
+      - name: Train dev-select and test classifier
+        run: >-
+          python -m scripts.run_v3_nominal_classifier_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-nominal-classifier.json
+          --limit 100
+          --model en_core_web_sm
+          --seed 20261006
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-nominal-classifier.json").read_text())
+          print("## V3 lightweight nominal classifier")
+          print()
+          print(f"- Documents train/dev/test: {len(r['split']['trainDocuments'])}/{len(r['split']['devDocuments'])}/{len(r['split']['testDocuments'])}")
+          print(f"- Test gold nominals: {r['training']['testGoldNominals']}")
+          print(f"- Runtime: {r['runtimeSeconds']:.2f}s")
+          print()
+          print("| Policy | Threshold | Precision | Recall | F1 | Predicted | TP |")
+          print("|---|---:|---:|---:|---:|---:|---:|")
+          b = r['test']['wordnetFirstSense']
+          print(f"| WordNet first sense | — | {b['precision']:.4f} | {b['recall']:.4f} | {b['f1']:.4f} | {b['predicted']} | {b['truePositive']} |")
+          for label, key in [('LogReg 0.50', 'default050'), ('Dev-selected F1', 'devSelectedF1'), ('Dev-selected ≥.75 precision', 'devSelectedPrecision075')]:
+              row = r['test'][key]
+              if row is None:
+                  continue
+              print(f"| {label} | {row['threshold']:.2f} | {row['precision']:.4f} | {row['recall']:.4f} | {row['f1']:.4f} | {row['predicted']} | {row['truePositive']} |")
+          print()
+          print(f"- Dev F1 threshold: {r['devSelection']['bestF1']['threshold']:.2f}")
+          p75 = r['devSelection']['bestPrecisionAtLeast075']
+          print(f"- Dev ≥.75 precision threshold: {p75['threshold']:.2f}" if p75 else "- Dev ≥.75 precision threshold: none")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-nominal-lightweight-classifier-${{ github.sha }}
+          path: evaluation-artifacts/v3-nominal-classifier.json
+          if-no-files-found: error
+          retention-days: 90
