@@ -8,7 +8,12 @@ from packages.narrative_compiler.candidates import (
 from packages.narrative_compiler.ir import Entity, EntityType, Mention, SourceSpan
 from packages.narrative_compiler.ranking import evaluate_oracle_history_ranking
 from packages.narrative_compiler.source import NormalizedSource
-from packages.narrative_compiler.stages import IdentityCandidate, IdentityScore, IdentityScoringContext
+from packages.narrative_compiler.stages import (
+    IdentityCandidate,
+    IdentityRankingPolicy,
+    IdentityScore,
+    IdentityScoringContext,
+)
 
 
 def source_for(text: str) -> NormalizedSource:
@@ -75,6 +80,7 @@ def test_lexical_ranking_excludes_zero_overlap_pronouns():
     assert report.overall.counts.true_candidate_retrieved == 1
     assert report.by_mention_kind["pronoun"].metrics.candidate_retrieval_rate == 0.0
     assert report.by_mention_kind["proper_name"].metrics.candidate_recall_at_1 == 1.0
+    assert report.overall.metrics.policy_top1_end_to_end == report.overall.metrics.candidate_recall_at_1
 
 
 def test_hybrid_ranking_adds_recent_candidate_for_pronoun():
@@ -129,6 +135,51 @@ def test_scorer_metrics_are_separate_from_candidate_retrieval():
     assert report.overall.metrics.candidate_retrieval_rate == 1.0
     assert report.overall.metrics.scorer_top1_end_to_end == 1.0
     assert report.overall.metrics.scorer_mrr_conditional == 1.0
+    assert report.overall.metrics.policy_top1_end_to_end == 1.0
+
+
+class RecordingPreferAliceScorer(PreferAliceScorer):
+    def __init__(self):
+        self.kinds = []
+
+    def score(self, *, mention, candidate, existing_entities, context):
+        self.kinds.append(mention.attributes.get("mention_kind"))
+        return super().score(
+            mention=mention,
+            candidate=candidate,
+            existing_entities=existing_entities,
+            context=context,
+        )
+
+
+def test_routing_scores_pronouns_and_preserves_proper_name_candidate_order():
+    text = "Alice met Bob. She waved. Alice smiled."
+    gold = gold_for(
+        text,
+        [
+            ("Alice", 0, 5, "proper_name", "alice"),
+            ("Bob", 10, 13, "proper_name", "bob"),
+            ("She", 15, 18, "pronoun", "alice"),
+            ("Alice", 26, 31, "proper_name", "alice"),
+        ],
+    )
+    scorer = RecordingPreferAliceScorer()
+    report = evaluate_oracle_history_ranking(
+        source=source_for(text),
+        gold=gold,
+        candidate_generator=HybridIdentityCandidateGenerator(top_k=4, lexical_k=2, recent_k=2),
+        scorer=scorer,
+        ranking_policy=IdentityRankingPolicy(scored_mention_kinds=frozenset({"pronoun"})),
+    )
+
+    assert set(scorer.kinds) == {"pronoun"}
+    assert report.overall.counts.eligible_mentions == 2
+    assert report.overall.metrics.scorer_execution_rate == 0.5
+    assert report.overall.metrics.candidate_recall_at_1 == 0.5
+    assert report.overall.metrics.scorer_top1_end_to_end == 0.5
+    assert report.overall.metrics.policy_top1_end_to_end == 1.0
+    assert report.by_mention_kind["proper_name"].metrics.policy_top1_end_to_end == 1.0
+    assert report.by_mention_kind["proper_name"].metrics.scorer_execution_rate == 0.0
 
 
 def test_identity_scoring_context_rejects_cross_source_mentions():
