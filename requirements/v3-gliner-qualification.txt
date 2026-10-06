@@ -1,0 +1,6 @@
+# Dedicated/manual V3.0 GLiNER2.5 qualification environment.
+# Kept separate from Ettin because current GLiNER2 local inference requires
+# transformers <5, while Sentence Transformers 6.x requires transformers 5.x.
+gliner2[local]==2.0.0
+transformers>=4.38,<5
+psutil==7.2.2
