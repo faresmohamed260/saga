@@ -1,0 +1,83 @@
+name: V3 spaCy Nominal Boundary Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-spacy-boundaries
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned spaCy challenger
+        run: |
+          python -m pip install "spacy==3.8.16"
+          python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+          python - <<'PY'
+          import spacy
+          nlp = spacy.load("en_core_web_sm")
+          print(f"spacy={spacy.__version__}")
+          print(f"en_core_web_sm={nlp.meta.get('version')}")
+          print(f"pipeline={nlp.pipe_names}")
+          PY
+
+      - name: Benchmark nominal boundary coverage
+        run: >-
+          python -m scripts.run_v3_spacy_nominal_boundary_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-spacy-nominal-boundaries.json
+          --limit 100
+          --model en_core_web_sm
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-spacy-nominal-boundaries.json").read_text())
+          print("## V3 spaCy nominal boundary coverage")
+          print()
+          print(f"- Gold person nominals: {r['counts']['goldPersonNominals']}")
+          print(f"- Noun chunk candidates: {r['counts']['nounChunkCandidates']}")
+          print(f"- Exact boundary recall: {r['metrics']['exactBoundaryRecall']:.4f}")
+          print(f"- Containment coverage: {r['metrics']['containmentCoverage']:.4f}")
+          print(f"- Any-overlap coverage: {r['metrics']['overlapCoverage']:.4f}")
+          print(f"- Runtime: {r['runtimeSeconds']:.2f}s")
+          print()
+          print("### Exact recall by length")
+          for key, row in r["exactRecallByLength"].items():
+              print(f"- {key} tokens: {row['recall']:.4f} ({row['exact']}/{row['gold']})")
+          print()
+          print("### Exact recall by start")
+          for key, row in r["exactRecallByStart"].items():
+              print(f"- {key}: {row['recall']:.4f} ({row['exact']}/{row['gold']})")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-spacy-nominal-boundaries-${{ github.sha }}
+          path: evaluation-artifacts/v3-spacy-nominal-boundaries.json
+          if-no-files-found: error
+          retention-days: 90
