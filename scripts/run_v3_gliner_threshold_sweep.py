@@ -14,6 +14,7 @@ from pathlib import Path
 import time
 
 from packages.narrative_compiler.adapters.gliner2 import GLiNER25SemanticLexer
+from packages.narrative_compiler.ir import EntityType
 from packages.narrative_compiler.lexer_benchmark import (
     aggregate_character_mention_reports,
     evaluate_character_mentions,
@@ -33,6 +34,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--thresholds", default="0.3,0.5,0.65,0.75,0.85")
+    parser.add_argument(
+        "--character-labels",
+        default="person",
+        help="Comma-separated GLiNER labels that all map to CHARACTER for this calibration.",
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--model-cache", type=Path, default=Path(".cache/huggingface"))
     parser.add_argument("--offline", action="store_true")
@@ -45,7 +51,11 @@ def parse_args() -> argparse.Namespace:
         parser.error(f"invalid --thresholds: {exc}")
     if not thresholds or any(not 0.0 <= value <= 1.0 for value in thresholds):
         parser.error("thresholds must be non-empty values between 0 and 1")
+    labels = tuple(value.strip() for value in args.character_labels.split(",") if value.strip())
+    if not labels:
+        parser.error("--character-labels must contain at least one non-empty label")
     args.thresholds = tuple(dict.fromkeys(thresholds))
+    args.character_labels = tuple(dict.fromkeys(labels))
     return args
 
 
@@ -76,11 +86,13 @@ def main() -> None:
         cache_dir=args.model_cache,
         local_files_only=args.offline,
     )
+    labels = {label: EntityType.CHARACTER for label in args.character_labels}
 
     loader = GLiNER25SemanticLexer(
         model_path=artifact.snapshot_path,
         device=args.device,
         threshold=args.thresholds[0],
+        labels=labels,
     )
     shared_model = loader._load_model()  # qualification-only explicit model reuse
 
@@ -91,6 +103,7 @@ def main() -> None:
                 model_path=artifact.snapshot_path,
                 device=args.device,
                 threshold=threshold,
+                labels=labels,
                 model=shared_model,
             )
             reports = []
@@ -132,6 +145,7 @@ def main() -> None:
             "annotationLayer": "coref/tsv",
             "documentCount": len(documents),
         },
+        "characterLabels": list(args.character_labels),
         "model": {**asdict(GLINER25_BASE_V1), "artifact": asdict(artifact)},
         "environment": runtime_environment(),
         "resources": resources.as_dict(),
@@ -142,10 +156,11 @@ def main() -> None:
     print(
         json.dumps(
             {
+                "characterLabels": output["characterLabels"],
                 "results": [
                     {"threshold": row["threshold"], **row["aggregate"]["metrics"]}
                     for row in results
-                ]
+                ],
             },
             indent=2,
         )
