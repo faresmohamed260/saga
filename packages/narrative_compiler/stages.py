@@ -109,6 +109,23 @@ class IdentityScorer(Protocol):
     ) -> IdentityScore: ...
 
 
+@runtime_checkable
+class BatchIdentityScorer(Protocol):
+    """Optional efficient scorer boundary for one mention's candidate set."""
+
+    @property
+    def descriptor(self) -> ModelDescriptor | None: ...
+
+    def score_many(
+        self,
+        *,
+        mention: Mention,
+        candidates: Sequence[IdentityCandidate],
+        existing_entities: Sequence[Entity],
+        context: IdentityScoringContext,
+    ) -> Sequence[IdentityScore]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class LinkerResult:
     run: StageRunDescriptor
