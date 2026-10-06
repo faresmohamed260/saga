@@ -1,9 +1,7 @@
 name: V3 Nominal Token Boundary CV Qualification
 
 on:
-  push:
-    branches:
-      - v3/qualification-nominal-token-boundary-cv
+  workflow_dispatch:
 
 permissions:
   contents: read
