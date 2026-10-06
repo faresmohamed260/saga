@@ -1,0 +1,85 @@
+name: V3 GLiNER2.5 LitBank Smoke
+
+on:
+  push:
+    branches:
+      - v3/qualification-gliner25-smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v3-gliner25-smoke
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/v3-gliner-qualification.txt
+
+      - name: Install CPU Torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install pinned GLiNER qualification dependencies
+        run: python -m pip install -r requirements/v3-gliner-qualification.txt
+
+      - name: Run 10-document pinned GLiNER2.5 smoke
+        run: >-
+          python -m scripts.run_v3_litbank_identity_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-gliner25-exact-10.json
+          --mode gliner25-exact
+          --limit 10
+          --device cpu
+          --threshold 0.5
+          --model-cache .cache/huggingface
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evaluation-artifacts/v3-gliner25-exact-10.json").read_text())
+          m = report["aggregate"]["metrics"]
+          r = report["resources"]
+          print("## GLiNER2.5 10-document smoke")
+          print(f"- Canonical precision: {m['canonical_precision']:.4f}")
+          print(f"- Canonical recall: {m['canonical_recall']:.4f}")
+          print(f"- Incorrect merge rate: {m['incorrect_merge_rate']:.4f}")
+          print(f"- Fragmentation rate: {m['fragmentation_rate']:.4f}")
+          print(f"- Linked mention precision: {m['linked_mention_precision']:.4f}")
+          print(f"- Linked mention recall: {m['linked_mention_recall']:.4f}")
+          print(f"- Cluster purity: {m['cluster_purity']:.4f}")
+          print(f"- Wall time: {r['wall_seconds']:.2f}s")
+          if r['peak_process_tree_rss_bytes'] is not None:
+              print(f"- Peak process-tree RSS: {r['peak_process_tree_rss_bytes'] / 1024**2:.2f} MiB")
+          print(f"- Model revision: `{report['model']['revision']}`")
+          print(f"- Model artifact SHA-256: `{report['model']['artifact']['aggregate_sha256']}`")
+          PY
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-gliner25-smoke-${{ github.sha }}
+          path: evaluation-artifacts/v3-gliner25-exact-10.json
+          if-no-files-found: error
+          retention-days: 90
