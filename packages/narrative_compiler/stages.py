@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import math
 from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence, runtime_checkable
 
@@ -25,6 +26,35 @@ class SemanticLexer(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class IdentityScoringContext:
+    """Immutable source + prior-mention context shared by identity retrieval/scoring.
+
+    Candidate generation and learned scoring need more than names: discourse
+    recency and representative prior contexts matter for pronouns, nominals and
+    aliases. Keeping the evidence packet explicit prevents adapters from reaching
+    into mutable/global state.
+    """
+
+    source: NormalizedSource
+    mentions: tuple[Mention, ...]
+    _mention_by_id: Mapping[str, Mention] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        mapping: dict[str, Mention] = {}
+        for mention in self.mentions:
+            if mention.mention_id in mapping:
+                raise ValueError(f"duplicate context mention ID: {mention.mention_id}")
+            if mention.evidence.source_fingerprint != self.source.source_fingerprint:
+                raise ValueError("identity context mention belongs to a different source")
+            mapping[mention.mention_id] = mention
+        object.__setattr__(self, "_mention_by_id", MappingProxyType(mapping))
+
+    @property
+    def mention_by_id(self) -> Mapping[str, Mention]:
+        return self._mention_by_id
+
+
+@dataclass(frozen=True, slots=True)
 class IdentityCandidate:
     mention_id: str
     candidate_entity_id: str
@@ -33,7 +63,10 @@ class IdentityCandidate:
     def __post_init__(self) -> None:
         if not self.mention_id or not self.candidate_entity_id:
             raise ValueError("identity candidate IDs are required")
-        object.__setattr__(self, "features", MappingProxyType(dict(self.features)))
+        normalized = {key: float(value) for key, value in self.features.items()}
+        if any(not math.isfinite(value) for value in normalized.values()):
+            raise ValueError("identity candidate features must be finite")
+        object.__setattr__(self, "features", MappingProxyType(normalized))
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +76,38 @@ class IdentityScore:
     score: float
     scorer: ModelDescriptor | None = None
 
+    def __post_init__(self) -> None:
+        if not self.mention_id or not self.candidate_entity_id:
+            raise ValueError("identity score IDs are required")
+        if not math.isfinite(self.score):
+            raise ValueError("identity score must be finite")
+
+
+@dataclass(frozen=True, slots=True)
+class IdentityRankingPolicy:
+    """Route learned scoring by mention kind while preserving candidate order elsewhere.
+
+    ``scored_mention_kinds=None`` means the scorer is allowed for every mention
+    kind. An explicit set means only those mention kinds may invoke the learned
+    scorer; all other mentions keep the deterministic candidate-generator order.
+
+    The policy controls *where* a scorer may be used. It deliberately does not
+    convert model scores into merge probabilities or define a merge threshold.
+    """
+
+    scored_mention_kinds: frozenset[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.scored_mention_kinds is not None:
+            normalized = frozenset(kind.strip() for kind in self.scored_mention_kinds if kind.strip())
+            object.__setattr__(self, "scored_mention_kinds", normalized)
+
+    def should_score(self, mention: Mention) -> bool:
+        if self.scored_mention_kinds is None:
+            return True
+        kind = str(mention.attributes.get("mention_kind", "")).strip()
+        return kind in self.scored_mention_kinds
+
 
 @runtime_checkable
 class IdentityCandidateGenerator(Protocol):
@@ -51,6 +116,7 @@ class IdentityCandidateGenerator(Protocol):
         *,
         mention: Mention,
         existing_entities: Sequence[Entity],
+        context: IdentityScoringContext,
     ) -> Sequence[IdentityCandidate]: ...
 
 
@@ -65,8 +131,25 @@ class IdentityScorer(Protocol):
         mention: Mention,
         candidate: IdentityCandidate,
         existing_entities: Sequence[Entity],
-        source: NormalizedSource,
+        context: IdentityScoringContext,
     ) -> IdentityScore: ...
+
+
+@runtime_checkable
+class BatchIdentityScorer(Protocol):
+    """Optional efficient scorer boundary for one mention's candidate set."""
+
+    @property
+    def descriptor(self) -> ModelDescriptor | None: ...
+
+    def score_many(
+        self,
+        *,
+        mention: Mention,
+        candidates: Sequence[IdentityCandidate],
+        existing_entities: Sequence[Entity],
+        context: IdentityScoringContext,
+    ) -> Sequence[IdentityScore]: ...
 
 
 @dataclass(frozen=True, slots=True)

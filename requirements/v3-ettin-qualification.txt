@@ -1,0 +1,5 @@
+# Dedicated/manual V3.0 Ettin reranker qualification environment.
+# Sentence Transformers 6.1 requires the Transformers 5.x line.
+sentence-transformers==6.1.0
+transformers==5.18.0
+psutil==7.2.2
