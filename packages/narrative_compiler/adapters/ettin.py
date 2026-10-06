@@ -22,6 +22,7 @@ class EttinRerankerIdentityScorer:
         revision: str = ETTIN_RERANKER_68M_V1.revision,
         context_chars: int = 360,
         entity_contexts: int = 3,
+        batch_size: int = 16,
         model_path: str | None = None,
         device: str | None = None,
         model: Any | None = None,
@@ -32,10 +33,13 @@ class EttinRerankerIdentityScorer:
             raise ValueError("context_chars must be >= 32")
         if entity_contexts < 1:
             raise ValueError("entity_contexts must be >= 1")
+        if batch_size < 1:
+            raise ValueError("batch_size must be >= 1")
         self.model_id = model_id
         self.revision = revision
         self.context_chars = context_chars
         self.entity_contexts = entity_contexts
+        self.batch_size = batch_size
         self.model_path = model_path
         self.device = device
         self._model = model
@@ -97,14 +101,14 @@ class EttinRerankerIdentityScorer:
         }
         return tuple(rows[index] for index in sorted(indices))
 
-    def score(
+    def _pair(
         self,
         *,
         mention: Mention,
         candidate: IdentityCandidate,
         existing_entities: Sequence[Entity],
         context: IdentityScoringContext,
-    ) -> IdentityScore:
+    ) -> tuple[str, str]:
         entity = self._entity(candidate, existing_entities)
         aliases = ", ".join(entity.aliases)
         query = f"Mention: {mention.text}\nContext: {self._mention_context(mention, context)}"
@@ -118,11 +122,54 @@ class EttinRerankerIdentityScorer:
             f"Aliases: {aliases}\n"
             f"Known contexts:\n{known_contexts}"
         )
-        raw = self._load_model().predict([(query, passage)])
-        value = float(raw[0])
-        return IdentityScore(
-            mention_id=mention.mention_id,
-            candidate_entity_id=entity.entity_id,
-            score=value,
-            scorer=self.descriptor,
+        return query, passage
+
+    def score_many(
+        self,
+        *,
+        mention: Mention,
+        candidates: Sequence[IdentityCandidate],
+        existing_entities: Sequence[Entity],
+        context: IdentityScoringContext,
+    ) -> tuple[IdentityScore, ...]:
+        if not candidates:
+            return ()
+        pairs = [
+            self._pair(
+                mention=mention,
+                candidate=candidate,
+                existing_entities=existing_entities,
+                context=context,
+            )
+            for candidate in candidates
+        ]
+        raw = self._load_model().predict(pairs, batch_size=self.batch_size)
+        values = [float(value) for value in raw]
+        if len(values) != len(candidates):
+            raise RuntimeError(
+                f"Ettin returned {len(values)} scores for {len(candidates)} candidates"
+            )
+        return tuple(
+            IdentityScore(
+                mention_id=mention.mention_id,
+                candidate_entity_id=candidate.candidate_entity_id,
+                score=value,
+                scorer=self.descriptor,
+            )
+            for candidate, value in zip(candidates, values, strict=True)
         )
+
+    def score(
+        self,
+        *,
+        mention: Mention,
+        candidate: IdentityCandidate,
+        existing_entities: Sequence[Entity],
+        context: IdentityScoringContext,
+    ) -> IdentityScore:
+        return self.score_many(
+            mention=mention,
+            candidates=(candidate,),
+            existing_entities=existing_entities,
+            context=context,
+        )[0]
