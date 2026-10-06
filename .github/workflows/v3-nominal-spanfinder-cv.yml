@@ -1,0 +1,78 @@
+name: V3 Nominal SpanFinder CV Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-spanfinder-cv
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned direct-span challenger
+        run: python -m pip install "spacy==3.8.16"
+
+      - name: Run SpanFinder smoke CV
+        run: >-
+          python -m scripts.run_v3_nominal_spanfinder_cv
+          --root external/litbank
+          --out evaluation-artifacts/v3-nominal-spanfinder-cv.json
+          --limit 20
+          --folds 2
+          --epochs 3
+          --batch-size 4
+          --max-span-length 16
+          --thresholds 0.25 0.35 0.50 0.65 0.80 0.90
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-nominal-spanfinder-cv.json").read_text())
+          print("## V3 nominal SpanFinder book-held-out CV")
+          print()
+          print(f"- Documents: {r['dataset']['documentCount']}")
+          print(f"- Gold person nominals: {r['dataset']['goldPersonNominals']}")
+          print(f"- spaCy: {r['provider']['spacyVersion']}")
+          print(f"- epochs/fold: {r['provider']['epochs']}")
+          print(f"- max span length: {r['provider']['maxSpanLengthTokens']} tokens")
+          print()
+          print("| Threshold | Precision | Recall | F1 | Predicted | TP | Start F1 | End F1 |")
+          print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+          for row in r["thresholds"]:
+              print(f"| {row['threshold']:.2f} | {row['precision']:.4f} | {row['recall']:.4f} | {row['f1']:.4f} | {row['predicted']} | {row['truePositive']} | {row['startF1']:.4f} | {row['endF1']:.4f} |")
+          print()
+          print(f"- Runtime: {r['resources']['runtimeSeconds']:.2f}s")
+          print(f"- Peak RSS: {r['resources']['peakRssMb']:.1f} MB")
+          print(f"- Max serialized model: {r['resources']['maxSerializedModelBytes'] / 1048576:.2f} MiB")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-nominal-spanfinder-cv-${{ github.sha }}
+          path: evaluation-artifacts/v3-nominal-spanfinder-cv.json
+          if-no-files-found: error
+          retention-days: 90
