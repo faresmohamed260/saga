@@ -1,0 +1,69 @@
+name: V3 Pronoun Lexer Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-pronoun-lexer
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+
+      - name: Install model-light environment
+        run: uv sync --frozen --extra dev
+
+      - name: Run pronoun lexer contracts
+        run: uv run pytest -q tests/test_v3_pronoun_lexer.py tests/test_v3_lexer_benchmark.py
+
+      - name: Benchmark all LitBank documents
+        run: >-
+          uv run python -m scripts.run_v3_pronoun_lexer_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-pronoun-lexer.json
+          --limit 100
+          --profiles strict,plus_plural,plus_neuter
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evaluation-artifacts/v3-pronoun-lexer.json").read_text())
+          print("## V3 deterministic pronoun lexer — 100 LitBank documents")
+          print()
+          print("| Profile | Pronoun precision | Pronoun recall | F1 | Predicted | Pronoun gold | Pronoun TP | Seconds |")
+          print("|---|---:|---:|---:|---:|---:|---:|---:|")
+          for row in report["results"]:
+              p = row["pronounExact"]
+              print(f"| {row['profile']} | {p['precision']:.4f} | {p['recall']:.4f} | {p['f1']:.4f} | {p['predicted']} | {p['gold']} | {p['truePositive']} | {row['runtimeSeconds']:.3f} |")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-pronoun-lexer-${{ github.sha }}
+          path: evaluation-artifacts/v3-pronoun-lexer.json
+          if-no-files-found: error
+          retention-days: 90
