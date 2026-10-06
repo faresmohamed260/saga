@@ -47,6 +47,10 @@ def load_documents(root: Path, limit: int):
     ]
 
 
+def ratio(numerator: int, denominator: int) -> float:
+    return 0.0 if denominator == 0 else numerator / denominator
+
+
 def main() -> None:
     args = parse_args()
     documents = load_documents(args.root, args.limit)
@@ -54,23 +58,55 @@ def main() -> None:
     for profile in args.profiles:
         lexer = EnglishCharacterPronounLexer(profile=profile)
         reports = []
+        pronoun_predicted = 0
+        pronoun_gold = 0
+        pronoun_true_positive = 0
         started = time.perf_counter()
         for document in documents:
             result = lexer.analyze(document.source)
             reports.append(evaluate_character_mentions(gold=document.gold, mentions=result.mentions))
+
+            predicted_spans = {
+                (mention.evidence.span.start_offset, mention.evidence.span.end_offset)
+                for mention in result.mentions
+            }
+            gold_pronoun_spans = {
+                (mention.start_offset, mention.end_offset)
+                for mention in document.gold.mentions
+                if mention.entity_type == "person" and mention.mention_kind == "pronoun"
+            }
+            pronoun_predicted += len(predicted_spans)
+            pronoun_gold += len(gold_pronoun_spans)
+            pronoun_true_positive += len(predicted_spans & gold_pronoun_spans)
+
         elapsed = time.perf_counter() - started
         aggregate = aggregate_character_mention_reports(reports)
+        direct_precision = ratio(pronoun_true_positive, pronoun_predicted)
+        direct_recall = ratio(pronoun_true_positive, pronoun_gold)
+        direct_f1 = (
+            0.0
+            if direct_precision + direct_recall == 0
+            else 2.0 * direct_precision * direct_recall / (direct_precision + direct_recall)
+        )
         results.append(
             {
                 "profile": profile,
                 "runtimeSeconds": elapsed,
                 "counts": asdict(aggregate.counts),
                 "metrics": asdict(aggregate.metrics),
+                "pronounExact": {
+                    "predicted": pronoun_predicted,
+                    "gold": pronoun_gold,
+                    "truePositive": pronoun_true_positive,
+                    "precision": direct_precision,
+                    "recall": direct_recall,
+                    "f1": direct_f1,
+                },
             }
         )
 
     output = {
-        "schemaVersion": "saga-v3-pronoun-lexer-benchmark-v1",
+        "schemaVersion": "saga-v3-pronoun-lexer-benchmark-v2",
         "benchmark": "deterministic English character-pronoun mention detection",
         "dataset": {
             "repository": "dbamman/litbank",
@@ -89,11 +125,12 @@ def main() -> None:
                 "results": [
                     {
                         "profile": row["profile"],
-                        "precision": row["metrics"]["precision"],
-                        "pronounRecall": row["metrics"]["pronoun_recall"],
-                        "predicted": row["counts"]["predicted_character_mentions"],
-                        "pronounGold": row["counts"]["pronoun_gold"],
-                        "pronounTruePositive": row["counts"]["pronoun_true_positive"],
+                        "pronounPrecision": row["pronounExact"]["precision"],
+                        "pronounRecall": row["pronounExact"]["recall"],
+                        "pronounF1": row["pronounExact"]["f1"],
+                        "predicted": row["pronounExact"]["predicted"],
+                        "pronounGold": row["pronounExact"]["gold"],
+                        "pronounTruePositive": row["pronounExact"]["truePositive"],
                         "runtimeSeconds": row["runtimeSeconds"],
                     }
                     for row in results
