@@ -1,0 +1,72 @@
+name: V3 spaCy WordNet Nominal Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-spacy-wordnet
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned syntax/lexical challengers
+        run: |
+          python -m pip install "spacy==3.8.16" "nltk==3.10.3"
+          python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+          python -m nltk.downloader -d "$RUNNER_TEMP/nltk_data" wordnet
+          echo "NLTK_DATA=$RUNNER_TEMP/nltk_data" >> "$GITHUB_ENV"
+
+      - name: Benchmark person-head filters
+        run: >-
+          python -m scripts.run_v3_spacy_wordnet_nominal_benchmark
+          --root external/litbank
+          --out evaluation-artifacts/v3-spacy-wordnet-nominals.json
+          --limit 100
+          --model en_core_web_sm
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-spacy-wordnet-nominals.json").read_text())
+          print("## V3 spaCy + WordNet person-nominal qualification")
+          print()
+          print("| Mode | Precision | Recall | F1 | Predicted | TP |")
+          print("|---|---:|---:|---:|---:|---:|")
+          for row in r["results"]:
+              print(f"| {row['mode']} | {row['precision']:.4f} | {row['recall']:.4f} | {row['f1']:.4f} | {row['predicted']} | {row['truePositive']} |")
+          print()
+          print(f"- Runtime: {r['runtimeSeconds']:.2f}s")
+          print(f"- spaCy: {r['provider']['spacyVersion']} / {r['provider']['model']} {r['provider']['modelVersion']}")
+          print(f"- NLTK: {r['provider']['nltkVersion']} / WordNet {r['provider']['wordnetVersion']}")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-spacy-wordnet-nominals-${{ github.sha }}
+          path: evaluation-artifacts/v3-spacy-wordnet-nominals.json
+          if-no-files-found: error
+          retention-days: 90
