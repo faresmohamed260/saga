@@ -33,13 +33,13 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: requirements/v3-qualification.txt
+          cache-dependency-path: requirements/v3-gliner-qualification.txt
 
       - name: Install CPU Torch
         run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Install pinned V3 qualification dependencies
-        run: python -m pip install -r requirements/v3-qualification.txt
+      - name: Install pinned GLiNER qualification dependencies
+        run: python -m pip install -r requirements/v3-gliner-qualification.txt
 
       - name: Run oracle-mention exact-surface isolation baseline
         run: >-
