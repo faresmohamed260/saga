@@ -1,0 +1,94 @@
+name: SAGA V3 GLiNER2.5 Threshold Sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Number of LitBank documents (1-100)"
+        required: true
+        default: "10"
+        type: string
+      thresholds:
+        description: "Comma-separated confidence thresholds"
+        required: true
+        default: "0.3,0.5,0.65,0.75,0.85"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v3-gliner25-threshold-sweep-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/v3-gliner-qualification.txt
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.limit }}" -ge 1
+          test "${{ inputs.limit }}" -le 100
+
+      - name: Install CPU Torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install pinned GLiNER qualification environment
+        run: python -m pip install -r requirements/v3-gliner-qualification.txt
+
+      - name: Run direct character-mention threshold sweep
+        run: >-
+          python -m scripts.run_v3_gliner_threshold_sweep
+          --root external/litbank
+          --out evaluation-artifacts/v3-gliner25-threshold-sweep.json
+          --limit ${{ inputs.limit }}
+          --thresholds "${{ inputs.thresholds }}"
+          --device cpu
+          --model-cache .cache/huggingface
+
+      - name: Publish sweep summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("evaluation-artifacts/v3-gliner25-threshold-sweep.json").read_text())
+          print("## GLiNER2.5 direct character-mention threshold sweep")
+          print()
+          print("| Threshold | Precision | Recall | F1 | Proper recall | Nominal recall | Pronoun recall | Seconds |")
+          print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+          for row in report["results"]:
+              m = row["aggregate"]["metrics"]
+              print(f"| {row['threshold']:.2f} | {m['precision']:.4f} | {m['recall']:.4f} | {m['f1']:.4f} | {m['proper_name_recall']:.4f} | {m['nominal_recall']:.4f} | {m['pronoun_recall']:.4f} | {row['runtimeSeconds']:.1f} |")
+          print()
+          print(f"Model artifact SHA-256: `{report['model']['artifact']['aggregate_sha256']}`")
+          PY
+
+      - name: Upload sweep report
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-gliner25-threshold-sweep-${{ github.sha }}
+          path: evaluation-artifacts/v3-gliner25-threshold-sweep.json
+          if-no-files-found: error
+          retention-days: 90
