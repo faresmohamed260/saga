@@ -1,3 +1,5 @@
+import hashlib
+
 from packages.narrative_compiler.benchmark import GoldIdentityDocument, GoldIdentityMention
 from packages.narrative_compiler.candidates import (
     HybridIdentityCandidateGenerator,
@@ -10,12 +12,13 @@ from packages.narrative_compiler.stages import IdentityCandidate, IdentityScore,
 
 
 def source_for(text: str) -> NormalizedSource:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     return NormalizedSource.from_v2_payload(
         {
             "normalizationVersion": "test-v1",
             "configFingerprint": "cfg",
-            "normalizedSha256": "a" * 64,
-            "outputFingerprint": "b" * 64,
+            "normalizedSha256": digest,
+            "outputFingerprint": digest,
             "normalizedText": text,
             "sections": [
                 {
