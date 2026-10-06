@@ -1,0 +1,104 @@
+name: V3 Ettin Identity Ranking Smoke
+
+on:
+  push:
+    branches:
+      - v3/qualification-ettin-ranking-smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v3-ettin-ranking-smoke
+  cancel-in-progress: true
+
+jobs:
+  rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/v3-ettin-qualification.txt
+
+      - name: Install CPU Torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install pinned Ettin qualification environment
+        run: python -m pip install -r requirements/v3-ettin-qualification.txt
+
+      - name: Run 2-document hybrid baseline
+        run: >-
+          python -m scripts.run_v3_litbank_identity_ranking
+          --root external/litbank
+          --out evaluation-artifacts/v3-ranking-hybrid-none-2.json
+          --candidate-mode hybrid
+          --scorer none
+          --limit 2
+          --top-k 4
+          --lexical-k 2
+          --recent-k 2
+          --device cpu
+
+      - name: Run 2-document Ettin reranker smoke
+        run: >-
+          python -m scripts.run_v3_litbank_identity_ranking
+          --root external/litbank
+          --out evaluation-artifacts/v3-ranking-hybrid-ettin-2.json
+          --candidate-mode hybrid
+          --scorer ettin
+          --limit 2
+          --top-k 4
+          --lexical-k 2
+          --recent-k 2
+          --device cpu
+          --model-cache .cache/huggingface
+
+      - name: Publish comparison
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          base = json.loads(Path("evaluation-artifacts/v3-ranking-hybrid-none-2.json").read_text())
+          rerank = json.loads(Path("evaluation-artifacts/v3-ranking-hybrid-ettin-2.json").read_text())
+          b = base["aggregate"]["overall"]["metrics"]
+          r = rerank["aggregate"]["overall"]["metrics"]
+          counts = rerank["aggregate"]["overall"]["counts"]
+          print("## V3 Ettin bounded ranking smoke")
+          print()
+          print(f"- Eligible mentions: {counts['eligible_mentions']}")
+          print(f"- Candidate retrieval rate: {b['candidate_retrieval_rate']:.4f}")
+          print(f"- Candidate top-1: {b['candidate_recall_at_1']:.4f}")
+          print(f"- Candidate MRR: {b['candidate_mrr']:.4f}")
+          print(f"- Ettin top-1 end-to-end: {r['scorer_top1_end_to_end']:.4f}")
+          print(f"- Ettin MRR end-to-end: {r['scorer_mrr_end_to_end']:.4f}")
+          print(f"- Ettin top-1 conditional: {r['scorer_top1_conditional']:.4f}")
+          print(f"- Ettin MRR conditional: {r['scorer_mrr_conditional']:.4f}")
+          print(f"- Scored candidate pairs: {counts['scored_candidate_pairs']}")
+          print(f"- Ettin wall time: {rerank['resources']['wall_seconds']:.2f}s")
+          if rerank['resources']['peak_process_tree_rss_bytes'] is not None:
+              print(f"- Peak process-tree RSS: {rerank['resources']['peak_process_tree_rss_bytes'] / 1024**2:.2f} MiB")
+          PY
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-ettin-ranking-smoke-${{ github.sha }}
+          path: evaluation-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 90
