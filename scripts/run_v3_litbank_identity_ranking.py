@@ -23,6 +23,7 @@ from packages.narrative_compiler.ranking import (
     aggregate_identity_ranking_reports,
     evaluate_oracle_history_ranking,
 )
+from packages.narrative_compiler.stages import IdentityRankingPolicy
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,7 +41,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ettin-context-chars", type=int, default=360)
     parser.add_argument("--ettin-entity-contexts", type=int, default=3)
     parser.add_argument("--ettin-batch-size", type=int, default=16)
+    parser.add_argument(
+        "--ettin-mention-kinds",
+        default="all",
+        help="`all` or comma-separated mention kinds that may invoke Ettin (for example `pronoun`).",
+    )
     return parser.parse_args()
+
+
+def _parse_mention_kinds(raw: str) -> frozenset[str] | None:
+    value = raw.strip()
+    if value.casefold() == "all":
+        return None
+    kinds = frozenset(item.strip() for item in value.split(",") if item.strip())
+    if not kinds:
+        raise ValueError("--ettin-mention-kinds must be `all` or a non-empty comma-separated list")
+    return kinds
 
 
 def load_documents(root: Path, limit: int):
@@ -73,6 +89,7 @@ def main() -> None:
         raise ValueError("--ettin-entity-contexts must be >= 1")
     if args.ettin_batch_size < 1:
         raise ValueError("--ettin-batch-size must be >= 1")
+    routed_kinds = _parse_mention_kinds(args.ettin_mention_kinds)
 
     documents = load_documents(args.root, args.limit)
     if args.candidate_mode == "lexical":
@@ -119,6 +136,14 @@ def main() -> None:
             "artifact": asdict(artifact),
         }
 
+    ranking_policy = IdentityRankingPolicy(
+        scored_mention_kinds=(frozenset() if scorer is None else routed_kinds)
+    )
+    policy_record = {
+        "fallback": "candidate-order",
+        "scoredMentionKinds": "all" if ranking_policy.scored_mention_kinds is None else sorted(ranking_policy.scored_mention_kinds),
+    }
+
     per_document = []
     reports = []
     with ResourceMonitor() as monitor:
@@ -128,6 +153,7 @@ def main() -> None:
                 gold=document.gold,
                 candidate_generator=candidate_generator,
                 scorer=scorer,
+                ranking_policy=ranking_policy,
             )
             reports.append(report)
             per_document.append(
@@ -139,11 +165,11 @@ def main() -> None:
     aggregate = aggregate_identity_ranking_reports(reports)
 
     output = {
-        "schemaVersion": "saga-v3-identity-ranking-v1",
+        "schemaVersion": "saga-v3-identity-ranking-v2",
         "benchmark": "LitBank oracle-history candidate retrieval and reranking",
         "benchmarkPurpose": (
-            "Measure candidate retrieval and optional reranker ordering with oracle-correct prior clusters; "
-            "does not evaluate canonical merge thresholds."
+            "Measure candidate retrieval, learned scorer ordering, and mention-kind-routed final ordering with "
+            "oracle-correct prior clusters; does not evaluate canonical merge thresholds."
         ),
         "dataset": {
             "repository": "dbamman/litbank",
@@ -155,6 +181,7 @@ def main() -> None:
         "candidateGenerator": candidate_config,
         "scorer": args.scorer,
         "scorerConfig": scorer_config,
+        "rankingPolicy": policy_record,
         "model": model_record,
         "environment": runtime_environment(),
         "resources": monitor.as_dict(),
