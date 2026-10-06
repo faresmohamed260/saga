@@ -83,6 +83,32 @@ class IdentityScore:
             raise ValueError("identity score must be finite")
 
 
+@dataclass(frozen=True, slots=True)
+class IdentityRankingPolicy:
+    """Route learned scoring by mention kind while preserving candidate order elsewhere.
+
+    ``scored_mention_kinds=None`` means the scorer is allowed for every mention
+    kind. An explicit set means only those mention kinds may invoke the learned
+    scorer; all other mentions keep the deterministic candidate-generator order.
+
+    The policy controls *where* a scorer may be used. It deliberately does not
+    convert model scores into merge probabilities or define a merge threshold.
+    """
+
+    scored_mention_kinds: frozenset[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.scored_mention_kinds is not None:
+            normalized = frozenset(kind.strip() for kind in self.scored_mention_kinds if kind.strip())
+            object.__setattr__(self, "scored_mention_kinds", normalized)
+
+    def should_score(self, mention: Mention) -> bool:
+        if self.scored_mention_kinds is None:
+            return True
+        kind = str(mention.attributes.get("mention_kind", "")).strip()
+        return kind in self.scored_mention_kinds
+
+
 @runtime_checkable
 class IdentityCandidateGenerator(Protocol):
     def generate(
