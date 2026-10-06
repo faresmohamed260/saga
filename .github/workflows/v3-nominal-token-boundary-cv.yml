@@ -1,0 +1,87 @@
+name: V3 Nominal Token Boundary CV Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-token-boundary-cv
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned boundary challengers
+        run: |
+          python -m pip install "spacy==3.8.16" "scikit-learn==1.7.2"
+          python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+
+      - name: Run token-boundary smoke CV
+        run: >-
+          python -m scripts.run_v3_nominal_token_boundary_cv
+          --root external/litbank
+          --out evaluation-artifacts/v3-nominal-token-boundary-cv.json
+          --limit 20
+          --folds 2
+          --model en_core_web_sm
+          --max-span-length 16
+          --thresholds 0.50 0.70 0.85 0.95
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-nominal-token-boundary-cv.json").read_text())
+          print("## V3 nominal token-boundary held-out CV")
+          print()
+          print(f"- Documents: {r['dataset']['documentCount']}")
+          print(f"- Gold person nominals: {r['dataset']['goldPersonNominals']}")
+          print(f"- Tokens: {r['dataset']['tokens']}")
+          print(f"- Start AP: {r['outOfFold']['start']['averagePrecision']:.4f}")
+          print(f"- End AP: {r['outOfFold']['end']['averagePrecision']:.4f}")
+          print()
+          print("| Threshold | Start P | Start R | Start F1 | End P | End R | End F1 | Span P | Span R | Span F1 | Span candidates |")
+          print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+          for row in r['outOfFold']['thresholds']:
+              s, e, p = row['start'], row['end'], row['spanCandidates']
+              print(f"| {row['threshold']:.2f} | {s['precision']:.4f} | {s['recall']:.4f} | {s['f1']:.4f} | {e['precision']:.4f} | {e['recall']:.4f} | {e['f1']:.4f} | {p['precision']:.4f} | {p['recall']:.4f} | {p['f1']:.4f} | {p['candidateSpans']} |")
+          print()
+          for side in ('start', 'end'):
+              print(f"### {side} precision targets")
+              for row in r['outOfFold'][side]['precisionTargets']:
+                  if row['achieved']:
+                      print(f"- >= {row['precisionTarget']:.2f}: P {row['precision']:.4f}, R {row['recall']:.4f}, threshold {row['threshold']:.6f}")
+                  else:
+                      print(f"- >= {row['precisionTarget']:.2f}: not achieved")
+          print()
+          print(f"- Runtime: {r['resources']['runtimeSeconds']:.2f}s")
+          print(f"- Peak RSS: {r['resources']['peakRssMb']:.1f} MB")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-nominal-token-boundary-cv-${{ github.sha }}
+          path: evaluation-artifacts/v3-nominal-token-boundary-cv.json
+          if-no-files-found: error
+          retention-days: 90
