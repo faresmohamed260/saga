@@ -37,14 +37,14 @@ jobs:
           python -m pip install "spacy==3.8.16" "scikit-learn==1.7.2"
           python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
 
-      - name: Run cross-fitted span-ranker smoke CV
+      - name: Run cross-fitted span-ranker full CV
         run: >-
           python -m scripts.run_v3_nominal_crossfit_span_rank_cv
           --root external/litbank
           --out evaluation-artifacts/v3-nominal-crossfit-span-rank-cv.json
-          --limit 20
-          --folds 2
-          --inner-folds 2
+          --limit 100
+          --folds 5
+          --inner-folds 4
           --model en_core_web_sm
           --max-span-length 16
 
@@ -55,11 +55,12 @@ jobs:
           import json
           from pathlib import Path
           r = json.loads(Path("evaluation-artifacts/v3-nominal-crossfit-span-rank-cv.json").read_text())
-          print("## V3 nominal cross-fitted span ranker")
+          print("## V3 nominal cross-fitted span ranker — full qualification")
           print()
           print(f"- Documents: {r['dataset']['documentCount']}")
           print(f"- Gold person nominals: {r['dataset']['goldPersonNominals']}")
           print(f"- Mean fold AP: {r['aggregateRanking']['meanFoldAveragePrecision']:.4f}")
+          print(f"- Min/max fold AP: {r['aggregateRanking']['minFoldAveragePrecision']:.4f} / {r['aggregateRanking']['maxFoldAveragePrecision']:.4f}")
           print(f"- Mean candidate recall ceiling: {r['aggregateRanking']['meanTestCandidateRecallCeiling']:.4f}")
           print()
           print("| Budget vs gold | Predicted | TP | Precision | Recall | F1 |")
