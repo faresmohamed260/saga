@@ -35,6 +35,16 @@ The maximum confidence is only an observation-selection convenience. **It is not
 
 The composite stage is order-invariant. Its artifact fingerprint is bound to the sorted child stage configuration and every child artifact fingerprint, so changing any provider output/configuration changes the composite artifact identity.
 
+## Validation provenance
+
+Before the history cleanup, the exact adapter and contract-test implementation passed the model-light `V3 Composite Lexer CI` workflow:
+
+- workflow run: `37475712697`
+- qualification head: `7f2360431a1a6caec71e76ea49f9516947e46957`
+- result: success
+
+The production PR is rebuilt directly on current `main`; normal repository PR CI remains the merge gate.
+
 ## Architectural consequence
 
 The supported mention path is now:
