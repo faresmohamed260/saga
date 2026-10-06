@@ -1,0 +1,92 @@
+name: V3 Identity Candidate Ranking Experiment
+
+on:
+  push:
+    branches:
+      - v3/qualification-identity-ranking
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v3-identity-ranking-experiment
+  cancel-in-progress: true
+
+jobs:
+  rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install resource sampler
+        run: python -m pip install psutil==7.2.2
+
+      - name: Run lexical-only candidate benchmark
+        run: >-
+          python -m scripts.run_v3_litbank_identity_ranking
+          --root external/litbank
+          --out evaluation-artifacts/v3-ranking-lexical-none.json
+          --candidate-mode lexical
+          --scorer none
+          --limit 100
+          --top-k 8
+
+      - name: Run hybrid lexical + recency candidate benchmark
+        run: >-
+          python -m scripts.run_v3_litbank_identity_ranking
+          --root external/litbank
+          --out evaluation-artifacts/v3-ranking-hybrid-none.json
+          --candidate-mode hybrid
+          --scorer none
+          --limit 100
+          --top-k 8
+          --lexical-k 4
+          --recent-k 4
+
+      - name: Publish comparison
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          print("## V3 identity candidate retrieval")
+          print()
+          for mode in ("lexical", "hybrid"):
+              report = json.loads(Path(f"evaluation-artifacts/v3-ranking-{mode}-none.json").read_text())
+              overall = report["aggregate"]["overall"]
+              c = overall["counts"]
+              m = overall["metrics"]
+              print(f"### {mode}")
+              print(f"- Eligible mentions: {c['eligible_mentions']}")
+              print(f"- Non-empty candidate rate: {m['candidate_nonempty_rate']:.4f}")
+              print(f"- Retrieval rate: {m['candidate_retrieval_rate']:.4f}")
+              print(f"- Recall@1: {m['candidate_recall_at_1']:.4f}")
+              print(f"- Recall@3: {m['candidate_recall_at_3']:.4f}")
+              print(f"- Recall@5: {m['candidate_recall_at_5']:.4f}")
+              print(f"- MRR: {m['candidate_mrr']:.4f}")
+              print(f"- Wall time: {report['resources']['wall_seconds']:.2f}s")
+              print()
+          PY
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-identity-ranking-${{ github.sha }}
+          path: evaluation-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 90
