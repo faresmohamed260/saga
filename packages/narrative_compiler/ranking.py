@@ -18,7 +18,7 @@ from .benchmark import GoldIdentityDocument, GoldIdentityMention
 from .fingerprint import stable_id
 from .ir import AcceptanceState, Entity, EntityType, Mention, SourceSpan
 from .source import NormalizedSource
-from .stages import IdentityCandidateGenerator, IdentityScorer, IdentityScoringContext
+from .stages import IdentityCandidateGenerator, IdentityScore, IdentityScorer, IdentityScoringContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +184,56 @@ def _append_gold_history(entity: Entity, mention: Mention, mention_kind: str) ->
     )
 
 
+def _validate_scores(
+    *,
+    mention: Mention,
+    candidate_entity_ids: Sequence[str],
+    scores: Sequence[IdentityScore],
+) -> None:
+    expected = {(mention.mention_id, entity_id) for entity_id in candidate_entity_ids}
+    observed = {(score.mention_id, score.candidate_entity_id) for score in scores}
+    if len(scores) != len(candidate_entity_ids) or observed != expected:
+        raise ValueError(
+            "identity scorer must return exactly one score for every requested candidate"
+        )
+
+
+def _score_candidates(
+    *,
+    scorer: IdentityScorer,
+    mention: Mention,
+    candidates,
+    existing_entities: Sequence[Entity],
+    context: IdentityScoringContext,
+) -> list[IdentityScore]:
+    batch = getattr(scorer, "score_many", None)
+    if callable(batch):
+        scored = list(
+            batch(
+                mention=mention,
+                candidates=candidates,
+                existing_entities=existing_entities,
+                context=context,
+            )
+        )
+    else:
+        scored = [
+            scorer.score(
+                mention=mention,
+                candidate=candidate,
+                existing_entities=existing_entities,
+                context=context,
+            )
+            for candidate in candidates
+        ]
+    _validate_scores(
+        mention=mention,
+        candidate_entity_ids=[candidate.candidate_entity_id for candidate in candidates],
+        scores=scored,
+    )
+    return scored
+
+
 def evaluate_oracle_history_ranking(
     *,
     source: NormalizedSource,
@@ -254,15 +304,13 @@ def evaluate_oracle_history_ranking(
         scorer_rank: int | None = None
         scorer_ran = scorer is not None and bool(candidates)
         if scorer_ran and scorer is not None:
-            scored = [
-                scorer.score(
-                    mention=target,
-                    candidate=candidate,
-                    existing_entities=existing,
-                    context=context,
-                )
-                for candidate in candidates
-            ]
+            scored = _score_candidates(
+                scorer=scorer,
+                mention=target,
+                candidates=candidates,
+                existing_entities=existing,
+                context=context,
+            )
             scored.sort(key=lambda item: (-item.score, item.candidate_entity_id))
             scorer_rank = _candidate_rank(
                 [item.candidate_entity_id for item in scored],
