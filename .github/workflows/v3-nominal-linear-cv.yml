@@ -1,0 +1,76 @@
+name: V3 Nominal Linear CV Qualification
+
+on:
+  push:
+    branches:
+      - v3/qualification-nominal-linear-cv
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout S.A.G.A.
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned local challengers
+        shell: bash
+        run: |
+          python -m pip install "spacy==3.8.16" "scikit-learn==1.7.2"
+          python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+
+      - name: Run book-held-out nominal classification
+        run: >-
+          python -m scripts.run_v3_spacy_nominal_linear_cv
+          --root external/litbank
+          --out evaluation-artifacts/v3-spacy-nominal-linear-cv.json
+          --limit 100
+          --folds 5
+          --model en_core_web_sm
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("evaluation-artifacts/v3-spacy-nominal-linear-cv.json").read_text())
+          print("## V3 book-held-out nominal linear classifier")
+          print()
+          print(f"- Gold person nominals: {r['counts']['goldPersonNominals']}")
+          print(f"- Noun-chunk candidates: {r['counts']['nounChunkCandidates']}")
+          print(f"- Exact-boundary upper-bound recall: {r['candidateBoundaryUpperBound']['exactRecall']:.4f}")
+          print(f"- OOF average precision: {r['outOfFoldRanking']['averagePrecision']:.4f}")
+          print(f"- OOF ROC AUC: {r['outOfFoldRanking']['rocAuc']:.4f}")
+          print()
+          print("| Threshold | Precision | Recall | F1 | Predicted | TP | FP |")
+          print("|---|---:|---:|---:|---:|---:|---:|")
+          for row in r["thresholds"]:
+              print(f"| {row['threshold']:.2f} | {row['precision']:.4f} | {row['recall']:.4f} | {row['f1']:.4f} | {row['predicted']} | {row['truePositive']} | {row['falsePositive']} |")
+          print()
+          print(f"- Runtime: {r['runtimeSeconds']:.2f}s")
+          PY
+
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-nominal-linear-cv-${{ github.sha }}
+          path: evaluation-artifacts/v3-spacy-nominal-linear-cv.json
+          if-no-files-found: error
+          retention-days: 90
