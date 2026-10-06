@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import math
 from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence, runtime_checkable
 
@@ -25,6 +26,35 @@ class SemanticLexer(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class IdentityScoringContext:
+    """Immutable source + prior-mention context shared by identity retrieval/scoring.
+
+    Candidate generation and learned scoring need more than names: discourse
+    recency and representative prior contexts matter for pronouns, nominals and
+    aliases. Keeping the evidence packet explicit prevents adapters from reaching
+    into mutable/global state.
+    """
+
+    source: NormalizedSource
+    mentions: tuple[Mention, ...]
+    _mention_by_id: Mapping[str, Mention] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        mapping: dict[str, Mention] = {}
+        for mention in self.mentions:
+            if mention.mention_id in mapping:
+                raise ValueError(f"duplicate context mention ID: {mention.mention_id}")
+            if mention.evidence.source_fingerprint != self.source.source_fingerprint:
+                raise ValueError("identity context mention belongs to a different source")
+            mapping[mention.mention_id] = mention
+        object.__setattr__(self, "_mention_by_id", MappingProxyType(mapping))
+
+    @property
+    def mention_by_id(self) -> Mapping[str, Mention]:
+        return self._mention_by_id
+
+
+@dataclass(frozen=True, slots=True)
 class IdentityCandidate:
     mention_id: str
     candidate_entity_id: str
@@ -33,7 +63,10 @@ class IdentityCandidate:
     def __post_init__(self) -> None:
         if not self.mention_id or not self.candidate_entity_id:
             raise ValueError("identity candidate IDs are required")
-        object.__setattr__(self, "features", MappingProxyType(dict(self.features)))
+        normalized = {key: float(value) for key, value in self.features.items()}
+        if any(not math.isfinite(value) for value in normalized.values()):
+            raise ValueError("identity candidate features must be finite")
+        object.__setattr__(self, "features", MappingProxyType(normalized))
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +76,12 @@ class IdentityScore:
     score: float
     scorer: ModelDescriptor | None = None
 
+    def __post_init__(self) -> None:
+        if not self.mention_id or not self.candidate_entity_id:
+            raise ValueError("identity score IDs are required")
+        if not math.isfinite(self.score):
+            raise ValueError("identity score must be finite")
+
 
 @runtime_checkable
 class IdentityCandidateGenerator(Protocol):
@@ -51,6 +90,7 @@ class IdentityCandidateGenerator(Protocol):
         *,
         mention: Mention,
         existing_entities: Sequence[Entity],
+        context: IdentityScoringContext,
     ) -> Sequence[IdentityCandidate]: ...
 
 
@@ -65,7 +105,7 @@ class IdentityScorer(Protocol):
         mention: Mention,
         candidate: IdentityCandidate,
         existing_entities: Sequence[Entity],
-        source: NormalizedSource,
+        context: IdentityScoringContext,
     ) -> IdentityScore: ...
 
 

@@ -1,5 +1,0 @@
-# Dedicated/manual V3.0 public-model qualification environment.
-# Intentionally outside the normal uv lock and PR CI installation path.
-gliner2[local]==2.0.0
-sentence-transformers==6.1.0
-psutil==7.2.2

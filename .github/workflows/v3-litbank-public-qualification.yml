@@ -50,7 +50,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: requirements/v3-qualification.txt
+          cache-dependency-path: requirements/v3-gliner-qualification.txt
 
       - name: Validate inputs
         shell: bash
@@ -66,9 +66,13 @@ jobs:
       - name: Install resource sampler
         run: python -m pip install psutil==7.2.2
 
-      - name: Install heavyweight challenger environment
+      - name: Install CPU Torch
         if: inputs.mode == 'gliner25-exact'
-        run: python -m pip install -r requirements/v3-qualification.txt
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install GLiNER challenger environment
+        if: inputs.mode == 'gliner25-exact'
+        run: python -m pip install -r requirements/v3-gliner-qualification.txt
 
       - name: Run V3 public qualification
         run: >-

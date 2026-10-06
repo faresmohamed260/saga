@@ -1,0 +1,121 @@
+name: SAGA V3 LitBank Identity Ranking
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_mode:
+        description: "Candidate generator"
+        required: true
+        default: "hybrid"
+        type: choice
+        options:
+          - lexical
+          - hybrid
+      scorer:
+        description: "Optional reranker"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - ettin
+      limit:
+        description: "Number of LitBank documents (1-100)"
+        required: true
+        default: "20"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saga-v3-litbank-ranking-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact S.A.G.A. source
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LitBank corpus
+        uses: actions/checkout@v4
+        with:
+          repository: dbamman/litbank
+          ref: 3e50db0ffc033d7ccbb94f4d88f6b99210328ed8
+          path: external/litbank
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements/v3-ettin-qualification.txt
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.limit }}" -ge 1
+          test "${{ inputs.limit }}" -le 100
+
+      - name: Install resource sampler
+        run: python -m pip install psutil==7.2.2
+
+      - name: Install CPU Torch
+        if: inputs.scorer == 'ettin'
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install Ettin qualification environment
+        if: inputs.scorer == 'ettin'
+        run: python -m pip install -r requirements/v3-ettin-qualification.txt
+
+      - name: Run ranking benchmark
+        run: >-
+          python -m scripts.run_v3_litbank_identity_ranking
+          --root external/litbank
+          --out evaluation-artifacts/v3-ranking-${{ inputs.candidate_mode }}-${{ inputs.scorer }}.json
+          --candidate-mode ${{ inputs.candidate_mode }}
+          --scorer ${{ inputs.scorer }}
+          --limit ${{ inputs.limit }}
+          --device cpu
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          path = Path("evaluation-artifacts/v3-ranking-${{ inputs.candidate_mode }}-${{ inputs.scorer }}.json")
+          report = json.loads(path.read_text())
+          overall = report["aggregate"]["overall"]
+          c = overall["counts"]
+          m = overall["metrics"]
+          print("## S.A.G.A. V3 identity ranking")
+          print()
+          print(f"- Candidate mode: `{report['candidateGenerator']['mode']}`")
+          print(f"- Scorer: `{report['scorer']}`")
+          print(f"- Documents: {report['dataset']['documentCount']}")
+          print(f"- Eligible post-seed mentions: {c['eligible_mentions']}")
+          print(f"- Candidate retrieval rate: {m['candidate_retrieval_rate']:.4f}")
+          print(f"- Candidate recall@1: {m['candidate_recall_at_1']:.4f}")
+          print(f"- Candidate recall@5: {m['candidate_recall_at_5']:.4f}")
+          print(f"- Candidate MRR: {m['candidate_mrr']:.4f}")
+          if report['scorer'] != 'none':
+              print(f"- Reranker top-1 end-to-end: {m['scorer_top1_end_to_end']:.4f}")
+              print(f"- Reranker MRR end-to-end: {m['scorer_mrr_end_to_end']:.4f}")
+              print(f"- Reranker MRR conditional: {m['scorer_mrr_conditional']:.4f}")
+              print(f"- Scored candidate pairs: {c['scored_candidate_pairs']}")
+          print(f"- Wall time: {report['resources']['wall_seconds']:.2f}s")
+          PY
+
+      - name: Upload ranking report
+        uses: actions/upload-artifact@v4
+        with:
+          name: saga-v3-ranking-${{ inputs.candidate_mode }}-${{ inputs.scorer }}-${{ github.sha }}
+          path: evaluation-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 90
