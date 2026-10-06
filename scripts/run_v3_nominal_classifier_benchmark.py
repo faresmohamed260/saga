@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-import hashlib
 import json
 from pathlib import Path
 import random
@@ -200,14 +199,23 @@ def wordnet_first_sense_baseline(rows, gold_total: int):
     }
 
 
+def csr_int32(matrix, np):
+    """Normalize sparse index arrays for estimators that reject int64 CSR indices."""
+
+    normalized = matrix.tocsr(copy=True)
+    normalized.indices = normalized.indices.astype(np.int32, copy=False)
+    normalized.indptr = normalized.indptr.astype(np.int32, copy=False)
+    return normalized
+
+
 def main() -> None:
     args = parse_args()
     import nltk
+    import numpy as np
     import spacy
     from nltk.corpus import wordnet as wn
     from sklearn.feature_extraction import DictVectorizer
     from sklearn.linear_model import LogisticRegression
-    from sklearn.pipeline import Pipeline
 
     documents = load_documents(args.root, args.limit)
     train_docs, dev_docs, test_docs = split_documents(documents, args.seed)
@@ -218,28 +226,25 @@ def main() -> None:
     dev_rows, dev_gold = build_rows(dev_docs, nlp, wn)
     test_rows, test_gold = build_rows(test_docs, nlp, wn)
 
-    model = Pipeline(
-        [
-            ("vectorizer", DictVectorizer(sparse=True)),
-            (
-                "classifier",
-                LogisticRegression(
-                    C=1.0,
-                    class_weight="balanced",
-                    max_iter=1000,
-                    solver="liblinear",
-                    random_state=args.seed,
-                ),
-            ),
-        ]
-    )
-    model.fit([row["features"] for row in train_rows], [row["label"] for row in train_rows])
+    vectorizer = DictVectorizer(sparse=True, dtype=np.float64)
+    train_x = csr_int32(vectorizer.fit_transform([row["features"] for row in train_rows]), np)
+    dev_x = csr_int32(vectorizer.transform([row["features"] for row in dev_rows]), np)
+    test_x = csr_int32(vectorizer.transform([row["features"] for row in test_rows]), np)
 
-    dev_prob = model.predict_proba([row["features"] for row in dev_rows])[:, 1]
+    classifier = LogisticRegression(
+        C=1.0,
+        class_weight="balanced",
+        max_iter=1000,
+        solver="liblinear",
+        random_state=args.seed,
+    )
+    classifier.fit(train_x, [row["label"] for row in train_rows])
+
+    dev_prob = classifier.predict_proba(dev_x)[:, 1]
     dev_labels = [row["label"] for row in dev_rows]
     best_f1, best_p75, dev_sweep = choose_threshold(dev_prob, dev_labels, dev_gold)
 
-    test_prob = model.predict_proba([row["features"] for row in test_rows])[:, 1]
+    test_prob = classifier.predict_proba(test_x)[:, 1]
     test_labels = [row["label"] for row in test_rows]
     test_default = metrics_for(test_prob, test_labels, threshold=0.5, gold_total=test_gold)
     test_dev_f1 = metrics_for(
@@ -282,6 +287,7 @@ def main() -> None:
             "wordnetVersion": wn.get_version(),
         },
         "training": {
+            "featureCount": len(vectorizer.feature_names_),
             "trainChunks": len(train_rows),
             "trainPositiveChunks": sum(row["label"] for row in train_rows),
             "trainGoldNominals": train_gold,
