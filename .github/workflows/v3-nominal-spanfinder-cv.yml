@@ -32,17 +32,17 @@ jobs:
       - name: Install pinned direct-span challenger
         run: python -m pip install "spacy==3.8.16"
 
-      - name: Run SpanFinder smoke CV
+      - name: Run SpanFinder diagnostic CV
         run: >-
           python -m scripts.run_v3_nominal_spanfinder_cv
           --root external/litbank
           --out evaluation-artifacts/v3-nominal-spanfinder-cv.json
           --limit 20
           --folds 2
-          --epochs 3
+          --epochs 12
           --batch-size 4
           --max-span-length 16
-          --thresholds 0.25 0.35 0.50 0.65 0.80 0.90
+          --thresholds 0.005 0.01 0.02 0.05 0.10 0.15 0.20 0.25 0.35 0.50
 
       - name: Publish summary
         shell: bash
@@ -51,18 +51,26 @@ jobs:
           import json
           from pathlib import Path
           r = json.loads(Path("evaluation-artifacts/v3-nominal-spanfinder-cv.json").read_text())
-          print("## V3 nominal SpanFinder book-held-out CV")
+          print("## V3 nominal SpanFinder diagnostic CV")
           print()
           print(f"- Documents: {r['dataset']['documentCount']}")
           print(f"- Gold person nominals: {r['dataset']['goldPersonNominals']}")
           print(f"- spaCy: {r['provider']['spacyVersion']}")
           print(f"- epochs/fold: {r['provider']['epochs']}")
           print(f"- max span length: {r['provider']['maxSpanLengthTokens']} tokens")
-          print()
-          print("| Threshold | Precision | Recall | F1 | Predicted | TP | Start F1 | End F1 |")
-          print("|---:|---:|---:|---:|---:|---:|---:|---:|")
-          for row in r["thresholds"]:
-              print(f"| {row['threshold']:.2f} | {row['precision']:.4f} | {row['recall']:.4f} | {row['f1']:.4f} | {row['predicted']} | {row['truePositive']} | {row['startF1']:.4f} | {row['endF1']:.4f} |")
+          for profile_name, profile in r["profiles"].items():
+              if profile is None:
+                  continue
+              ranking = profile["meanFoldBoundaryRanking"]
+              print()
+              print(f"### {profile_name} weights")
+              print(f"- train start/end AP: {ranking['trainStartAveragePrecision']:.4f} / {ranking['trainEndAveragePrecision']:.4f}")
+              print(f"- test start/end AP: {ranking['testStartAveragePrecision']:.4f} / {ranking['testEndAveragePrecision']:.4f}")
+              print("| Threshold | Precision | Recall | F1 | Predicted | TP | Start F1 | End F1 |")
+              print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+              for row in profile["testThresholds"]:
+                  print(f"| {row['threshold']:.3f} | {row['precision']:.4f} | {row['recall']:.4f} | {row['f1']:.4f} | {row['predicted']} | {row['truePositive']} | {row['startF1']:.4f} | {row['endF1']:.4f} |")
+              print(f"- max-length recall ceiling: {profile['testThresholds'][0]['maxLengthRecallCeiling']:.4f}")
           print()
           print(f"- Runtime: {r['resources']['runtimeSeconds']:.2f}s")
           print(f"- Peak RSS: {r['resources']['peakRssMb']:.1f} MB")
