@@ -34,16 +34,16 @@ jobs:
           python -m pip install "spacy==3.8.16" "scikit-learn==1.7.2"
           python -m pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
 
-      - name: Run token-boundary smoke CV
+      - name: Run token-boundary full CV
         run: >-
           python -m scripts.run_v3_nominal_token_boundary_cv
           --root external/litbank
           --out evaluation-artifacts/v3-nominal-token-boundary-cv.json
-          --limit 20
-          --folds 2
+          --limit 100
+          --folds 5
           --model en_core_web_sm
           --max-span-length 16
-          --thresholds 0.50 0.70 0.85 0.95
+          --thresholds 0.50 0.90 0.95 0.99 0.995 0.999
 
       - name: Publish summary
         shell: bash
@@ -52,7 +52,7 @@ jobs:
           import json
           from pathlib import Path
           r = json.loads(Path("evaluation-artifacts/v3-nominal-token-boundary-cv.json").read_text())
-          print("## V3 nominal token-boundary held-out CV")
+          print("## V3 nominal token-boundary full held-out CV")
           print()
           print(f"- Documents: {r['dataset']['documentCount']}")
           print(f"- Gold person nominals: {r['dataset']['goldPersonNominals']}")
@@ -64,7 +64,7 @@ jobs:
           print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
           for row in r['outOfFold']['thresholds']:
               s, e, p = row['start'], row['end'], row['spanCandidates']
-              print(f"| {row['threshold']:.2f} | {s['precision']:.4f} | {s['recall']:.4f} | {s['f1']:.4f} | {e['precision']:.4f} | {e['recall']:.4f} | {e['f1']:.4f} | {p['precision']:.4f} | {p['recall']:.4f} | {p['f1']:.4f} | {p['candidateSpans']} |")
+              print(f"| {row['threshold']:.3f} | {s['precision']:.4f} | {s['recall']:.4f} | {s['f1']:.4f} | {e['precision']:.4f} | {e['recall']:.4f} | {e['f1']:.4f} | {p['precision']:.4f} | {p['recall']:.4f} | {p['f1']:.4f} | {p['candidateSpans']} |")
           print()
           for side in ('start', 'end'):
               print(f"### {side} precision targets")
