@@ -14,6 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  modal-cross-repo-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify reciprocal RenderLab Modal ownership
+        run: python scripts/verify_modal_cross_repo_ownership.py
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

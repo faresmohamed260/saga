@@ -205,7 +205,7 @@ The analysis host remains outbound-oriented: Supabase owns durable job/run truth
 
 **Status:** Accepted
 
-S.A.G.A. owns `modal-03` through `modal-41`; RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`. Credential presence is not authorization. This remains relevant to media/image workflows and does not weaken D-027.
+S.A.G.A. owns `modal-03` through `modal-41`; RenderLab owns `modal-01`, `modal-02`, and `modal-42` through `modal-47`. Credential presence is not authorization. The two repositories publish inverse checked-in manifests, and S.A.G.A. CI performs a read-only comparison against RenderLab's protected `main` manifest so drift is mechanically visible. Changing the partition requires an explicit owner decision recorded in both repositories and reconciled manifests. This remains relevant to media/image workflows and does not weaken D-027.
 
 ### D-032 — BookNLP Repeated Analysis Uses Persistent Local Stdio
 

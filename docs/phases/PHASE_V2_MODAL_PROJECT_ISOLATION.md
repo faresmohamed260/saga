@@ -1,6 +1,6 @@
 # S.A.G.A. v2 Modal Project Isolation Contract
 
-Status: **Planning gate / implementation pending**  
+Status: **COMPLETE — reciprocal repository guards and live cross-repository verification established**
 Tracker: #218  
 Planning baseline: `10a959dc17296a3f01c78309d4638ffea479e0e9`
 
@@ -59,7 +59,7 @@ Possession of a credential is not authorization to use it.
 
 RenderLab must independently merge the inverse ownership manifest/guard for `modal-01`, `modal-02`, and `modal-42`–`modal-47` and document those accounts as RenderLab-owned.
 
-Isolation is complete only after both repositories enforce reciprocal, non-overlapping account sets.
+Isolation is complete only after both repositories enforce reciprocal, non-overlapping account sets. The final governance hardening adds read-only cross-repository CI verification: S.A.G.A. compares its checked-in manifest with RenderLab protected `main`, and RenderLab performs the inverse comparison in its required Engineering Quality gate. No Modal provider mutation is needed for this proof.
 
 ## Credential policy and hard isolation
 
